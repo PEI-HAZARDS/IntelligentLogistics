@@ -49,15 +49,6 @@ O sistema é baseado em dois módulos principais:
 - [ ] **Confiabilidade**: sistema robusto com baixa taxa de erro.  
 - [ ] **Segurança**: proteção dos dados logísticos e dos veículos monitorizados.  
 
-### **Tecnológicos**  
-- Python 3.9+  
-- Framework de Visão Computacional: YOLO / OpenCV / OCR
-- Backend: Flask / FastAPI  
-- Banco de Dados: PostgreSQL / MongoDB  
-- Infraestrutura: Docker + Kubernetes (microserviços)  
-- API REST para integração com sistemas externos  
-- Frontend: React / Vue.js (para dashboards)  
-
 ---
 
 ## Evoluções Futuras (Fase II)  
