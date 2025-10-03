@@ -1,5 +1,89 @@
-# VSCode
-.vscode/
+# =====================================
+# Python
+# =====================================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.h5
+*.onnx
 
-# Logs
+# Virtual environments
+.env
+.venv/
+env/
+venv/
+ENV/
+
+# Jupyter / notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# =====================================
+# Machine Learning / Data
+# =====================================
+/data/
+/datasets/
+/models/
+/checkpoints/
+/logs/
+/experiments/
+/runs/        # TensorBoard, MLFlow, etc.
+
+# Large files (manuais)
+*.csv
+*.tsv
+*.jsonl
+*.mp4
+*.avi
+*.jpg
+*.png
+
+# =====================================
+# Backend (Flask / FastAPI)
+# =====================================
+instance/
+*.db
+*.sqlite3
+
+# Gunicorn / Uvicorn
+*.pid
 *.log
+
+# =====================================
+# Node.js / Frontend (caso use React/Vue)
+# =====================================
+node_modules/
+dist/
+build/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =====================================
+# IDEs / OS
+# =====================================
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# =====================================
+# Docker
+# =====================================
+/docker-compose.override.yml
+/.docker/
+*.tar
+*.img
+
+# =====================================
+# Config & Secrets
+# =====================================
+*.env
+*.key
+*.crt
+*.pem
+/secrets/
