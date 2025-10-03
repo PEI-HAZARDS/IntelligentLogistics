@@ -3,8 +3,8 @@ import glob
 from pathlib import Path
 import pandas as pd
 
-input_path = "./coco/labels/train/*.json"
-output_path = "./yolo/labels/train/"
+input_path = "./Trucks/*.json"
+output_path = "./Trucks/"
 
 files = glob.glob(input_path)
 for file in files:
