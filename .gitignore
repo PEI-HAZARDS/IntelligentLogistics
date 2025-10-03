@@ -39,6 +39,8 @@ ENV/
 *.avi
 *.jpg
 *.png
+*.zip
+*.tar.gz
 
 # =====================================
 # Backend (Flask / FastAPI)
