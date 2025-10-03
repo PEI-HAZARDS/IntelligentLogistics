@@ -43,15 +43,9 @@ ENV/
 *.tar.gz
 
 # =====================================
-# Backend (Flask / FastAPI)
+# Backend
 # =====================================
-instance/
-*.db
-*.sqlite3
 
-# Gunicorn / Uvicorn
-*.pid
-*.log
 
 # =====================================
 # Node.js / Frontend (caso use React/Vue)
