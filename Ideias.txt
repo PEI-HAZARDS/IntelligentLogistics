@@ -1,0 +1,60 @@
+Ideias para BACK-END/FRONT-END
+
+[React Native App] ---\
+                        --> [API Gateway (FastAPI)] ---> [DB: PostgreSQL/MongoDB]
+[React Web App] -------/
+
+[API Gateway] <--> [Broker MQTT] <--> [Agente Edge (deteção YOLO)]
+                                   \--> [Serviço ML na Cloud]
+                                   \--> [Serviço de Decisão / Roteamento]
+
+
+Benefícios desta Arquitetura
+    Escalável: podes adicionar mais câmeras ou sensores sem alterar o resto.
+    Flexível: Motorista e Operador usam front-ends diferentes, mas o backend é único.
+    Tempo real: MQTT garante comunicação rápida de eventos críticos.
+    Integrável: API REST/GraphQL pode ser consumida por outros sistemas portuários.
+
+
+-------------------
+
+Usar os dois em conjunto (polyglot persistence):
+
+    PostgreSQL → dados core e estruturados:
+
+    Identificação de camiões, entradas/saídas, cais atribuídos, relatórios administrativos.
+
+    MongoDB → dados flexíveis e não estruturados:
+
+    Logs de deteção de imagens, eventos IoT/MQTT, histórico de métricas de IA.
+
+    Assim, conseguimos o melhor dos dois mundos: confiabilidade + flexibilidade.
+
+
+[Motorista App (React Native)] --> [API FastAPI] --> PostgreSQL (dados estruturados)
+                                              \
+                                               --> MongoDB (logs, eventos IoT)
+
+[Operador Cancela Dashboard] --> [API FastAPI] --> PostgreSQL (consultas, relatórios)
+                                              \
+                                               --> MongoDB (monitorização em tempo real)
+
+[Agente ML / YOLO] --> [Broker MQTT] --> [API FastAPI] --> MongoDB (deteções)
+
+
+Vantagens desta arquitetura:
+
+    Confiabilidade → PostgreSQL garante integridade dos dados administrativos.
+    Flexibilidade → MongoDB absorve logs/eventos que mudam de formato.
+    Escalabilidade → MongoDB lida bem com milhões de mensagens IoT.
+    Complementaridade → API expõe dados combinados (ex: relatório do dia com camiões + eventos captados pelo ML).
+
+Exemplo de cenário real:
+    
+    1.Camião chega → YOLO detecta → evento guardado em MongoDB.
+
+    2.Backend valida matrícula → registo de entrada criado em PostgreSQL.
+
+    3.Operador confirma no dashboard → PostgreSQL atualizado.
+
+    4.No final do dia → relatório oficial (PostgreSQL) + análise de performance (MongoDB).

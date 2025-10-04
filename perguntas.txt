@@ -1,9 +1,0 @@
-1 - Qual a necesidade de identificar os simbolos tendo em conta que a placa de segurança ja diz os materiais perigosos
-
-2 - Onde deve ficar o Agente A dentro do datacenter ou fora num microcontrolador
-
-3 - Onde ese encontra a camera em que angulo
-
-4 - Qual a necesidade de fazer o pre-processamento da imagem 
-
-5 - Ver arquitetura em geral
