@@ -210,10 +210,3 @@ Vantagens: evita enviar imagens pesadas pelo MQTT, armazenamento já organizado,
 * Define `AuthorizePlate(PlateRequest) returns (AuthDecision)` com campos plate, UN, image_url etc. gRPC é recomendado entre Orchestrator e backend para baixa latência e compactação.
 
 ---
-
-
-
-
-
-
-

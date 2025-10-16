@@ -1,6 +1,6 @@
 # Componentes e tecnologias recomendadas 
 
-1. **Stream Manager / RTSP Proxy**
+1. **Stream Manager / RTSP Proxy** (Desnecessário)
 
    * Tech: `rtsp-simple-server` ou GStreamer (com NVDEC se tiveres GPU).
    * Porquê: mantém sessões abertas (reduz handshake latency) e faz multiplexing/transcode on-demand.
@@ -12,10 +12,10 @@
 
 3. **Agent-A (720p detector)**
 
-   * Tech: Container Python + ONNXRuntime/TFLite (modelo quantizado YOLO-nano / MobileNet-SSD).
-   * Porquê: modelo leve, rápido e pouco consumo de GPU/CPU para deteção contínua.
+   * Tech: Docker Container Python + ONNXRuntime/TFLite (modelo quantizado YOLO-nano / MobileNet-SSD).
+   * Porquê: modelo leve, rápido e pouco consumo de CPU para deteção contínua.
 
-4. **Orchestrator**
+4. **Orchestrator** (Desnecessário)
 
    * Tech: FastAPI/Go microservice, Redis (cache TTL), regras configuráveis.
    * Porquê: centraliza política (wake, timeouts, fallback) e coordena actuadores/UI.
@@ -49,11 +49,10 @@
 
 # Fluxo detalhado (passos de runtime)
 
-1. **Stream Manager** mantém RTSP 720p e 4K (conexões sempre ativas para reduzir latência).
-2. **Agent-A** consome 720p, faz inferência a 5–10 fps, tracking (SORT), confirma detections (N frames) e publica:
+1. **Agent-A** consome 720p, faz inferência a 5–10 fps, tracking (SORT), confirma detections (N frames) e publica:
 
    * Tópico: `gate/01/detection` (payload com `event_id`, `track_id`, `bbox720`, `timestamp`, `conf`, `res=[w,h]`).
-3. **Orchestrator** subscreve detections; aplica rules (debounce, rate limit) e publica `wake` se necessário: `gate/01/wake`.
+<!-- 3. **Orchestrator** subscreve detections; aplica rules (debounce, rate limit) e publica `wake` se necessário: `gate/01/wake`. -->
 4. **Agent-B** (worker) recebe wake, pede ao Stream Manager o 4K feed; transforma bbox720 → bbox4K (scale + padding), extrai crop(s) e executa:
 
    * placa detection → OCR (CRNN / PaddleOCR)
@@ -90,12 +89,13 @@
 - Produces candidate with: `UN_number`, `conf`, `crop_ref`, `frame_ts`.
 - Saves candidate to the same aggregator as Agent-C.
 
+<!-- 
 ### Orchestrator / Consensus Service
 - Receives candidates in streaming and accumulates by `event_id`/`track_id`.
 - Applies voting/fusion rules (see Section 5).
 - Upon consensus (or timeout), emits `truck_identified` with:
   - Plate, UN number, confidences, and image URLs.
-- Calls Policy API for authorization and triggers UI/actuator.
+- Calls Policy API for authorization and triggers UI/actuator. -->
 
 ## 3. Message Flow and Temporal Details
 

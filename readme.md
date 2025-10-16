@@ -35,19 +35,24 @@ O sistema é baseado em dois módulos principais:
 ## Requisitos  
 
 ### **Funcionais**  
-- [ ] Deteção automática de camiões em tempo real.  
-- [ ] Identificação de matrículas e símbolos de mercadorias perigosas.  
-- [ ] Integração com sistema de gestão logística para tomada de decisão.  
-- [ ] Encaminhamento do veículo para o destino correto dentro do porto.  
-- [ ] Notificação clara ao condutor (via sinalização digital ou aplicação móvel).  
-- [ ] Geração de relatórios estatísticos sobre tráfego e cargas (Future Work).  
+- Deteção automática de camiões em tempo real.  
+- Deteção e classificação de matrículas.
+- Deteção e classificação de símbolos de mercadorias perigosas.
+- Identificação de cargas perigosas através da placa de segurança.
+- Gestão de estados de veículos.
+- Integração com sistema de gestão logística para tomada de decisão.  
+- Encaminhamento do veículo para o destino correto dentro do porto.  
+- Notificação clara ao condutor (via sinalização digital ou aplicação móvel).  
+- Geração de relatórios estatísticos sobre tráfego e cargas.
 
 ### **Não Funcionais**  
-- [ ] **Eficiência energética**: otimização do uso de recursos computacionais.  
-- [ ] **Escalabilidade**: permitir adaptação a diferentes portos e cenários.  
-- [ ] **Flexibilidade**: aprendizagem ativa de novos símbolos/tipos de carga (?).  
-- [ ] **Confiabilidade**: sistema robusto com baixa taxa de erro.  
-- [ ] **Segurança**: proteção dos dados logísticos e dos veículos monitorizados.  
+- **Eficiência energética**: otimização do uso de recursos computacionais.  
+- **Escalabilidade**: permitir adaptação a diferentes portos e cenários.
+- **Flexibilidade**: aprendizagem ativa de novos símbolos/tipos de carga (?).  
+- **Confiabilidade**: sistema robusto com baixa taxa de erro.
+- **Segurança**: proteção dos dados logísticos e dos veículos monitorizados.
+- Tempo de resposta: A deteção e notificação não devem exceder 2 segundos entre captura e disponibilização ao operador.
+- Confiabilidade: O sistema deve manter uma disponibilidade mínima de 99% no ambiente de produção.
 
 ---
 
@@ -63,3 +68,10 @@ Existe a possibilidade de integração com **datacenters reais** e redes em func
 ---
 
 ✨ Este projeto combina **IA, visão computacional, logística e eficiência energética**, sendo uma proposta alinhada com os desafios da Indústria 4.0.  
+
+
+## Future Work
+
+- Interface de administração.
+- Interação via dashboard entre o operador da cancela e motorista (?).
+- Monitoria
