@@ -75,3 +75,8 @@ Existe a possibilidade de integração com **datacenters reais** e redes em func
 - Interface de administração.
 - Interação via dashboard entre o operador da cancela e motorista (?).
 - Monitoria
+
+
+# Figma
+
+https://www.figma.com/board/JlCLhwM5PSqwUxG3hQKLJF/Pesonas-UserStories?node-id=0-1&t=YPScc6023B4tHqgQ-0

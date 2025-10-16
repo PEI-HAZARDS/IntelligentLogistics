@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="EMv_BdPsESLJzAK8MGx-" name="Página-1">
-        <mxGraphModel dx="2391" dy="1994" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+        <mxGraphModel dx="2027" dy="1926" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -126,9 +126,6 @@
                 <mxCell id="25" value="" style="shape=actor;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="660" y="-186" width="40" height="60" as="geometry"/>
                 </mxCell>
-                <mxCell id="80" style="edgeStyle=none;html=1;" edge="1" parent="1" source="26" target="78">
-                    <mxGeometry relative="1" as="geometry"/>
-                </mxCell>
                 <mxCell id="26" value="Truck Detection" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;" parent="1" vertex="1">
                     <mxGeometry x="-90" y="490" width="120" height="120" as="geometry"/>
                 </mxCell>
@@ -211,7 +208,7 @@
                     <mxGeometry x="1090" y="-56" width="60" height="30" as="geometry"/>
                 </mxCell>
                 <mxCell id="44" value="" style="swimlane;startSize=0;" parent="1" vertex="1">
-                    <mxGeometry x="-120" y="800" width="200" height="350" as="geometry"/>
+                    <mxGeometry x="-120" y="800" width="200" height="160" as="geometry"/>
                 </mxCell>
                 <mxCell id="45" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Agente A&lt;/font&gt;" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;" parent="44" vertex="1">
                     <mxGeometry x="30" y="20" width="120" height="80" as="geometry"/>
@@ -270,7 +267,7 @@
                 <mxCell id="53" value="" style="swimlane;startSize=0;" parent="1" vertex="1">
                     <mxGeometry x="810" y="790" width="200" height="360" as="geometry"/>
                 </mxCell>
-                <mxCell id="54" value="Info Camiões" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" parent="53" vertex="1">
+                <mxCell id="54" value="Database&lt;div&gt;Porto&lt;/div&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" parent="53" vertex="1">
                     <mxGeometry x="60" y="200" width="80" height="100" as="geometry"/>
                 </mxCell>
                 <mxCell id="55" value="&lt;span style=&quot;font-size: 18px;&quot;&gt;Decision Feed&lt;/span&gt;" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;" parent="53" vertex="1">
@@ -283,10 +280,10 @@
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="57" value="Agente em loop a receber imagens&amp;nbsp;&lt;div&gt;em 720p e a fazer truck detection&lt;/div&gt;&lt;div&gt;quando encontra faz /truck_found&lt;/div&gt;&lt;div&gt;nesse ponto a camera irá ligar 4k e depois esse agente faz o pre processamneto da imagem e manda /truck_processed&lt;span style=&quot;color: rgb(63, 63, 63); font-family: monospace; font-size: 0px; text-align: start; text-wrap-mode: nowrap; background-color: transparent;&quot;&gt;%3CmxGraphModel%3E%3Croot%3E%3CmxCell%20id%3D%220%22%2F%3E%3CmxCell%20id%3D%221%22%20parent%3D%220%22%2F%3E%3CmxCell%20id%3D%222%22%20value%3D%22%26lt%3Bfont%20style%3D%26quot%3Bfont-size%3A%2018px%3B%26quot%3B%26gt%3BAgente%20A%26lt%3B%2Ffont%26gt%3B%22%20style%3D%22shape%3Dext%3Bdouble%3D1%3Brounded%3D1%3BwhiteSpace%3Dwrap%3Bhtml%3D1%3B%22%20vertex%3D%221%22%20parent%3D%221%22%3E%3CmxGeometry%20x%3D%22232.5%22%20y%3D%22820%22%20width%3D%22120%22%20height%3D%2280%22%20as%3D%22geometry%22%2F%3E%3C%2FmxCell%3E%3CmxCell%20id%3D%223%22%20value%3D%22%26lt%3Bh1%20style%3D%26quot%3Bmargin-top%3A%200px%3B%26quot%3B%26gt%3B%26lt%3Bspan%20style%3D%26quot%3Bfont-weight%3A%20400%3B%26quot%3B%26gt%3B%26lt%3Bfont%20style%3D%26quot%3Bfont-size%3A%2018px%3B%26quot%3B%26gt%3BTruck%20Detection%26lt%3B%2Ffont%26gt%3B%26lt%3B%2Fspan%26gt%3B%26lt%3B%2Fh1%26gt%3B%22%20style%3D%22text%3Bhtml%3D1%3BwhiteSpace%3Dwrap%3Boverflow%3Dhidden%3Brounded%3D0%3B%22%20vertex%3D%221%22%20parent%3D%221%22%3E%3CmxGeometry%20x%3D%22225%22%20y%3D%22900%22%20width%3D%22135%22%20height%3D%2240%22%20as%3D%22geometry%22%2F%3E%3C%2FmxCell%3E%3C%2Froot%3E%3C%2FmxGraphModel%3E&lt;/span&gt;&lt;/div&gt;" style="ellipse;whiteSpace=wrap;html=1;" parent="1" vertex="1">
-                    <mxGeometry x="-425" y="750" width="232.5" height="180" as="geometry"/>
+                    <mxGeometry x="-530" y="890" width="232.5" height="180" as="geometry"/>
                 </mxCell>
                 <mxCell id="58" value="É subscritor de /truck_processed e quando este existe ele tem um pipeline de processamento sendo que passa por um primeiro processo onde busca a matricula e o sinal laranja e manda para o proximo processo onde esta a placa e a matricula, onde este identifica os numeros nas mesmas e publica /matricula_and_hazard&amp;nbsp;" style="ellipse;whiteSpace=wrap;html=1;" parent="1" vertex="1">
-                    <mxGeometry x="-451" y="950" width="284.5" height="220" as="geometry"/>
+                    <mxGeometry x="-556" y="1100" width="284.5" height="220" as="geometry"/>
                 </mxCell>
                 <mxCell id="59" value="Cache Global" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" parent="1" vertex="1">
                     <mxGeometry x="-60" y="265" width="60" height="60" as="geometry"/>
@@ -303,18 +300,65 @@
                 <mxCell id="64" value="&lt;font style=&quot;font-size: 12px;&quot;&gt;Recebe video em 4k&lt;/font&gt;" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="450" y="420" width="90" height="50" as="geometry"/>
                 </mxCell>
-                <mxCell id="78" value="Camera Feed" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;" vertex="1" parent="1">
+                <mxCell id="78" value="Camera Feed" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;" parent="1" vertex="1">
                     <mxGeometry x="140" y="490" width="120" height="120" as="geometry"/>
                 </mxCell>
-                <mxCell id="79" style="edgeStyle=none;html=1;" edge="1" parent="1" source="27">
-                    <mxGeometry relative="1" as="geometry">
-                        <mxPoint x="260" y="552" as="targetPoint"/>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="81" value="" style="endArrow=none;dashed=1;html=1;dashPattern=1 3;strokeWidth=2;exitX=0.354;exitY=0.974;exitDx=0;exitDy=0;entryX=0;entryY=0;entryDx=50;entryDy=0;entryPerimeter=0;exitPerimeter=0;" edge="1" parent="1" source="32" target="78">
+                <mxCell id="81" value="" style="endArrow=none;dashed=1;html=1;dashPattern=1 3;strokeWidth=2;exitX=0.354;exitY=0.974;exitDx=0;exitDy=0;entryX=0;entryY=0;entryDx=50;entryDy=0;entryPerimeter=0;exitPerimeter=0;" parent="1" source="32" target="78" edge="1">
                     <mxGeometry width="50" height="50" relative="1" as="geometry">
                         <mxPoint x="265" y="370" as="sourcePoint"/>
                         <mxPoint x="20" y="500" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="84" style="edgeStyle=none;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;exitPerimeter=0;" edge="1" parent="1" source="82">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="1230.46" y="585" as="sourcePoint"/>
+                        <mxPoint x="1010" y="800" as="targetPoint"/>
+                        <Array as="points">
+                            <mxPoint x="1240" y="800"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="82" value="" style="aspect=fixed;sketch=0;html=1;dashed=0;whitespace=wrap;verticalLabelPosition=bottom;verticalAlign=top;fillColor=#2875E2;strokeColor=#ffffff;points=[[0.005,0.63,0],[0.1,0.2,0],[0.9,0.2,0],[0.5,0,0],[0.995,0.63,0],[0.72,0.99,0],[0.5,1,0],[0.28,0.99,0]];shape=mxgraph.kubernetes.icon2;kubernetesLabel=1;prIcon=api" vertex="1" parent="1">
+                    <mxGeometry x="1179" y="467" width="122.92" height="118" as="geometry"/>
+                </mxCell>
+                <mxCell id="83" style="edgeStyle=none;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="82" target="17">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1240" y="-90"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="87" style="edgeStyle=none;html=1;exitX=0.037;exitY=0.589;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0;entryY=0;entryDx=120.00000000000001;entryDy=70;entryPerimeter=0;" edge="1" parent="1" source="78" target="26">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="88" style="edgeStyle=none;html=1;exitX=0;exitY=0;exitDx=120.00000000000001;exitDy=70;exitPerimeter=0;entryX=0.001;entryY=0.577;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="78" target="27">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="89" value="4K (stream 1)" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                    <mxGeometry x="290" y="525" width="60" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="90" value="360p/720p (stream 2)" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                    <mxGeometry x="50" y="525" width="60" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="92" value="MVC" style="text;strokeColor=none;fillColor=none;html=1;fontSize=24;fontStyle=1;verticalAlign=middle;align=center;" vertex="1" parent="1">
+                    <mxGeometry x="1320" y="506" width="100" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="99" style="edgeStyle=none;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" target="82">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="1020" y="800" as="sourcePoint"/>
+                        <mxPoint x="1020" y="810" as="targetPoint"/>
+                        <Array as="points">
+                            <mxPoint x="1240" y="800"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="100" style="edgeStyle=none;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" edge="1" parent="1" source="17">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="860" y="-90" as="sourcePoint"/>
+                        <mxPoint x="1240" y="470" as="targetPoint"/>
+                        <Array as="points">
+                            <mxPoint x="1240" y="-90"/>
+                        </Array>
                     </mxGeometry>
                 </mxCell>
             </root>

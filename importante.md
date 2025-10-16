@@ -1,9 +1,9 @@
 # Componentes e tecnologias recomendadas 
 
-1. **Stream Manager / RTSP Proxy** (Desnecessário)
+<!-- 1. **Stream Manager / RTSP Proxy** (Desnecessário)
 
-   * Tech: `rtsp-simple-server` ou GStreamer (com NVDEC se tiveres GPU).
-   * Porquê: mantém sessões abertas (reduz handshake latency) e faz multiplexing/transcode on-demand.
+   Tech: `rtsp-simple-server` ou GStreamer (com NVDEC se tiveres GPU).
+   Porquê: mantém sessões abertas (reduz handshake latency) e faz multiplexing/transcode on-demand. -->
 
 2. **Broker / Middleware**
 
@@ -15,10 +15,10 @@
    * Tech: Docker Container Python + ONNXRuntime/TFLite (modelo quantizado YOLO-nano / MobileNet-SSD).
    * Porquê: modelo leve, rápido e pouco consumo de CPU para deteção contínua.
 
-4. **Orchestrator** (Desnecessário)
+<!-- 4. **Orchestrator** (Desnecessário)
 
-   * Tech: FastAPI/Go microservice, Redis (cache TTL), regras configuráveis.
-   * Porquê: centraliza política (wake, timeouts, fallback) e coordena actuadores/UI.
+   Tech: FastAPI/Go microservice, Redis (cache TTL), regras configuráveis.
+   Porquê: centraliza política (wake, timeouts, fallback) e coordena actuadores/UI. -->
 
 5. **Agent-B (4K worker)**
 
@@ -101,7 +101,7 @@
 
 1. **Agent-A** detects a truck and publishes to `gate/01/detection`:
    - Payload: `{event_id, track_id, bbox720, ts, res}`.
-2. **Orchestrator** sends `gate/01/wake` to activate **Agent-B**.
+<!-- 2. **Orchestrator** sends `gate/01/wake` to activate **Agent-B**. -->
 3. **Agent-B** pulls 4K frames and generates crops for frames `F0`, `F1`, `F2`, etc. (e.g., 1 main crop per frame, up to 5 frames). For each crop:
    - Saves locally: `/tmp/gate01/evt-123/t-7_f045_plate.jpg`.
    - Optional: Requests presigned PUT, uploads to MinIO, obtains `s3://.../plate.jpg`.
@@ -112,9 +112,9 @@
    - Topic: `candidates.plate`
    - Payload: `{event_id, track_id, crop_id, plate_text, plate_conf, frame_ts, crop_url}`
 5. **Agent-D** processes `crops.placard` and publishes to `candidates.placard` with similar payload.
-6. **Consensus Service (or Orchestrator)**:
+6. **Consensus Service**:
    - Reads candidates in real-time and maintains a structure in memory/Redis.
    - When consensus rule is satisfied (e.g., same plate in ≥3 candidates or `avg_conf` ≥ threshold), publishes to `gate/01/truck_identified`:
      - Payload: Final `plate`, `UN`, confidences, and references to canonical crop images.
-7. **Orchestrator** calls `POST /api/authorize` with `plate`, `UN`, and image URLs for final decision.
+7. <!-- Orchestrator calls `POST /api/authorize` with `plate`, `UN`, and image URLs for final decision. -->
 8. Decision is published to `gate/01/decision` topic and sent to actuator/UI.

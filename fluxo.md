@@ -1,5 +1,3 @@
-
-
 * pipeline completo (sequência numerada),
 * formatos de mensagem (MQTT / REST / gRPC / S3),
 * decisões de engenharia (quando enviar a box vs pedir 4K),
@@ -25,7 +23,7 @@ Assumindo resoluções típicas: 720p = **1280×720**; 4K = **3840×2160** (fact
    * Aplica *debounce / temporal confirmation*: só considera deteção válida se a mesma bbox (ou track) é vista por **N** frames consecutivos (ex.: N=3) ou mantém um tracker (SORT/DeepSORT).
    * Quando confirmado, publica evento de deteção mínimo no **Broker (MQTT)**: `gate/{id}/detection` com metadados (timestamp, bbox em coordenadas do 720p, confidence, event_id).
 
-3. **Broker / Orchestrator**
+3. **Broker**
 
    * Repassa o evento ao Orchestrator e a subscritores (Agent-B). Orchestrator aplica regras (throttling, denylist, cache). Se Orchestrator decide activar Agent-B, publica `gate/{id}/wake` ou envia um RPC para Agent-B.
 
