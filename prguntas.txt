@@ -82,3 +82,32 @@ Passos seguintes:
 2. Docker Containers para cada módulo Docker + docker-compose
 3. Escalabilidade: Separar IA e backend em máquinas diferentes	Docker Compose multi-host
 4. 5G + Edge: Deploy em portos e datacenters distribuídos [5G + K3s (Kubernetes Edge)]
+
+
+
+
+Perguntas:
+
+
+1-É para criar um Projeto no IT ou não ?
+
+
+2- Definir quem faz o que ? Para saber se é preciso quantas pessoas para frontEnd e para o resto e como é ?
+
+
+
+A fazer:
+
+
+- Apresentação falta completar e tirar cenas desnecessarias
+    - Adicionar Calendario
+    - Meter o plano de Comunicação
+    - Riscos e Mitigações
+    - 
+
+- Calendario das coisas a fazer
+
+- Definir quem faz o que
+
+- 
+
