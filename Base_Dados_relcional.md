@@ -33,7 +33,7 @@ Descrição: Motorista responsável pelo camião.
         Um condutor pode conduzir vários camiões (1:N)
         Um condutor pertence apenas a uma Empres (1:1) (FK)
 
-# 3.  Deteções (? Não relacional) -> (outra bd ou na mesma)
+# 3.  Deteções (? Não relacional) -> (outra bd ou na mesma) Aqui ficariam as deteções válidas
 
 Descrição: Evento de deteção e registo da chegada de um camião ao porto.
 
@@ -69,6 +69,8 @@ Descrição: Entregas agendadas para cada dia.
         Referencia uma Carga (N:1) (FK)
         Está associada a um Condutor (N:1, via camião) -> (matricula (FK))
         É acompanhada por um Operador (N:1) (FK)
+        Se a deteção IA corresponde a uma entrega prevista → ligas as duas.
+        Se não houver correspondência → cria-se alerta automático.
 
 # 5. Cais
 
@@ -77,6 +79,7 @@ Descrição: Zona física do porto onde o camião deve ir descarregar.
     Atributos:
 
         - Identificador (PK)
+        - Localização exata (gps)
         - Tipo de cais (contentores, líquidos, sólidos, etc.)
         - Capacidade máxima
         - Estado (ativo/inativo)
@@ -99,7 +102,6 @@ Descrição: tipo de mercadoria transportada pelo camião.
 
     Relações:
 
-        Ligada a Camião (N:1) (FK)
         Pode gerar Alertas de risco se for ADR (FK) (?)
 
 # 7. Operador
@@ -133,5 +135,38 @@ Descrição: registo de eventos anómalos ou críticos durante a deteção ou en
 
     Relações:
 
-    Associado a uma Deteção/Entrega diária (N:1) (FK)
-    Pode estar relacionado a um Camião e/ou Carga (1:1) (FK)
+    Associado a uma Deteção/Entrega diária (N:1)
+    Pode estar relacionado a um Camião e/ou Carga (1:1)
+
+# 9. Empresa
+
+Descrição: Entidade responsável pela entrega de cargas.
+
+    Atributos:
+
+        - ID/nif (PK)
+        - Nome
+        - Contacto
+        - Descrição
+
+    Relações:
+
+    Possui associada vários condutores (1:N)
+
+
+# Pequeno Fluxo:
+
+[Empresa] 1 ────< tem >──── N [Condutor] 1 ────< conduz >──── N [Camião]
+
+[Camião] 1 ────< realiza >──── N [Chegada_Diaria] ────< processada por >──── N [Operador]
+
+[Chegada_Diaria] ────< refere >──── [Carga]
+[Chegada_Diaria] ────< tem deteção associada >──── [Deteção]
+[Chegada_Diaria] ────< encaminhada para >──── [Cais]
+[Deteção] ────< gera >──── N [Alerta] (De segurança, chegada de entrega, etc.)
+
+[Deteção] ────< validada por >──── [Operador/IA] (operador se necessário)
+[Alerta] ────< refere >──── [Carga] (opcional)
+
+
+princípios de normalização até à 3ª forma normal, para já
