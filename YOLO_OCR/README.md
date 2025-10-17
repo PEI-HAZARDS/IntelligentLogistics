@@ -5,7 +5,7 @@
 You should create a virtual environment to install and manage the necessary python packages.
 
 ```sh
-python3 -m venv .venv
+python3 -m venv venv
 
 source venv/bin/activate
 
