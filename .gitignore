@@ -23,13 +23,13 @@ ENV/
 # =====================================
 # Machine Learning / Data
 # =====================================
-/data/
-/datasets/
-/models/
-/checkpoints/
-/logs/
-/experiments/
-/runs/        # TensorBoard, MLFlow, etc.
+**/data/
+**/datasets/
+**/models/
+**/checkpoints/
+**/logs/
+**/experiments/
+**/runs/        # TensorBoard, MLFlow, etc.
 
 # Large files (manuais)
 *.csv
