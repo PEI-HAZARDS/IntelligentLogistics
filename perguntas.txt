@@ -1,9 +1,3 @@
-1- Qual a necessidade de ter uma interface para quem esta na cancela sendo que so é meramente visual 
-    (Paulo: Acho que pode ser uma forma de manter o trabalhador informado se o sistema está a conseguir detetar 
-    e classificar os camiões que chegam, caso não consiga, aparece ele como segundo meio de intervenção, no geral seria para confirmar o as entradas e saidas de camiões, e verificar se tudo funciona de forma adequada.)
-
-3- Estamos a definir bem user stories e a aplicar de forma minimamente adequada no jira?
-
 4- Como devemos organizar um calendário?
     SPRINTS?
     Calendario normal (com objetivos definidos para datas específicas)?
