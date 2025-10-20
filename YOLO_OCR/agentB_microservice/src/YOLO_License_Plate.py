@@ -2,20 +2,20 @@ from ultralytics import YOLO # type: ignore
 import contextlib
 import io
 
-class YOLO_Truck:
+class YOLO_License_Plate:
     def __init__(self):
-        self.model_path = './data/truck_model.pt'
+        self.model_path = 'agentB_microservice/data/license_plate_model.pt'
         self.input_shape = (416, 416)  # multiple of 32, height, width
         self.model = YOLO(self.model_path)
-        self.truck_class_id = 7
 
     def detect(self, image, suppress_output=True):
+        results = self.model(image)
         if suppress_output:
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-                results = self.model(image, classes=[self.truck_class_id])
+                results = self.model(image)
         else:
-            results = self.model(image, classes=[self.truck_class_id])
+            results = self.model(image)
         return results
     
     def get_boxes(self, results):
@@ -26,7 +26,7 @@ class YOLO_Truck:
             boxes.append([x1, y1, x2, y2, conf])
         return boxes
     
-    def truck_found(self, results):
+    def found_license_plate(self, results):
         return len(results[0].boxes) > 0
     
     def close(self):    

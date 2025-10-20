@@ -1,7 +1,8 @@
-from src.Logger import *
-from src.RTSPstream import *
-from src.YOLO_License_Plate import *
-from src.OCR import *
+from shared_utils.Logger import *
+from shared_utils.RTSPstream import *
+from agentB_microservice.src.YOLO_License_Plate import *
+from agentB_microservice.src.OCR import *
+import time
 
 RTSP_STREAM_HIGH = "rtsp://10.255.35.86:554/stream1"
 
@@ -13,10 +14,16 @@ class AgentB:
         self.ocr = OCR()
 
     def run(self):
-        self.logger.info("Agent A is running...")
+        self.logger.info("Agent B is running...")
         
         cap = RTSPStream(RTSP_STREAM_HIGH)
         window_name = "Agent B - License Plate Detection"
+        # Create a resizable window
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+
+        # Define window size (width, height)
+        cv2.resizeWindow(window_name, 960, 540)
+        
         n = 0
         results = []
 
@@ -43,13 +50,14 @@ class AgentB:
                     label = f"License Plate ({conf*100:.1f}%)"
                     cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
                     cv2.putText(frame, label, (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-
-                    lp_crop = frame[y1:y2, x1:x2]
+                    lp_crop = frame[int(y1):int(y2), int(x1):int(x2)]
 
                     text, conf = self.ocr.extract_text(lp_crop)
                     results.append((text, conf))
                     self.logger.info(f"Extracted text: {text}")
-                    cv2.putText(frame, text, (x1, y2 + 20), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
+                    cv2.putText(frame, text, (int(x1), int(y2) + 20), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2) # type: ignore
+
+                    time.sleep(10)
 
             else:
                 self.logger.info("No license plate detected.")

@@ -1,6 +1,8 @@
-from src.Logger import *
-from src.RTSPstream import *
-from src.YOLO_Truck import *
+from shared_utils.Logger import *
+from shared_utils.RTSPstream import *
+from agentA_microservice.src.YOLO_Truck import *
+from agentB_microservice.src.AgentB import *
+from time import sleep
 
 RTSP_STREAM_LOW = "rtsp://10.255.35.86:554/stream2"
 
@@ -16,6 +18,12 @@ class AgentA:
         
         cap = RTSPStream(RTSP_STREAM_LOW)
         window_name = "Agent A - Truck Detection"
+
+        # Create a resizable window
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+
+        # Define window size (width, height)
+        cv2.resizeWindow(window_name, 960, 540)
 
         while self.running:
             frame = cap.read()
@@ -39,6 +47,12 @@ class AgentA:
                     label = f"Truck ({conf*100:.1f}%)"
                     cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
                     cv2.putText(frame, label, (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+
+                # Wake up Agent B
+                #self.logger.info("Waking up Agent B...")
+                #agentB = AgentB()
+                #agentB.run()
+                #self.stop()
 
             else:
                 self.logger.info("No truck detected.")

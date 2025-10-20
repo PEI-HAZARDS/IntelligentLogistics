@@ -1,6 +1,6 @@
 import threading
 import cv2 # type: ignore
-from src.Logger import *
+from shared_utils.Logger import *
 
 class RTSPStream:
     def __init__(self, url):
