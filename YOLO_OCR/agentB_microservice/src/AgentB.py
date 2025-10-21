@@ -5,101 +5,144 @@ from agentB_microservice.src.OCR import *
 import time
 import os
 import cv2
+from queue import Queue, Empty
 
 RTSP_STREAM_HIGH = "rtsp://10.255.35.86:554/stream1"
 CROPS_PATH = "agentB_microservice/data/lp_crops"
 os.makedirs(CROPS_PATH, exist_ok=True)
 
-# Agent to detect license plates on high quality RTSP stream using YOLO model
+
 class AgentB:
+    """
+    Agent B:
+    - Waits for 'truck_detected' messages from the broker.
+    - On detection, fetches frames from the high-quality RTSP stream.
+    - Runs YOLO to detect license plates.
+    - Uses OCR to extract license plate text.
+    """
+
     def __init__(self, broker):
         self.logger = GlobalLogger().get_logger()
         self.yolo = YOLO_License_Plate()
         self.ocr = OCR()
         self.running = True
         self.broker = broker
+        self.frames_queue = Queue()
+        self.stream = RTSPStream(RTSP_STREAM_HIGH)
 
     def run(self):
-        self.logger.info("Agent B is running...")
+        self.logger.info(f"[AgentB] Starting main loop...")
 
         while self.running:
-            message = self.broker.get_message(timeout=1)
-            self.logger.info("Agent B checking for messages...")
-            if message and message.get("type") == "truck_detected":
-                self.logger.info("Received truck detection message from Agent A.")
-                self.process_license_plate_detection()
-            else:
-                time.sleep(1)  # Avoid busy waiting
-    
+            try:
+                message = self.broker.get_message(timeout=1)
+                self.logger.debug("[AgentB] Checking broker messages...")
+
+                if message and message.get("type") == "truck_detected":
+                    self.logger.info("[AgentB] Received 'truck_detected' event from Agent A.")
+                    self.process_license_plate_detection()
+                else:
+                    time.sleep(1)
+            except Exception as e:
+                self.logger.exception(f"[AgentB] Exception in main loop: {e}")
+
+    def _get_frames(self, num_frames=5):
+        """Capture a few frames from the RTSP stream."""
+
+        self.logger.info(f"[AgentB] Attempting to read {num_frames} frames from RTSP stream...")
+        captured = 0
+        while captured < num_frames and self.running:
+            try:
+                frame = self.stream.read()
+                if frame is not None:
+                    self.frames_queue.put(frame)
+                    captured += 1
+                    self.logger.debug(f"[AgentB] Captured frame {captured}/{num_frames}.")
+                else:
+                    self.logger.debug("[AgentB] No frame available yet, retrying...")
+                    time.sleep(0.1)
+            except Exception as e:
+                self.logger.exception(f"[AgentB] Error capturing frame: {e}")
+                time.sleep(0.2)
+        
+
     def process_license_plate_detection(self):
-        cap = RTSPStream(RTSP_STREAM_HIGH)
-        #window_name = "Agent B - License Plate Detection"
-        # Create a resizable window
-        #cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        """Main license plate detection and OCR processing logic."""
 
-        # Define window size (width, height)
-        #cv2.resizeWindow(window_name, 960, 540)
-        
-        n = 0
-        results = []
-        # Capture n frames and compute results
-        while n < 1:
-            frame = cap.read()
-            if frame is None:
-                continue  # no frame yet
+        self.logger.info("[AgentB] Starting license plate detection pipeline...")
+        self._get_frames(1)
 
-            # Run detection
-            self.logger.info("Running license plate detection...")
-            results = self.yolo.detect(frame)
-
-            # License plate(s) found
-            if self.yolo.found_license_plate(results):
-                boxes = self.yolo.get_boxes(results)
-                size = len(boxes)
-                self.logger.info(f"{size} license(s) plate detected.")
-                m = 1
-                for box in boxes:
-                    x1, y1, x2, y2, conf = map(float, box)
-                    if conf < 0.5 or m > 2:
-                        continue
-
-                    #label = f"License Plate ({conf*100:.1f}%)"
-                    #cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-                    #cv2.putText(frame, label, (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                    lp_crop = frame[int(y1):int(y2), int(x1):int(x2)]
-
-                    self.logger.info("Extracting text from license plate [PADDLE OCR]...")    
-                    text, conf = self.ocr.extract_text(lp_crop)
-                    self.logger.info(f"Extracted text: {text}")
-                    cv2.imwrite(f"{CROPS_PATH}/lp_crop_{int(time.time())}_{m}.jpg", lp_crop)
-                    m += 1
-                    #cv2.putText(frame, text, (int(x1), int(y2) + 20), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2) # type: ignore
-                    #cv2.putText(frame, text, (int(x1), int(y2) + 20), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2) # type: ignore
-
-            else:
-                self.logger.info("No license plate detected.")
-
-            #cv2.imshow(window_name, frame)
-
-            #if cv2.waitKey(1) & 0xFF == ord('q'):
-            #    cap.release()
-            #    cv2.destroyAllWindows()
-            #    break
-
-            n += 1
-        
-        if not results:
-            self.logger.info("No license plates detected in captured frames.")
+        if self.frames_queue.empty():
+            self.logger.warning("[AgentB] No frames were captured from RTSP stream.")
             return
-        
-        final_text, conf = self.compute_results(results)
-        self.logger.info(f"Final extracted license plate text: {final_text} with confidence {conf:.2f}")
 
+        lp_results = []
+        while self.running and not self.frames_queue.empty():
+            try:
+                frame = self.frames_queue.get_nowait()
+                self.logger.debug("[AgentB] Retrieved frame from queue for processing.")
+            except Empty:
+                self.logger.warning("[AgentB] Frame queue unexpectedly empty.")
+                time.sleep(0.05)
+                continue
+
+            try:
+                self.logger.info("[AgentB] Running YOLO license plate detection...")
+                results = self.yolo.detect(frame)
+
+                if not results:
+                    self.logger.debug("[AgentB] YOLO returned no results for this frame.")
+                    continue
+
+                if self.yolo.found_license_plate(results):
+                    boxes = self.yolo.get_boxes(results)
+                    self.logger.info(f"[AgentB] Detected {len(boxes)} license plate(s).")
+
+                    for i, box in enumerate(boxes, start=1):
+                        x1, y1, x2, y2, conf = map(float, box)
+                        if conf < 0.5:
+                            self.logger.debug(f"[AgentB] Skipping low-confidence detection ({conf:.2f}).")
+                            continue
+
+                        lp_crop = frame[int(y1):int(y2), int(x1):int(x2)]
+                        crop_path = f"{CROPS_PATH}/lp_crop_{int(time.time())}_{i}.jpg"
+                        cv2.imwrite(crop_path, lp_crop)
+                        self.logger.debug(f"[AgentB] Saved license plate crop: {crop_path}")
+
+                        self.logger.info("[AgentB] Running OCR extraction...")
+                        try:
+                            text, conf = self.ocr.extract_text(lp_crop)
+                            lp_results.append((text, conf))
+                            self.logger.info(f"[AgentB] OCR result: '{text}' (confidence: {conf:.2f})")
+                        except Exception as e:
+                            self.logger.exception(f"[AgentB] OCR extraction failed: {e}")
+
+                else:
+                    self.logger.info("[AgentB] No license plate detected in this frame.")
+
+            except Exception as e:
+                self.logger.exception(f"[AgentB] Error during detection loop: {e}")
+
+        if not lp_results:
+            self.logger.warning("[AgentB] No license plates detected in any captured frames.")
+            return
+
+        try:
+            final_text, conf = self.compute_results(lp_results)
+            self.logger.info(f"[AgentB] Final license plate: '{final_text}' (confidence: {conf:.2f})")
+        except Exception as e:
+            self.logger.exception(f"[AgentB] Error computing final results: {e}")
 
     def compute_results(self, results):
-        return results[-1][0], results[-1][1]
+        """Combine or select final result from YOLO+OCR pipeline."""
+
+        self.logger.debug("[AgentB] Computing final OCR result from collected detections...")
+        return results[-1][0], results[-1][1]  # Placeholder logic
 
     def stop(self):
-        self.logger.info("Stopping Agent B...")
-        self.yolo.close()
-        self.logger.info("Agent B stopped.")
+        self.logger.info("[AgentB] Stopping agent and releasing resources...")
+        try:
+            self.yolo.close()
+        except Exception as e:
+            self.logger.exception(f"[AgentB] Error closing YOLO model: {e}")
+        self.logger.info("[AgentB] Agent stopped successfully.")
