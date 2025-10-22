@@ -129,3 +129,47 @@ O sistema adota uma **Macro-Arquitetura baseada em Microserviços**, onde cada c
 | **2. Containerização** | Separar módulos em Docker | Docker + Docker Compose | Deploy modular |
 | **3. Escalabilidade** | Separar IA e Backend | Compose multi-host | Distribuição de carga |
 | **4. Edge Computing** | Deploy em portos e datacenters | 5G + K3s (Kubernetes Edge) | Descentralização |
+
+
+
+## MVC
+
+                 ┌──────────────────────────────┐
+                 │        Backend MVC           │
+                 │   (FastAPI Application)      │
+                 └──────────────────────────────┘
+                             ▲
+                             │  HTTP / MQTT Requests
+                             │
+         ┌────────────────────────────────────────────────┐
+         │                      CONTROLLER                │
+         │────────────────────────────────────────────────│
+         │ - Recebe pedidos da API (FastAPI Endpoints)    │
+         │ - Coordena comunicação entre Model e View      │
+         │ - Implementa lógica de negócio (decisão, validação)│
+         │ - Publica eventos no Broker MQTT / Redis       │
+         └────────────────────────────────────────────────┘
+                             ▲
+                             │
+                             │
+         ┌────────────────────────────────────────────────┐
+         │                       MODEL                    │
+         │────────────────────────────────────────────────│
+         │ - Representa entidades do domínio:             │
+         │     * Camião, Condutor, Carga, Cais, Operador  │
+         │     * Deteção (dados via IA)                   │
+         │ - Liga-se a PostgreSQL (relacional)            │
+         │ - Liga-se a Redis (dados temporários)          │
+         │ - (Future Work: MongoDB para logs)             │
+         └────────────────────────────────────────────────┘
+                             ▲
+                             │
+                             │
+         ┌────────────────────────────────────────────────┐
+         │                        VIEW                    │
+         │────────────────────────────────────────────────│
+         │ - Retorna respostas JSON via API (FastAPI)     │
+         │ - Atualiza front-ends (React Native, Web)      │
+         │ - Emite notificações via MQTT                  │
+         │ - Mostra estados (autorizado, em análise, etc.)│
+         └────────────────────────────────────────────────┘

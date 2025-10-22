@@ -1,3 +1,65 @@
-4- Como devemos organizar um calendário?
-    SPRINTS?
-    Calendario normal (com objetivos definidos para datas específicas)?
+
+Usar Redis no MVP para demonstrar rapidez, comunicação em tempo real e integração entre IA e logística e depois, propor MongoDB no Future Work para segurança, persistência e histórico de logs críticos.
+
+
+-----------------------------------------------
+
+A rever:
+    A comunicação HTTP da câmara + vários agentes + broker + backend → pode introduzir atraso. definir limites de latência e monitorizar.
+
+    Se for tudo numa VM no datacenter, pode ser aceitável, mas ao expandir para edge ou múltiplas câmaras, a latência será crítica.
+
+    Capacidade de escalabilidade
+
+    Se aumentar número de câmaras, múltiplas threads de detecção, múltiplos agentes, talvez o sistema fique sobrecarregado.
+
+    Como vai escalar a parte de IA? Temos agentes duplicados ou podes usar clusters / (GPU)?
+
+    Manutenção de modelos de IA e sinais ADR
+
+    Reconhecer símbolos perigosos ou símbolos específicos exige dataset e atualização de modelos. Precisamos de infraestrutura para treinar/injetar novos modelos, versionamento, testes.
+
+    Segurança e fiabilidade
+
+    Como assegurar que os fluxos entre agentes, broker e backend são seguros? Ex: autenticação dos agentes, criptografia, tratamento de falhas (se agente cai).
+
+    Monitorização de falhas, fallback, logs de erro. lógica de fallback dos agentes?
+
+    Integração front-end / rota do motorista
+
+    Temos o componente “Decision Feed” mas não está claro se há serviço de roteamento (mapa, percurso interno do porto).
+
+    A parte de app motorista pode precisar de serviço geoespacial ou API de mapas internos / sinalização digital.
+
+    Dados duplicados ou ruído
+
+    Câmaras podem detetar o mesmo veículo várias vezes, ou detecções falsas. Temos de ter em atenção a lógica para filtrar duplicados, definir thresholds de confiança, etc.
+
+    
+
+Dos simbolos e placas:
+
+    Painel de Segurança (retângulo laranja)
+
+        Formato: Retangular, com dimensões de 40 cm x 30 cm, com borda preta. 
+
+    Informação:
+
+        Linha superior: Número de Risco (2 ou 3 algarismos) para identificar o perigo e sua intensidade. 
+
+    Linha inferior: Número ONU (4 algarismos), um código internacional que identifica o produto. 
+
+    Objetivo: Identificar rapidamente o produto perigoso e os riscos associados a ele para motoristas e fiscalização. 
+    -----
+    Rótulo de Risco (losango colorido)
+
+        Formato: Losango com arestas de 30 centímetros. 
+
+    Informação:
+
+        Cor: A cor do losango indica a classe do produto (ex: vermelho para inflamável, verde para gás não inflamável, laranja para explosivo). 
+
+    Símbolo: Um ícone na parte superior ilustra o tipo de perigo. 
+    Número da Classe: O número da classe de risco é exibido na parte inferior. 
+
+    Objetivo: Sinalizar visualmente a classe de perigo da carga transportada em cada embalagem. 

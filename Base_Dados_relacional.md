@@ -31,9 +31,9 @@ Descrição: Motorista responsável pelo camião.
     Relações:
 
         Um condutor pode conduzir vários camiões (1:N)
-        Um condutor pertence apenas a uma Empres (1:1) (FK)
+        Um condutor pertence apenas a uma Empresa (1:1) (FK)
 
-# 3.  Deteções (? Não relacional) -> (outra bd ou na mesma) Aqui ficariam as deteções válidas
+# 3.  Deteções (? Não relacional) -> (outra bd em mongo db para persitência de logs ajuda na manutenção) Aqui ficariam as deteções válidas
 
 Descrição: Evento de deteção e registo da chegada de um camião ao porto.
 
@@ -96,7 +96,7 @@ Descrição: tipo de mercadoria transportada pelo camião.
     Atributos:
 
         - ID (PK)
-        - Tipo (ex: combustível, areia, contentor)
+        - Tipo (ex: solido, liquido, gasoso)
         - Descrição
         - É perigosa? (ADR)
 
@@ -121,7 +121,7 @@ Descrição: funcionário ou sistema que autoriza e controla entradas.
         Acompanha várias deteções (1:N) (?)
         Processa várias entregas diárias (1:N) (FKs)
 
-# 8. Alerta
+# 8. Alerta (?)
 
 Descrição: registo de eventos anómalos ou críticos durante a deteção ou entrada.
 
@@ -151,7 +151,26 @@ Descrição: Entidade responsável pela entrega de cargas.
 
     Relações:
 
-    Possui associada vários condutores (1:N)
+        Possui associada vários condutores (1:N)
+
+
+# 10. Turno
+
+Descrição: Entidade responsável pela definição do turno.
+
+    Atributos:
+
+        - ID (PK)
+        - HoraInicio
+        - HoraFim
+        - Descrição
+        - Comentários/histórico de ocorrências
+
+    Relações:
+
+        Possui associada um operador (1:1)
+        Possui registo das entradas diárias (1:N)
+
 
 
 # Pequeno Fluxo:

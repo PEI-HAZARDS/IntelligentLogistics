@@ -4,6 +4,9 @@
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
+                <mxCell id="133" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=none;" vertex="1" parent="1">
+                    <mxGeometry x="490" y="800" width="295" height="380" as="geometry"/>
+                </mxCell>
                 <mxCell id="2" value="" style="ellipse;whiteSpace=wrap;html=1;fillColor=none;" parent="1" vertex="1">
                     <mxGeometry x="-77" y="-350" width="1005" height="520" as="geometry"/>
                 </mxCell>
@@ -116,11 +119,11 @@
                 <mxCell id="26" value="Truck Detection" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;" parent="1" vertex="1">
                     <mxGeometry x="-90" y="490" width="120" height="120" as="geometry"/>
                 </mxCell>
-                <mxCell id="27" value="Truck Specifications" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;" parent="1" vertex="1">
+                <mxCell id="27" value="Truck Plate Specifications" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;" parent="1" vertex="1">
                     <mxGeometry x="380" y="490" width="120" height="120" as="geometry"/>
                 </mxCell>
                 <mxCell id="28" value="Decision&lt;div&gt;Feed&lt;/div&gt;" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;" parent="1" vertex="1">
-                    <mxGeometry x="730" y="480" width="120" height="120" as="geometry"/>
+                    <mxGeometry x="827" y="500" width="120" height="120" as="geometry"/>
                 </mxCell>
                 <mxCell id="29" value="" style="sketch=0;aspect=fixed;pointerEvents=1;shadow=0;dashed=0;html=1;strokeColor=none;labelPosition=center;verticalLabelPosition=bottom;verticalAlign=top;align=center;fillColor=#00188D;shape=mxgraph.azure.tablet;" parent="1" vertex="1">
                     <mxGeometry x="514.5" y="-240" width="50" height="37" as="geometry"/>
@@ -173,7 +176,7 @@
                         </Array>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="40" value="" style="endArrow=classic;html=1;exitX=0;exitY=0;exitDx=70;exitDy=120.00000000000001;exitPerimeter=0;" parent="1" source="27" edge="1">
+                <mxCell id="40" value="" style="endArrow=classic;html=1;exitX=0;exitY=0;exitDx=70;exitDy=120.00000000000001;exitPerimeter=0;entryX=0.75;entryY=0;entryDx=0;entryDy=0;" parent="1" source="27" edge="1" target="47">
                     <mxGeometry width="50" height="50" relative="1" as="geometry">
                         <mxPoint x="460" y="820" as="sourcePoint"/>
                         <mxPoint x="450" y="800" as="targetPoint"/>
@@ -197,70 +200,42 @@
                 <mxCell id="44" value="" style="swimlane;startSize=0;" parent="1" vertex="1">
                     <mxGeometry x="-120" y="800" width="200" height="160" as="geometry"/>
                 </mxCell>
-                <mxCell id="45" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Agente A&lt;/font&gt;" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;" parent="44" vertex="1">
-                    <mxGeometry x="30" y="20" width="120" height="80" as="geometry"/>
+                <mxCell id="45" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Agent A&lt;/font&gt;" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;" parent="44" vertex="1">
+                    <mxGeometry x="40" y="20" width="120" height="80" as="geometry"/>
                 </mxCell>
                 <mxCell id="46" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;&lt;span style=&quot;font-weight: 400;&quot;&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;Truck Detection&lt;/font&gt;&lt;/span&gt;&lt;/h1&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" parent="44" vertex="1">
-                    <mxGeometry x="30" y="90" width="135" height="40" as="geometry"/>
+                    <mxGeometry x="40" y="90" width="135" height="40" as="geometry"/>
                 </mxCell>
                 <mxCell id="47" value="" style="swimlane;startSize=0;" parent="1" vertex="1">
-                    <mxGeometry x="190" y="800" width="570" height="470" as="geometry"/>
-                </mxCell>
-                <mxCell id="76" style="edgeStyle=none;html=1;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" parent="47" source="48" target="74" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="310" y="220"/>
-                        </Array>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="48" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Agente C&lt;/font&gt;" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;" parent="47" vertex="1">
-                    <mxGeometry x="160" y="180" width="120" height="80" as="geometry"/>
-                </mxCell>
-                <mxCell id="49" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;&lt;span style=&quot;font-size: 18px; font-weight: 400;&quot;&gt;Plate Identification&lt;/span&gt;&lt;/h1&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" parent="47" vertex="1">
-                    <mxGeometry x="140" y="260" width="156" height="40" as="geometry"/>
+                    <mxGeometry x="130" y="800" width="320" height="380" as="geometry"/>
                 </mxCell>
                 <mxCell id="69" value="" style="edgeStyle=none;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" parent="47" source="50" target="75" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <mxPoint x="210" y="60" as="targetPoint"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="50" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Agente B&lt;/font&gt;" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;" parent="47" vertex="1">
-                    <mxGeometry x="20" y="20" width="120" height="80" as="geometry"/>
-                </mxCell>
-                <mxCell id="51" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;&lt;span style=&quot;font-size: 18px; font-weight: 400;&quot;&gt;Plate and Signal Identification&lt;/span&gt;&lt;/h1&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" parent="47" vertex="1">
-                    <mxGeometry x="20" y="90" width="140" height="70" as="geometry"/>
-                </mxCell>
-                <mxCell id="72" style="edgeStyle=none;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="47" target="48" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <mxPoint x="253.33333333333348" y="100" as="sourcePoint"/>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="73" style="edgeStyle=none;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="47" target="70" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <mxPoint x="320" y="100" as="sourcePoint"/>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="70" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Agente D&lt;/font&gt;" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;" parent="47" vertex="1">
-                    <mxGeometry x="360" y="180" width="120" height="80" as="geometry"/>
-                </mxCell>
-                <mxCell id="71" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;&lt;span style=&quot;font-size: 18px; font-weight: 400;&quot;&gt;Placard Identification&lt;/span&gt;&lt;/h1&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" parent="47" vertex="1">
-                    <mxGeometry x="350" y="260" width="170" height="40" as="geometry"/>
-                </mxCell>
-                <mxCell id="74" value="&lt;span style=&quot;font-size: 18px;&quot;&gt;Consenso&lt;/span&gt;&lt;div&gt;&lt;span style=&quot;font-size: 18px;&quot;&gt;Decision&lt;/span&gt;&lt;/div&gt;" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;" parent="47" vertex="1">
-                    <mxGeometry x="280" y="350" width="120" height="80" as="geometry"/>
-                </mxCell>
-                <mxCell id="75" value="Crop Queue" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" parent="47" vertex="1">
-                    <mxGeometry x="245" y="10" width="80" height="100" as="geometry"/>
-                </mxCell>
-                <mxCell id="77" style="edgeStyle=none;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="47" source="70" target="74" edge="1">
+                <mxCell id="136" style="edgeStyle=none;html=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="47" source="50" target="74">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
-                            <mxPoint x="340" y="220"/>
+                            <mxPoint x="30" y="60"/>
+                            <mxPoint x="30" y="230"/>
                         </Array>
                     </mxGeometry>
                 </mxCell>
+                <mxCell id="50" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Agent B&lt;/font&gt;" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;" parent="47" vertex="1">
+                    <mxGeometry x="50" y="20" width="120" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="51" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;&lt;span style=&quot;font-size: 18px; font-weight: 400;&quot;&gt;Plate Identification&lt;/span&gt;&lt;/h1&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" parent="47" vertex="1">
+                    <mxGeometry x="40" y="90" width="170" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="74" value="&lt;span style=&quot;font-size: 18px;&quot;&gt;Consenso&lt;/span&gt;&lt;div&gt;&lt;span style=&quot;font-size: 18px;&quot;&gt;Decision&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 18px;&quot;&gt;Plate&lt;/span&gt;&lt;/div&gt;" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;" parent="47" vertex="1">
+                    <mxGeometry x="90" y="190" width="120" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="75" value="Crop Queue" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" parent="47" vertex="1">
+                    <mxGeometry x="214" y="10" width="80" height="100" as="geometry"/>
+                </mxCell>
                 <mxCell id="53" value="" style="swimlane;startSize=0;" parent="1" vertex="1">
-                    <mxGeometry x="810" y="790" width="200" height="360" as="geometry"/>
+                    <mxGeometry x="810" y="800" width="280" height="390" as="geometry"/>
                 </mxCell>
                 <mxCell id="54" value="Database&lt;div&gt;Trucks Authorized&lt;/div&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" parent="53" vertex="1">
                     <mxGeometry x="60" y="200" width="80" height="100" as="geometry"/>
@@ -273,6 +248,12 @@
                         <mxPoint x="-300" y="-850" as="sourcePoint"/>
                         <mxPoint x="-250" y="-900" as="targetPoint"/>
                     </mxGeometry>
+                </mxCell>
+                <mxCell id="102" value="Event&lt;div&gt;logs&lt;/div&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" parent="53" vertex="1">
+                    <mxGeometry x="180" y="60" width="80" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="109" style="edgeStyle=none;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" parent="53" source="55" target="102" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
                 <mxCell id="57" value="Agente em loop a receber imagens&amp;nbsp;&lt;div&gt;em 720p e a fazer truck detection&lt;/div&gt;&lt;div&gt;quando encontra faz /truck_found&lt;/div&gt;&lt;div&gt;nesse ponto a camera irá ligar 4k e depois esse agente faz o pre processamneto da imagem e manda /truck_processed&lt;span style=&quot;color: rgb(63, 63, 63); font-family: monospace; font-size: 0px; text-align: start; text-wrap-mode: nowrap; background-color: transparent;&quot;&gt;%3CmxGraphModel%3E%3Croot%3E%3CmxCell%20id%3D%220%22%2F%3E%3CmxCell%20id%3D%221%22%20parent%3D%220%22%2F%3E%3CmxCell%20id%3D%222%22%20value%3D%22%26lt%3Bfont%20style%3D%26quot%3Bfont-size%3A%2018px%3B%26quot%3B%26gt%3BAgente%20A%26lt%3B%2Ffont%26gt%3B%22%20style%3D%22shape%3Dext%3Bdouble%3D1%3Brounded%3D1%3BwhiteSpace%3Dwrap%3Bhtml%3D1%3B%22%20vertex%3D%221%22%20parent%3D%221%22%3E%3CmxGeometry%20x%3D%22232.5%22%20y%3D%22820%22%20width%3D%22120%22%20height%3D%2280%22%20as%3D%22geometry%22%2F%3E%3C%2FmxCell%3E%3CmxCell%20id%3D%223%22%20value%3D%22%26lt%3Bh1%20style%3D%26quot%3Bmargin-top%3A%200px%3B%26quot%3B%26gt%3B%26lt%3Bspan%20style%3D%26quot%3Bfont-weight%3A%20400%3B%26quot%3B%26gt%3B%26lt%3Bfont%20style%3D%26quot%3Bfont-size%3A%2018px%3B%26quot%3B%26gt%3BTruck%20Detection%26lt%3B%2Ffont%26gt%3B%26lt%3B%2Fspan%26gt%3B%26lt%3B%2Fh1%26gt%3B%22%20style%3D%22text%3Bhtml%3D1%3BwhiteSpace%3Dwrap%3Boverflow%3Dhidden%3Brounded%3D0%3B%22%20vertex%3D%221%22%20parent%3D%221%22%3E%3CmxGeometry%20x%3D%22225%22%20y%3D%22900%22%20width%3D%22135%22%20height%3D%2240%22%20as%3D%22geometry%22%2F%3E%3C%2FmxCell%3E%3C%2Froot%3E%3C%2FmxGraphModel%3E&lt;/span&gt;&lt;/div&gt;" style="ellipse;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="-530" y="890" width="232.5" height="180" as="geometry"/>
@@ -298,12 +279,12 @@
                         <mxPoint x="20" y="500" as="targetPoint"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="84" style="edgeStyle=none;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;exitPerimeter=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" source="82" edge="1" target="54">
+                <mxCell id="84" style="edgeStyle=none;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;exitPerimeter=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" source="82" target="54" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <mxPoint x="1230.46" y="585" as="sourcePoint"/>
                         <mxPoint x="1010" y="800" as="targetPoint"/>
                         <Array as="points">
-                            <mxPoint x="1240" y="1040"/>
+                            <mxPoint x="1240" y="1050"/>
                         </Array>
                     </mxGeometry>
                 </mxCell>
@@ -330,14 +311,14 @@
                     <mxGeometry x="50" y="525" width="60" height="30" as="geometry"/>
                 </mxCell>
                 <mxCell id="92" value="MVC" style="text;strokeColor=none;fillColor=none;html=1;fontSize=24;fontStyle=1;verticalAlign=middle;align=center;" parent="1" vertex="1">
-                    <mxGeometry x="1320" y="506" width="100" height="40" as="geometry"/>
+                    <mxGeometry x="1250" y="300" width="100" height="40" as="geometry"/>
                 </mxCell>
-                <mxCell id="99" style="edgeStyle=none;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;entryPerimeter=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;exitPerimeter=0;" parent="1" target="82" edge="1" source="54">
+                <mxCell id="99" style="edgeStyle=none;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;entryPerimeter=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;exitPerimeter=0;" parent="1" source="54" target="82" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <mxPoint x="1020" y="800" as="sourcePoint"/>
                         <mxPoint x="1020" y="810" as="targetPoint"/>
                         <Array as="points">
-                            <mxPoint x="1240" y="1040"/>
+                            <mxPoint x="1240" y="1050"/>
                         </Array>
                     </mxGeometry>
                 </mxCell>
@@ -350,8 +331,65 @@
                         </Array>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="101" value="HTTP stream" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                <mxCell id="101" value="HTTP stream" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
                     <mxGeometry x="80" y="-76" width="60" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="112" value="Truck safety panel and hazard label&lt;div&gt;specifications&amp;nbsp;&lt;/div&gt;" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;" vertex="1" parent="1">
+                    <mxGeometry x="610" y="510" width="120" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="70" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Agent D&lt;/font&gt;" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="530" y="820" width="120" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="71" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;&lt;span style=&quot;font-size: 18px; font-weight: 400;&quot;&gt;Safety panel and Hazard label Identification&lt;/span&gt;&lt;/h1&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" parent="1" vertex="1">
+                    <mxGeometry x="530" y="900" width="145.5" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="111" value="&lt;span style=&quot;font-size: 18px;&quot;&gt;Consenso&lt;/span&gt;&lt;div&gt;&lt;span style=&quot;font-size: 18px;&quot;&gt;Decision&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;font-size: 18px;&quot;&gt;Placard&lt;/span&gt;&lt;/div&gt;" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="590" y="1020" width="120" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="77" style="edgeStyle=none;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="70" target="111" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="510" y="860"/>
+                            <mxPoint x="510" y="930"/>
+                            <mxPoint x="510" y="1060"/>
+                        </Array>
+                        <mxPoint x="560" y="960" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="134" value="" style="endArrow=classic;html=1;exitX=0;exitY=0;exitDx=70;exitDy=120;exitPerimeter=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="112" target="133">
+                    <mxGeometry width="50" height="50" relative="1" as="geometry">
+                        <mxPoint x="680" y="620" as="sourcePoint"/>
+                        <mxPoint x="640" y="810" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="137" value="Crop Queue" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" vertex="1" parent="1">
+                    <mxGeometry x="700" y="810" width="80" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="138" style="edgeStyle=none;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="70" target="137">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="140" style="edgeStyle=none;html=1;exitX=0;exitY=0;exitDx=120;exitDy=70;exitPerimeter=0;entryX=0;entryY=0;entryDx=0;entryDy=50;entryPerimeter=0;" edge="1" parent="1" source="27" target="28">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="550" y="560"/>
+                            <mxPoint x="550" y="480"/>
+                            <mxPoint x="800" y="480"/>
+                            <mxPoint x="800" y="550"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="141" style="edgeStyle=none;html=1;exitX=0;exitY=0;exitDx=120;exitDy=70;exitPerimeter=0;entryX=0.025;entryY=0.558;entryDx=0;entryDy=0;entryPerimeter=0;" edge="1" parent="1" source="112" target="28">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="142" style="edgeStyle=none;html=1;entryX=0;entryY=0;entryDx=0;entryDy=50;entryPerimeter=0;" edge="1" parent="1" target="112">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="320" y="560" as="sourcePoint"/>
+                        <Array as="points">
+                            <mxPoint x="320" y="640"/>
+                            <mxPoint x="570" y="640"/>
+                            <mxPoint x="570" y="560"/>
+                        </Array>
+                    </mxGeometry>
                 </mxCell>
             </root>
         </mxGraphModel>
