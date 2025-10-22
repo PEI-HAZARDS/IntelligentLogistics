@@ -77,6 +77,7 @@ class AgentB:
             return
 
         lp_results = []
+        lp_crop = ""
         while self.running and not self.frames_queue.empty():
             try:
                 frame = self.frames_queue.get_nowait()
@@ -127,17 +128,65 @@ class AgentB:
             self.logger.warning("[AgentB] No license plates detected in any captured frames.")
             return
 
+
+        conf = 0.0
+        final_text = ""
         try:
-            final_text, conf = self.compute_results(lp_results)
+            final_text, conf = self.consensus_Alg(lp_results)
             self.logger.info(f"[AgentB] Final license plate: '{final_text}' (confidence: {conf:.2f})")
         except Exception as e:
             self.logger.exception(f"[AgentB] Error computing final results: {e}")
 
-    def compute_results(self, results):
+
+        self.send_message(final_text, conf)
+        self.save_info(conf, final_text, lp_crop)
+
+
+
+
+    def consensus_Alg(self, results):
         """Combine or select final result from YOLO+OCR pipeline."""
+        #TODO
 
         self.logger.debug("[AgentB] Computing final OCR result from collected detections...")
         return results[-1][0], results[-1][1]  # Placeholder logic
+    
+
+
+    def send_message(self, text, confidence):
+        """Send the final license plate result back via the broker."""
+        #TODO
+        message = {
+            "type": "license_plate_detected",
+            "license_plate": text,
+            "confidence": confidence,
+            "timestamp": time.time()
+        }
+        self.broker.put_message(message)
+        self.logger.info(f"[AgentB] Sent license plate detection message: {message}")
+
+        return
+
+
+
+
+    def save_info(self, confidence, text, crop_name):
+        """Save or log the final license plate information."""
+        #TODO Salvar numa base de dados não relacional
+
+        self.logger.info(f"[AgentB] Saving license plate info: '{text}' with confidence {confidence:.2f} in DataBase")
+
+        message = {
+            "type": "license_plate_detected",
+            "plate_image": crop_name,
+            "license_plate": text,
+            "confidence": confidence,
+            "timestamp": time.time()
+        }
+        return
+
+        # Placeholder for saving logic (e.g., database, file, etc.)
+
 
     def stop(self):
         self.logger.info("[AgentB] Stopping agent and releasing resources...")

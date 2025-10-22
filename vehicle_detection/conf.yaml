@@ -1,5 +1,0 @@
-train: /content/dataset/train/images
-test: /content/dataset/test/images
-
-nc: 1
-names: ['Truck']
