@@ -1,0 +1,190 @@
+@startuml DER-IntelligentLogistics
+!theme plain
+hide methods
+hide stereotypes
+left to right direction
+
+title DER - Intelligent Logistics (Clássico ERD)
+
+'===========================================
+' ENTIDADES
+'===========================================
+
+entity "Trabalhador_Porto" as Trabalhador {
+    *num_trabalhador : PK
+    nome
+    contacto
+    nivel_acesso
+}
+
+entity "Operador" as Operador {
+    *num_trabalhador : FK
+}
+
+entity "Gestor" as Gestor {
+    *num_trabalhador : FK
+}
+
+entity "Turno" as Turno {
+    *id_turno : PK
+    hora_inicio
+    hora_fim
+    descricao
+}
+
+entity "Empresa" as Empresa {
+    *nif : PK
+    nome
+    contacto
+    descricao
+}
+
+entity "Condutor" as Condutor {
+    *num_carta : PK
+    nome
+    contacto
+    nif_empresa : FK
+}
+
+entity "Camião" as Camiao {
+    *matricula : PK
+    marca_modelo
+    tipo
+    estado_atual
+    num_carta_condutor : FK
+}
+
+entity "Carga" as Carga {
+    *id_carga : PK
+    tipo
+    descricao
+    perigosa
+}
+
+entity "Cais" as Cais {
+    *id_cais : PK
+    localizacao
+    tipo_cais
+    capacidade_max
+    estado
+}
+
+entity "Chegada_Diaria" as Chegada {
+    *id_chegada : PK
+    data_prevista
+    hora_prevista
+    estado_entrega
+    observacoes
+}
+
+entity "Deteção" as Detecao {
+    *id_deteccao : PK
+    data_hora
+    origem
+    confianca
+    estado_autorizacao
+    observacoes
+}
+
+entity "Alerta" as Alerta {
+    *id_alerta : PK
+    tipo_alerta
+    descricao
+    severidade
+    data_hora
+}
+
+'===========================================
+' RELAÇÕES (usando losangos)
+'===========================================
+
+' Relação: Empresa - Condutor
+relationship "Emprega" as Emprega {
+} 
+Empresa ||--o{ Emprega
+Emprega }o--|| Condutor
+
+' Relação: Condutor - Camião
+relationship "Conduz" as Conduz {
+}
+Condutor ||--o{ Conduz
+Conduz }o--|| Camiao
+
+' Relação: Camião - Chegada
+relationship "Realiza" as Realiza {
+}
+Camiao ||--o{ Realiza
+Realiza }o--|| Chegada
+
+' Relação: Chegada - Cais
+relationship "É encaminhada para" as Encaminha {
+}
+Chegada ||--o{ Encaminha
+Encaminha }o--|| Cais
+
+' Relação: Chegada - Carga
+relationship "Refere" as Refere {
+}
+Chegada ||--o{ Refere
+Refere }o--|| Carga
+
+' Relação: Chegada - Operador
+relationship "Acompanhada por" as Acompanha {
+}
+Chegada ||--o{ Acompanha
+Acompanha }o--|| Operador
+
+' Relação: Chegada - Alerta
+relationship "Gera" as Gera {
+}
+Chegada ||--o{ Gera
+Gera }o--|| Alerta
+
+' Relação: Operador - Deteção
+relationship "Valida" as Valida {
+}
+Operador ||--o{ Valida
+Valida }o--|| Detecao
+
+' Relação: Deteção - Alerta
+relationship "Origina" as Origina {
+}
+Detecao ||--o{ Origina
+Origina }o--|| Alerta
+
+' Relação: Alerta - Carga
+relationship "Refere Carga" as RefCarga {
+}
+Alerta }o--|| Carga
+
+' Relação: Alerta - Camião
+relationship "Refere Camião" as RefCamiao {
+}
+Alerta }o--|| Camiao
+
+' Relação: Gestor - Turno
+relationship "Supervisiona" as Supervisiona {
+}
+Gestor ||--o{ Supervisiona
+Supervisiona }o--|| Turno
+
+' Relação: Turno - Operador
+relationship "Agrupa" as Agrupa {
+}
+Turno ||--o{ Agrupa
+Agrupa }o--|| Operador
+
+' Relação: Gestor - Cais
+relationship "Gere" as Gere {
+}
+Gestor ||--o{ Gere
+Gere }o--|| Cais
+
+'===========================================
+' HERANÇA (com triângulo IS-A)
+'===========================================
+
+Trabalhador <|-- Operador
+Trabalhador <|-- Gestor
+
+@enduml
