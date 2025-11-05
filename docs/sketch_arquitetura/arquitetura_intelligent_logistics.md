@@ -173,3 +173,40 @@ O sistema adota uma **Macro-Arquitetura baseada em Microserviços**, onde cada c
          │ - Emite notificações via MQTT                  │
          │ - Mostra estados (autorizado, em análise, etc.)│
          └────────────────────────────────────────────────┘
+
+
+// Arquitetura dos agentes IA-ML
+
+Por que a Arquitetura de Quadro Preto encaixa
+
+O teu sistema parece seguir exatamente a lógica de Blackboard Architecture:
+
+Estrutura típica:
+            +------------------------------+
+            |         QUADRO NEGRO         |
+            | (Base de dados / memória)    |
+            +------------------------------+
+               ↑           ↑           ↑
+               |           |           |
+      +--------+   +-------+   +-------+
+      | Agente |   | Agente |   | Agente |
+      |  Camião|   | Matricula|  | Símbolos|
+
+
+Como funciona:
+
+    1. Cada agente observa a imagem e escreve os resultados no quadro negro (por exemplo, “camião detectado”, “matrícula = AB-12-CD”).
+
+    2. Outros agentes podem ler essas informações e complementar (por exemplo, associar símbolo de perigo à matrícula).
+
+    3. Um módulo de coordenação pode integrar tudo e gerar o resultado final.
+
+
+    -> Se futuramente adicionarmos raciocínio, aprendizagem ou tomada de decisão inteligente, poderá evoluir para algo como CARL (Cognitive Architecture for Rational Learning).
+
+    Future Work:
+    | Agente                 | Tipo de Aprendizagem                       | Benefício                                                 |
+    | ---------------------- | ------------------------------------------ | --------------------------------------------------------- |
+    |  Detetor de camiões  | *Fine-tuning* de CNN com novas imagens     | Maior precisão na deteção                                 |
+    |  Leitor de matrícula | *Active learning* ou *OCR self-correction* | Melhora reconhecimento sob más condições                  |
+    |  Detetor de símbolos | *Few-shot learning*                        | Reconhece novos símbolos de perigo sem re-treino completo |
