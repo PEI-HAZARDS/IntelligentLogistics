@@ -91,3 +91,7 @@ Lista de **alertas e eventos críticos recentes**, como erros de leitura ou dete
   "severidade": 4,
   "timestamp": 1730728123
 }
+
+{
+  ""
+}
