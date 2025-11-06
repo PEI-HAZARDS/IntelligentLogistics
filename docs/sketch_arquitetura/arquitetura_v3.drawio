@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="EMv_BdPsESLJzAK8MGx-" name="Página-1">
-        <mxGraphModel dx="2627" dy="2305" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+        <mxGraphModel dx="2087" dy="1964" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -313,7 +313,7 @@
                 <mxCell id="112" value="Truck safety panel and hazard label&lt;div&gt;specifications&amp;nbsp;&lt;/div&gt;" style="shape=cube;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;darkOpacity=0.05;darkOpacity2=0.1;" parent="1" vertex="1">
                     <mxGeometry x="610" y="510" width="120" height="120" as="geometry"/>
                 </mxCell>
-                <mxCell id="70" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Agent D&lt;/font&gt;" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                <mxCell id="70" value="&lt;font style=&quot;font-size: 18px;&quot;&gt;Agent C&lt;/font&gt;" style="shape=ext;double=1;rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="530" y="820" width="120" height="80" as="geometry"/>
                 </mxCell>
                 <mxCell id="71" value="&lt;h1 style=&quot;margin-top: 0px;&quot;&gt;&lt;span style=&quot;font-size: 18px; font-weight: 400;&quot;&gt;Safety panel and Hazard label Identification&lt;/span&gt;&lt;/h1&gt;" style="text;html=1;whiteSpace=wrap;overflow=hidden;rounded=0;" parent="1" vertex="1">
