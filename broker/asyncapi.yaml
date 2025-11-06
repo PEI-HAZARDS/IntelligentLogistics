@@ -1,0 +1,114 @@
+asyncapi: '3.0.0'
+info:
+  title: Exemplo de API de Controle de Acesso
+  version: '1.0.0'
+servers:
+  kafkaServer:
+    url: localhost:9092
+    protocol: kafka
+channels:
+  truck-detected:
+    description: Evento disparado ao detectar um caminhão
+    address: truck-detected
+    publish:
+      message:
+        $ref: '#/components/messages/TruckDetectedMessage'
+    bindings:
+      kafka:
+        bindingVersion: '0.5.0'
+        partitions: 1
+        replicas: 1
+  license-plate-detected:
+    address: license-plate-detected
+    publish:
+      message:
+        $ref: '#/components/messages/LicensePlateDetectedMessage'
+    bindings:
+      kafka:
+        bindingVersion: '0.5.0'
+        partitions: 1
+        replicas: 1
+  access-decision:
+    address: access-decision
+    publish:
+      message:
+        $ref: '#/components/messages/AccessDecisionMessage'
+    bindings:
+      kafka:
+        bindingVersion: '0.5.0'
+        partitions: 1
+        replicas: 1
+
+components:
+  messages:
+    TruckDetectedMessage:
+      name: truck-detected
+      title: Truck Detected Event
+      contentType: application/json
+      headers:
+        type: object
+        required: [correlationId]
+        properties:
+          correlationId:
+            type: string
+            description: ID de correlação para rastreamento do evento
+      payload:
+        type: object
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+          truckId:
+            type: string
+          confidence:
+            type: number
+        required: [timestamp, truckId, confidence]
+
+    LicensePlateDetectedMessage:
+      name: license-plate-detected
+      title: License Plate Detected Event
+      contentType: application/json
+      headers:
+        type: object
+        required: [correlationId]
+        properties:
+          correlationId:
+            type: string
+            description: ID de correlação do evento
+      payload:
+        type: object
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+          truckId:
+            type: string
+          licensePlate:
+            type: string
+          confidence:
+            type: number
+        required: [timestamp, truckId, licensePlate, confidence]
+
+    AccessDecisionMessage:
+      name: access-decision
+      title: Access Decision Event
+      contentType: application/json
+      headers:
+        type: object
+        required: [correlationId]
+        properties:
+          correlationId:
+            type: string
+            description: ID de correlação do evento
+      payload:
+        type: object
+        properties:
+          timestamp:
+            type: string
+            format: date-time
+          truckId:
+            type: string
+          decision:
+            type: string
+            enum: [granted, denied]
+        required: [timestamp, truckId, decision]
