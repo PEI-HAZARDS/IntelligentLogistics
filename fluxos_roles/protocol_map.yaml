@@ -1,0 +1,330 @@
+# protocol_map.yaml
+# Intelligent Logistics - Protocol Map (Kafka-based)
+# Generated: 2025-10-22
+version: "1.0"
+project: "Intelligent Logistics"
+notes: >
+  Este ficheiro define os tópicos Kafka, produtores e consumidores,
+  schemas referenciados (Protobuf), exemplos de payload e configurações
+  de consumer groups para cada microserviço A, B, C, D e sistemas externos.
+  Nenhuma imagem é persistida: apenas metadados e resultados de OCR.
+
+kafka:
+  bootstrap_servers: ["kafka-01:9092", "kafka-02:9092"]
+  schema_registry_url: "http://schema-registry:8081"
+  security:
+    tls: true
+    sasl_mechanism: "SCRAM-SHA-256"
+    client_auth: "SASL"
+  topic_defaults:
+    partitions: 4
+    replication_factor: 3
+    retention_ms: 259200000  # 3 dias padrão para intermediários (adjust)
+    cleanup_policy: "delete"
+
+topics:
+  - name: "intlog.truck.detections"
+    partitions: 4
+    retention_ms: 86400000   # 1 dia (detections temporárias)
+    key: "gate_id"
+    producer_agents: ["agent-a"]
+    consumer_groups: ["plate-readers", "hazard-readers"]
+    schema:
+      type: "protobuf"
+      file: "proto/truck_detection.proto"
+      message: "TruckDetectionEvent"
+      version: "1.0"
+    example_payload: |
+      header:
+        event_id: "evt-001"
+        track_id: "t-01"
+        gate_id: "gate-01"
+        producer: "agent-a-01"
+        timestamp: "2025-10-22T12:00:00Z"
+        schema_version: "1.0"
+      payload:
+        resolution: [1280,720]
+        bbox: [200,150,300,200]
+        confidence: 0.95
+        frame_id: 45233
+        suggest_stream: "4k"
+
+  - name: "intlog.plate.candidates"
+    partitions: 4
+    retention_ms: 43200000   # 12h
+    key: "event_id"
+    producer_agents: ["agent-b"]
+    consumer_groups: ["decision-engines"]
+    schema:
+      type: "protobuf"
+      file: "proto/plate_candidate.proto"
+      message: "PlateCandidate"
+      version: "1.0"
+    example_payload: |
+      header:
+        event_id: "evt-001"
+        track_id: "t-01"
+        gate_id: "gate-01"
+        producer: "agent-b-01"
+        timestamp: "2025-10-22T12:00:01.500Z"
+        schema_version: "1.0"
+      payload:
+        candidate_id: "pc-001"
+        plate_text: "AA12BB"
+        plate_confidence: 0.92
+        bbox_in_frame: [1800,900,300,120]
+        frame_timestamp: "2025-10-22T12:00:01.400Z"
+        crop_hash: "sha256:abcd1234..."   # opcional, auditoria (sem imagem)
+
+  - name: "intlog.hazard.candidates"
+    partitions: 4
+    retention_ms: 43200000   # 12h
+    key: "event_id"
+    producer_agents: ["agent-c"]
+    consumer_groups: ["decision-engines"]
+    schema:
+      type: "protobuf"
+      file: "proto/hazard_candidate.proto"
+      message: "HazardCandidate"
+      version: "1.0"
+    example_payload: |
+      header:
+        event_id: "evt-001"
+        track_id: "t-01"
+        gate_id: "gate-01"
+        producer: "agent-c-01"
+        timestamp: "2025-10-22T12:00:01.600Z"
+        schema_version: "1.0"
+      payload:
+        candidate_id: "hc-001"
+        un_number: "1203"
+        un_confidence: 0.88
+        hazard_class: "3"
+        frame_timestamp: "2025-10-22T12:00:01.500Z"
+        crop_hash: "sha256:ef56..."
+
+  - name: "intlog.truck.decisions"
+    partitions: 4
+    retention_ms: 2592000000  # 30 dias
+    key: "gate_id"
+    producer_agents: ["agent-d"]
+    consumer_groups: ["ui", "actuators", "audit"]
+    schema:
+      type: "protobuf"
+      file: "proto/decision.proto"
+      message: "Decision"
+      version: "1.0"
+    example_payload: |
+      header:
+        event_id: "evt-001"
+        track_id: "t-01"
+        gate_id: "gate-01"
+        producer: "agent-d-01"
+        timestamp: "2025-10-22T12:00:02.200Z"
+        schema_version: "1.0"
+      payload:
+        decision_id: "d-001"
+        plate: "AA12BB"
+        plate_confidence: 0.915
+        un_number: "1203"
+        un_confidence: 0.88
+        hazards: ["flammable"]
+        decision: "ALLOW"
+        destination: "Pier-7"
+        reason: "manifest_ok"
+        audit_refs:
+          plate_candidates: 4
+          hazard_candidates: 2
+          events_log_id: "log-20251022-001"
+
+  - name: "intlog.errors.dlq"
+    partitions: 2
+    retention_ms: 259200000  # 3 dias
+    key: "producer"
+    producer_agents: ["*"]
+    consumer_groups: ["ops"]
+    schema:
+      type: "json"
+      version: "1.0"
+    example_payload: |
+      header:
+        event_id: "evt-001"
+        producer: "agent-b-01"
+        timestamp: "2025-10-22T12:05:00Z"
+      error:
+        source_topic: "intlog.plate.candidates"
+        reason: "invalid_schema"
+        details: "missing plate_text field"
+
+agents:
+  agent-a:
+    id: "agent-a-01"
+    role: "Truck Detector"
+    consumes: []
+    produces: ["intlog.truck.detections"]
+    consumer_group: null
+    env:
+      AGENT_ID: "agent-a-01"
+      PRODUCE_TOPIC: "intlog.truck.detections"
+    notes: "Detecta camiões em stream 720p e publica bbox. Não consome tópicos."
+
+  agent-b:
+    id: "agent-b-01"
+    role: "License Plate Reader (LPR)"
+    consumes: ["intlog.truck.detections"]
+    produces: ["intlog.plate.candidates"]
+    consumer_group: "plate-readers"
+    env:
+      AGENT_ID: "agent-b-01"
+      CONSUME_TOPIC: "intlog.truck.detections"
+      PRODUCE_TOPIC: "intlog.plate.candidates"
+      KAFKA_GROUP: "plate-readers"
+    behavior:
+      - on_receive_truck_detection:
+          - open_4k_stream: true
+          - scale_bbox: true
+          - extract_crop_in_memory: true
+          - run_plate_detector_then_ocr: true
+          - publish_plate_candidate: true
+          - discard_crop: true
+    notes: >
+      Publica apenas metadados e resultado de OCR (sem imagens).
+      Pode gerar crop_hash (sha256) para auditoria sem persistir imagem.
+
+  agent-c:
+    id: "agent-c-01"
+    role: "Hazard Plate Reader"
+    consumes: ["intlog.truck.detections"]
+    produces: ["intlog.hazard.candidates"]
+    consumer_group: "hazard-readers"
+    env:
+      AGENT_ID: "agent-c-01"
+      CONSUME_TOPIC: "intlog.truck.detections"
+      PRODUCE_TOPIC: "intlog.hazard.candidates"
+      KAFKA_GROUP: "hazard-readers"
+    behavior:
+      - on_receive_truck_detection:
+          - open_4k_stream: true
+          - scale_bbox: true
+          - generate_multiple_crops_along_length: true
+          - detect_placard_and_ocr_un: true
+          - publish_hazard_candidate: true
+          - discard_crop: true
+
+  agent-d:
+    id: "agent-d-01"
+    role: "Decision Engine"
+    consumes: ["intlog.plate.candidates", "intlog.hazard.candidates"]
+    produces: ["intlog.truck.decisions"]
+    consumer_group: "decision-engines"
+    env:
+      AGENT_ID: "agent-d-01"
+      CONSUME_TOPICS: "intlog.plate.candidates,intlog.hazard.candidates"
+      PRODUCE_TOPIC: "intlog.truck.decisions"
+      KAFKA_GROUP: "decision-engines"
+    behavior:
+      - aggregate_candidates_within_window: 5000  # ms
+      - apply_voting_rules:
+          plate_consensus: {same_text_count: 3, min_avg_conf: 0.88}
+          un_consensus: {same_number_count: 2, min_avg_conf: 0.85}
+      - decision_rules:
+          if manifest_ok: decision = "ALLOW"
+          if manifest_mismatch: decision = "HOLD"
+          if hazardous_not_allowed: decision = "DENY"
+      - publish_decision: true
+      - log_decision_to_db: true
+
+consumer_groups:
+  plate-readers:
+    description: "Workers that run LPR; scale horizontally as needed"
+    min_instances: 1
+    recommended_instances: 2
+    max_instances: 6
+
+  hazard-readers:
+    description: "Workers that detect hazard placards"
+    min_instances: 1
+    recommended_instances: 2
+    max_instances: 6
+
+  decision-engines:
+    description: "Aggregator services making final decision (stateful)."
+    min_instances: 1
+    recommended_instances: 1
+    notes: "Keep small due to stateful correlator; use Kafka Streams or a single stateful service with Redis for scaling."
+
+schemas:
+  proto_files:
+    - path: "proto/truck_detection.proto"
+      message: "TruckDetectionEvent"
+    - path: "proto/plate_candidate.proto"
+      message: "PlateCandidate"
+    - path: "proto/hazard_candidate.proto"
+      message: "HazardCandidate"
+    - path: "proto/decision.proto"
+      message: "Decision"
+  conventions:
+    - "All messages must include header (event_id, track_id, gate_id, timestamp, producer, schema_version)."
+    - "Prefer Protobuf for compactness; register schemas in Schema Registry."
+    - "Do not include images in messages — only textual results and optional crop_hash."
+
+endpoints:
+  rest:
+    - method: "GET"
+      path: "/api/health"
+      desc: "Liveness & readiness"
+    - method: "POST"
+      path: "/api/authorize"
+      desc: >
+        API to perform policy authorization (optional sync check).
+        Request: { event_id, plate, un_number, gate_id, candidates_summary }
+        Response: { decision, destination, reason, valid_until }
+    - method: "GET"
+      path: "/api/events/{event_id}"
+      desc: "Return aggregated metadata for an event (candidates + decision)"
+    - method: "POST"
+      path: "/api/override"
+      desc: "Operator manual override. Auth required. Optionally request temporary image retention for debugging."
+  grpc:
+    - service: "PolicyService"
+      rpc:
+        - name: "Authorize"
+          request: "AuthorizeRequest { plate, un_number, gate_id, event_id }"
+          response: "AuthorizeResponse { decision, destination, reason }"
+        - name: "GetEvent"
+          request: "GetEventRequest { event_id }"
+          response: "GetEventResponse { aggregated_metadata }"
+
+ops:
+  dlq:
+    topic: "intlog.errors.dlq"
+    handler: "ops-team-consumer"
+  tracing:
+    opentelemetry: true
+    jaeger_endpoint: "http://jaeger:14268"
+  metrics:
+    prometheus_endpoint: "/metrics"
+    key_metrics:
+      - "kafka_consumer_lag"
+      - "inference_latency_ms"
+      - "decision_latency_ms"
+      - "ocr_confidence_distribution"
+      - "events_processed_per_minute"
+
+conventions_and_notes:
+  - "All topics use gate_id as partition key to keep per-gate ordering."
+  - "Use event_id (UUID v4) for correlating messages across topics."
+  - "Agent-B/C must perform OCR in memory and discard pixel buffers immediately."
+  - "Agent-D performs aggregation with a sliding window (recommended 5s) and fallback rules."
+  - "Enable idempotent producers and consumer offsets committing after successful processing."
+  - "Use DLQ for malformed messages or persistent processing failures."
+  - "For debugging, operator can call /api/override to request temporary image retention; this must be auditable (who requested, why) and images auto-deleted after TTL."
+
+deployment_recommendations:
+  - "For PoC: run Kafka (single-node or Redpanda), Schema Registry, and 1 instance of each agent as Docker containers."
+  - "For production: 3-node Kafka cluster, Schema Registry HA, enable TLS and ACLs."
+  - "Use Kafka Streams / ksqlDB if you want serverless correlation and pre-aggregation before Agent-D."
+
+authors:
+  - name: "Intelligent Logistics Team"
+  - generated_at: "2025-10-22T00:00:00Z"
