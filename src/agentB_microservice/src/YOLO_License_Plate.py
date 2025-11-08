@@ -2,6 +2,9 @@ from ultralytics import YOLO # type: ignore
 import contextlib
 import io
 
+import logging
+logging.getLogger('ultralytics').setLevel(logging.WARNING)
+
 class YOLO_License_Plate:
     def __init__(self):
         self.model_path = 'agentB_microservice/data/license_plate_model.pt'
@@ -30,4 +33,5 @@ class YOLO_License_Plate:
         return len(results[0].boxes) > 0
     
     def close(self):    
+        # TODO: This does not actually exists...
         self.model.close()

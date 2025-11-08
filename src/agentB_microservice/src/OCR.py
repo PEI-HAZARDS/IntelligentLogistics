@@ -2,26 +2,72 @@ from PIL import Image # type: ignore
 import pytesseract # type: ignore
 import numpy as np # type: ignore
 import cv2 # type: ignore
+import os
+import warnings
+import sys
+import contextlib
+from io import StringIO
+
+# Suppress BEFORE importing PaddleOCR
+os.environ['GLOG_minloglevel'] = '3'
+os.environ['FLAGS_print_model_net_proto'] = '0'
+warnings.filterwarnings('ignore', category=UserWarning, module='paddle')
+
+import logging
+logging.getLogger("ppocr").setLevel(logging.ERROR)
+logging.getLogger("paddle").setLevel(logging.ERROR)
+logging.getLogger("paddleocr").setLevel(logging.ERROR)
+logging.getLogger("paddlex").setLevel(logging.ERROR)
+
+logging.getLogger("ppocr").setLevel(logging.ERROR)
+logging.getLogger("ppocr_utils").setLevel(logging.ERROR)
 
 try:
-    from paddleocr import PaddleOCR # type: ignore
-except Exception:
+    silent = StringIO()
+    with contextlib.redirect_stdout(silent), contextlib.redirect_stderr(silent):
+        from paddleocr import PaddleOCR  # type: ignore
+        #import paddle
+    PADDLE_AVAILABLE = True
+except Exception as e:
+    print(f"[OCR] WARNING: PaddleOCR import failed: {e}")
     PaddleOCR = None
+    paddle = None
+    PADDLE_AVAILABLE = False
+
+
+# Initialize logger
+logger = logging.getLogger("OCR")
+
 
 class OCR:
     def __init__(self, engine='paddle', min_confidence=0.3, lang='en'):
+        logger.info(f"[OCR.__init__] Initializing OCR with engine='{engine}'")
+        logger.info(f"[OCR.__init__] PaddleOCR available: {PADDLE_AVAILABLE}")
+        
         self.engine = engine
         self.min_confidence = float(min_confidence)
         self.lang = lang
         self.ocr = None
 
         if engine == 'paddle' and PaddleOCR is not None:
+            logger.info("[OCR.__init__] Attempting to initialize PaddleOCR...")
             try:
-                # enable angle classifier at construction (do NOT pass cls to ocr())
-                self.ocr = PaddleOCR(lang=lang, use_angle_cls=True)
+                self.ocr = PaddleOCR(
+                    lang=lang,
+                    use_angle_cls=True,
+                )
+                logger.info("[OCR.__init__] ✓ PaddleOCR initialized successfully!")
             except Exception as e:
-                print(f"Failed to initialize PaddleOCR: {e}")
+                logger.error(f"[OCR.__init__] ✗ Failed to initialize PaddleOCR: {e}")
+                logger.exception(e)
                 self.ocr = None
+        else:
+            if engine == 'paddle':
+                logger.warning("[OCR.__init__] PaddleOCR requested but not available, falling back to Tesseract")
+            else:
+                logger.info(f"[OCR.__init__] Using Tesseract (engine={engine})")
+
+        logger.info(f"[OCR.__init__] Final state: self.ocr is {'set' if self.ocr else 'None'}")
 
     def _to_cv_image(self, image):
         if isinstance(image, str):
@@ -70,7 +116,7 @@ class OCR:
 
     def _parse_paddle_results(self, ocr_results):
         if not ocr_results:
-            print("PaddleOCR returned empty results")
+            logger.warning("PaddleOCR returned empty results")
             return "", 0.0
 
         result = ""
@@ -85,7 +131,7 @@ class OCR:
                 texts = res.get("rec_texts", [])
                 scores = res.get("rec_scores", [])
                 for text, conf in zip(texts, scores):
-                    print(f"→ Found text '{text}' with conf {conf:.2f}")
+                    logger.debug(f"→ Found text '{text}' with conf {conf:.2f}")
                     count += 1
                     conf_total += conf
                     cumulative_conf = conf_total / count if count > 0 else 0.0
@@ -106,7 +152,7 @@ class OCR:
             # call without passing cls; angle classifier was enabled at init
             ocr_results = self.ocr.ocr(pre) # type: ignore
         except Exception as e:
-            print(f"PaddleOCR execution error: {e}")
+            logger.error(f"PaddleOCR execution error: {e}")
             return "", 0.0
         return self._parse_paddle_results(ocr_results)
 
@@ -134,17 +180,19 @@ class OCR:
         return text.strip(), 0.0
 
     def extract_text(self, image):
+        logger.debug(f"[OCR.extract_text] Starting extraction (engine={self.engine}, ocr={'set' if self.ocr else 'None'})")
         cv_img = self._to_cv_image(image)
 
         if self.engine == 'paddle' and self.ocr is not None and cv_img is not None:
-            print("Using PaddleOCR engine (license plate optimized)")
+            logger.info("[OCR.extract_text] Using PaddleOCR engine (license plate optimized)")
             text, conf = self._run_paddle(cv_img)
             if text:
-                print(f"PaddleOCR detected: '{text}' (confidence={conf:.2f})")
+                logger.info(f"[OCR.extract_text] PaddleOCR detected: '{text}' (confidence={conf:.2f})")
                 return text, conf
             else:
-                print(f"PaddleOCR returned no confident result (best_conf={conf:.2f}). Falling back to Tesseract.")
-
-        print("Using Tesseract OCR engine")
+                logger.warning("[OCR.extract_text] PaddleOCR returned empty result, falling back to Tesseract")
+            
+        logger.info("[OCR.extract_text] Using Tesseract OCR engine")
         text, conf = self._run_tesseract(image)
+        logger.info(f"[OCR.extract_text] Tesseract result: '{text}'")
         return text, conf

@@ -51,9 +51,9 @@ from agentB_microservice.src.AgentB import AgentB  # <- versão Kafka (consumer)
 def run_agent(agent_class):
     agent = agent_class()  # não passamos mais broker
     try:
-        agent.run()
+        agent._loop()
     except KeyboardInterrupt:
-        agent.stop()
+        agent._loop()
 
 def main():
     p_a = Process(target=run_agent, args=(AgentA,), name="AgentA")

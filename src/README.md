@@ -1,29 +1,52 @@
-# Quick setup — YOLO_OCR
+# Docker setup
 
-## 1-  Virtual environment (recommended)
+## 1-  Build the image
 
-You should create a virtual environment to install and manage the necessary python packages.
+From the root of the github repo run
 
 ```sh
-python3 -m venv venv
+docker build -t intelligentlogistics/agenta:latest -f src/agentA_microservice/Dockerfile .
 
-source venv/bin/activate
-
-pip install -r requirements.txt
 
 ```
-## 2- Import necessary data (setup.py) 
-It downloads the pretrained models listed in the script into the `YOLO_OCR/data/`  using **gdown**. Run it once to populate `YOLO_OCR/data/` before running the agents.
+## 2- Login to Docker Hub 
+
+- pass : pei2025!
 
 ```sh
-python3 setup.py
+docker login
 ```
 
 
-## 3- Run main script
-
-Finally run the main script (Not really implmented yet)
+## 3- Push image to docker hub
 
 ```sh
-python3 main.py
+docker push intelligentlogistics/agenta:latest
+```
+## 4- Pull the image on another machine
+
+First time (need to install docker and added the user to the docker users): 
+
+```sh
+sudo usermod -aG docker $USER
+sudo reboot
+```
+
+```sh
+docker pull intelligentlogistics/agenta:latest
+```
+## 5- Run the container
+
+-d : run in background
+
+```sh
+docker run -d intelligentlogistics/agenta:latest
+```
+
+## 6- Check logs
+
+-f : follow
+
+```sh
+docker logs -f serene_babbage
 ```

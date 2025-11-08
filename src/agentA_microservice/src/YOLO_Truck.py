@@ -1,6 +1,8 @@
 from ultralytics import YOLO # type: ignore
 import contextlib
 import io
+import logging
+logging.getLogger('ultralytics').setLevel(logging.WARNING)
 
 class YOLO_Truck:
     def __init__(self):

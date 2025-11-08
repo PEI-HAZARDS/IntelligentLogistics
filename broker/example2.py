@@ -9,7 +9,7 @@ def handle_sigint(sig, frame):
 signal.signal(signal.SIGINT, handle_sigint)
 
 conf_consumer = {
-    'bootstrap.servers': 'localhost:9092',
+    'bootstrap.servers': '10.255.32.64:9092',
     'group.id': 'agentB-group',
     'auto.offset.reset': 'earliest',
     'enable.auto.commit': True,           # commit automático
@@ -19,7 +19,7 @@ conf_consumer = {
 consumer = Consumer(conf_consumer)
 consumer.subscribe(['truck-detected'])
 
-conf_producer = {'bootstrap.servers': 'localhost:9092'}
+conf_producer = {'bootstrap.servers': '10.255.32.64:9092'}
 producer = Producer(conf_producer)
 
 try:

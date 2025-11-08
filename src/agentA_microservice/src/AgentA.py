@@ -1,30 +1,28 @@
 # AgentA.py — versão Kafka (KRaft/ZooKeeper-agnostic)
-from shared_utils.Logger import *
 from shared_utils.RTSPstream import *
 from agentA_microservice.src.YOLO_Truck import *
 import os
 import time
 import uuid
-from time import sleep
 from confluent_kafka import Producer # type: ignore
 import json
 
 RTSP_STREAM_LOW = "rtsp://10.255.35.86:554/stream2"
 MESSAGE_INTERVAL = 30  # seconds
 KAFKA_TOPIC = "truck-detected"
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "localhost:9092")
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.64:9092")
+logger = logging.getLogger("AgentA")
 
 
 def _delivery_callback(err, msg):
-    logger = GlobalLogger().get_logger()
     if err:
-        logger.error(f"[AgentA/Kafka] Erro ao enviar: {err}")
+        logger.error(f"[AgentA/Kafka] Error sending: {err}")
     else:
         try:
             v = msg.value().decode() if isinstance(msg.value(), (bytes, bytearray)) else msg.value()
         except Exception:
             v = str(msg.value())
-        logger.info(f"[AgentA/Kafka] Mensagem entregue em {msg.topic()}@{msg.partition()}#{msg.offset()} value={v}")
+        logger.info(f"[AgentA/Kafka] Message delivered in {msg.topic()}@{msg.partition()}#{msg.offset()} value={v}")
 
 
 class AgentA:
@@ -36,18 +34,20 @@ class AgentA:
     """
 
     def __init__(self, kafka_bootstrap: str | None = None):
-        self.logger = GlobalLogger().get_logger()
         self.yolo = YOLO_Truck()
         self.running = True
         self.last_message_time = 0
 
         # Kafka Producer
         bootstrap = kafka_bootstrap or KAFKA_BOOTSTRAP
-        self.logger.info(f"[AgentA/Kafka] A ligar ao Kafka em '{bootstrap}' …")
+        logger.info(f"[AgentA/Kafka] Connecting to kafka via '{bootstrap}' …")
         self.producer = Producer({
             "bootstrap.servers": bootstrap,
+            "log_level": 1, # only errors
             # podes acrescentar: "enable.idempotence": True, "acks": "all"
         })
+
+
 
     def _publish_truck_detected(self, max_conf: float, num_boxes: int):
         """
@@ -66,7 +66,7 @@ class AgentA:
             "source": "rtsp_low"  # campo extra opcional (útil para debug/observabilidade)
         }
 
-        self.logger.info(f"[AgentA] Publicando 'truck-detected' (truckId={detection_id}, "
+        logger.info(f"[AgentA] Publishing 'truck-detected' (truckId={detection_id}, "
                          f"detections={num_boxes}, max_conf={max_conf:.2f}) …")
         self.producer.produce(
             topic=KAFKA_TOPIC,
@@ -78,30 +78,32 @@ class AgentA:
         # drena callbacks sem bloquear muito; flush completo é feito no stop()
         self.producer.poll(0)
 
-    def run(self):
-        self.logger.info("[AgentA] Starting Agent A main loop…")
+
+
+    def _loop(self):
+        logger.info("[AgentA] Starting Agent A main loop…")
 
         cap = None
         try:
-            self.logger.info(f"[AgentA] Connecting to RTSP stream: {RTSP_STREAM_LOW}")
+            logger.info(f"[AgentA] Connecting to RTSP stream: {RTSP_STREAM_LOW}")
             cap = RTSPStream(RTSP_STREAM_LOW)
         except Exception as e:
-            self.logger.exception(f"[AgentA] Failed to initialize RTSP stream: {e}")
+            logger.exception(f"[AgentA] Failed to initialize RTSP stream: {e}")
             return
 
         while self.running:
             try:
                 frame = cap.read()
                 if frame is None:
-                    self.logger.debug("[AgentA] No frame available from RTSP stream yet.")
+                    logger.debug("[AgentA] No frame available from RTSP stream yet.")
                     time.sleep(0.2)
                     continue
 
-                self.logger.debug("[AgentA] Frame captured, running truck detection…")
+                logger.debug("[AgentA] Frame captured, running truck detection…")
                 results = self.yolo.detect(frame)
 
                 if results is None:
-                    self.logger.warning("[AgentA] YOLO model returned no results (None).")
+                    logger.warning("[AgentA] YOLO model returned no results (None).")
                     continue
 
                 if self.yolo.truck_found(results):
@@ -109,7 +111,7 @@ class AgentA:
                     elapsed = now - self.last_message_time
 
                     if elapsed < MESSAGE_INTERVAL:
-                        self.logger.info(
+                        logger.info(
                             f"[AgentA] Truck detected, but waiting "
                             f"{MESSAGE_INTERVAL - elapsed:.1f}s before next message."
                         )
@@ -123,36 +125,34 @@ class AgentA:
                         self.last_message_time = now
                         self._publish_truck_detected(max_conf=max_conf, num_boxes=num)
                     except Exception as e:
-                        self.logger.exception(f"[AgentA] Error preparing Kafka event: {e}")
+                        logger.exception(f"[AgentA] Error preparing Kafka event: {e}")
 
                 else:
-                    self.logger.debug("[AgentA] No truck detected in this frame.")
+                    logger.debug("[AgentA] No truck detected in this frame.")
 
             except Exception as e:
-                self.logger.exception(f"[AgentA] Exception during detection loop: {e}")
+                logger.exception(f"[AgentA] Exception during detection loop: {e}")
                 time.sleep(1)  # Avoid busy looping on errors
 
         # Cleanup once stopped
         if cap:
             try:
                 cap.release()
-                self.logger.debug("[AgentA] RTSP stream released.")
+                logger.debug("[AgentA] RTSP stream released.")
             except Exception as e:
-                self.logger.exception(f"[AgentA] Error releasing RTSP stream: {e}")
+                logger.exception(f"[AgentA] Error releasing RTSP stream: {e}")
 
         # garante envio de mensagens pendentes
         try:
-            self.logger.info("[AgentA/Kafka] Flushing producer…")
+            logger.info("[AgentA/Kafka] Flushing producer…")
             self.producer.flush(10)  # até 10s
         except Exception as e:
-            self.logger.exception(f"[AgentA/Kafka] Error on flush: {e}")
+            logger.exception(f"[AgentA/Kafka] Error on flush: {e}")
+
+
 
     def stop(self):
         """Gracefully stop Agent A."""
-        self.logger.info("[AgentA] Stopping Agent A…")
+        logger.info("[AgentA] Stopping Agent A…")
         self.running = False
-        try:
-            self.yolo.close()
-        except Exception as e:
-            self.logger.exception(f"[AgentA] Error closing YOLO model: {e}")
-        self.logger.info("[AgentA] Agent stopped successfully.")
+        logger.info("[AgentA] Agent stopped successfully.")
