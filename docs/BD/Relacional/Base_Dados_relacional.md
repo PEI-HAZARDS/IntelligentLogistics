@@ -243,6 +243,15 @@ Integra informações operacionais (Chegadas, Operadores, Cais, Cargas) com dado
 - Modularidade para integração com IA e sistemas de eventos (Redis/MQTT)  
 - Possibilidade de expansão futura para múltiplos portos
 
+Fluxo do agente de consenso:
+  - Busca chegada_diaria pelo matricula_camiao e data prevista.
+
+  - Recebe detecção do banco NoSQL.
+
+  - Valida a detecção (confiança, origem, etc.).
+
+  - Se válida, insere na tabela deteccao_valida com id_chegada preenchido.
+
 ---
 
 **Versão:** 1.2  
