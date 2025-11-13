@@ -1,55 +1,71 @@
-from shared_utils.Logger import *
+# AgentB.py — versão Kafka
+from shared_utils import RTSPstream
 from shared_utils.RTSPstream import *
 from agentB_microservice.src.YOLO_License_Plate import *
 from agentB_microservice.src.OCR import *
-import time
+
 import os
-import cv2
+import time
+import cv2 # type: ignore
+import json
+import uuid
 from queue import Queue, Empty
+from confluent_kafka import Producer, Consumer, KafkaException # type: ignore
+from shared_utils.RTSPstream import *
 
 RTSP_STREAM_HIGH = "rtsp://10.255.35.86:554/stream1"
 CROPS_PATH = "agentB_microservice/data/lp_crops"
 os.makedirs(CROPS_PATH, exist_ok=True)
 
 
+# Configurações Kafka
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.64:9092")
+TOPIC_CONSUME = "truck-detected"
+TOPIC_PRODUCE = "license-plate-detected"
+logger = logging.getLogger("AgentB")
+
+
 class AgentB:
     """
     Agent B:
-    - Waits for 'truck_detected' messages from the broker.
-    - On detection, fetches frames from the high-quality RTSP stream.
-    - Runs YOLO to detect license plates.
-    - Uses OCR to extract license plate text.
+    - Consome 'truck-detected' do Kafka.
+    - Ao receber, captura frames do RTSP (alta qualidade).
+    - Deteta matrícula com YOLO e extrai texto com OCR.
+    - Publica 'license-plate-detected' no Kafka, propagando correlationId.
     """
 
-    def __init__(self, broker):
-        self.logger = GlobalLogger().get_logger()
+    def __init__(self, kafka_bootstrap: str | None = None):
         self.yolo = YOLO_License_Plate()
         self.ocr = OCR()
         self.running = True
-        self.broker = broker
         self.frames_queue = Queue()
+        # Liga a stream RTSP
         self.stream = RTSPStream(RTSP_STREAM_HIGH)
 
-    def run(self):
-        self.logger.info(f"[AgentB] Starting main loop...")
+        bootstrap = kafka_bootstrap or KAFKA_BOOTSTRAP
+        logger.info(f"[AgentB/Kafka] bootstrap: {bootstrap}")
 
-        while self.running:
-            try:
-                message = self.broker.get_message(timeout=1)
-                self.logger.debug("[AgentB] Checking broker messages...")
+        # Kafka Consumer
+        self.consumer = Consumer({
+            "bootstrap.servers": bootstrap,
+            "group.id": "agentB-group",
+            "auto.offset.reset": "earliest",
+            "enable.auto.commit": True,        # simples para começar; mudar p/ manual se precisares de controle fino
+            "session.timeout.ms": 10000,
+            "max.poll.interval.ms": 300000,
+        })
+        self.consumer.subscribe([TOPIC_CONSUME])
 
-                if message and message.get("type") == "truck_detected":
-                    self.logger.info("[AgentB] Received 'truck_detected' event from Agent A.")
-                    self.process_license_plate_detection()
-                else:
-                    time.sleep(1)
-            except Exception as e:
-                self.logger.exception(f"[AgentB] Exception in main loop: {e}")
+        # Kafka Producer
+        self.producer = Producer({
+            "bootstrap.servers": bootstrap,
+            # "enable.idempotence": True, "acks": "all"  # liga em produção se precisares de garantias fortes
+        })
 
-    def _get_frames(self, num_frames=5):
-        """Capture a few frames from the RTSP stream."""
 
-        self.logger.info(f"[AgentB] Attempting to read {num_frames} frames from RTSP stream...")
+    def _get_frames(self, num_frames=1):
+        """Captura alguns frames do RTSP."""
+        logger.info(f"[AgentB] reading {num_frames} frame(s) from RTSP…")
         captured = 0
         while captured < num_frames and self.running:
             try:
@@ -57,141 +73,197 @@ class AgentB:
                 if frame is not None:
                     self.frames_queue.put(frame)
                     captured += 1
-                    self.logger.debug(f"[AgentB] Captured frame {captured}/{num_frames}.")
+                    logger.debug(f"[AgentB] Captured {captured}/{num_frames}.")
                 else:
-                    self.logger.debug("[AgentB] No frame available yet, retrying...")
+                    logger.debug("[AgentB] No frame yet, trying again…")
                     time.sleep(0.1)
             except Exception as e:
-                self.logger.exception(f"[AgentB] Error capturing frame: {e}")
+                logger.exception(f"[AgentB] Error when capturing frame {e}")
                 time.sleep(0.2)
-        
+
 
     def process_license_plate_detection(self):
-        """Main license plate detection and OCR processing logic."""
+        """Pipeline principal para detetar e extrair texto da matrícula."""
 
-        self.logger.info("[AgentB] Starting license plate detection pipeline...")
+        logger.info("[AgentB] Starting license plate pipeline detection process…")
         self._get_frames(1)
 
         if self.frames_queue.empty():
-            self.logger.warning("[AgentB] No frames were captured from RTSP stream.")
-            return
+            logger.warning("[AgentB] No frame captured from RTSP.")
+            return None, None, None  # (texto, conf, crop_img)
 
         lp_results = []
-        lp_crop = ""
+        lp_crop = None
+
         while self.running and not self.frames_queue.empty():
             try:
                 frame = self.frames_queue.get_nowait()
-                self.logger.debug("[AgentB] Retrieved frame from queue for processing.")
+                logger.debug("[AgentB] Frame obtained from queue.")
             except Empty:
-                self.logger.warning("[AgentB] Frame queue unexpectedly empty.")
+                logger.warning("[AgentB] Frames queue is empty.")
                 time.sleep(0.05)
                 continue
 
             try:
-                self.logger.info("[AgentB] Running YOLO license plate detection...")
+                logger.info("[AgentB] YOLO (LP) running…")
                 results = self.yolo.detect(frame)
 
                 if not results:
-                    self.logger.debug("[AgentB] YOLO returned no results for this frame.")
+                    logger.debug("[AgentB] YOLO did not return a result for this frame.")
                     continue
 
                 if self.yolo.found_license_plate(results):
                     boxes = self.yolo.get_boxes(results)
-                    self.logger.info(f"[AgentB] Detected {len(boxes)} license plate(s).")
+                    logger.info(f"[AgentB] {len(boxes)} license plates detected.")
 
                     for i, box in enumerate(boxes, start=1):
                         x1, y1, x2, y2, conf = map(float, box)
                         if conf < 0.5:
-                            self.logger.debug(f"[AgentB] Skipping low-confidence detection ({conf:.2f}).")
+                            logger.debug(f"[AgentB] Ignored low confidence result (conf={conf:.2f}).")
                             continue
 
-                        lp_crop = frame[int(y1):int(y2), int(x1):int(x2)]
+                        crop = frame[int(y1):int(y2), int(x1):int(x2)]
                         crop_path = f"{CROPS_PATH}/lp_crop_{int(time.time())}_{i}.jpg"
-                        cv2.imwrite(crop_path, lp_crop)
-                        self.logger.debug(f"[AgentB] Saved license plate crop: {crop_path}")
-
-                        self.logger.info("[AgentB] Running OCR extraction...")
                         try:
-                            text, conf = self.ocr.extract_text(lp_crop)
-                            lp_results.append((text, conf))
-                            self.logger.info(f"[AgentB] OCR result: '{text}' (confidence: {conf:.2f})")
+                            cv2.imwrite(crop_path, crop)
+                            logger.debug(f"[AgentB] Crop saved: {crop_path}")
                         except Exception as e:
-                            self.logger.exception(f"[AgentB] OCR extraction failed: {e}")
+                            logger.warning(f"[AgentB] Failed saving crop: {e}")
 
+                        logger.info("[AgentB] OCR extracting text…")
+                        try:
+                            text, ocr_conf = self.ocr.extract_text(crop)
+                            lp_results.append((text, float(ocr_conf)))
+                            lp_crop = crop
+                            logger.info(f"[AgentB] OCR: '{text}' (conf={ocr_conf:.2f})")
+                        except Exception as e:
+                            logger.exception(f"[AgentB] OCR failure: {e}")
                 else:
-                    self.logger.info("[AgentB] No license plate detected in this frame.")
+                    logger.info("[AgentB] No license plate detected for this frame.")
 
             except Exception as e:
-                self.logger.exception(f"[AgentB] Error during detection loop: {e}")
+                logger.exception(f"[AgentB] Error on detection loop: {e}")
 
         if not lp_results:
-            self.logger.warning("[AgentB] No license plates detected in any captured frames.")
-            return
+            logger.warning("[AgentB] No valid license plates on any frame.")
+            return None, None, None
 
-
-        conf = 0.0
-        final_text = ""
         try:
             final_text, conf = self.consensus_Alg(lp_results)
-            self.logger.info(f"[AgentB] Final license plate: '{final_text}' (confidence: {conf:.2f})")
+            logger.info(f"[AgentB] Final license plate: '{final_text}' (conf={conf:.2f})")
+            return final_text, conf, lp_crop
         except Exception as e:
-            self.logger.exception(f"[AgentB] Error computing final results: {e}")
-
-
-        self.send_message(final_text, conf)
-        self.save_info(conf, final_text, lp_crop)
-
-
-
+            logger.exception(f"[AgentB] Error calculating results: {e}")
+            return None, None, None
 
     def consensus_Alg(self, results):
-        """Combine or select final result from YOLO+OCR pipeline."""
-        #TODO
-
-        self.logger.debug("[AgentB] Computing final OCR result from collected detections...")
-        return results[-1][0], results[-1][1]  # Placeholder logic
-    
+        """Combina/seleciona o melhor resultado do OCR."""
+        # TODO: implementar algoritmo de consenso mais robusto
+        logger.debug("[AgentB] Obtaining final result.")
+        return results[-1][0], results[-1][1]
 
 
-    def send_message(self, text, confidence):
-        """Send the final license plate result back via the broker."""
-        #TODO
-        message = {
-            "type": "license_plate_detected",
-            "license_plate": text,
-            "confidence": confidence,
-            "timestamp": time.time()
+
+    def _publish_lp_detected(self, timestamp, truck_id, plate_text, plate_conf, correlation_id):
+        """Publica evento 'license-plate-detected' com propagação do correlationId."""
+
+        # Payload com o conteudo da mensagem
+        payload = {
+            "timestamp": timestamp or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "truckId": truck_id,
+            "licensePlate": plate_text,
+            "confidence": float(plate_conf if plate_conf is not None else 0.0)
         }
-        self.broker.put_message(message)
-        self.logger.info(f"[AgentB] Sent license plate detection message: {message}")
+        logger.info(f"[AgentB] Publishing '{TOPIC_PRODUCE}' (truckId={truck_id}, plate={plate_text}) …")
 
-        return
+        # Publica o topico de deteção de matrícula
+        self.producer.produce(
+            topic=TOPIC_PRODUCE,
+            key=None,
+            value=json.dumps(payload).encode("utf-8"),
+            headers={"correlationId": correlation_id or str(uuid.uuid4())}
+        )
+        self.producer.poll(0)
 
 
 
+    def _loop(self):
+        logger.info(f"[AgentB] Main loop starting… (topic in='{TOPIC_CONSUME}')")
 
-    def save_info(self, confidence, text, crop_name):
-        """Save or log the final license plate information."""
-        #TODO Salvar numa base de dados não relacional
+        try:
+            while self.running:
+                msg = self.consumer.poll(timeout=1.0)
+                if msg is None:
+                    continue
+                if msg.error():
+                    # podes registar msg.error() se quiseres
+                    continue
 
-        self.logger.info(f"[AgentB] Saving license plate info: '{text}' with confidence {confidence:.2f} in DataBase")
+                # payload de entrada
+                try:
+                    data = json.loads(msg.value())
+                except json.JSONDecodeError:
+                    logger.warning("[AgentB] Invalid message (JSON). Ignored.")
+                    continue
 
-        message = {
-            "type": "license_plate_detected",
-            "plate_image": crop_name,
-            "license_plate": text,
-            "confidence": confidence,
-            "timestamp": time.time()
-        }
-        return
+                # correlationId (propagar se existir)
+                correlation_id = None
+                for k, v in (msg.headers() or []):
+                    if k == "correlationId" and v is not None:
+                        correlation_id = v.decode() if isinstance(v, (bytes, bytearray)) else str(v)
+                        break
+                if correlation_id is None:
+                    correlation_id = str(uuid.uuid4())
 
-        # Placeholder for saving logic (e.g., database, file, etc.)
+                # dados de entrada (truckId, timestamp)
+                in_timestamp = data.get("timestamp")
+                truck_id = data.get("truckId")
+                
+                logger.info("[AgentB] Recieved 'truck-detected'. Starting LP pipeline…")
+                plate_text, plate_conf, _lp_img = self.process_license_plate_detection()
+
+                if not plate_text:
+                    logger.warning("[AgentB] No final text results — not publishing.")
+                    # dependendo do teu desenho, poderias publicar mesmo assim com conf=0.0
+                    continue
+                
+                # Publica a mensagem de matrícula detetada
+                self._publish_lp_detected(
+                    timestamp=in_timestamp,
+                    truck_id=truck_id,
+                    plate_text=plate_text,
+                    plate_conf=plate_conf,
+                    correlation_id=correlation_id
+                )
+            
+
+        except KeyboardInterrupt:
+            logger.info("[AgentB] Interrupted by user.")
+        except KafkaException as e:
+            logger.exception(f"[AgentB/Kafka] Kafka error: {e}")
+        except Exception as e:
+            logger.exception(f"[AgentB] Unexpected error: {e}")
+        finally:
+            logger.info("[AgentB] Freeing resources…")
+            try:
+                self.stream.release()
+                logger.debug("[AgentB] RTSP stream released.")
+            except Exception as e:
+                logger.exception(f"[AgentB] Error releasing RTSP stream: {e}")
+            try:
+                self.producer.flush(5)
+            except Exception:
+                pass
+            try:
+                self.consumer.close()
+            except Exception:
+                pass
+        
 
 
     def stop(self):
-        self.logger.info("[AgentB] Stopping agent and releasing resources...")
-        try:
-            self.yolo.close()
-        except Exception as e:
-            self.logger.exception(f"[AgentB] Error closing YOLO model: {e}")
-        self.logger.info("[AgentB] Agent stopped successfully.")
+        """Para parar o agente de forma limpa."""
+
+        logger.info("[AgentB] Stopping agent and freeing resources…")
+        self.running = False
+        logger.info("[AgentB] Stopped successfuly.")
