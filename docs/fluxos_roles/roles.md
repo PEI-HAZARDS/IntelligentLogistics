@@ -12,7 +12,7 @@ Roles
 
 ---
 
-## 🧭 1. Reorganização de papéis por fase do projeto
+## 1. Reorganização de papéis por fase do projeto
 
 | Fase                              | Objetivo                                               | Foco das pessoas                                                                           | Comentário                                             |
 | --------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
@@ -22,7 +22,7 @@ Roles
 
 ---
 
-## 🧩 2. Distribuição ajustada de esforço (% por fase)
+## 2. Distribuição ajustada de esforço (% por fase)
 
 | Nome         | MS1 (Inception)                | MS2 (PoC técnico)                 | MS3 (Frontend + MVP)              | Função dominante     |
 | ------------ | ------------------------------ | --------------------------------- | --------------------------------- | -------------------- |
@@ -34,7 +34,7 @@ Roles
 
 ---
 
-## ⚙️ 3. Como aproveitar o **Bernardo e Paulo** (frontend & DB) nas fases iniciais
+## 3. Como aproveitar o **Bernardo e Paulo** (frontend & DB) nas fases iniciais
 
 Durante **MS1 e MS2**, podem e devem contribuir em tarefas *cross-functionais*, como:
 
@@ -47,7 +47,7 @@ Isto mantém os dois produtivos até que a UI entre em fase ativa, **sem ficarem
 
 ---
 
-## 🧱 4. Estrutura final recomendada (equipa equilibrada)
+## 4. Estrutura final recomendada (equipa equilibrada)
 
 | Role                                  | Lead     | Apoio    | Observações                                |
 | ------------------------------------- | -------- | -------- | ------------------------------------------ |
@@ -57,7 +57,7 @@ Isto mantém os dois produtivos até que a UI entre em fase ativa, **sem ficarem
 | **Frontend & Databases (Fase Final)** | Bernardo | Paulo    | Entra em MS3 para UI real e integração.    |
 | **Integration & QA**                  | Rafa     | Tomás    | Validação end-to-end e testes automáticos. |
 
-👉 Assim:
+Assim:
 
 * **Tomás, Diogo e Rafa** são o core técnico até MS2.
 * **Paulo e Bernardo** sustentam infra e DB, e depois assumem o **Frontend na reta final**.
@@ -65,7 +65,7 @@ Isto mantém os dois produtivos até que a UI entre em fase ativa, **sem ficarem
 
 ---
 
-## 🎯 5. Quando ativar o Frontend
+## 5. Quando ativar o Frontend
 
 Ativa o desenvolvimento do frontend **após o PoC técnico (MS2)**, quando já existir:
 
