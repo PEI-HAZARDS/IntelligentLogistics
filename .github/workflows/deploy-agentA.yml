@@ -35,3 +35,4 @@ jobs:
           docker run -d agentA:latest
           
           echo 'Agent A deployed successfully'
+          
