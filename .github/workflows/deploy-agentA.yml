@@ -16,73 +16,87 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      ##################################################################
+      ######################################################################
       # 1 — Instalar OpenVPN
-      ##################################################################
+      ######################################################################
       - name: Install OpenVPN
         run: |
           sudo apt-get update
           sudo apt-get install -y openvpn
 
-      ##################################################################
-      # 2 — Criar ficheiros necessários para o OpenVPN
-      ##################################################################
-      - name: Create VPN configuration files
+      ######################################################################
+      # 2 — Criar ficheiros necessários para o túnel VPN
+      ######################################################################
+      - name: Prepare VPN configuration files
         run: |
-          # Criar o ficheiro de autenticação
+          # Credenciais
           echo -e "${{ secrets.VPN_USERNAME }}\n${{ secrets.VPN_PASSWORD }}" > auth.txt
           chmod 600 auth.txt
 
-          # Criar o ficheiro CA
+          # CA
           echo "${{ secrets.VPN_CA }}" > ca.crt
           chmod 600 ca.crt
 
-          # Criar o ficheiro tls-auth
+          # TLS Auth Key (inclui comentários e headers)
           echo "${{ secrets.VPN_TLS_AUTH }}" > tls.key
           chmod 600 tls.key
 
-          # Criar o ficheiro .ovpn
+          # Criar .ovpn base
           echo "${{ secrets.VPN_CONFIG }}" > vpn-template.ovpn
 
-          # Substituir linhas para usar os ficheiros locais
+          # Substituir linhas para apontar para os ficheiros locais
           sed 's|ca .*|ca ca.crt|' vpn-template.ovpn > vpn.ovpn
           sed -i 's|tls-auth .*|tls-auth tls.key 1|' vpn.ovpn
 
-      ##################################################################
-      # 3 — Ligar à VPN
-      ##################################################################
+          # openvpn precisa saber onde está o auth.txt
+          sed -i 's|auth-user-pass|auth-user-pass auth.txt|' vpn.ovpn
+
+      ######################################################################
+      # 3 — Ligar à VPN (com debug adicional)
+      ######################################################################
       - name: Connect to VPN
         run: |
-          sudo openvpn --config vpn.ovpn --auth-user-pass auth.txt --daemon
+          sudo openvpn --config vpn.ovpn --daemon
           echo "A ligar à VPN…"
-          sleep 15
+          sleep 20
 
-      ##################################################################
-      # 4 — Preparar SSH para a VM
-      ##################################################################
+      - name: Debug VPN Status
+        run: |
+          echo "--- Interfaces ---"
+          ip addr
+          echo "--- Rotas ---"
+          ip route
+          echo "--- Teste de ping à VM ---"
+          ping -c 4 ${{ secrets.AGENTA }} || echo "A VM ainda não responde — a VPN pode demorar mais um pouco."
+
+      ######################################################################
+      # 4 — Setup SSH (apenas quando VPN está ativa)
+      ######################################################################
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+
+          # Adicionar VM aos hosts conhecidos
           ssh-keyscan -H ${{ secrets.AGENTA }} >> ~/.ssh/known_hosts
 
-      ##################################################################
-      # 5 — Docker remote context
-      ##################################################################
+      ######################################################################
+      # 5 — Configurar Docker Context remoto
+      ######################################################################
       - name: Configure Docker context
         run: |
           docker context create agentA --docker "host=ssh://${{ secrets.VM_USERNAME }}@${{ secrets.AGENTA }}"
           docker context use agentA
 
-      ##################################################################
-      # 6 — Build + Deploy remoto
-      ##################################################################
-      - name: Build and Deploy
+      ######################################################################
+      # 6 — Build + Deploy na VM
+      ######################################################################
+      - name: Build and Deploy Agent A
         run: |
           docker build -t agentA:latest -f src/agentA_microservice/Dockerfile .
           docker stop agentA || true
           docker rm agentA || true
           docker run -d --name agentA agentA:latest
-          echo "Deploy concluído ✔️"
 
+          echo "Deploy concluído com sucesso ✔️"
