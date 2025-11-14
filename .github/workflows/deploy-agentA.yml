@@ -85,3 +85,4 @@ jobs:
           docker rm agentA || true
           docker run -d --name agentA agentA:latest
           echo "Deploy concluído ✔️"
+
