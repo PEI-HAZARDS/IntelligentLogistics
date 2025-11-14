@@ -79,7 +79,7 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
 
           # Adicionar VM aos hosts conhecidos
-          ssh-keyscan -H ${{ secrets.AGENTA }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ secrets.VM_USERNAME }}@${{ secrets.AGENTA }} >> ~/.ssh/known_hosts
 
       ######################################################################
       # 5 — Configurar Docker Context remoto
