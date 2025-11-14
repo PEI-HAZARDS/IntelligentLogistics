@@ -5,7 +5,7 @@
 From the root of the github repo run
 
 ```sh
-docker build -t intelligentlogistics/agenta:latest -f src/agentA_microservice/Dockerfile .
+docker build -f src/agentA_microservice/Dockerfile .
 
 
 ```
