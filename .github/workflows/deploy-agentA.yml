@@ -67,7 +67,7 @@ jobs:
           echo "--- Rotas ---"
           ip route
           echo "--- Teste de ping à VM ---"
-          ping -c 4 ${{ secrets.AGENTA }} || echo "A VM ainda não responde — a VPN pode demorar mais um pouco."
+          ping -c 4 10.255.32.134 || echo "A VM ainda não responde — a VPN pode demorar mais um pouco."
 
       ######################################################################
       # 4 — Setup SSH (apenas quando VPN está ativa)
