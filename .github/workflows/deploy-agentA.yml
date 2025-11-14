@@ -75,11 +75,21 @@ jobs:
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
           echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
 
-          # Adicionar VM aos hosts conhecidos
-          ssh-keyscan -H ${{ secrets.VM_USERNAME }}@${{ secrets.AGENTA }} >> ~/.ssh/known_hosts
+          # Configuração explícita no SSH config
+          cat >> ~/.ssh/config << EOF
+          Host agenta-vm
+            HostName ${{ secrets.AGENTA }}
+            User ${{ secrets.VM_USERNAME }}
+            IdentityFile ~/.ssh/id_rsa
+            StrictHostKeyChecking no
+          EOF
+
+          # Testar
+          ssh agenta-vm "echo '✅ Conectado!'"
 
       ######################################################################
       # 5 — Configurar Docker Context remoto
