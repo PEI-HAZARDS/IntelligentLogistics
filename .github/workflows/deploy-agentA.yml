@@ -58,7 +58,7 @@ jobs:
         run: |
           sudo openvpn --config vpn.ovpn --daemon
           echo "A ligar à VPN…"
-          sleep 40
+          sleep 100
 
       - name: Debug VPN Status
         run: |
