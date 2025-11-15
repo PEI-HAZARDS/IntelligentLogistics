@@ -8,6 +8,7 @@ on:
       - 'src/agentA_microservice/**'
       - '.github/workflows/deploy-agentA.yml'
 
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -64,7 +65,7 @@ jobs:
 
           echo "--- Teste ping VM ---"
           ping -c 3 ${{ secrets.AGENTA }} || echo "VM ainda não responde"
-          
+
 
       ######################################################################
       # 4 — Setup SSH (apenas quando VPN está ativa)
