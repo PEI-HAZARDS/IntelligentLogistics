@@ -2,7 +2,8 @@
 from shared_utils import RTSPstream
 from shared_utils.RTSPstream import *
 from agentB_microservice.src.YOLO_License_Plate import *
-from agentB_microservice.src.OCR import *
+#from agentB_microservice.src.OCR import *
+from agentB_microservice.src.OCR2 import *
 
 import os
 import time
