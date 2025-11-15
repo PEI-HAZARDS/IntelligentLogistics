@@ -38,33 +38,48 @@ jobs:
           echo "${{ secrets.VPN_CA }}" > ca.crt
           chmod 600 ca.crt
 
-          # TLS Auth Key (inclui comentários e headers)
+          # TLS Auth Key
           echo "${{ secrets.VPN_TLS_AUTH }}" > tls.key
           chmod 600 tls.key
 
-          # Criar .ovpn base
+          # Criar base .ovpn
           echo "${{ secrets.VPN_CONFIG }}" > vpn.ovpn
+
+          # Ajustar caminhos
+          sed -i 's|auth-user-pass|auth-user-pass auth.txt|' vpn.ovpn
+          sed -i 's|ca .*|ca ca.crt|' vpn.ovpn
+          sed -i 's|tls-auth .*|tls-auth tls.key 1|' vpn.ovpn
 
 
       ######################################################################
-      # 3 — Ligar à VPN (com logs)
+      # 3 — Ligar à VPN
       ######################################################################
       - name: Connect to VPN
         run: |
-          sudo openvpn --config vpn.ovpn --verb 4 --daemon
+          sudo openvpn --config vpn.ovpn --daemon
+          echo "Ligando à VPN…"
           sleep 15
 
-          echo "--- OpenVPN Log (últimos 50s) ---"
-          sudo grep openvpn /var/log/syslog | tail -n 50 || true
 
-          echo "--- Interfaces ---"
-          ip addr
-
-          echo "--- Rotas ---"
+      ######################################################################
+      # 4 — (IMPORTANTE) Corrigir rotas rejeitadas pelo GitHub runner
+      ######################################################################
+      - name: Fix VPN Routes
+        run: |
+          echo "Adicionar rota estática manual para 10.255.0.0/16"
+          sudo ip route add 10.255.0.0/16 via 172.16.10.1 dev tun0 || true
+          echo "--- Rotas atuais ---"
           ip route
 
-          echo "--- Teste ping VM ---"
-          ping -c 3 ${{ secrets.AGENTA }} || echo "VM ainda não responde"
+
+      ######################################################################
+      # 5 — Testar conectividade com a VM
+      ######################################################################
+      - name: Ping VM
+        run: |
+          echo "A testar ping a 10.255.32.134…"
+          ping -c 4 10.255.32.134 || echo "VM não respondeu — verificar firewall"
+
 
 
       ######################################################################
