@@ -92,7 +92,6 @@ jobs:
           
           echo "--- Teste ping ---"
           ping -c 3 ${{ secrets.AGENTA }} || echo "⚠️  Ping falhou"
-          
 
       ######################################################################
       # 3.5 — Test connectivity
@@ -102,17 +101,27 @@ jobs:
           TARGET_IP="${{ secrets.AGENTA }}"
           echo "🔍 Testando conectividade a $TARGET_IP..."
           
-          echo "--- Ping ---"
-          ping -c 3 $TARGET_IP && echo "✅ Ping OK" || echo "❌ Ping falhou"
+          # Aguardar um pouco mais
+          sleep 5
+          
+          echo "--- VPN Status ---"
+          ip addr show tun0 || echo "⚠️  tun0 não existe"
+          ip route | grep $TARGET_IP || echo "⚠️  Sem rota para $TARGET_IP"
+          
+          echo "--- Ping (tentativa 1) ---"
+          ping -c 5 $TARGET_IP && echo "✅ Ping OK" || echo "❌ Ping falhou"
+          
+          echo "--- Ping (tentativa 2 - com mais paciência) ---"
+          for i in {1..3}; do
+            echo "Tentativa $i..."
+            ping -c 2 -W 5 $TARGET_IP && echo "✅ Ping OK na tentativa $i" && break
+            sleep 2
+          done
           
           echo "--- SSH Port ---"
-          timeout 5 bash -c "cat < /dev/null > /dev/tcp/$TARGET_IP/22" && echo "✅ SSH port (22) aberto" || echo "❌ SSH port fechado"
-          
-          echo "--- ARP Resolution ---"
-          arp -n $TARGET_IP || echo "⚠️  ARP não resolveu"
-          
-          echo "--- Traceroute ---"
-          traceroute -m 5 $TARGET_IP || true
+          timeout 10 bash -c "cat < /dev/null > /dev/tcp/$TARGET_IP/22" && echo "✅ SSH port (22) aberto" || echo "❌ SSH port fechado"
+
+
 
       ######################################################################
       # 4 — Setup SSH
