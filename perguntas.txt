@@ -62,4 +62,4 @@ Dos simbolos e placas:
     Símbolo: Um ícone na parte superior ilustra o tipo de perigo. 
     Número da Classe: O número da classe de risco é exibido na parte inferior. 
 
-    Objetivo: Sinalizar visualmente a classe de perigo da carga transportada em cada embalagem. 
+    Objetivo: Sinalizar visualmente a classe de perigo da carga transportada em cada embalagem.
