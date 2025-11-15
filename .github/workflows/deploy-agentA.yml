@@ -23,7 +23,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y openvpn
-
+        
       ######################################################################
       # 2 — Criar ficheiros necessários para o túnel VPN
       ######################################################################
@@ -42,32 +42,29 @@ jobs:
           chmod 600 tls.key
 
           # Criar .ovpn base
-          echo "${{ secrets.VPN_CONFIG }}" > vpn-template.ovpn
+          echo "${{ secrets.VPN_CONFIG }}" > vpn.ovpn
 
-          # Substituir linhas para apontar para os ficheiros locais
-          sed 's|ca .*|ca ca.crt|' vpn-template.ovpn > vpn.ovpn
-          sed -i 's|tls-auth .*|tls-auth tls.key 1|' vpn.ovpn
-
-          # openvpn precisa saber onde está o auth.txt
-          sed -i 's|auth-user-pass|auth-user-pass auth.txt|' vpn.ovpn
 
       ######################################################################
-      # 3 — Ligar à VPN (com debug adicional)
+      # 3 — Ligar à VPN (com logs)
       ######################################################################
       - name: Connect to VPN
         run: |
-          sudo openvpn --config vpn.ovpn --daemon
-          echo "A ligar à VPN…"
-          sleep 20
+          sudo openvpn --config vpn.ovpn --verb 4 --daemon
+          sleep 15
 
-      - name: Debug VPN Status
-        run: |
+          echo "--- OpenVPN Log (últimos 50s) ---"
+          sudo grep openvpn /var/log/syslog | tail -n 50 || true
+
           echo "--- Interfaces ---"
           ip addr
+
           echo "--- Rotas ---"
           ip route
-          echo "--- Teste de ping à VM ---"
-          ping -c 4 ${{ secrets.AGENTA }} || echo "A VM ainda não responde — a VPN pode demorar mais um pouco."
+
+          echo "--- Teste ping VM ---"
+          ping -c 3 ${{ secrets.AGENTA }} || echo "VM ainda não responde"
+          
 
       ######################################################################
       # 4 — Setup SSH (apenas quando VPN está ativa)
