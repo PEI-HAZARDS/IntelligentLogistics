@@ -51,13 +51,16 @@ jobs:
           
           chmod 600 vpn_config/vpn.ovpn
 
+      
       ######################################################################
       # 3 — Ligar à VPN
       ######################################################################
       - name: Connect to VPN
         run: |
           cd vpn_config
-          sudo openvpn --config vpn.ovpn --verb 4 --daemon --log /tmp/openvpn.log
+          
+          # Tentar com sudo e sem scripts problemáticos
+          sudo openvpn --config vpn.ovpn --verb 4 --daemon --log /tmp/openvpn.log --script-security 0
           
           # Aguardar conexão
           for i in {1..30}; do
@@ -69,20 +72,80 @@ jobs:
             sleep 2
           done
           
+          # Forçar DNS manualmente
+          echo "Configurando DNS..."
+          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf > /dev/null
+          echo "nameserver 8.8.4.4" | sudo tee -a /etc/resolv.conf > /dev/null
+          
           # Verificações
           echo "--- Status VPN ---"
           ip addr show tun0 || echo "⚠️  Interface tun0 não encontrada"
           
           echo "--- Rotas ---"
-          ip route | grep tun0 || echo "⚠️  Nenhuma rota para tun0"
+          ip route | head -20
           
           echo "--- Log OpenVPN ---"
           sudo tail -n 50 /tmp/openvpn.log
           
           echo "--- Teste DNS ---"
-          nslookup temp-pfsense.av.it.pt || echo "⚠️  DNS falhou"
+          nslookup temp-pfsense.av.it.pt || echo "⚠️  DNS falhou (esperado em CI)"
+          
+          echo "--- Teste ping ---"
+          ping -c 3 ${{ secrets.AGENTA }} || echo "⚠️  Ping falhou"
+          
 
+      ######################################################################
+      # 3.5 — Test connectivity
+      ######################################################################
+      - name: Test connectivity to Agent A VM
+        run: |
+          TARGET_IP="${{ secrets.AGENTA }}"
+          echo "🔍 Testando conectividade a $TARGET_IP..."
+          
+          echo "--- Ping ---"
+          ping -c 3 $TARGET_IP && echo "✅ Ping OK" || echo "❌ Ping falhou"
+          
+          echo "--- SSH Port ---"
+          timeout 5 bash -c "cat < /dev/null > /dev/tcp/$TARGET_IP/22" && echo "✅ SSH port (22) aberto" || echo "❌ SSH port fechado"
+          
+          echo "--- ARP Resolution ---"
+          arp -n $TARGET_IP || echo "⚠️  ARP não resolveu"
+          
+          echo "--- Traceroute ---"
+          traceroute -m 5 $TARGET_IP || true
 
+      ######################################################################
+      # 4 — Setup SSH
+      ######################################################################
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          
+          echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          
+          # SSH config
+          cat > ~/.ssh/config << EOF
+          Host agenta-vm
+            HostName ${{ secrets.AGENTA }}
+            User ${{ secrets.VM_USERNAME }}
+            IdentityFile ~/.ssh/id_rsa
+            StrictHostKeyChecking no
+            UserKnownHostsFile=/dev/null
+            ConnectTimeout 10
+            ServerAliveInterval 60
+            ServerAliveCountMax 3
+          EOF
+          
+          chmod 600 ~/.ssh/config
+          
+          # Debug
+          echo "--- SSH Test ---"
+          ssh -vvv agenta-vm "echo '✅ SSH Conectado!'" || {
+            echo "SSH falhou!"
+            exit 1
+          }
 
 
       ######################################################################
