@@ -25,57 +25,63 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y openvpn
         
+      
       ######################################################################
       # 2 — Criar ficheiros necessários para o túnel VPN
       ######################################################################
       - name: Prepare VPN configuration files
         run: |
+          mkdir -p vpn_config
+          
           # Credenciais
-          echo -e "${{ secrets.VPN_USERNAME }}\n${{ secrets.VPN_PASSWORD }}" > auth.txt
-          chmod 600 auth.txt
+          echo "${{ secrets.VPN_USERNAME }}" > vpn_config/auth.txt
+          echo "${{ secrets.VPN_PASSWORD }}" >> vpn_config/auth.txt
+          chmod 600 vpn_config/auth.txt
 
           # CA
-          echo "${{ secrets.VPN_CA }}" > ca.crt
-          chmod 600 ca.crt
+          echo "${{ secrets.VPN_CA }}" > vpn_config/ca.crt
+          chmod 600 vpn_config/ca.crt
 
-          # TLS Auth Key (inclui comentários e headers)
-          echo "${{ secrets.VPN_TLS_AUTH }}" > tls.key
-          chmod 600 tls.key
+          # TLS Auth Key
+          echo "${{ secrets.VPN_TLS_AUTH }}" > vpn_config/tls.key
+          chmod 600 vpn_config/tls.key
 
-          # Criar .ovpn base
-          echo "${{ secrets.VPN_CONFIG }}" > vpn.ovpn
-
+          # Guardar .ovpn do secret
+          echo "${{ secrets.VPN_CONFIG }}" > vpn_config/vpn.ovpn
+          
+          chmod 600 vpn_config/vpn.ovpn
 
       ######################################################################
-      # 3 — Ligar à VPN (com logs)
+      # 3 — Ligar à VPN
       ######################################################################
       - name: Connect to VPN
         run: |
-          sudo openvpn --config vpn.ovpn --verb 4 --daemon
-          sleep 15
-
-          echo "--- OpenVPN Log (últimos 50s) ---"
-          sudo grep openvpn /var/log/syslog | tail -n 50 || true
-
-          echo "--- Interfaces ---"
-          ip addr
-
+          cd vpn_config
+          sudo openvpn --config vpn.ovpn --verb 4 --daemon --log /tmp/openvpn.log
+          
+          # Aguardar conexão
+          for i in {1..30}; do
+            if ip addr show tun0 > /dev/null 2>&1; then
+              echo "✅ VPN conectada na tentativa $i"
+              break
+            fi
+            echo "Aguardando VPN... ($i/30)"
+            sleep 2
+          done
+          
+          # Verificações
+          echo "--- Status VPN ---"
+          ip addr show tun0 || echo "⚠️  Interface tun0 não encontrada"
+          
           echo "--- Rotas ---"
-          ip route
+          ip route | grep tun0 || echo "⚠️  Nenhuma rota para tun0"
+          
+          echo "--- Log OpenVPN ---"
+          sudo tail -n 50 /tmp/openvpn.log
+          
+          echo "--- Teste DNS ---"
+          nslookup temp-pfsense.av.it.pt || echo "⚠️  DNS falhou"
 
-          echo "--- Teste ping VM ---"
-          ping -c 3 ${{ secrets.AGENTA }} || echo "VM ainda não responde"
-
-      
-      ######################################################################
-      # (IMPORTANTE) Corrigir rotas rejeitadas pelo GitHub runner
-      ######################################################################
-      - name: Fix VPN Routes
-        run: |
-          echo "Adicionar rota estática manual para 10.255.0.0/16"
-          sudo ip route add 10.255.0.0/16 via 172.16.10.1 dev tun0 || true
-          echo "--- Rotas atuais ---"
-          ip route
 
 
       ######################################################################
