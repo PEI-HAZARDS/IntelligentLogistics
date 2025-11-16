@@ -1,0 +1,34 @@
+name: Deploy Kafka
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/docker-compose.yml'
+      - '.github/workflows/deploy-kafka.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Docker context for Kafka
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.KAFKA }} >> ~/.ssh/known_hosts
+          
+          # Criar e usar Docker context para Kafka
+          docker context create kafka --docker "host=ssh://${{ secrets.VM_USERNAME }}@${{ secrets.KAFKA }}"
+          docker context use kafka
+
+      - name: Deploy Kafka and shared services
+        run: |
+          # Deploy dos serviços usando o docker-compose principal
+          docker compose -f docker-compose.yml up -d kafka
+          
+          echo 'Kafka deployed successfully'

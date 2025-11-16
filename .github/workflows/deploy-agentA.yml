@@ -1,0 +1,200 @@
+name: Deploy Agent A
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/agentA_microservice/**'
+      - '.github/workflows/deploy-agentA.yml'
+
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      ######################################################################
+      # 1 — Instalar OpenVPN
+      ######################################################################
+      - name: Install OpenVPN
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openvpn openvpn-systemd-resolved net-tools dnsmasq
+        
+      
+      ######################################################################
+      # 2 — Criar ficheiros necessários para o túnel VPN
+      ######################################################################
+      - name: Prepare VPN configuration files
+        run: |
+          mkdir -p vpn_config
+          
+          # Credenciais
+          echo "${{ secrets.VPN_USERNAME }}" > vpn_config/auth.txt
+          echo "${{ secrets.VPN_PASSWORD }}" >> vpn_config/auth.txt
+          chmod 600 vpn_config/auth.txt
+
+          # CA
+          echo "${{ secrets.VPN_CA }}" > vpn_config/ca.crt
+          chmod 600 vpn_config/ca.crt
+
+          # TLS Auth Key
+          echo "${{ secrets.VPN_TLS_AUTH }}" > vpn_config/tls.key
+          chmod 600 vpn_config/tls.key
+
+          # Guardar .ovpn do secret
+          echo "${{ secrets.VPN_CONFIG }}" > vpn_config/vpn.ovpn
+          
+          chmod 600 vpn_config/vpn.ovpn
+
+      
+      ######################################################################
+      # 3 — Ligar à VPN
+      ######################################################################
+      - name: Connect to VPN
+        run: |
+          cd vpn_config
+          
+          # Tentar com sudo e sem scripts problemáticos
+          sudo openvpn --config vpn.ovpn --verb 4 --daemon --log /tmp/openvpn.log --script-security 0
+          
+          # Aguardar conexão
+          for i in {1..30}; do
+            if ip addr show tun0 > /dev/null 2>&1; then
+              echo "✅ VPN conectada na tentativa $i"
+              break
+            fi
+            echo "Aguardando VPN... ($i/30)"
+            sleep 2
+          done
+          
+          # Forçar DNS manualmente
+          echo "Configurando DNS..."
+          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf > /dev/null
+          echo "nameserver 8.8.4.4" | sudo tee -a /etc/resolv.conf > /dev/null
+          
+          # Verificações
+          echo "--- Status VPN ---"
+          ip addr show tun0 || echo "⚠️  Interface tun0 não encontrada"
+          
+          echo "--- Rotas ---"
+          ip route | head -20
+          
+          echo "--- Log OpenVPN ---"
+          sudo tail -n 50 /tmp/openvpn.log
+          
+          echo "--- Teste DNS ---"
+          nslookup temp-pfsense.av.it.pt || echo "⚠️  DNS falhou (esperado em CI)"
+          
+          echo "--- Teste ping ---"
+          ping -c 3 ${{ secrets.AGENTA }} || echo "⚠️  Ping falhou"
+
+      ######################################################################
+      # 3.5 — Test connectivity
+      ######################################################################
+      - name: Test connectivity to Agent A VM
+        run: |
+          TARGET_IP="${{ secrets.AGENTA }}"
+          echo "🔍 Testando conectividade a $TARGET_IP..."
+          
+          # Aguardar um pouco mais
+          sleep 5
+          
+          echo "--- VPN Status ---"
+          ip addr show tun0 || echo "⚠️  tun0 não existe"
+          ip route | grep $TARGET_IP || echo "⚠️  Sem rota para $TARGET_IP"
+          
+          echo "--- Ping (tentativa 1) ---"
+          ping -c 5 $TARGET_IP && echo "✅ Ping OK" || echo "❌ Ping falhou"
+          
+          echo "--- Ping (tentativa 2 - com mais paciência) ---"
+          for i in {1..3}; do
+            echo "Tentativa $i..."
+            ping -c 2 -W 5 $TARGET_IP && echo "✅ Ping OK na tentativa $i" && break
+            sleep 2
+          done
+          
+          echo "--- SSH Port ---"
+          timeout 10 bash -c "cat < /dev/null > /dev/tcp/$TARGET_IP/22" && echo "✅ SSH port (22) aberto" || echo "❌ SSH port fechado"
+
+
+
+      ######################################################################
+      # 4 — Setup SSH
+      ######################################################################
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          
+          echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          
+          # SSH config
+          cat > ~/.ssh/config << EOF
+          Host agenta-vm
+            HostName ${{ secrets.AGENTA }}
+            User ${{ secrets.VM_USERNAME }}
+            IdentityFile ~/.ssh/id_rsa
+            StrictHostKeyChecking no
+            UserKnownHostsFile=/dev/null
+            ConnectTimeout 10
+            ServerAliveInterval 60
+            ServerAliveCountMax 3
+          EOF
+          
+          chmod 600 ~/.ssh/config
+          
+          # Debug
+          echo "--- SSH Test ---"
+          ssh -vvv agenta-vm "echo '✅ SSH Conectado!'" || {
+            echo "SSH falhou!"
+            exit 1
+          }
+
+
+      ######################################################################
+      # 4 — Setup SSH (apenas quando VPN está ativa)
+      ######################################################################
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          # Configuração explícita no SSH config
+          cat >> ~/.ssh/config << EOF
+          Host agenta-vm
+            HostName ${{ secrets.AGENTA }}
+            User ${{ secrets.VM_USERNAME }}
+            IdentityFile ~/.ssh/id_rsa
+            StrictHostKeyChecking no
+          EOF
+
+          # Testar
+          ssh agenta-vm "echo '✅ Conectado!'"
+
+      ######################################################################
+      # 5 — Configurar Docker Context remoto
+      ######################################################################
+      - name: Configure Docker context
+        run: |
+          docker context create agentA --docker "host=ssh://${{ secrets.VM_USERNAME }}@${{ secrets.AGENTA }}"
+          docker context use agentA
+
+      ######################################################################
+      # 6 — Build + Deploy na VM
+      ######################################################################
+      - name: Build and Deploy Agent A
+        run: |
+          docker build -t agentA:latest -f src/agentA_microservice/Dockerfile .
+          docker stop agentA || true
+          docker rm agentA || true
+          docker run -d --name agentA agentA:latest
+
+          echo "Deploy concluído com sucesso ✔️"
