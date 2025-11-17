@@ -5,9 +5,9 @@
 | Feature                       | Our System | Outpost | DockerVision | VisionPlatform.ai | Brainy Neurals |
 |-------------------------------|------------|---------|--------------|--------------------|----------------|
 | Vehicle Detection             | ✅          | ✅       | ✅            | ✅                  | ✅        | 
-| License Plate Recognition     | ✅          | ✅       | ⛔            | ✅                  | ✅        | 
-| Hazardous Cargo Detection     | ✅          | ✅       | ✅            | ✅                  | ✅        | 
-| Automated Entry Authorization | ✅          | ✅       | ✅            | ✅                  | ✅        | 
+| License Plate Recognition     | ✅          | ✅       | ⛔            | ✅                  | 🟨        | 
+| Hazardous Cargo Detection     | ✅          | ✅       | ✅            | ✅                  | ⛔        | 
+| Automated Entry Authorization | ✅          | ✅       | ⛔            | ✅                  | ✅        | 
 | Internal Routing Guidance     | ✅          | ⛔       | ⛔            | ⛔                  | ⛔        |
 | Statistical Analysis & Metrics| ✅          | ✅       | ⛔            | 🟨                  | 🟨        |
 | Energy Efficiency Optimization| ✅          | ⛔       | ⛔            | ⛔                  | ⛔        | 
