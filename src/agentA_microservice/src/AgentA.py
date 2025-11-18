@@ -10,7 +10,7 @@ import json
 RTSP_STREAM_LOW = "rtsp://10.255.35.86:554/stream2"
 MESSAGE_INTERVAL = 30  # seconds
 KAFKA_TOPIC = "truck-detected"
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.64:9092")
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
 logger = logging.getLogger("AgentA")
 
 

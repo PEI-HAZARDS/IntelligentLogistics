@@ -20,7 +20,7 @@ os.makedirs(CROPS_PATH, exist_ok=True)
 
 
 # Configurações Kafka
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.64:9092")
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
 TOPIC_CONSUME = "truck-detected"
 TOPIC_PRODUCE = "license-plate-detected"
 logger = logging.getLogger("AgentB")
