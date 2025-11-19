@@ -19,7 +19,7 @@ os.makedirs(CROPS_PATH, exist_ok=True)
 
 
 # Configurações Kafka
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.64:9092")
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
 TOPIC_CONSUME = "truck-detected"
 TOPIC_PRODUCE = "license-plate-detected"
 logger = logging.getLogger("AgentB")
@@ -132,7 +132,7 @@ class AgentB:
 
                         logger.info("[AgentB] OCR extracting text…")
                         try:
-                            text, ocr_conf = self.ocr.extract_text(crop)
+                            text, ocr_conf = self.ocr._extract_text(crop)
                             lp_results.append((text, float(ocr_conf)))
                             lp_crop = crop
                             logger.info(f"[AgentB] OCR: '{text}' (conf={ocr_conf:.2f})")
