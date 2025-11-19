@@ -2,8 +2,7 @@
 from shared_utils import RTSPstream
 from shared_utils.RTSPstream import *
 from agentB_microservice.src.YOLO_License_Plate import *
-#from agentB_microservice.src.OCR import *
-from agentB_microservice.src.OCR2 import *
+from agentB_microservice.src.OCR import *
 
 import os
 import time
@@ -133,7 +132,7 @@ class AgentB:
 
                         logger.info("[AgentB] OCR extracting text…")
                         try:
-                            text, ocr_conf = self.ocr.extract_text(crop)
+                            text, ocr_conf = self.ocr._extract_text(crop)
                             lp_results.append((text, float(ocr_conf)))
                             lp_crop = crop
                             logger.info(f"[AgentB] OCR: '{text}' (conf={ocr_conf:.2f})")
