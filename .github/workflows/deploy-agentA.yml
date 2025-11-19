@@ -105,8 +105,11 @@ jobs:
           sleep 5
           
           echo "--- VPN Status ---"
+          ip r
           ip addr show tun0 || echo "⚠️  tun0 não existe"
           ip route | grep $TARGET_IP || echo "⚠️  Sem rota para $TARGET_IP"
+
+          ping -c 3 172.16.10.1
           
           echo "--- Ping (tentativa 1) ---"
           ping -c 5 $TARGET_IP && echo "✅ Ping OK" || echo "❌ Ping falhou"
