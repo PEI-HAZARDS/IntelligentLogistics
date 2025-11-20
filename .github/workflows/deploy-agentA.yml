@@ -72,26 +72,18 @@ jobs:
             sleep 2
           done
           
-          # Forçar DNS manualmente
-          echo "Configurando DNS..."
-          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf > /dev/null
-          echo "nameserver 8.8.4.4" | sudo tee -a /etc/resolv.conf > /dev/null
-          
           # Verificações
           echo "--- Status VPN ---"
           ip addr show tun0 || echo "⚠️  Interface tun0 não encontrada"
           
+          echo "Removing Faulty Route"
+          sudo ip route delete 193.136.92.0/23 via 172.16.10.1 dev tun0
+
           echo "--- Rotas ---"
-          ip route | head -20
-          
-          echo "--- Log OpenVPN ---"
-          sudo tail -n 50 /tmp/openvpn.log
-          
-          echo "--- Teste DNS ---"
-          nslookup temp-pfsense.av.it.pt || echo "⚠️  DNS falhou (esperado em CI)"
+          ip route 
           
           echo "--- Teste ping ---"
-          ping -c 3 ${{ secrets.AGENTA }} || echo "⚠️  Ping falhou"
+          ping -c 5 ${{ secrets.AGENTA }} || echo "⚠️  Ping falhou"
 
       ######################################################################
       # 3.5 — Test connectivity
@@ -109,8 +101,6 @@ jobs:
           ip addr show tun0 || echo "⚠️  tun0 não existe"
           ip route | grep $TARGET_IP || echo "⚠️  Sem rota para $TARGET_IP"
 
-          ping -c 3 172.16.10.1
-          
           echo "--- Ping (tentativa 1) ---"
           ping -c 5 $TARGET_IP && echo "✅ Ping OK" || echo "❌ Ping falhou"
           
