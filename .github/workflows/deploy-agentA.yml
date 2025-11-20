@@ -83,6 +83,9 @@ jobs:
           
           echo "--- Rotas ---"
           ip route | head -20
+
+          echo "Removing Faulty Route"
+          sudo ip route delete 193.136.92.0/23 via 172.16.10.1 dev tun0
           
           echo "--- Log OpenVPN ---"
           sudo tail -n 50 /tmp/openvpn.log
