@@ -1,0 +1,18 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# PostgreSQL
+psycopg2-binary
+SQLAlchemy
+alembic
+
+# Segurança / CORS
+python-multipart
+passlib[bcrypt]
+python-jose[cryptography]
+
+# Utilidades
+requests
+python-dotenv
