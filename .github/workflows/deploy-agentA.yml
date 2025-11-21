@@ -185,7 +185,7 @@ jobs:
       ######################################################################
       - name: Build and Deploy Agent A
         run: |
-          docker build -t agentA:latest -f src/agentA_microservice/Dockerfile .
+          docker build -t agenta:latest -f src/agentA_microservice/Dockerfile .
           docker stop agentA || true
           docker rm agentA || true
           docker run -d --name agentA agentA:latest
