@@ -22,7 +22,7 @@ COPY src/agentA_microservice/src /app/agentA_microservice/src
 COPY src/agentA_microservice/setup.py /app/agentA_microservice/setup.py
 
 # Run setup script to download models if they arent already present
-RUN python app/agentA_microservice/setup.py
+RUN python agentA_microservice/setup.py
 COPY src/agentA_microservice/init.py /app/agentA_microservice/init.py
 
 
