@@ -177,7 +177,7 @@ jobs:
       ######################################################################
       - name: Configure Docker context
         run: |
-          docker context create agentA --docker "host=ssh://${{ secrets.VM_USERNAME }}@${{ secrets.AGENTA }}"
+          docker context create agentA --docker "host=ssh://agenta-vm"
           docker context use agentA
 
       ######################################################################
