@@ -1,5 +1,9 @@
 # Intelligent Logistics  
 
+[![Figma](https://img.shields.io/badge/Figma-Design-orange?logo=figma)](https://www.figma.com/files/team/1309815608365821624/project/171687163/PEI?fuid=1309815603742744973)
+[![Microsite](https://img.shields.io/badge/Microsite-PEI-blue?logo=github)](https://pei-hazards.github.io/Micro-site/)
+
+
 ## Introdução  
 Vivemos numa era em que a logística é invisível mas essencial: as nossas encomendas chegam no dia seguinte com apenas um clique, mas por trás desse processo existem milhões de contentores e operações complexas. Só em 2023, estima-se que **858 milhões de contentores** passaram por portos marítimos em todo o mundo, movimentados por navios, camiões e infraestruturas terrestres.  
 
@@ -75,8 +79,3 @@ Existe a possibilidade de integração com **datacenters reais** e redes em func
 - Interface de administração.
 - Interação via dashboard entre o operador da cancela e motorista (?).
 - Monitoria
-
-
-# Figma
-
-https://www.figma.com/board/JlCLhwM5PSqwUxG3hQKLJF/Pesonas-UserStories?node-id=0-1&t=YPScc6023B4tHqgQ-0

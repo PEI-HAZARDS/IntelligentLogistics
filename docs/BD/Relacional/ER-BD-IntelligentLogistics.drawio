@@ -25,9 +25,6 @@
                 <mxCell id="6" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Fim&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="-100" y="260" width="60" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="8" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Tipo_carrocaria&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
-                    <mxGeometry x="-310" y="160" width="100" height="20" as="geometry"/>
-                </mxCell>
                 <mxCell id="9" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Início&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="-160" y="260" width="60" height="20" as="geometry"/>
                 </mxCell>
@@ -191,20 +188,14 @@
                 <mxCell id="77" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Data&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="-280" y="660" width="50" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="78" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Comentário&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
-                    <mxGeometry x="-180" y="660" width="70" height="20" as="geometry"/>
-                </mxCell>
                 <mxCell id="79" value="&lt;font style=&quot;font-size: 14px;&quot;&gt;Alerta&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
                     <mxGeometry x="-480" y="630" width="60" height="30" as="geometry"/>
                 </mxCell>
                 <mxCell id="82" value="&lt;font style=&quot;font-size: 14px;&quot;&gt;Operador&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
                     <mxGeometry x="2" y="930" width="80" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="83" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Contacto&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
-                    <mxGeometry x="-320" y="960" width="60" height="20" as="geometry"/>
-                </mxCell>
                 <mxCell id="84" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Nível_acesso&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
-                    <mxGeometry x="-260" y="960" width="80" height="20" as="geometry"/>
+                    <mxGeometry x="-320" y="960" width="80" height="20" as="geometry"/>
                 </mxCell>
                 <mxCell id="85" value="&lt;font style=&quot;font-size: 14px;&quot;&gt;Gestor&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
                     <mxGeometry x="-485" y="930" width="70" height="30" as="geometry"/>
@@ -225,7 +216,7 @@
                     <mxGeometry x="-510" y="830" width="120" height="30" as="geometry"/>
                 </mxCell>
                 <mxCell id="92" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Descrição&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
-                    <mxGeometry x="-110" y="660" width="60" height="20" as="geometry"/>
+                    <mxGeometry x="-180" y="660" width="60" height="20" as="geometry"/>
                 </mxCell>
                 <mxCell id="99" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;&lt;u&gt;Id_deteção (PK)&lt;/u&gt;&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="-565" y="1060" width="105" height="20" as="geometry"/>
@@ -337,7 +328,7 @@
                 <mxCell id="128" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;&lt;u&gt;Num_trabalhor (PK)(FK)&lt;/u&gt;&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="37" y="960" width="140" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="130" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Origem&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                <mxCell id="130" value="&lt;span style=&quot;font-size: 11px;&quot;&gt;URL&lt;/span&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="-50" y="1060" width="60" height="20" as="geometry"/>
                 </mxCell>
                 <mxCell id="146" style="edgeStyle=orthogonalEdgeStyle;html=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" parent="1" source="131" target="128" edge="1">
@@ -362,7 +353,7 @@
                 <mxCell id="154" value="&lt;u style=&quot;color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251); font-size: 11px;&quot;&gt;Id_chegada (FK)&lt;/u&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="-460" y="1060" width="105" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="157" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Data_hora_chegada&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                <mxCell id="157" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Data_hora_chegada&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="300" y="59" width="110" height="20" as="geometry"/>
                 </mxCell>
             </root>
