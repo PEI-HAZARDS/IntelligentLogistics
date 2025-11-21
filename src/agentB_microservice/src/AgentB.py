@@ -13,7 +13,10 @@ from queue import Queue, Empty
 from confluent_kafka import Producer, Consumer, KafkaException # type: ignore
 from shared_utils.RTSPstream import *
 
-RTSP_STREAM_HIGH = "rtsp://10.255.35.86:554/stream1"
+# URL do stream HIGH (4K) via Nginx RTMP
+# Antes: rtsp://10.255.35.86:554/stream1
+# Agora: rtmp://nginx-rtmp/streams_high/gate01
+RTSP_STREAM_HIGH = os.getenv("RTSP_STREAM_HIGH", "rtmp://nginx-rtmp/streams_high/gate01")
 CROPS_PATH = "agentB_microservice/data/lp_crops"
 os.makedirs(CROPS_PATH, exist_ok=True)
 
@@ -39,8 +42,10 @@ class AgentB:
         self.ocr = OCR()
         self.running = True
         self.frames_queue = Queue()
-        # Liga a stream RTSP
-        self.stream = RTSPStream(RTSP_STREAM_HIGH)
+        
+        # NÃO conecta ao stream no __init__
+        # Conecta on-demand quando recebe evento do Kafka
+        self.stream = None
 
         bootstrap = kafka_bootstrap or KAFKA_BOOTSTRAP
         logger.info(f"[AgentB/Kafka] bootstrap: {bootstrap}")
@@ -64,8 +69,17 @@ class AgentB:
 
 
     def _get_frames(self, num_frames=1):
-        """Captura alguns frames do RTSP."""
-        logger.info(f"[AgentB] reading {num_frames} frame(s) from RTSP…")
+        """Captura alguns frames do RTMP/RTSP."""
+        # Conectar ao stream se não estiver conectado
+        if self.stream is None:
+            logger.info(f"[AgentB] Connecting to RTMP stream (via Nginx): {RTSP_STREAM_HIGH}")
+            try:
+                self.stream = RTSPStream(RTSP_STREAM_HIGH)
+            except Exception as e:
+                logger.exception(f"[AgentB] Failed to connect to stream: {e}")
+                return
+        
+        logger.info(f"[AgentB] reading {num_frames} frame(s) from RTMP…")
         captured = 0
         while captured < num_frames and self.running:
             try:
@@ -246,10 +260,11 @@ class AgentB:
         finally:
             logger.info("[AgentB] Freeing resources…")
             try:
-                self.stream.release()
-                logger.debug("[AgentB] RTSP stream released.")
+                if self.stream is not None:
+                    self.stream.release()
+                    logger.debug("[AgentB] RTMP stream released.")
             except Exception as e:
-                logger.exception(f"[AgentB] Error releasing RTSP stream: {e}")
+                logger.exception(f"[AgentB] Error releasing RTMP stream: {e}")
             try:
                 self.producer.flush(5)
             except Exception:
