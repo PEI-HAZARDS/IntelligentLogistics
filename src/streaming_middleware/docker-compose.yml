@@ -1,0 +1,14 @@
+# docker-compose.yml
+services:
+  nginx-rtmp:
+    build: .
+    container_name: nginx-rtmp
+    ports:
+      - "1935:1935"
+      - "8080:8080"
+    environment:
+      CAMERA_IP: 10.255.35.86
+      STREAM_LOW_PATH: stream2
+      STREAM_HIGH_PATH: stream1
+      GATE_ID: gate01
+    restart: unless-stopped
