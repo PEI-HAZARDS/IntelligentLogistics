@@ -1,0 +1,101 @@
+20|Asphyxiant gas or gas with no subsidiary hazard
+22|Refrigerated liquefied gas, asphyxiant
+23|Flammable gas
+223|Refrigerated liquefied gas, flammable
+225|Refrigerated liquefied gas, oxidizing (fire-intensifying)
+238|Gas, flammable corrosive
+239|Flammable gas, which can spontaneously lead to violent reaction
+25|Oxidizing (fire-intensifying) gas
+26|Toxic gas
+263|Toxic gas, flammable
+265|Toxic gas, oxidizing (fire-intensifying)
+268|Toxic gas, corrosive
+28|Gas, corrosive
+285|Aerosols, corrosive, oxidizing
+30|30 Flammable liquid (flash-point between 23 °C and 60 °C, inclusive) or flammable liquid or solid in the molten state with a flash-point above 60 °C, heated to a temperature equal to or above its flash-point,
+or self-heating liquid
+323|Flammable liquid which reacts with water, emitting flammable gases
+X323|Flammable liquid which reacts dangerously with water, emitting flammable gases (water not to be used except by approval of experts)
+33|Highly flammable liquid (flash-point below 23 °C)
+333|Pyrophoric liquid
+X333|Pyrophoric liquid which reacts dangerously with water (water not to be used except by approval of experts)
+336|Highly flammable liquid, toxic
+338|Highly flammable liquid, corrosive
+X338|Highly flammable liquid, corrosive, which reacts dangerously with water (water not to be used except by approval of experts)
+339|Highly flammable liquid which can spontaneously lead to violent reaction
+36|Flammable liquid (flash-point between 23 °C and 60 °C, inclusive), slightly toxic, or self-heating liquid, toxic
+362|Flammable liquid, toxic, which reacts with water, emitting flammable gases
+X362|Flammable liquid toxic, which reacts dangerously with water, emitting flammable gases (water not to be used except by approval of experts)
+368|Flammable liquid, toxic, corrosive
+38|Flammable liquid (flash-point between 23 °C and 60 °C, inclusive), slightly corrosive or self-heating liquid, corrosive
+382|Flammable liquid, corrosive, which reacts with water, emitting flammable gases
+X382|Flammable liquid, corrosive, which reacts dangerously with water, emitting flammable gases (water not to be used except by approval of experts)
+39|Flammable liquid, which can spontaneously lead to violent reaction
+40|Flammable solid, or self-reactive substance, or self-heating substance, or polymerizing substance
+423|Solid which reacts with water, emitting flammable gases, or flammable solid which reacts with water, emitting flammable gases, or self-heating solid which reacts with water, emitting flammable gases
+X432|Solid which reacts dangerously with water, emitting flammable gases, or flammable solid wich reacts dangerously with water, emitting flammable gases or self-heating solid wich reacts dangerously with water, emitting flammable gases (water not to be used except by approval of experts)
+43|Spontaneously flammable (pyrophoric) solid
+X432|Spontaneously flammable (pyrophoric) solid which reacts dangerously with water, emitting flammable gases (water not to be used except by approval of experts)
+44|Flammable solid, in the molten state at an elevated temperature
+446|Flammable solid, toxic, in the molten state, at an elevated temperature
+46|Flammable or self-heating solid, toxic
+462|Toxic solid which reacts with water, emitting flammable gases
+X462|Solid which reacts dangerooutputusly with water, emitting toxic gases (water not to be used except by approval of experts)
+48|Flammable or self-heating solid, corrosive
+482|Corrosive solid which reacts with water, emitting flammable gases
+X482|Solid which reacts dangerously with water, emitting corrosive gases (water not to be used except by approval of experts)
+50|Oxidizing (fire-intensifying) substance
+539|Flammable organic peroxide
+55|Strongly oxidizing (fire-intensifying) substance
+556|Strongly oxidizing (fire-intensifying) substance, toxic
+558|Strongly oxidizing (fire-intensifying) substance, corrosive
+559|Strongly oxidizing (fire-intensifying) substance, which can spontaneously lead to violent reaction
+56|Oxidizing substance (fire-intensifying), toxic
+568|Oxidizing substance (fire-intensifying), toxic, corrosive
+58|Oxidizing substance (fire-intensifying), corrosive
+59|Oxidizing substance (fire-intensifying) which can spontaneously lead to violent reaction
+60|Toxic or slightly toxic substance
+606|Infectious substance
+623|Toxic liquid, which reacts with water, emitting flammable gases
+63|Toxic substance, flammable (flash-point between 23 °C and 60 °C, inclusive)
+638|Toxic substance, flammable (flash-point between 23 °C and 60 °C, inclusive), corrosive
+639|Toxic substance, flammable (flash-point not above 60 °C) which can spontaneously lead to violent reaction
+64|Toxic solid, flammable or self-heating
+642|Toxic solid, which reacts with water, emitting flammable gases
+65|Toxic substance, oxidizing (fire-intensifying)
+66|Highly toxic substance
+663|Highly toxic substance, flammable (flash-point not above 60 °C)
+664|Highly toxic solid, flammable or self-heating
+665|Highly toxic substance, oxidizing (fire-intensifying)
+668|Highly toxic substance, corrosive
+X668|Highly toxic substance, corrosive, which reacts dangerously with water (water not to be used except by approval of experts)
+669|Highly toxic substance which can spontaneously lead to violent reaction
+68|Toxic substance, corrosive
+687|Toxic substance, corrosive, radioactive
+69|Toxic or slightly toxic substance, which can spontaneously lead to violent reaction
+70|Radioactive material
+768|Radioactive material, toxic, corrosive
+78|Radioactive material, toxic
+80|Corrosive or slightly corrosive substance
+X80|Corrosive or slightly corrosive substance, which reacts dangerously with water (water not to be used except by approval of experts)
+823|Corrosive liquid which reacts with water, emitting flammable gases
+83|Corrosive or slightly corrosive substance, flammable (flash-point between 23 °C and 60 °C, inclusive)
+X83|Corrosive or slightly corrosive substance, flammable, (flash-point between 23 °C and 60 °C, inclusive), which reacts dangerously with water (water not to be used except by approval of experts)
+836|Corrosive or slightly corrosive substance, flammable (flash-point between 23ºC and 60ºC, inclusive) and toxic
+839|Corrosive or slightly corrosive substance, flammable (flash-point between 23 °C and 60 °C inclusive) which can spontaneously lead to violent reaction
+X839|Corrosive or slightly corrosive substance, flammable (flash-point between 23 °C and 60 °C inclusive), which can spontaneously lead to violent reaction and which reacts dangerously with water (water not to be used except by approval of experts)
+84|Corrosive solid, flammable or self-heating
+842|Corrosive solid which reacts with water, emitting flammable gases
+85|Corrosive or slightly corrosive substance, oxidizing (fire-intensifying)
+856|Corrosive or slightly corrosive substance, oxidizing (fire-intensifying) and toxic
+86|Corrosive or slightly corrosive substance, toxic
+88|Highly corrosive substance
+X88|Highly corrosive substance, which reacts dangerously with water (water not to be used except by approval of experts)
+883|Highly corrosive substance, flammable (flash-point between 23 °C and 60 °C inclusive)
+884|Highly corrosive solid, flammable or self-heating
+885|Highly corrosive substance, oxidizing (fire-intensifying)
+886|Highly corrosive substance, toxic
+X886|Highly corrosive substance, toxic, which reacts dangerously with water (water not to be used except by approval of experts)
+89|Corrosive or slightly corrosive substance, which can spontaneously lead to violent reaction
+90|Environmentally hazardous substance; miscellaneous dangerous substances
+99|Miscellaneous dangerous substance carried at an elevated temperature

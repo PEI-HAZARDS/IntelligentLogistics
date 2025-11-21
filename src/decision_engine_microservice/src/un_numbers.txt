@@ -1,0 +1,2273 @@
+1088|Acetal
+1089|Acetaldehyde
+1841|Acetaldehyde ammonia
+2332|Acetaldehyde oxime
+2790|Acetic acid solution, not less than 50% but not more than 80% acid, by mass
+2790|Acetic acid solution, with more than 10% and less than 50% acid, by mass
+    |Acetic acid, glacial or Acetic acid solution, with more than 80% acid, by mass
+1715|Acetic anhydride
+1090|Acetone
+1541|Acetone cyanohydrin, stabilized
+1091|Acetone oils
+1648|Acetonitrile
+1716|Acetyl bromide
+1717|Acetyl chloride
+1898|Acetyl iodide
+2621|Acetyl methyl carbinol
+1001|Acetylene, dissolved
+2713|Acridine
+2607|Acrolein dimer, stabilized
+1092|Acrolein, stabilized
+3426|Acrylamide solution
+2074|Acrylamide, solid
+2218|Acrylic acid, stabilized
+1093|Acrylonitrile, stabilized
+1133|Adhesives, containing a flammable liquid
+2205|Adiponitrile
+3510|Adsorbed gas, flammable, n.o.s.
+3511|Adsorbed gas, n.o.s.
+3513|Adsorbed gas, oxidizing, n.o.s.
+3516|Adsorbed gas, toxic, corrosive, n.o.s. Inhalation hazard zone A
+3516|Adsorbed gas, toxic, corrosive, n.o.s. Inhalation hazard zone B
+3516|Adsorbed gas, toxic, corrosive, n.o.s. Inhalation hazard zone C
+3516|Adsorbed gas, toxic, corrosive, n.o.s. Inhalation hazard zone D
+3517|Adsorbed gas, toxic, flammable, corrosive, n.o.s. Inhalation hazard zone A
+3517|Adsorbed gas, toxic, flammable, corrosive, n.o.s. Inhalation hazard zone B
+3517|Adsorbed gas, toxic, flammable, corrosive, n.o.s. Inhalation hazard zone C
+3517|Adsorbed gas, toxic, flammable, corrosive, n.o.s. Inhalation hazard zone D
+3514|Adsorbed gas, toxic, flammable, n.o.s. Inhalation hazard zone A
+3514|Adsorbed gas, toxic, flammable, n.o.s. Inhalation hazard zone B
+3514|Adsorbed gas, toxic, flammable, n.o.s. Inhalation hazard zone C
+3514|Adsorbed gas, toxic, flammable, n.o.s. Inhalation hazard zone D
+3512|Adsorbed gas, toxic, n.o.s. Inhalation hazard zone A
+3512|Adsorbed gas, toxic, n.o.s. Inhalation hazard zone B
+3512|Adsorbed gas, toxic, n.o.s. Inhalation hazard zone C
+3512|Adsorbed gas, toxic, n.o.s. Inhalation hazard zone D
+3518|Adsorbed gas, toxic, oxidizing, corrosive, n.o.s. Inhalation hazard zone A
+3518|Adsorbed gas, toxic, oxidizing, corrosive, n.o.s. Inhalation hazard zone B
+3518|Adsorbed gas, toxic, oxidizing, corrosive, n.o.s. Inhalation hazard zone C
+3518|Adsorbed gas, toxic, oxidizing, corrosive, n.o.s. Inhalation hazard zone D
+3515|Adsorbed gas, toxic, oxidizing, n.o.s. Inhalation hazard zone A
+3515|Adsorbed gas, toxic, oxidizing, n.o.s. Inhalation hazard zone B
+3515|Adsorbed gas, toxic, oxidizing, n.o.s. Inhalation hazard zone C
+3515|Adsorbed gas, toxic, oxidizing, n.o.s. Inhalation hazard zone D
+1950|Aerosols, corrosive, Packing Group II or III, (each not exceeding 1 L capacity).
+1950|Aerosols, flammable, (each not exceeding 1 L capacity)
+1950|Aerosols, flammable, n.o.s. (engine starting fluid) (each not exceeding 1 L capacity)
+1950|Aerosols, non-flammable, (each not exceeding 1 L capacity)
+1950|Aerosols, poison, Packing Group III (each not exceeding 1 L capacity)
+1002|Air, compressed
+1003|Air, refrigerated liquid, (cryogenic liquid)
+1003|Air, refrigerated liquid, (cryogenic liquid) non-pressurized
+3274|Alcoholates solution, n.o.s., in alcohol
+3065|Alcoholic beverages
+1986|Alcohols, flammable, toxic n.o.s.
+1987|Alcohols, n.o.s.
+1988|Aldehydes, flammable, toxic, n.o.s.
+1989|Aldehydes, n.o.s.
+3206|Alkali metal alcoholates, self-heating, corrosive, n.o.s.
+1421|Alkali metal alloys, liquid, n.o.s.
+1389|Alkali metal amalgam, liquid
+3401|Alkali metal amalgam, solid
+1390|Alkali metal amides
+3482|Alkali metal dispersions, flammable or Alkaline earth metal dispersions, flammable
+1391|Alkali metal dispersions, or Alkaline earth metal dispersions
+3205|Alkaline earth metal alcoholates, n.o.s.
+1393|Alkaline earth metal alloys, n.o.s.
+1392|Alkaline earth metal amalgams, liquid
+3402|Alkaline earth metal amalgams, solid
+3140|Alkaloids, liquid, n.o.s., or Alkaloid salts, liquid, n.o.s.
+1544|Alkaloids, solid, n.o.s. or Alkaloid salts, solid, n.o.s. poisonous
+2584|Alkyl sulfonic acids, liquid or Aryl sulfonic acids, liquid with more than 5% free sulfuric acid
+2586|Alkyl sulfonic acids, liquid or Aryl sulfonic acids, liquid with not more than 5% free sulfuric acid
+2585|Alkyl sulfonic acids, solid or Aryl sulfonic acids, solid with not more than 5% free sulfuric acid
+2583|Alkyl sulfonic acids, solid or Aryl sulfonic acids, solid, with more than 5% free sulfuric acid
+3145|Alkylphenols, liquid, n.o.s. (including C2-C12 homologues)
+2430|Alkylphenols, solid, n.o.s. (including C2-C12 homologues)
+2571|Alkylsulfuric acids
+2333|Allyl acetate
+1098|Allyl alcohol
+1099|Allyl bromide
+1100|Allyl chloride
+1722|Allyl chloroformate
+2335|Allyl ethyl ether
+2336|Allyl formate
+2219|Allyl glycidyl ether
+1723|Allyl iodide
+1545|Allyl isothiocyanate, stabilized
+2334|Allylamine
+1724|Allyltrichlorosilane, stabilized
+2870|Aluminum borohydride or Aluminum borohydride in devices
+1725|Aluminum bromide, anhydrous
+2580|Aluminum bromide, solution
+1394|Aluminum carbide
+1726|Aluminum chloride, anhydrous
+2581|Aluminum chloride, solution
+1395|Aluminum ferrosilicon powder
+2463|Aluminum hydride
+1438|Aluminum nitrate
+1397|Aluminum phosphide
+3048|Aluminum phosphide pesticides
+1309|Aluminum powder, coated
+1396|Aluminum powder, uncoated
+2715|Aluminum resinate
+1398|Aluminum silicon powder, uncoated
+3170|Aluminum smelting by-products or Aluminum remelting by-products
+9260|Aluminum, molten
+2733|Amine, flammable, corrosive, n.o.s. or Polyamines, flammable, corrosive, n.o.s.
+2734|Amine, liquid, corrosive, flammable, n.o.s. or Polyamines, liquid, corrosive, flammable, n.o.s.
+2735|Amines, liquid, corrosive, n.o.s., or Polyamines, liquid, corrosive, n.o.s.
+3259|Amines, solid, corrosive, n.o.s., or Polyamines, solid, corrosive n.o.s.
+3317|2-Amino-4,6-Dinitrophenol, wetted with not less than 20% water by mass
+2673|2-Amino-4-chlorophenol
+2946|2-Amino-5-diethylaminopentane
+3055|2-(2-Aminoethoxy) ethanol
+2815|N-Aminoethylpiperazine
+2512|Aminophenols (o-; m-; p-)
+2671|Aminopyridines (o-; m-; p-)
+3318|Ammonia solution, relative density less than 0.880 at 15 degrees C in water, with more than 50% ammonia
+1005|Ammonia, anhydrous
+1546|Ammonium arsenate
+1439|Ammonium dichromate
+3424|Ammonium dinitro-o-cresolate solution
+1843|Ammonium dinitro-o-cresolate, solid
+2505|Ammonium fluoride
+2854|Ammonium fluorosilicate
+2506|Ammonium hydrogen sulfate
+1727|Ammonium hydrogendifluoride, solid
+2817|Ammonium hydrogendifluoride, solution
+2859|Ammonium metavanadate
+2067|Ammonium nitrate based fertilizer, (Hazard class or Division 5.1)
+2071|Ammonium nitrate based fertilizer, (Hazard class or Division 9)
+2426|Ammonium nitrate, liquid (hot concentrated solution)
+0331|Ammonium nitrate-fuel oil mixture containing only prilled ammonium nitrate and fuel oil
+0402|Ammonium perchlorate
+1442|Ammonium perchlorate
+1444|Ammonium persulfate
+0004|Ammonium picrate, dry or wetted with less than 10% water, by mass
+1310|Ammonium picrate, wetted with not less than 10% water, by mass
+2818|Ammonium polysulfide, solution
+2861|Ammonium polyvanadate
+2683|Ammonium sulfide solution
+0245|Ammunition smoke, white phosphorus with burster, expelling charge, or propelling charge
+0171|Ammunition, illuminating with or without burster, expelling charge or propelling charge
+0254|Ammunition, illuminating with or without burster, expelling charge or propelling charge
+0297|Ammunition, illuminating with or without burster, expelling charge or propelling charge
+0247|Ammunition, incendiary liquid or gel, with burster, expelling charge or propelling charge
+0300|Ammunition, incendiary with or without burster, expelling charge or propelling charge
+0009|Ammunition, incendiary with or without burster, expelling charge, or propelling charge
+0010|Ammunition, incendiary with or without burster, expelling charge, or propelling charge
+0243|Ammunition, incendiary, white phosphorus, with burster, expelling charge or propelling charge
+0244|Ammunition, incendiary, white phosphorus, with burster, expelling charge or propelling charge
+0362|Ammunition, practice
+0488|Ammunition, practice
+0363|Ammunition, proof
+0015|Ammunition, smoke with or without burster, expelling charge or propelling charge
+0016|Ammunition, smoke with or without burster, expelling charge or propelling charge
+0303|Ammunition, smoke with or without burster, expelling charge or propelling charge
+0246|Ammunition, smoke, white phosphorus with burster, expelling charge, or propelling charge
+0018|Ammunition, tear-producing with burster, expelling charge or propelling charge
+0019|Ammunition, tear-producing with burster, expelling charge or propelling charge
+0301|Ammunition, tear-producing with burster, expelling charge or propelling charge
+2017|Ammunition, tear-producing, non-explosive, without burster or expelling charge, non-fuzed
+0020|Ammunition, toxic with burster, expelling charge or propelling charge
+0021|Ammunition, toxic with burster, expelling charge or propelling charge
+0020|Ammunition, toxic   with burster, expelling charge or propelling charge
+2016|Ammunition, toxic, non-explosive, without burster or expelling charge, non-fuzed
+1104|Amyl acetates
+2819|Amyl acid phosphate
+2620|Amyl butyrates
+1107|Amyl chloride
+1109|Amyl formates
+1111|Amyl mercaptan
+1110|n-Amyl methyl ketone
+1112|Amyl nitrate
+1113|Amyl nitrite
+1106|Amylamines
+1728|Amyltrichlorosilane
+1547|Aniline
+1548|Aniline hydrochloride
+2431|Anisidines
+2222|Anisole
+1729|Anisoyl chloride
+3141|Antimony compounds, inorganic, liquid, n.o.s.
+1549|Antimony compounds, inorganic, solid, n.o.s.
+1550|Antimony lactate
+1730|Antimony pentachloride, liquid
+1731|Antimony pentachloride, solutions
+1732|Antimony pentafluoride
+1551|Antimony potassium tartrate
+2871|Antimony powder
+1733|Antimony trichloride, liquid
+1733|Antimony trichloride, solid
+1006|Argon, compressed
+1951|Argon, refrigerated liquid (cryogenic liquid)
+1558|Arsenic
+1553|Arsenic acid, liquid
+1554|Arsenic acid, solid
+1555|Arsenic bromide
+1559|Arsenic pentoxide
+1560|Arsenic trichloride
+1561|Arsenic trioxide
+1562|Arsenical dust
+2994|Arsenical pesticides, liquid, flammable, toxic, flash point less than 23 degrees C 2760Arsenical pesticides, liquid, toxic
+2759|Arsenical pesticides, liquid, toxic, flammable, flash point not less than 23 degrees C 2993Arsenical pesticides, solid, toxic
+2188|Arsine
+3522|Arsine, adsorbed
+0349|Articles, explosive, extremely insensitive or Articles, EEI 0486Articles, explosive, n.o.s.
+0350|Articles, explosive, n.o.s.
+0351|Articles, explosive, n.o.s.
+0352|Articles, explosive, n.o.s.
+0353|Articles, explosive, n.o.s.
+0354|Articles, explosive, n.o.s.
+0355|Articles, explosive, n.o.s.
+0356|Articles, explosive, n.o.s.
+0462|Articles, explosive, n.o.s.
+0463|Articles, explosive, n.o.s.
+0464|Articles, explosive, n.o.s.
+0465|Articles, explosive, n.o.s.
+0466|Articles, explosive, n.o.s.
+0467|Articles, explosive, n.o.s.
+0468|Articles, explosive, n.o.s.
+0469|Articles, explosive, n.o.s.
+0470|Articles, explosive, n.o.s.
+0471|Articles, explosive, n.o.s.
+0472|Articles, explosive, n.o.s.
+0380|Articles, pressurized pneumatic or hydraulic containing non-flammable gas 3164Articles, pyrophoric
+0428|Articles, pyrotechnic for technical purposes
+0429|Articles, pyrotechnic for technical purposes
+0430|Articles, pyrotechnic for technical purposes
+0431|Articles, pyrotechnic for technical purposes
+0432|Articles, pyrotechnic for technical purposes
+2212|Asbestos
+2212|Asbestos, amphibole amosite, tremolite, actinolite, anthophyllite, or crocidolite
+2590|Asbestos, chrysotile
+1999|Asphalt, at or above its flash point
+3334|Aviation regulated liquid, n.o.s.
+3335|Aviation regulated solid, n.o.s.
+3242|Azodicarbonamide
+1400|Barium
+1854|Barium alloys, pyrophoric
+0224|Barium azide, dry or wetted with less than 50% water, by mass
+1571|Barium azide, wetted with not less than 50% water, by mass
+2719|Barium bromate
+1445|Barium chlorate, solid
+3405|Barium chlorate, solution
+1564|Barium compounds, n.o.s.
+1565|Barium cyanide
+2741|Barium hypochlorite with more than 22% available chlorine
+1446|Barium nitrate
+1884|Barium oxide
+1447|Barium perchlorate, solid
+3406|Barium perchlorate, solution
+1448|Barium permanganate
+1449|Barium peroxide
+3292|Batteries, containing sodium
+3028|Batteries, dry, containing potassium hydroxide solid, electric storage
+2794|Batteries, wet, filled with acid, electric storage
+2795|Batteries, wet, filled with alkali, electric storage
+2800|Batteries, wet, non-spillable, electric storage
+2796|Battery fluid, acid
+2797|Battery fluid, alkali
+3171|Battery-powered vehicle or Battery-powered equipment
+1990|Benzaldehyde
+1114|Benzene
+2225|Benzene sulfonyl chloride
+1885|Benzidine
+2224|Benzonitrile
+2587|Benzoquinone
+2226|Benzotrichloride
+2338|Benzotrifluoride
+1736|Benzoyl chloride
+1737|Benzyl bromide
+1738|Benzyl chloride
+1738|Benzyl chloride unstabilized
+1739|Benzyl chloroformate
+2653|Benzyl iodide
+2619|Benzyldimethylamine
+1886|Benzylidene chloride
+1566|Beryllium compounds, n.o.s.
+2464|Beryllium nitrate
+1567|Beryllium, powder
+2251|Bicyclo [2,2,1] hepta-2,5-diene, stabilized or 2,5-Norbornadiene, stabilized
+3373|Biological substance, Category B
+3016|Bipyridilium pesticides, liquid, flammable, toxic, flash point less than 23 degrees C 2782Bipyridilium pesticides, liquid, toxic
+2781|Bipyridilium pesticides, liquid, toxic, flammable, flash point not less than 23 degrees C 3015Bipyridilium pesticides, solid, toxic
+2837|Bisulfate, aqueous solution
+2693|Bisulfites, aqueous solutions, n.o.s.
+0027|Black powder for small arms
+0037|Black powder or Gunpowder, granular or as a meal 0027Black powder, compressed or Gunpowder, compressed or Black powder, in pellets or Gunpowder, in pellets 0028Bombs with flammable liquid, with bursting charge 0399Bombs with flammable liquid, with bursting charge 0400Bombs, photo-flash
+0038|Bombs, photo-flash
+0039|Bombs, photo-flash
+0299|Bombs, photo-flash
+0033|Bombs, smoke, non-explosive, with corrosive liquid, without initiating device 2028Bombs, with bursting charge
+0034|Bombs, with bursting charge
+0035|Bombs, with bursting charge
+0291|Bombs, with bursting charge
+0225|Boosters with detonator
+0268|Boosters with detonator
+0042|Boosters, without detonator
+0283|Boosters, without detonator
+1312|Borneol
+2692|Boron tribromide
+1741|Boron trichloride
+1008|Boron trifluoride
+1742|Boron trifluoride acetic acid complex, liquid
+3419|Boron trifluoride acetic acid complex, solid
+2604|Boron trifluoride diethyl etherate
+2851|Boron trifluoride dihydrate
+2965|Boron trifluoride dimethyl etherate
+3519|Boron trifluoride propionic acid complex, liquid 1743Boron trifluoride propionic acid complex, solid 3420Boron trifluoride, adsorbed
+1450|Bromates, inorganic, aqueous solution, n.o.s. 3213Bromates, inorganic, n.o.s.
+1744|Bromine
+2901|Bromine chloride
+1745|Bromine pentafluoride
+1744|Bromine solutions
+1746|Bromine trifluoride
+3241|2-Bromo-2-nitropropane-1,3-diol
+2688|1-Bromo-3-chloropropane
+2341|1-Bromo-3-methylbutane
+1938|Bromoacetic acid solution
+3425|Bromoacetic acid, solid
+1569|Bromoacetone
+2513|Bromoacetyl bromide
+2514|Bromobenzene
+1694|Bromobenzyl cyanides, liquid
+3449|Bromobenzyl cyanides, solid
+1126|1-Bromobutane
+2339|2-Bromobutane
+1887|Bromochloromethane
+2340|2-Bromoethyl ethyl ether
+2515|Bromoform
+2342|Bromomethylpropanes
+2343|2-Bromopentane
+2344|Bromopropanes
+2345|3-Bromopropyne
+2419|Bromotrifluoroethylene
+1570|Bromotrifluoromethane or Refrigerant gas, R 13B1. 1009Brucine
+0043|Bursters, explosive
+1011|Butane see also Petroleum gases, liquefied
+2346|Butanedione
+1120|Butanols
+1123|Butyl acetates
+1718|Butyl acid phosphate
+2348|Butyl acrylates, stabilized
+2709|Butyl benzenes
+2743|n-Butyl chloroformate
+1128|n-Butyl formate
+3255|tert-Butyl hypochlorite
+2690|N-n-Butyl imidazole
+2485|n-Butyl isocyanate
+2484|tert-Butyl isocyanate
+2347|Butyl mercaptan
+2227|n-Butyl methacrylate, stabilized
+2350|Butyl methyl ether
+2351|Butyl nitrites
+1914|Butyl propionates
+2352|5-tert-Butyl-2,4,6-trinitro-m-xylene or Musk xylene 2956Butyl vinyl ether, stabilized
+1125|n-Butylamine
+2738|N-Butylaniline
+2747|tert-Butylcyclohexylchloroformate
+3022|1,2-Butylene oxide, stabilized
+2667|Butylene see also Petroleum gases, liquefied 1012Butyltoluenes
+1747|Butyltrichlorosilane
+2716|1,4-Butynediol
+1129|Butyraldehyde
+2840|Butyraldoxime
+2820|Butyric acid
+2739|Butyric anhydride
+2411|Butyronitrile
+2353|Butyryl chloride
+1572|Cacodylic acid
+2570|Cadmium compounds
+2682|Caesium hydroxide
+2681|Caesium hydroxide solution
+1401|Calcium
+1573|Calcium arsenate
+1574|Calcium arsenate and calcium arsenite, mixtures, solid
+1402|Calcium carbide
+1452|Calcium chlorate
+2429|Calcium chlorate aqueous solution
+1453|Calcium chlorite
+1403|Calcium cyanamide with more than 0.1% of calcium carbide
+1575|Calcium cyanide
+1923|Calcium dithionite or Calcium hydrosulfite
+1404|Calcium hydride
+3486|Calcium hypochlorite mixture, dry, corrosive with more than 10% but not more than 39% available chlorine
+2208|Calcium hypochlorite mixture, dry, with more than 10% but not more than 39% available chlorine
+2844|Calcium manganese silicon
+1454|Calcium nitrate
+1910|Calcium oxide
+1455|Calcium perchlorate
+1456|Calcium permanganate
+1457|Calcium peroxide
+1360|Calcium phosphide
+1313|Calcium resinate
+1314|Calcium resinate, fused
+1405|Calcium silicide
+1855|Calcium, pyropCaesium hydroxide solutionhoric or Calcium alloys, pyrophoric
+1130|Camphor oil
+2717|Camphor, synthetic
+3508|Capacitor, asymmetric with an energy storage capacity greater than 0.3 Wh
+3499|Capacitor, electric double layer with an energy storage capacity greater than 0.3 Wh
+2829|Caproic acid
+2758|Carbamate pesticides, liquid, flammable, toxic, flash point less than 23 degrees C
+2992|Carbamate pesticides, liquid, toxic
+2991|Carbamate pesticides, liquid, toxic, flammable, flash point not less than 23 degrees C
+2757|Carbamate pesticides, solid, toxic
+1013|Carbon dioxide
+2187|Carbon dioxide, refrigerated liquid
+1845|Carbon dioxide, solid or Dry ice
+1131|Carbon disulfide
+1016|Carbon monoxide, compressed
+9202|Carbon monoxide, refrigerated liquid (cryogenic liquid)
+2516|Carbon tetrabromide
+1846|Carbon tetrachloride
+1362|Carbon, activated
+1361|Carbon, animal or vegetable origin
+2417|Carbonyl fluoride
+2204|Carbonyl sulfide
+0326|Cartridges for weapons, blank
+0413|Cartridges for weapons, blank
+0328|Cartridges for weapons, blank or Cartridges, small arms, blank 0327Cartridges for weapons, blank or Cartridges, small arms, blank 0338Cartridges for weapons, blank or Cartridges, small arms, blank or Cartridges for tools, blank 0014Cartridges for weapons, inert projectile
+0049|Cartridges for weapons, inert projectile or Cartridges, small arms 0012Cartridges for weapons, inert projectile or Cartridges, small arms 0339Cartridges for weapons, inert projectile or Cartridges, small arms 0417Cartridges for weapons, with bursting charge 0005Cartridges for weapons, with bursting charge 0006Cartridges for weapons, with bursting charge 0007Cartridges for weapons, with bursting charge 0321Cartridges for weapons, with bursting charge 0348Cartridges for weapons, with bursting charge 0412Cartridges, flash
+0050|Cartridges, flash
+0277|Cartridges, oil well
+0278|Cartridges, oil well
+0275|Cartridges, power device
+0276|Cartridges, power device
+0323|Cartridges, power device
+0381|Cartridges, power device
+0054|Cartridges, signal
+0312|Cartridges, signal
+0405|Cartridges, signal
+0055|Cases, cartridge, empty with primer
+0379|Cases, cartridges, empty with primer
+0446|Cases, combustible, empty, without primer
+0447|Cases, combustible, empty, without primer
+1719|Castor beans or Castor meal or Castor pomace or Castor flake 2969Caustic alkali liquids, n.o.s.
+3292|Cells, containing sodium
+2002|Celluloid, in block, rods, rolls, sheets, tubes, etc., except scrap 2000Celluloid, scrap
+1333|Cerium, slabs, ingots, or rods
+3078|Cerium, turnings or gritty powder
+1451|Cesium nitrate or Caesium nitrate
+1407|Cesium or Caesium
+0457|Charcoal briquettes, shell, screenings, wood, etc. 1361Charges, bursting, plastics bonded
+0458|Charges, bursting, plastics bonded
+0459|Charges, bursting, plastics bonded
+0460|Charges, bursting, plastics bonded
+0048|Charges, demolition
+0056|Charges, depth
+0443|Charges, explosive, commercial without detonator 0442Charges, explosive, commercial without detonator
+0444|Charges, explosive, commercial without detonator
+0445|Charges, explosive, commercial without detonator
+0271|Charges, propelling
+0272|Charges, propelling
+0415|Charges, propelling
+0491|Charges, propelling
+0242|Charges, propelling, for cannon
+0279|Charges, propelling, for cannon
+0414|Charges, propelling, for cannon
+0237|Charges, shaped, flexible, linear
+0288|Charges, shaped, flexible, linear
+0059|Charges, shaped, without detonator
+0439|Charges, shaped, without detonator
+0440|Charges, shaped, without detonator
+0441|Charges, shaped, without detonator
+0060|Charges, supplementary explosive
+1760|Chemical kit
+3316|Chemical kits
+3503|Chemical under pressure, corrosive, n.o.s.
+3505|Chemical under pressure, flammable, corrosive, n.o.s.
+3501|Chemical under pressure, flammable, n.o.s.
+3504|Chemical under pressure, flammable, toxic, n.o.s.
+3500|Chemical under pressure, n.o.s.
+3502|Chemical under pressure, toxic, n.o.s.
+2075|Chloral, anhydrous, stabilized
+1458|Chlorate and borate mixtures
+1459|Chlorate and magnesium chloride mixture solid
+3407|Chlorate and magnesium chloride mixture solution
+3210|Chlorates, inorganic, aqueous solution, n.o.s.
+1461|Chlorates, inorganic, n.o.s.
+2626|Chloric acid aqueous solution, with not more than 10% chloric acid
+1017|Chlorine
+9191|Chlorine dioxide, hydrate, frozen
+2548|Chlorine pentafluoride
+1749|Chlorine trifluoride
+3520|Chlorine, adsorbed
+1908|Chlorite solution
+1462|Chlorites, inorganic, n.o.s.
+2517|1-Chloro-1,1-difluoroethane or Refrigerant gas R 142b
+1021|1-Chloro-1,2,2,2-tetrafluoroethaneor Refrigerant gas R 124
+1983|1-Chloro-2,2,2-trifluoroethane or Refrigerant gas R 133a
+2236|3-Chloro-4-methylphenyl isocyanate, liquid
+3428|3-Chloro-4-methylphenyl isocyanate, solid
+3250|Chloroacetic acid, molten
+1751|Chloroacetic acid, solid
+1750|Chloroacetic acid, solution
+1695|Chloroacetone, stabilized
+2668|Chloroacetonitrile
+3416|Chloroacetophenone, liquid, (CN)
+1697|Chloroacetophenone, solid, (CN)
+1752|Chloroacetyl chloride
+2019|Chloroanilines, liquid
+2018|Chloroanilines, solid
+2233|Chloroanisidines
+1134|Chlorobenzene
+2234|Chlorobenzotrifluorides
+2235|Chlorobenzyl chlorides, liquid
+3427|Chlorobenzyl chlorides, solid
+1127|Chlorobutanes
+2669|Chlorocresols solution
+3437|Chlorocresols, solid
+1974|Chlorodifluorobromomethane or Refrigerant gas R 12B1
+1018|Chlorodifluoromethane or Refrigerant gas R 22
+1577|Chlorodinitrobenzenes, liquid.
+3441|Chlorodinitrobenzenes, solid
+2232|2-Chloroethanal
+1888|Chloroform
+2742|Chloroformates, toxic, corrosive, flammable, n.o.s.
+3277|Chloroformates, toxic, corrosive, n.o.s.
+2745|Chloromethyl chloroformate
+2354|Chloromethyl ethyl ether
+2237|Chloronitroanilines
+3409|Chloronitrobenzenes, liquid
+1578|Chloronitrobenzenes, solid
+2433|Chloronitrotoluenes, liquid
+3457|Chloronitrotoluenes, solid
+1579|4-Chloro-o-toluidine hydrochloride, solid
+3410|4-Chloro-o-toluidine hydrochloride, solution
+1020|Chloropentafluoroethane or Refrigerant gas R 115
+2904|Chlorophenolates, liquid or Phenolates, liquid
+2905|Chlorophenolates, solid or Phenolates, solid
+2021|Chlorophenols, liquid
+2020|Chlorophenols, solid
+1753|Chlorophenyltrichlorosilane
+1580|Chloropicrin
+1581|Chloropicrin and methyl bromide mixtures
+1582|Chloropicrin and methyl chloride mixtures
+1583|Chloropicrin mixtures, n.o.s.
+9263|Chloropivaloyl chloride
+2507|Chloroplatinic acid, solid
+1991|Chloroprene, stabilized
+1278|1-Chloropropane
+2356|2-Chloropropane
+2849|3-Chloropropanol-1
+2456|2-Chloropropene
+2511|2-Chloropropionic acid
+2822|2-Chloropyridine
+2986|Chlorosilanes, corrosive, flammable, n.o.s.
+2987|Chlorosilanes, corrosive, n.o.s.
+2985|Chlorosilanes, flammable, corrosive, n.o.s.
+3362|Chlorosilanes, toxic, corrosive, flammable, n.o.s.
+3361|Chlorosilanes, toxic, corrosive, n.o.s.
+2988|Chlorosilanes, water-reactive, flammable, corrosive, n.o.s.
+1754|Chlorosulfonic acid (with or without sulfur trioxide)
+2238|Chlorotoluenes
+3429|Chlorotoluidines, liquid
+2239|Chlorotoluidines, solid
+1022|Chlorotrifluoromethane or Refrigerant gas R 13
+1755|Chromic acid solution
+1756|Chromic fluoride, solid
+1757|Chromic fluoride, solution
+2720|Chromium nitrate
+1758|Chromium oxychloride
+1463|Chromium trioxide, anhydrous
+2240|Chromosulfuric acid
+1023|Coal gas, compressed
+1136|Coal tar distillates, flammable
+2001|Cobalt naphthenates, powder
+1318|Cobalt resinate, precipitated
+1993|Combustible liquid, n.o.s.
+0382|Components, explosive train, n.o.s.
+0383|Components, explosive train, n.o.s.
+0384|Components, explosive train, n.o.s.
+0461|Components, explosive train, n.o.s.
+1760|Compounds, cleaning liquid
+1993|Compounds, cleaning liquid
+1760|Compounds, tree killing, liquid or Compounds, weed killing, liquid
+1993|Compounds, tree killing, liquid or Compounds, weed killing, liquid
+2810|Compounds, tree killing, liquid or Compounds, weed killing, liquid
+1954|Compressed gas, flammable, n.o.s.
+1956|Compressed gas, n.o.s.
+3156|Compressed gas, oxidizing, n.o.s.
+3304|Compressed gas, toxic, corrosive, n.o.s. Inhalation Hazard Zone A
+3304|Compressed gas, toxic, corrosive, n.o.s. Inhalation Hazard Zone B
+3304|Compressed gas, toxic, corrosive, n.o.s. Inhalation Hazard Zone C
+3304|Compressed gas, toxic, corrosive, n.o.s. Inhalation Hazard Zone D
+3305|Compressed gas, toxic, flammable, corrosive, n.o.s. Inhalation Hazard Zone A
+3305|Compressed gas, toxic, flammable, corrosive, n.o.s. Inhalation Hazard Zone B
+3305|Compressed gas, toxic, flammable, corrosive, n.o.s. Inhalation Hazard Zone C
+3305|Compressed gas, toxic, flammable, corrosive, n.o.s. Inhalation Hazard Zone D
+1953|Compressed gas, toxic, flammable, n.o.s. Inhalation hazard Zone A
+1953|Compressed gas, toxic, flammable, n.o.s. Inhalation hazard Zone B
+1953|Compressed gas, toxic, flammable, n.o.s. Inhalation Hazard Zone C
+1953|Compressed gas, toxic, flammable, n.o.s. Inhalation Hazard Zone D
+1955|Compressed gas, toxic, n.o.s. Inhalation Hazard Zone A
+1955|Compressed gas, toxic, n.o.s. Inhalation Hazard Zone B
+1955|Compressed gas, toxic, n.o.s. Inhalation Hazard Zone C
+1955|Compressed gas, toxic, n.o.s. Inhalation Hazard Zone D
+3306|Compressed gas, toxic, oxdizing, corrosive, n.o.s. Inhalation Hazard Zone A
+3306|Compressed gas, toxic, oxidizing, corrosive, n.o.s. Inhalation Hazard Zone B
+3306|Compressed gas, toxic, oxidizing, corrosive, n.o.s. Inhalation Hazard Zone C
+3306|Compressed gas, toxic, oxidizing, corrosive, n.o.s. Inhalation Hazard Zone D
+3303|Compressed gas, toxic, oxidizing, n.o.s. Inhalation Hazard Zone A
+3303|Compressed gas, toxic, oxidizing, n.o.s. Inhalation Hazard Zone B
+1585|Compressed gas, toxic, oxidizing, n.o.s. Inhalation Hazard Zone C 3303Compressed gas, toxic, oxidizing, n.o.s. Inhalation Hazard Zone D 3303Contrivances, water-activated, with burster, expelling charge or propelling charge 0248Contrivances, water-activated, with burster, expelling charge or propelling charge 0249Copper acetoarsenite
+1586|Copper arsenite
+3010|Copper based pesticides, liquid, flammable, toxic, flash point less than 23 degrees C 2776Copper based pesticides, liquid, toxic
+2775|Copper based pesticides, liquid, toxic, flammable, flash point not less than 23 degrees C 3009Copper based pesticides, solid, toxic
+2721|Copper chlorate
+2802|Copper chloride
+1587|Copper cyanide
+0065|Cord detonating or Fuse detonating metal clad 0102Cord, detonating or Fuse, detonating metal clad 0290Cord, detonating, flexible
+0289|Cord, detonating, flexible
+0066|Cord, detonating, mild effect or Fuse, detonating, mild effect metal clad 0104Cord, igniter
+3264|Corrosive liquid, acidic, inorganic, n.o.s.
+3265|Corrosive liquid, acidic, organic, n.o.s.
+3266|Corrosive liquid, basic, inorganic, n.o.s.
+3267|Corrosive liquid, basic, organic, n.o.s.
+3301|Corrosive liquid, self-heating, n.o.s.
+2920|Corrosive liquids, flammable, n.o.s.
+1760|Corrosive liquids, n.o.s.
+3093|Corrosive liquids, oxidizing, n.o.s.
+2922|Corrosive liquids, toxic, n.o.s.
+3094|Corrosive liquids, water-reactive, n.o.s.
+3260|Corrosive solid, acidic, inorganic, n.o.s.
+3261|Corrosive solid, acidic, organic, n.o.s.
+3262|Corrosive solid, basic, inorganic, n.o.s.
+3263|Corrosive solid, basic, organic, n.o.s.
+2921|Corrosive solids, flammable, n.o.s.
+1759|Corrosive solids, n.o.s.
+3084|Corrosive solids, oxidizing, n.o.s.
+3095|Corrosive solids, self-heating, n.o.s.
+2923|Corrosive solids, toxic, n.o.s.
+3096|Corrosive solids, water-reactive, n.o.s.
+1365|Cotton
+1364|Cotton waste, oily
+1365|Cotton, wet
+3026|Coumarin derivative pesticides, liquid, flammable, toxic, flash point less than 23 degrees C 3024Coumarin derivative pesticides, liquid, toxic
+3027|Coumarin derivative pesticides, liquid, toxic, flammable, flash point not less than 23 degrees C 3025Coumarin derivative pesticides, solid, toxic
+2076|Cresols, liquid
+3455|Cresols, solid
+2022|Cresylic acid
+3472|Crotonaldehyde or Crotonaldehyde, stabilized 1143Crotonic acid, liquid
+2823|Crotonic acid, solid
+1144|Crotonylene
+1761|Cupriethylenediamine solution
+0070|Cutters, cable, explosive
+1935|Cyanide solutions, n.o.s.
+1588|Cyanides, inorganic, solid, n.o.s.
+1026|Cyanogen
+1889|Cyanogen bromide
+1589|Cyanogen chloride, stabilized
+2670|Cyanuric chloride
+2601|Cyclobutane
+2744|Cyclobutyl chloroformate
+2518|1,5,9-Cyclododecatriene
+2241|Cycloheptane
+2603|Cycloheptatriene
+2242|Cycloheptene
+1145|Cyclohexane
+1915|Cyclohexanone
+2256|Cyclohexene
+1762|Cyclohexenyltrichlorosilane
+2243|Cyclohexyl acetate
+2488|Cyclohexyl isocyanate
+3054|Cyclohexyl mercaptan
+2357|Cyclohexylamine
+1763|Cyclohexyltrichlorosilane
+2520|Cyclooctadienes
+2358|Cyclooctatetraene
+1146|Cyclopentane
+2244|Cyclopentanol
+2245|Cyclopentanone
+2246|Cyclopentene
+1027|Cyclopropane
+0484|Cyclotetramethylenetetranitramine, desensitized or Octogen, desensitized or HMX, desensitized
+2046|Cymenes
+3363|Dangerous Goods in Machinery or Dangerous Goods in Apparatus
+1868|Decaborane
+1147|Decahydronaphthalene
+2247|n-Decane
+0132|Deflagrating metal salts of aromatic nitroderivatives, n.o.s
+1987|Denatured alcohol
+3379|Desensitized explosive, liquid, n.o.s.
+3380|Desensitized explosive, solid, n.o.s.
+0360|Detonator assemblies, non-electric for blasting
+0361|Detonator assemblies, non-electric, for blasting
+0500|Detonator assemblies, non-electric, for blasting
+0073|Detonators for ammunition
+0364|Detonators for ammunition
+0365|Detonators for ammunition
+0366|Detonators for ammunition
+0030|Detonators, electric, for blasting
+0255|Detonators, electric, for blasting
+0456|Detonators, electric, for blasting
+0029|Detonators, non-electric, for blasting
+0267|Detonators, non-electric, for blasting
+0455|Detonators, non-electric, for blasting
+1957|Deuterium, compressed
+3150|Devices, small, hydrocarbon gas powered or Hydrocarbon gas refills for small devices with release device
+2372|1,2-Di-(dimethylamino)ethane
+1148|Diacetone alcohol
+2359|Diallylamine
+2360|Diallylether
+2651|4,4′-Diaminodiphenyl methane
+0074|Diazodinitrophenol, wetted with not less than 40% water or mixture of alcohol and water, by mass
+2434|Dibenzyldichlorosilane
+1911|Diborane
+1911|Diborane mixtures
+2648|1,2-Dibromobutan-3-one
+2872|Dibromochloropropane
+1941|Dibromodifluoromethane, R12B2
+2664|Dibromomethane
+1149|Dibutyl ethers
+2873|Dibutylaminoethanol
+1958|1,2-Dichloro-1,1,2,2- tetrafluoroethane or Refrigerant gas R 114
+2650|1,1-Dichloro-1-nitroethane
+9264|3,5-Dichloro-2,4,6-trifluoropyridine
+1764|Dichloroacetic acid
+2649|1,3-Dichloroacetone
+1765|Dichloroacetyl chloride
+1590|Dichloroanilines, liquid
+3442|Dichloroanilines, solid
+1591|o-Dichlorobenzene
+1916|2,2′-Dichlorodiethyl ether
+1028|Dichlorodifluoromethane or Refrigerant gas R 12
+2249|Dichlorodimethyl ether, symmetrical
+2362|1,1-Dichloroethane
+1150|1,2-Dichloroethylene
+1029|Dichlorofluoromethane or Refrigerant gas R21
+2465|Dichloroisocyanuric acid, dry or Dichloroisocyanuric acid salts
+2490|Dichloroisopropyl ether
+1593|Dichloromethane
+1152|Dichloropentanes
+2250|Dichlorophenyl isocyanates
+1766|Dichlorophenyltrichlorosilane
+1279|1,2-Dichloropropane
+2750|1,3-Dichloropropanol-2
+2047|Dichloropropenes
+2189|Dichlorosilane
+2565|Dicyclohexylamine
+2687|Dicyclohexylammonium nitrite
+2048|Dicyclopentadiene
+1465|Didymium nitrate
+1993|Diesel fuel
+1202|Diesel fuel
+2373|Diethoxymethane
+2374|3,3-Diethoxypropene
+2684|3-Diethyamino-propylamine
+2366|Diethyl carbonate
+1155|Diethyl ether or Ethyl ether
+1156|Diethyl ketone
+1594|Diethyl sulfate
+2375|Diethyl sulfide
+1154|Diethylamine
+2686|2-Diethylaminoethanol
+2432|N, N-Diethylaniline
+2049|Diethylbenzene
+1767|Diethyldichlorosilane
+2079|Diethylenetriamine
+2685|N,N-Diethylethylenediamine
+2751|Diethylthiophosphoryl chloride
+1030|1,1-Difluoroethane or Refrigerant gas R 152a
+1959|1,1-Difluoroethylene or Refrigerant gas R 1132a
+3252|Difluoromethane or Refrigerant gas R 32
+1768|Difluorophosphoric acid, anhydrous
+2376|2,3-Dihydropyran
+1157|Diisobutyl ketone
+2361|Diisobutylamine
+2050|Diisobutylene, isomeric compounds
+1902|Diisooctyl acid phosphate
+1159|Diisopropyl ether
+1158|Diisopropylamine
+2521|Diketene, stabilized
+2377|1,1-Dimethoxyethane
+2252|1,2-Dimethoxyethane
+1161|Dimethyl carbonate
+2381|Dimethyl disulfide
+1033|Dimethyl ether
+1595|Dimethyl sulfate
+1164|Dimethyl sulfide
+2267|Dimethyl thiophosphoryl chloride
+1160|Dimethylamine solution
+1032|Dimethylamine, anhydrous
+2378|2-Dimethylaminoacetonitrile
+2051|2-Dimethylaminoethanol
+3302|2-Dimethylaminoethyl acrylate
+2522|2-Dimethylaminoethyl methacrylate
+2253|N,N-Dimethylaniline
+2457|2,3-Dimethylbutane
+2379|1, 3-Dimethylbutylamine
+2262|Dimethylcarbamoyl chloride
+2263|Dimethylcyclohexanes
+2264|N,N-Dimethylcyclohexylamine
+1162|Dimethyldichlorosilane
+2380|Dimethyldiethoxysilane
+2707|Dimethyldioxanes
+2265|N,N-Dimethylformamide
+2382|Dimethylhydrazine, symmetrical
+1163|Dimethylhydrazine, unsymmetrical
+2266|Dimethyl-N-propylamine
+2044|2,2-Dimethylpropane
+2841|Di-n-amylamine
+2248|Di-n-butylamine
+1596|Dinitroanilines
+1597|Dinitrobenzenes, liquid
+3443|Dinitrobenzenes, solid
+1067|Dinitrogen tetroxide
+0489|Dinitroglycoluril or Dingu
+1598|Dinitro-o-cresol
+1599|Dinitrophenol solutions
+0076|Dinitrophenol, dry or wetted with less than 15% water, by mass
+1320|Dinitrophenol, wetted with not less than 15% water, by mass
+0077|Dinitrophenolates alkali metals, dry or wetted with less than 15% water, by mass
+1321|Dinitrophenolates, wetted with not less than 15% water, by mass
+0078|Dinitroresorcinol, dry or wetted with less than 15% water, by mass
+1322|Dinitroresorcinol, wetted with not less than 15% water, by mass
+0406|Dinitrosobenzene
+2038|Dinitrotoluenes, liquid
+1600|Dinitrotoluenes, molten
+3454|Dinitrotoluenes, solid
+2384|Di-n-propyl ether
+1165|Dioxane
+1166|Dioxolane
+2052|Dipentene
+1698|Diphenylamine chloroarsine
+1699|Diphenylchloroarsine, liquid
+3450|Diphenylchloroarsine, solid
+1769|Diphenyldichlorosilane
+1770|Diphenylmethyl bromide
+0401|Dipicryl sulfide, dry or wetted with less than 10% water, by mass
+2852|Dipicryl sulfide, wetted with not less than 10% water, by mass
+2710|Dipropyl ketone
+2383|Dipropylamine
+1903|Disinfectant, liquid, corrosive, n.o.s.
+1903|Disinfectants, liquid, corrosive n.o.s.
+3142|Disinfectants, liquid, toxic, n.o.s.
+1601|Disinfectants, solid, toxic, n.o.s.
+3253|Disodium trioxosilicate
+1167|Divinyl ether, stabilized
+1771|Dodecyltrichlorosilane
+2801|Dyes, liquid, corrosive, n.o.s. or Dye intermediates, liquid, corrosive, n.o.s.
+1602|Dyes, liquid, toxic, n.o.s. or Dye intermediates, liquid, toxic, n.o.s.
+3147|Dyes, solid, corrosive, n.o.s. or Dye intermediates, solid, corrosive, n.o.s.
+3143|Dyes, solid, toxic, n.o.s. or Dye intermediates, solid, toxic, n.o.s.
+3256|EElevated temperature liquid, flammable, n.o.s., with flash point above 37.8 C, at or above its flash point
+3258|Elevated temperature solid, n.o.s., at or above 240 C, see §173.247(h)(4)
+2558|Engines internal combustion, or Engines, fuel cell, flammable liquid powered 3166Engines, internal combustion, or Engines, fuel cell, flammable gas powered 3166Environmentally hazardous substance, liquid, n.o.s. 3082Environmentally hazardous substance, solid, n.o.s 3077Epibromohydrin
+2023|Epichlorohydrin
+2752|1,2-Epoxy-3-ethoxypropane
+3272|Esters, n.o.s.
+1035|Ethane
+1961|Ethane, refrigerated liquid
+1961|Ethane-Propane mixture, refrigerated liquid
+1170|Ethanol or Ethyl alcohol or Ethanol solutions or Ethyl alcohol solutions
+2491|Ethanolamine or Ethanolamine solutions
+3271|Ethers, n.o.s.
+2935|Ethyl 2-chloropropionate
+1173|Ethyl acetate
+1917|Ethyl acrylate, stabilized
+2271|Ethyl amyl ketone
+1176|Ethyl borate
+1891|Ethyl bromide
+1603|Ethyl bromoacetate
+1179|Ethyl butyl ether
+1180|Ethyl butyrate
+1037|Ethyl chloride
+1181|Ethyl chloroacetate
+1182|Ethyl chloroformate
+2826|Ethyl chlorothioformate
+1862|Ethyl crotonate
+2453|Ethyl fluoride or Refrigerant gas R161
+1190|Ethyl formate
+2385|Ethyl isobutyrate
+2481|Ethyl isocyanate
+1192|Ethyl lactate
+2363|Ethyl mercaptan
+2277|Ethyl methacrylate, stabilized
+1039|Ethyl methyl ether
+1193|Ethyl methyl ketone or Methyl ethyl ketone
+1194|Ethyl nitrite solutions
+2524|Ethyl orthoformate
+2525|Ethyl oxalate
+2927|Ethyl phosphonothioic dichloride, anhydrous 2927Ethyl phosphonous dichloride, anhydrous pyrophoric liquid 2845Ethyl phosphorodichloridate
+1195|Ethyl propionate
+2615|Ethyl propyl ether
+2452|Ethylacetylene, stabilized
+1036|Ethylamine
+2270|Ethylamine, aqueous solution with not less than 50% but not more than 70% ethylamine
+2273|2-Ethylaniline
+2272|N-Ethylaniline
+1175|Ethylbenzene
+2753|N-Ethylbenzyltoluidines liquid
+3460|N-Ethylbenzyltoluidines, solid
+2274|N-Ethyl-N-benzylaniline
+2275|2-Ethylbutanol
+1177|2-Ethylbutyl acetate
+1178|2-Ethylbutyraldehyde
+1892|Ethyldichloroarsine
+1183|Ethyldichlorosilane
+1962|Ethylene
+1135|Ethylene chlorohydrin
+1605|Ethylene dibromide
+1184|Ethylene dichloride
+1153|Ethylene glycol diethyl ether
+1171|Ethylene glycol monoethyl ether
+1172|Ethylene glycol monoethyl ether acetate
+1188|Ethylene glycol monomethyl ether
+1189|Ethylene glycol monomethyl ether acetate
+3300|Ethylene oxide and carbon dioxide mixture with more than 87% ethylene oxide
+1041|Ethylene oxide and carbon dioxide mixtures with more than 9% but not more than 87% ethylene oxide
+1952|Ethylene oxide and carbon dioxide mixtures with not more than 9% ethylene oxide
+3297|Ethylene oxide and chlorotetrafluoroethane mixture with not more than 8.8% ethylene oxide
+3070|Ethylene oxide and dichlorodifluoromethane mixture, with not more than 12.5% ethylene oxide
+3298|Ethylene oxide and pentafluoroethane mixture with not more than 7.9% ethylene oxide
+2983|Ethylene oxide and propylene oxide mixtures, with not more than 30% ethylene oxide
+3299|Ethylene oxide and tetrafluoroethane mixture with not more than 5.6% ethylene oxide
+1040|Ethylene oxide or Ethylene oxide with nitrogen up to a total pressure of 1 MPa (10 bar) at 50 degrees C
+1038|Ethylene, refrigerated liquid (cryogenic liquid)
+1604|Ethylenediamine
+1185|Ethyleneimine, stabilized
+2748|2-Ethylhexyl chloroformate
+2276|2-Ethylhexylamine
+2435|Ethylphenyldichlorosilane
+2386|1-Ethylpiperidine
+2754|N-Ethyltoluidines
+1196|Ethyltrichlorosilane
+0081|Explosive, blasting, type A
+0082|Explosive, blasting, type B
+0331|Explosive, blasting, type B or Agent blasting, Type B
+0083|Explosive, blasting, type C
+0084|Explosive, blasting, type D
+0241|Explosive, blasting, type E
+0332|Explosive, blasting, type E or Agent blasting, Type E
+1169|Extracts, aromatic, liquid
+1197|Extracts, flavoring, liquid
+1606|Ferric arsenate
+1607|Ferric arsenite
+1773|Ferric chloride, anhydrous
+2582|Ferric chloride, solution
+1466|Ferric nitrate
+1323|Ferrocerium
+1408|Ferrosilicon with 30% or more but less than 90% silicon
+1608|Ferrous arsenate
+1759|Ferrous chloride, solid
+1760|Ferrous chloride, solution
+1043|Fertilizer ammoniating solution with free ammonia
+1353|Fibers or Fabrics impregnated with weakly nitrated nitrocellulose, n.o.s.
+1373|Fibers or Fabrics, animal or vegetable or Synthetic, n.o.s. with animal or vegetable oil
+1372|Fibers, animal or Fibers, vegetable burnt, wet or damp
+3360|Fibers, vegetable, dry
+1324|Films, nitrocellulose base, gelatine coated (except scrap)
+1774|Fire extinguisher charges, corrosive liquid
+1044|Fire extinguishers containing compressed or liquefied gas
+2623|Firelighters, solid with flammable liquid
+0333|Fireworks
+0334|Fireworks
+0335|Fireworks
+0336|Fireworks
+0337|Fireworks
+3316|First aid kits
+2216|Fish meal, stabilized or Fish scrap, stabilized
+1374|Fish meal, unstablized or Fish scrap, unstabilized
+3286|Flammable liquid, toxic, corrosive, n.o.s.
+2924|Flammable liquids, corrosive, n.o.s.
+1993|Flammable liquids, n.o.s.
+1992|Flammable liquids, toxic, n.o.s.
+3180|Flammable solid, corrosive, inorganic, n.o.s.
+3178|Flammable solid, inorganic, n.o.s.
+3176|Flammable solid, organic, molten, n.o.s.
+3097|Flammable solid, oxidizing, n.o.s.
+3179|Flammable solid, toxic, inorganic, n.o.s.
+2925|Flammable solids, corrosive, organic, n.o.s.
+1325|Flammable solids, organic, n.o.s.
+2926|Flammable solids, toxic, organic, n.o.s.
+0093|Flares, aerial
+0403|Flares, aerial
+0404|Flares, aerial
+0420|Flares, aerial
+0421|Flares, aerial
+0092|Flares, surface
+0418|Flares, surface
+0419|Flares, surface
+0094|Flash powder
+0305|Flash powder
+1045|Fluorine, compressed
+2642|Fluoroacetic acid
+2941|Fluoroanilines
+2387|Fluorobenzene
+1775|Fluoroboric acid
+1776|Fluorophosphoric acid anhydrous
+2856|Fluorosilicates, n.o.s.
+1778|Fluorosilicic acid
+1777|Fluorosulfonic acid
+2388|Fluorotoluenes
+1198|Formaldehyde solutions, flammable
+2209|Formaldehyde solutions, with not less than 25% formaldehyde
+1779|Formic acid with more than 85% acid by mass
+3412|Formic acid with not less than 10% but not more than 85% acid by mass
+3412|Formic acid with not less than 5% but less than 10% acid by mass
+0099|Fracturing devices, explosive, without detonators for oil wells
+1993|Fuel oil (No. 1, 2, 4, 5, or 6)
+1863|Fuel, aviation, turbine engine
+1780|Fumaryl chloride
+1199|Furaldehydes
+2874|Furfuryl alcohol
+2526|Furfurylamine
+0103|Fuse, igniter tubular metal clad
+0101|Fuse, non-detonating instantaneous or quickmatch
+0105|Fuse, safety
+1325|Fusee (railway or highway)
+1201|Fusel oil
+0106|Fuzes, detonating
+0107|Fuzes, detonating
+0257|Fuzes, detonating
+0367|Fuzes, detonating
+0408|Fuzes, detonating, with protective features
+0409|Fuzes, detonating, with protective features
+0410|Fuzes, detonating, with protective features
+0316|Fuzes, igniting
+0317|Fuzes, igniting
+0368|Fuzes, igniting
+2803|Gallium
+2037|Gas cartridges, (flammable) without a release device, non-refillable
+9035|Gas identification set
+1202|Gas oil
+3167|Gas sample, non-pressurized, flammable, n.o.s., not refrigerated liquid
+3168|Gas sample, non-pressurized, toxic, flammable, n.o.s., not refrigerated liquid
+3169|Gas sample, non-pressurized, toxic, n.o.s., not refrigerated liquid
+3312|Gas, refrigerated liquid, flammable, n.o.s. (cryogenic liquid)
+3158|Gas, refrigerated liquid, n.o.s. (cryogenic liquid)
+3311|Gas, refrigerated liquid, oxidizing, n.o.s. (cryogenic liquid)
+1203|Gasoline includes gasoline mixed with ethyl alcohol, with not more than 10% alcohol
+2192|Germane
+3523|Germane, adsorbed
+2689|Glycerol alpha-monochlorohydrin
+2622|Glycidaldehyde
+0452|Grenades practice, hand or rifle
+0284|Grenades, hand or rifle, with bursting charge
+0285|Grenades, hand or rifle, with bursting charge
+0292|Grenades, hand or rifle, with bursting charge
+0293|Grenades, hand or rifle, with bursting charge
+0110|Grenades, practice, hand or rifle
+0318|Grenades, practice, hand or rifle
+0372|Grenades, practice, hand or rifle
+1467|Guanidine nitrate
+0113|Guanyl nitrosaminoguanylidene hydrazine, wetted with not less than 30% water, by mass
+2545|Hafnium powder, dry
+3082|Hazardous waste, liquid, n.o.s.
+3077|Hazardous waste, solid, n.o.s.
+1202|Heating oil, light
+1046|Helium, compressed
+1963|Helium, refrigerated liquid (cryogenic liquid)
+3296|Heptafluoropropane or Refrigerant gas R 227
+3056|n-Heptaldehyde
+1206|Heptanes
+2278|n-Heptene
+2661|Hexachloroacetone
+2729|Hexachlorobenzene
+2279|Hexachlorobutadiene
+2646|Hexachlorocyclopentadiene
+2875|Hexachlorophene
+1781|Hexadecyltrichlorosilane
+2458|Hexadienes
+1612|Hexaethyl tetraphosphate and compressed gas mixtures
+1611|Hexaethyl tetraphosphate, liquid
+1611|Hexaethyl tetraphosphate, solid
+2420|Hexafluoroacetone
+2552|Hexafluoroacetone hydrate, liquid
+3436|Hexafluoroacetone hydrate, solid
+2193|Hexafluoroethane, or Refrigerant gas R 116
+1782|Hexafluorophosphoric acid
+1858|Hexafluoropropylene compressed or Refrigerant gas R 1216
+1207|Hexaldehyde
+2281|Hexamethylene diisocyanate
+1783|Hexamethylenediamine solution
+2280|Hexamethylenediamine, solid
+2493|Hexamethyleneimine
+1328|Hexamethylenetetramine
+1208|Hexanes
+0079|Hexanitrodiphenylamine or Dipicrylamine or Hexyl
+0392|Hexanitrostilbene
+2282|Hexanols
+2370|1-Hexene
+0118|Hexolite, or Hexotol dry or wetted with less than 15% water, by mass
+0393|Hexotonal
+1784|Hexyltrichlorosilane
+3484|Hydrazine aqueous solution, flammable with more than 37% hydrazine, by mass
+2030|Hydrazine aqueous solution, with more than 37% hydrazine, by mass
+2029|Hydrazine, anhydrous
+3293|Hydrazine, aqueous solution, with not more than 37% hydrazine, by mass
+1787|Hydriodic acid
+1788|Hydrobromic acid, with more than 49% hydrobromic acid
+1788|Hydrobromic acid, with not more than 49% hydrobromic acid
+1964|Hydrocarbon gas mixture, compressed, n.o.s.
+1965|Hydrocarbon gas mixture, liquefied, n.o.s.
+3295|Hydrocarbons, liquid, n.o.s.
+1789|Hydrochloric acid
+1613|Hydrocyanic acid, aqueous solutions with less than 5% hydrogen cyanide
+1786|Hydrofluoric acid and Sulfuric acid mixtures
+1790|Hydrofluoric acid, with more than 60% strength
+1790|Hydrofluoric acid, with not more than 60% strength
+2034|Hydrogen and Methane mixtures, compressed
+1048|Hydrogen bromide, anhydrous
+1050|Hydrogen chloride, anhydrous
+2186|Hydrogen chloride, refrigerated liquid
+3294|Hydrogen cyanide, solution in alcohol with not more than 45% hydrogen cyanide
+1051|Hydrogen cyanide, stabilized with less than 3% water
+1614|Hydrogen cyanide, stabilized, with less than 3% water and absorbed in a porous inert material
+1052|Hydrogen fluoride, anhydrous
+2197|Hydrogen iodide, anhydrous
+3526|Hydrogen selenide, adsorbed
+2202|Hydrogen selenide, anhydrous
+1053|Hydrogen sulfide
+1049|Hydrogen, compressed
+1966|Hydrogen, refrigerated liquid (cryogenic liquid)
+3471|Hydrogendifluoride solution, n.o.s.
+1740|Hydrogendifluoride, solid, n.o.s.
+0508|1-Hydroxybenzotriazole, anhydrous, dry or wetted with less than 20% water, by mass
+3474|1-Hydroxybenzotriazole, monohydrate
+2865|Hydroxylamine sulfate
+1791|Hypochlorite solutions
+3212|Hypochlorites, inorganic, n.o.s.
+0121|Igniters
+0314|Igniters
+0315|Igniters
+0325|Igniters
+0454|Igniters
+2269|3,3′-Iminodipropylamine
+2900|Infectious substances, affecting animals only
+2814|Infectious substances, affecting humans
+3354|Insecticide gases, flammable, n.o.s.
+1968|Insecticide gases, n.o.s.
+3355|Insecticide gases, toxic, flammable, n.o.s. Inhalation hazard Zone A
+3355|Insecticide gases, toxic, flammable, n.o.s. Inhalation hazard Zone B
+3355|Insecticide gases, toxic, flammable, n.o.s. Inhalation hazard Zone C
+3355|Insecticide gases, toxic, flammable, n.o.s. Inhalation hazard Zone D
+1967|Insecticide gases, toxic, n.o.s.
+3495|Iodine
+3498|Iodine monochloride, liquid
+1792|Iodine monochloride, solid
+2495|Iodine pentafluoride
+2390|2-Iodobutane
+2391|Iodomethylpropanes
+2392|Iodopropanes
+1376|Iron oxide, spent, or Iron sponge, spent obtained from coal gas purification
+1994|Iron pentacarbonyl
+1969|Isobutane see also Petroleum gases, liquefied
+1212|Isobutanol or Isobutyl alcohol
+1213|Isobutyl acetate
+2527|Isobutyl acrylate, stabilized
+2393|Isobutyl formate
+2528|Isobutyl isobutyrate
+2486|Isobutyl isocyanate
+2283|Isobutyl methacrylate, stabilized
+2394|Isobutyl propionate
+1214|Isobutylamine
+1055|Isobutylene see also Petroleum gases, liquefied
+2045|Isobutyraldehyde or Isobutyl aldehyde
+2529|Isobutyric acid
+2284|Isobutyronitrile
+2395|Isobutyryl chloride
+2285|Isocyanatobenzotrifluorides
+2287|Isoheptenes
+2288|Isohexenes
+1216|Isooctenes
+2371|Isopentenes
+2290|Isophorone diisocyanate
+2289|Isophoronediamine
+1218|Isoprene, stabilized
+1219|Isopropanol or Isopropyl alcohol
+2403|Isopropenyl acetate
+2303|Isopropenylbenzene
+2934|Isopropyl 2-chloropropionate
+1220|Isopropyl acetate
+1793|Isopropyl acid phosphate
+2405|Isopropyl butyrate
+2947|Isopropyl chloroacetate
+2407|Isopropyl chloroformate
+2406|Isopropyl isobutyrate
+2483|Isopropyl isocyanate
+1222|Isopropyl nitrate
+2409|Isopropyl propionate
+1221|Isopropylamine
+1918|Isopropylbenzene
+2907|Isosorbide dinitrate mixture with not less than 60% lactose, mannose, starch or calcium hydrogen phosphate
+3251|Isosorbide-5-mononitrate
+0124|Jet perforating guns, charged oil well, with detonator
+0494|Jet perforating guns, charged oil well, with detonator
+0124|Jet perforating guns, charged oil well, without detonator
+0494|Jet perforating guns, charged, oil well, without detonator
+1223|KKerosene
+1224|Ketones, liquid, n.o.s.
+3497|Krill meal
+1056|Krypton, compressed
+1970|Krypton, refrigerated liquid (cryogenic liquid)
+1616|LLead acetate
+1617|Lead arsenates
+1618|Lead arsenites
+0129|Lead azide, wetted with not less than 20% water or mixture of alcohol and water, by mass
+2291|Lead compounds, soluble, n.o.s.
+1620|Lead cyanide
+1872|Lead dioxide
+1469|Lead nitrate
+1470|Lead perchlorate, solid
+3408|Lead perchlorate, solution
+2989|Lead phosphite, dibasic
+1794|Lead sulfate with more than 3% free acid
+3072|Life-saving appliances, not self inflating containing dangerous goods as equipment
+2990|Life-saving appliances, self inflating
+1057|Lighters containing flammable gas
+0131|Lighters, fuse
+1057|Lighters, non-pressurized, containing flammable liquid,
+3161|Liquefied gas, flammable, n.o.s.
+3163|Liquefied gas, n.o.s.
+3157|Liquefied gas, oxidizing, n.o.s.
+3308|Liquefied gas, toxic, corrosive, n.o.s. Inhalation Hazard Zone A
+3308|Liquefied gas, toxic, corrosive, n.o.s. Inhalation Hazard Zone B
+3308|Liquefied gas, toxic, corrosive, n.o.s. Inhalation Hazard Zone C
+3308|Liquefied gas, toxic, corrosive, n.o.s. Inhalation Hazard Zone D
+3309|Liquefied gas, toxic, flammable, corrosive, n.o.s. Inhalation Hazard Zone A
+3309|Liquefied gas, toxic, flammable, corrosive, n.o.s. Inhalation Hazard Zone B
+3309|Liquefied gas, toxic, flammable, corrosive, n.o.s. Inhalation Hazard Zone C
+3309|Liquefied gas, toxic, flammable, corrosive, n.o.s. Inhalation Hazard Zone D
+3160|Liquefied gas, toxic, flammable, n.o.s. Inhalation Hazard Zone A
+3160|Liquefied gas, toxic, flammable, n.o.s. Inhalation Hazard Zone B
+3160|Liquefied gas, toxic, flammable, n.o.s. Inhalation Hazard Zone C
+3160|Liquefied gas, toxic, flammable, n.o.s. Inhalation Hazard Zone D
+3162|Liquefied gas, toxic, n.o.s. Inhalation Hazard Zone A
+3162|Liquefied gas, toxic, n.o.s. Inhalation Hazard Zone B
+3162|Liquefied gas, toxic, n.o.s. Inhalation Hazard Zone C
+3162|Liquefied gas, toxic, n.o.s. Inhalation Hazard Zone D
+3310|Liquefied gas, toxic, oxidizing, corrosive, n.o.s. Inhalation Hazard Zone A
+3310|Liquefied gas, toxic, oxidizing, corrosive, n.o.s. Inhalation Hazard Zone B
+3310|Liquefied gas, toxic, oxidizing, corrosive, n.o.s. Inhalation Hazard Zone C
+3310|Liquefied gas, toxic, oxidizing, corrosive, n.o.s. Inhalation Hazard Zone D
+3307|Liquefied gas, toxic, oxidizing, n.o.s. Inhalation Hazard Zone A
+3307|Liquefied gas, toxic, oxidizing, n.o.s. Inhalation Hazard Zone B
+3307|Liquefied gas, toxic, oxidizing, n.o.s. Inhalation Hazard Zone C
+3307|Liquefied gas, toxic, oxidizing, n.o.s. Inhalation Hazard Zone D
+1058|Liquefied gases, non-flammable charged with nitrogen, carbon dioxide or air
+1415|Lithium
+1410|Lithium aluminum hydride
+1411|Lithium aluminum hydride, ethereal
+1413|Lithium borohydride
+2830|Lithium ferrosilicon
+1414|Lithium hydride
+2805|Lithium hydride, fused solid
+2680|Lithium hydroxide
+2679|Lithium hydroxide, solution
+1471|Lithium hypochlorite, dry or Lithium hypochlorite mixture
+3481|Lithium ion batteries contained in equipment including lithium ion polymer batteries
+3480|Lithium ion batteries including lithium ion polymer batteries
+3481|Lithium ion batteries packed with equipment including lithium ion polymer batteries
+3091|Lithium metal batteries contained in equipment including lithium alloy batteries
+3090|Lithium metal batteries including lithium alloy batteries
+3091|Lithium metal batteries packed with equipment including lithium alloy batteries
+2722|Lithium nitrate
+2806|Lithium nitride
+1472|Lithium peroxide
+1417|Lithium silicon
+1621|London purple
+1419|Magnesium aluminum phosphide
+1622|Magnesium arsenate
+1473|Magnesium bromate
+2723|Magnesium chlorate
+2004|Magnesium diamide
+2853|Magnesium fluorosilicate
+2950|Magnesium granules, coated, particle size not less than 149 microns
+2010|Magnesium hydride
+1474|Magnesium nitrate
+1869|Magnesium or Magnesium alloys with more than 50% magnesium in pellets, turnings or ribbons
+1475|Magnesium perchlorate
+1476|Magnesium peroxide
+2011|Magnesium phosphide
+2624|Magnesium silicide
+1418|Magnesium, powder or Magnesium alloys, powder
+2215|Maleic anhydride
+2215|Maleic anhydride, molten
+2647|Malononitrile
+2210|Maneb or Maneb preparations with not less than 60% maneb
+2968|Maneb stabilized or Maneb preparations, stabilized against self-heating
+2724|Manganese nitrate
+1330|Manganese resinate
+2254|Matches, fusee
+1944|Matches, safety (book, card or strike on box)
+1331|Matches, strike anywhere
+1945|Matches, wax, Vesta
+3248|Medicine, liquid, flammable, toxic, n.o.s
+1851|Medicine, liquid, toxic, n.o.s.
+3249|Medicine, solid, toxic, n.o.s.
+3336|Mercaptans, liquid, flammable, n.o.s. or Mercaptan mixture, liquid, flammable, n.o.s
+1228|Mercaptans, liquid, flammable, toxic, n.o.s. or Mercaptan mixtures, liquid, flammable, toxic, n.o.s
+0448|5-Mercaptotetrazol-1-acetic acid
+1623|Mercuric arsenate
+1624|Mercuric chloride
+1625|Mercuric nitrate
+1626|Mercuric potassium cyanide
+1627|Mercurous nitrate
+2809|Mercury
+1629|Mercury acetate
+1630|Mercury ammonium chloride
+2778|Mercury based pesticides, liquid, flammable, toxic, flash point less than 23 degrees C
+3012|Mercury based pesticides, liquid, toxic
+3011|Mercury based pesticides, liquid, toxic, flammable, flash point not less than 23 degrees C
+2777|Mercury based pesticides, solid, toxic
+1631|Mercury benzoate
+1634|Mercury bromides
+2024|Mercury compound, liquid, n.o.s.
+2025|Mercury compound, solid, n.o.s.
+3506|Mercury contained in manufactured articles
+1636|Mercury cyanide
+0135|Mercury fulminate, wetted with not less than 20% water, or mixture of alcohol and water, by mass
+1637|Mercury gluconate
+1638|Mercury iodide
+1639|Mercury nucleate
+1640|Mercury oleate
+1641|Mercury oxide
+1642|Mercury oxycyanide, desensitized
+1643|Mercury potassium iodide
+1644|Mercury salicylate
+1645|Mercury sulfates
+1646|Mercury thiocyanate
+1229|Mesityl oxide
+3281|Metal carbonyls, liquid, n.o.s.
+3466|Metal carbonyls, solid, n.o.s.
+2881|Metal catalyst, dry
+1378|Metal catalyst, wetted with a visible excess of liquid
+3182|Metal hydrides, flammable, n.o.s.
+1409|Metal hydrides, water reactive, n.o.s.
+3189|Metal powder, self-heating, n.o.s.
+3089|Metal powders, flammable, n.o.s.
+3181|Metal salts of organic compounds, flammable, n.o.s.
+1332|Metaldehyde
+3208|Metallic substance, water-reactive, n.o.s.
+3209|Metallic substance, water-reactive, self-heating, n.o.s.
+2396|Methacrylaldehyde, stabilized
+2531|Methacrylic acid, stabilized
+3079|Methacrylonitrile, stabilized
+2614|Methallyl alcohol
+1971|Methane, compressed or Natural gas, compressed (with high methane content)
+3246|Methanesulfonyl chloride
+1230|Methanol
+3092|1-Methoxy-2-propanol
+2293|4-Methoxy-4-methylpentan-2-one
+2605|Methoxymethyl isocyanate
+2933|Methyl 2-chloropropionate
+1231|Methyl acetate
+1060|Methyl acetylene and propadiene mixtures, stabilized
+1919|Methyl acrylate, stabilized
+2554|Methyl allyl chloride
+1062|Methyl bromide
+1647|Methyl bromide and ethylene dibromide mixtures, liquid
+2643|Methyl bromoacetate
+1237|Methyl butyrate
+1063|Methyl chloride and methylene chloride mixtures 1912Methyl chloride or Refrigerant gas R 40
+2295|Methyl chloroacetate
+1238|Methyl chloroformate
+1239|Methyl chloromethyl ether
+2299|Methyl dichloroacetate
+2454|Methyl fluoride, or Refrigerant gas R 41
+1243|Methyl formate
+2644|Methyl iodide
+2053|Methyl isobutyl carbinol
+1245|Methyl isobutyl ketone
+2480|Methyl isocyanate
+1246|Methyl isopropenyl ketone, stabilized
+2477|Methyl isothiocyanate
+2400|Methyl isovalerate
+1928|Methyl magnesium bromide, in ethyl ether
+1064|Methyl mercaptan
+1247|Methyl methacrylate monomer, stabilized
+2606|Methyl orthosilicate
+9206|Methyl phosphonic dichloride
+1248|Methyl phosphonous dichloride, pyrophoric liquid 2845Methyl propionate
+2612|Methyl propyl ether
+1249|Methyl propyl ketone
+2398|Methyl tert-butyl ether
+2533|Methyl trichloroacetate
+1251|Methyl vinyl ketone, stabilized
+2459|2-Methyl-1-butene
+2561|3-Methyl-1-butene
+2460|2-Methyl-2-butene
+3023|2-Methyl-2-heptanethiol
+2300|2-Methyl-5-ethylpyridine
+1234|Methylal
+1061|Methylamine, anhydrous
+1235|Methylamine, aqueous solution
+1233|Methylamyl acetate
+2294|N-Methylaniline
+2937|alpha-Methylbenzyl alcohol, liquid
+3438|alpha-Methylbenzyl alcohol, solid
+2397|3-Methylbutan-2-one
+3371|2-Methylbutanal
+2945|N-Methylbutylamine
+2534|Methylchlorosilane
+2296|Methylcyclohexane
+2617|Methylcyclohexanols, flammable
+2297|Methylcyclohexanone
+2298|Methylcyclopentane
+1556|Methyldichloroarsine
+1242|Methyldichlorosilane
+2301|2-Methylfuran
+2302|5-Methylhexan-2-one
+2535|4-Methylmorpholine or n-methylmorpholine
+2461|Methylpentadienes
+2560|2-Methylpentan-2-ol
+2437|Methylphenyldichlorosilane
+2399|1-Methylpiperidine
+2536|Methyltetrahydrofuran
+1250|Methyltrichlorosilane
+2367|alpha-Methylvaleraldehyde
+0136|Mines with bursting charge
+0137|Mines with bursting charge
+0138|Mines with bursting charge
+0294|Mines with bursting charge
+0276|Model rocket motor
+0323|Model rocket motor
+2508|Molybdenum pentachloride
+2054|Morpholine
+3483|Motor fuel anti-knock mixture, flammable
+1649|Motor fuel anti-knock mixtures
+1334|Naphthalene, crude or Naphthalene, refined
+2304|Naphthalene, molten
+2077|alpha-Naphthylamine
+3411|beta-Naphthylamine solution
+1650|beta-Naphthylamine, solid
+1651|Naphthylthiourea
+1652|Naphthylurea
+1065|Neon, compressed
+1913|Neon, refrigerated liquid (cryogenic liquid)
+1259|Nickel carbonyl
+1653|Nickel cyanide
+2725|Nickel nitrate
+2726|Nickel nitrite
+1654|Nicotine
+3144|Nicotine compounds, liquid, n.o.s. or Nicotine preparations, liquid, n.o.s.
+1655|Nicotine compounds, solid, n.o.s. or Nicotine preparations, solid, n.o.s.
+1656|Nicotine hydrochloride liquid or solution
+3444|Nicotine hydrochloride, solid
+1657|Nicotine salicylate
+1658|Nicotine sulfate solution
+3445|Nicotine sulphate, solid
+1659|Nicotine tartrate
+3218|Nitrates, inorganic, aqueous solution, n.o.s.
+1477|Nitrates, inorganic, n.o.s.
+1826|Nitrating acid mixtures spent with not more than 50% nitric acid
+1796|Nitrating acid mixtures with more than 50% nitric acid
+1796|Nitrating acid mixtures with not more than 50% nitric acid
+1826|Nitrating acid mixtures, spent with more than 50% nitric acid
+2031|Nitric acid other than red fuming with not more than 20% nitric acid
+2031|Nitric acid other than red fuming, with at least 65% but not more than 70% nitric acid
+2031|Nitric acid other than red fuming, with more than 20% and less than 65% nitric acid
+2031|Nitric acid other than red fuming, with more than 70% nitric acid
+2032|Nitric acid, red fuming
+1975|Nitric oxide and dinitrogen tetroxide mixturesor Nitric oxide and nitrogen dioxide mixtures
+1660|Nitric oxide, compressed
+3273|Nitriles, flammable, toxic, n.o.s.
+3276|Nitriles, liquid, toxic, n.o.s.
+3439|Nitriles, solid, toxic, n.o.s.
+3275|Nitriles, toxic, flammable, n.o.s.
+3219|Nitrites, inorganic, aqueous solution, n.o.s.
+2627|Nitrites, inorganic, n.o.s.
+0147|Nitro urea
+2307|3-Nitro-4-chlorobenzotrifluoride
+1661|Nitroanilines (o-; m-; p-;)
+2730|Nitroanisole, liquid
+3458|Nitroanisoles, solid
+1662|Nitrobenzene
+2305|Nitrobenzenesulfonic acid
+0385|5-Nitrobenzotriazol
+2306|Nitrobenzotrifluorides, liquid
+3431|Nitrobenzotrifluorides, solid
+2732|Nitrobromobenzenes, liquid
+3459|Nitrobromobenzenes, solid
+3270|Nitrocellulose membrane filters, with not more than 12.6% nitrogen, by dry mass
+2555|Nitrocellulose with water with not less than 25% water by mass
+0340|Nitrocellulose, dry or wetted with less than 25% water (or alcohol), by mass
+0343|Nitrocellulose, plasticized with not less than 18% plasticizing substance, by mass
+0341|Nitrocellulose, unmodified or plasticized with less than 18% plasticizing substance, by mass
+0342|Nitrocellulose, wetted with not less than 25% alcohol, by mass
+3434|Nitrocresols, liquid
+2446|Nitrocresols, solid
+2842|Nitroethane
+2451|Nitrogen trifluoride
+2421|Nitrogen trioxide
+1066|Nitrogen, compressed
+1977|Nitrogen, refrigerated liquid cryogenic liquid
+3343|Nitroglycerin mixture, desensitized, liquid, flammable, n.o.s. with not more than 30% nitroglycerin, by mass
+3357|Nitroglycerin mixture, desensitized, liquid, n.o.s. with not more than 30% nitroglycerin, by mass
+1204|Nitroglycerin solution in alcohol with not more than 1% nitroglycerin
+0143|Nitroglycerin, desensitized with not less than 40% non-volatile water insoluble phlegmatizer, by mass
+0144|Nitroglycerin, solution in alcohol, with more than 1% but not more than 10% nitroglycerin
+3064|Nitroglycerin, solution in alcohol, with more than 1% but not more than 5% nitroglycerin
+0282|Nitroguanidine or Picrite, dry or wetted with less than 20% water, by mass
+1336|Nitroguanidine, wetted or Picrite, wetted with not less than 20% water, by mass
+1798|Nitrohydrochloric acid
+1261|Nitromethane
+2538|Nitronaphthalene
+1663|Nitrophenols (o-; m-; p-;)
+3376|4-Nitrophenylhydrazine, with not less than 30% water, by mass
+2608|Nitropropanes
+1369|p-Nitrosodimethylaniline
+0146|Nitrostarch, dry or wetted with less than 20% water, by mass
+1337|Nitrostarch, wetted with not less than 20% water, by mass
+1069|Nitrosyl chloride
+2308|Nitrosylsulfuric acid, liquid
+3456|Nitrosylsulphuric acid, solid
+1664|Nitrotoluenes, liquid
+3446|Nitrotoluenes, solid
+2660|Nitrotoluidines (mono)
+0490|Nitrotriazolone or NTO
+1070|Nitrous oxide
+2201|Nitrous oxide, refrigerated liquid
+1665|Nitroxylenes, liquid
+3447|Nitroxylenes, solid
+1920|Nonanes
+1799|Nonyltrichlorosilane
+1800|Octadecyltrichlorosilane
+2309|Octadiene
+2422|Octafluorobut-2-ene or Refrigerant gas R 1318
+1976|Octafluorocyclobutane, or Refrigerant gas RC 318
+2424|Octafluoropropaneor Refrigerant gas R 218
+1262|Octanes
+0266|Octolite or Octol, dry or wetted with less than 15% water, by mass
+0496|Octonal
+1191|Octyl aldehydes
+1801|Octyltrichlorosilane
+1071|Oil gas, compressed
+3101|Organic peroxide type B, liquid
+3111|Organic peroxide type B, liquid, temperature controlled
+3102|Organic peroxide type B, solid
+3112|Organic peroxide type B, solid, temperature controlled
+3103|Organic peroxide type C, liquid
+3113|Organic peroxide type C, liquid, temperature controlled
+3104|Organic peroxide type C, solid
+3114|Organic peroxide type C, solid, temperature controlled
+3105|Organic peroxide type D, liquid
+3115|Organic peroxide type D, liquid, temperature controlled
+3106|Organic peroxide type D, solid
+3116|Organic peroxide type D, solid, temperature controlled
+3107|Organic peroxide type E, liquid
+3117|Organic peroxide type E, liquid, temperature controlled
+3108|Organic peroxide type E, solid
+3118|Organic peroxide type E, solid, temperature controlled
+3109|Organic peroxide type F, liquid
+3119|Organic peroxide type F, liquid, temperature controlled
+3110|Organic peroxide type F, solid
+3120|Organic peroxide type F, solid, temperature controlled
+3313|Organic pigments, self-heating
+3280|Organoarsenic compound, liquid, n.o.s.
+3465|Organoarsenic compound, solid, n.o.s.
+2996|Organochlorine pesticides liquid, flammable, toxic, flash point less than 23 degrees C 2762Organochlorine pesticides, liquid, toxic
+2761|Organochlorine pesticides, liquid, toxic, flammable, flash point not less than 23 degrees C 2995Organochlorine pesticides, solid, toxic
+3018|Organometallic compound, liquid, toxic, n.o.s 3282Organometallic compound, solid, toxic, n.o.s 3467Organometallic substance, liquid, pyrophoric 3392Organometallic substance, liquid, pyrophoric, water-reactive 3394Organometallic substance, liquid, water-reactive 3398Organometallic substance, liquid, water-reactive, flammable 3399Organometallic substance, solid, pyrophoric 3391Organometallic substance, solid, pyrophoric, water-reactive 3393Organometallic substance, solid, self-heating 3400Organometallic substance, solid, water-reactive 3395Organometallic substance, solid, water-reactive, flammable 3396Organometallic substance, solid, water-reactive, self-heating 3397Organophosphorus compound, liquid, toxic, n.o.s 3278Organophosphorus compound, solid, toxic, n.o.s 3464Organophosphorus compound, toxic, flammable, n.o.s. 3279Organophosphorus pesticides, liquid, flammable, toxic, flash point less than 23 degrees C 2784Organophosphorus pesticides, liquid, toxic
+2783|Organophosphorus pesticides, liquid, toxic, flammable, flash point not less than 23 degrees C 3017Organophosphorus pesticides, solid, toxic
+2788|Organotin compounds, liquid, n.o.s.
+3146|Organotin compounds, solid, n.o.s.
+3020|Organotin pesticides, liquid, flammable, toxic, flash point less than 23 degrees C 2787Organotin pesticides, liquid, toxic
+2786|Organotin pesticides, liquid, toxic, flammable, flash point not less than 23 degrees C 3019Organotin pesticides, solid, toxic
+2471|Osmium tetroxide
+3082|Other regulated substances, liquid, n.o.s.
+3077|Other regulated substances, solid, n.o.s.
+3098|Oxidizing liquid, corrosive, n.o.s.
+3139|Oxidizing liquid, n.o.s.
+3099|Oxidizing liquid, toxic, n.o.s.
+3085|Oxidizing solid, corrosive, n.o.s.
+3137|Oxidizing solid, flammable, n.o.s.
+1479|Oxidizing solid, n.o.s.
+3100|Oxidizing solid, self-heating, n.o.s.
+3087|Oxidizing solid, toxic, n.o.s.
+3121|Oxidizing solid, water reactive, n.o.s.
+2190|Oxygen difluoride, compressed
+3356|Oxygen generator, chemical, spent
+1072|Oxygen, compressed
+3066|Paint or Paint related material
+3470|Paint related material corrosive, flammable (including paint thinning or reducing compound)
+1263|Paint related material including paint thinning, drying, removing, or reducing compound
+3469|Paint related material, flammable, corrosive (including paint thinning or reducing compound)
+1379|Paper, unsaturated oil treated incompletely dried (including carbon paper)
+2213|Paraformaldehyde
+1264|Paraldehyde
+1967|Parathion and compressed gas mixture
+1380|Pentaborane
+1669|Pentachloroethane
+3155|Pentachlorophenol
+0411|Pentaerythrite tetranitrate or Pentaerythritol tetranitrate or PETN, with not less than 7% wax by mass
+3220|Pentafluoroethane or Refrigerant gas R 125
+2286|Pentamethylheptane
+2310|Pentane-2,4-dione
+1265|Pentanes
+1105|Pentanols
+1108|1-Pentene (n-amylene)
+2705|1-Pentol
+0151|Pentolite, dry or wetted with less than 15% water, by mass
+3211|Perchlorates, inorganic, aqueous solution, n.o.s.
+1481|Perchlorates, inorganic, n.o.s.
+1873|Perchloric acid with more than 50% but not more than 72% acid, by mass
+1802|Perchloric acid with not more than 50% acid by mass
+1670|Perchloromethyl mercaptan
+3083|Perchloryl fluoride
+3154|Perfluoro(ethyl vinyl ether)
+3153|Perfluoro(methyl vinyl ether)
+1266|Perfumery products with flammable solvents
+3214|Permanganates, inorganic, aqueous solution, n.o.s.
+1482|Permanganates, inorganic, n.o.s.
+1483|Peroxides, inorganic, n.o.s.
+3216|Persulfates, inorganic, aqueous solution, n.o.s.
+3215|Persulfates, inorganic, n.o.s.
+3021|Pesticides, liquid, flammable, toxic, flash point less than 23 degrees C
+2903|Pesticides, liquid, toxic, flammable, n.o.s. flash point not less than 23 degrees C
+2902|Pesticides, liquid, toxic, n.o.s.
+2588|Pesticides, solid, toxic, n.o.s.
+1267|Petroleum crude oil
+1268|Petroleum distillates, n.o.s. or Petroleum products, n.o.s.
+1075|Petroleum gases, liquefied or Liquefied petroleum gas
+1270|Petroleum oil
+3494|Petroleum sour crude oil, flammable, toxic
+2645|Phenacyl bromide
+2311|Phenetidines
+2821|Phenol solutions
+2312|Phenol, molten
+1671|Phenol, solid
+1803|Phenolsulfonic acid, liquid
+3346|Phenoxyacetic acid derivative pesticide, liquid, flammable, toxic flash point less than 23 degrees C
+3348|Phenoxyacetic acid derivative pesticide, liquid, toxic
+3347|Phenoxyacetic acid derivative pesticide, liquid, toxic, flammable, flash point not less than 23 degrees C
+3345|Phenoxyacetic acid derivative pesticide, solid, toxic
+2746|Phenyl chloroformate
+2487|Phenyl isocyanate
+2337|Phenyl mercaptan
+2798|Phenyl phosphorus dichloride
+2799|Phenyl phosphorus thiodichloride
+3002|Phenyl urea pesticides, liquid, toxic
+2470|Phenylacetonitrile, liquid
+2577|Phenylacetyl chloride
+1672|Phenylcarbylamine chloride
+1673|Phenylenediamines (o-; m-; p-;)
+2572|Phenylhydrazine
+1674|Phenylmercuric acetate
+2026|Phenylmercuric compounds, n.o.s.
+1894|Phenylmercuric hydroxide
+1895|Phenylmercuric nitrate
+1804|Phenyltrichlorosilane
+1076|Phosgene
+2940|9-Phosphabicyclononanes or Cyclooctadiene phosphines
+2199|Phosphine
+3525|Phosphine, adsorbed
+1805|Phosphoric acid solution
+3453|Phosphoric acid, solid
+2834|Phosphorous acid
+1810|Phosphorous oxychloride
+1339|Phosphorus heptasulfide, free from yellow or white phosphorus
+1939|Phosphorus oxybromide
+2576|Phosphorus oxybromide, molten
+2691|Phosphorus pentabromide
+1806|Phosphorus pentachloride
+2198|Phosphorus Pentafluoride
+3524|Phosphorus pentafluoride, adsorbed
+1340|Phosphorus pentasulfide, free from yellow or white phosphorus
+1807|Phosphorus pentoxide
+1341|Phosphorus sesquisulfide, free from yellow or white phosphorus
+1808|Phosphorus tribromide
+1809|Phosphorus trichloride
+2578|Phosphorus trioxide
+1343|Phosphorus trisulfide, free from yellow or white phosphorus
+2447|Phosphorus white, molten
+1338|Phosphorus, amorphous
+2214|Phthalic anhydride with more than .05% maleic anhydride
+2313|Picolines
+1272|Pine oil
+2368|alpha-Pinene
+2579|Piperazine
+2401|Piperidine
+3314|Plastic molding compound in dough, sheet or extruded rope form evolving flammable vapor
+2006|Plastics, nitrocellulose-based, self-heating, n.o.s.
+2315|Polychlorinated biphenyls, liquid
+3432|Polychlorinated biphenyls, solid
+3269|Polyester resin kit
+3151|Polyhalogenated biphenyls, liquid or Polyhalogenated terphenyls liquid
+3152|Polyhalogenated biphenyls, solid or Polyhalogenated terphenyls, solid
+2211|Polymeric beads expandable, evolving flammable vapor
+2257|Potassium
+1677|Potassium arsenate
+1678|Potassium arsenite
+1870|Potassium borohydride
+1484|Potassium bromate
+1485|Potassium chlorate
+2427|Potassium chlorate, aqueous solution
+1679|Potassium cuprocyanide
+3413|Potassium cyanide solution
+1680|Potassium cyanide, solid
+1929|Potassium dithionite or Potassium hydrosulfite
+3422|Potassium fluoride solution
+1812|Potassium fluoride, solid
+2628|Potassium fluoroacetate
+2655|Potassium fluorosilicate
+2509|Potassium hydrogen sulfate
+1811|Potassium hydrogendifluoride solid
+3421|Potassium hydrogendifluoride solution
+1813|Potassium hydroxide, solid
+1814|Potassium hydroxide, solution
+2864|Potassium metavanadate
+2033|Potassium monoxide
+1486|Potassium nitrate
+1487|Potassium nitrate and sodium nitrite mixtures
+1488|Potassium nitrite
+1489|Potassium perchlorate
+1490|Potassium permanganate
+1491|Potassium peroxide
+1492|Potassium persulfate
+2012|Potassium phosphide
+1422|Potassium sodium alloys, liquid
+3404|Potassium sodium alloys, solid
+1382|Potassium sulfide, anhydrous or Potassium sulfide with less than 30% water of crystallization
+1847|Potassium sulfide, hydrated with not less than 30% water of crystallization
+2466|Potassium superoxide
+1420|Potassium, metal alloys, liquid
+3403|Potassium, metal alloys, solid
+0433|Powder cake, wetted or Powder paste, wetted with not less than 17% alcohol by mass
+0159|Powder cake, wetted or Powder paste, wetted with not less than 25% water, by mass
+0160|Powder, smokeless
+0161|Powder, smokeless
+0509|Powder, smokeless
+0044|Primers, cap type
+0377|Primers, cap type
+0378|Primers, cap type
+0319|Primers, tubular
+0320|Primers, tubular
+0376|Primers, tubular
+0345|Projectiles, inert with tracer
+0424|Projectiles, inert, with tracer
+0425|Projectiles, inert, with tracer
+0346|Projectiles, with burster or expelling charge
+0347|Projectiles, with burster or expelling charge
+0426|Projectiles, with burster or expelling charge
+0427|Projectiles, with burster or expelling charge
+0434|Projectiles, with burster or expelling charge
+0435|Projectiles, with burster or expelling charge
+0167|Projectiles, with bursting charge
+0168|Projectiles, with bursting charge
+0169|Projectiles, with bursting charge
+0324|Projectiles, with bursting charge
+0344|Projectiles, with bursting charge
+2200|Propadiene, stabilized
+2402|Propane, see also Petroleum gases, liquefied 1978Propanethiols
+1274|n-Propanol or Propyl alcohol, normal
+0495|Propellant, liquid
+0497|Propellant, liquid
+0498|Propellant, solid
+0499|Propellant, solid
+0501|Propellant, solid
+1275|Propionaldehyde
+2496|Propionic acid with not less than 10% and less than 90% acid by mass 1848Propionic acid with not less than 90% acid by mass 3463Propionic anhydride
+2404|Propionitrile
+1815|Propionyl chloride
+1276|n-Propyl acetate
+2364|n-Propyl benzene
+2740|n-Propyl chloroformate
+1281|Propyl formates
+2482|n-Propyl isocyanate
+1865|n-Propyl nitrate
+1277|Propylamine
+2611|Propylene chlorohydrin
+1280|Propylene oxide
+2850|Propylene see also Petroleum gases, liquefied 1077Propylene tetramer
+2258|1,2-Propylenediamine
+1921|Propyleneimine, stabilized
+1816|Propyltrichlorosilane
+3352|Pyrethroid pesticide, liquid toxic
+3350|Pyrethroid pesticide, liquid, flammable, toxic, flash point less than 23 degrees C
+3351|Pyrethroid pesticide, liquid, toxic, flammable, flash point not less than 23 degrees C
+3349|Pyrethroid pesticide, solid, toxic
+1282|Pyridine
+3194|Pyrophoric liquid, inorganic, n.o.s.
+2845|Pyrophoric liquids, organic, n.o.s.
+1383|Pyrophoric metals, n.o.s., or Pyrophoric alloys, n.o.s.
+3200|Pyrophoric solid, inorganic, n.o.s.
+2846|Pyrophoric solids, organic, n.o.s.
+1817|Pyrosulfuryl chloride
+1922|Pyrrolidine
+2656|Quinoline
+2908|Radioactive material, excepted package-empty packaging
+2911|Radioactive material, excepted package-instruments or articles
+2910|Radioactive material, excepted package-limited quantity of material
+2912|Radioactive material, low specific activity (LSA-I) non fissile or fissile-excepted
+3321|Radioactive material, low specific activity (LSA-II) non fissile or fissile-excepted
+3322|Radioactive material, low specific activity (LSA-III) non fissile or fissile excepted
+2913|Radioactive material, surface contaminated objects (SCO-I or SCO-II) non fissile or fissile-excepted
+3331|Radioactive material, transported under special arrangement, fissile
+2919|Radioactive material, transported under special arrangement, non fissile or fissile excepted
+2915|Radioactive material, Type A package non-special form, non fissile or fissile-excepted
+3327|Radioactive material, Type A package, fissile non-special form
+3332|Radioactive material, Type A package, special form non fissile or fissile-excepted
+3333|Radioactive material, Type A package, special form, fissile
+2917|Radioactive material, Type B(M) package non fissile or fissile-excepted
+3329|Radioactive material, Type B(M) package, fissile
+2916|Radioactive material, Type B(U) package non fissile or fissile-excepted
+3328|Radioactive material, Type B(U) package, fissile
+2978|Radioactive material, uranium hexafluoride non fissile or fissile-excepted
+2977|Radioactive material, uranium hexafluoride, fissile
+1856|Rags, oily
+3337|Refrigerant gas R 404A
+3338|Refrigerant gas R 407A
+3339|Refrigerant gas R 407B
+3340|Refrigerant gas R 407C
+1078|Refrigerant gases, n.o.s.
+1954|Refrigerant gases, n.o.s. or Dispersant gases, n.o.s.
+3358|Refrigerating machines, containing flammable, non-toxic, liquefied gas
+2857|Refrigerating machines, containing non-flammable, non-toxic gases, or ammonia solutions (UN2672)
+0173|Release devices, explosive
+1866|Resin Solution, flammable
+2876|Resorcinol
+0174|Rivets, explosive
+0186|Rocket motors
+0280|Rocket motors
+0281|Rocket motors
+0250|Rocket motors with hypergolic liquids with or without an expelling charge
+0322|Rocket motors with hypergolic liquids with or without an expelling charge
+0395|Rocket motors, liquid fueled
+0396|Rocket motors, liquid fueled
+0238|Rockets, line-throwing
+0240|Rockets, line-throwing
+0453|Rockets, line-throwing
+0397|Rockets, liquid fueled with bursting charge
+0398|Rockets, liquid fueled with bursting charge
+0180|Rockets, with bursting charge
+0181|Rockets, with bursting charge
+0182|Rockets, with bursting charge
+0295|Rockets, with bursting charge
+0436|Rockets, with expelling charge
+0437|Rockets, with expelling charge
+0438|Rockets, with expelling charge
+0183|Rockets, with inert head
+0502|Rockets, with inert head
+1286|Rosin oil
+1287|Rubber solution
+1423|Rubidium
+2678|Rubidium hydroxide
+2677|Rubidium hydroxide solution
+3268|Safety devices, electrically initiated
+0503|Safety devices, pyrotechnic
+0190|Samples, explosive, other than initiating explosives
+1386|Seed cake with more than 1.5% oil and not more than 11% moisture
+2217|Seed cake with not more than 1.5% oil and not more than 11% moisture
+2630|Selenates or Selenites
+1905|Selenic acid
+3440|Selenium compound, liquid, n.o.s.
+3283|Selenium compound, solid, n.o.s.
+2657|Selenium disulfide
+2194|Selenium hexafluoride
+2879|Selenium oxychloride
+3334|Self-defense spray, non-pressurized
+3188|Self-heating liquid, corrosive, inorganic, n.o.s.
+3185|Self-heating liquid, corrosive, organic, n.o.s.
+3186|Self-heating liquid, inorganic, n.o.s.
+3183|Self-heating liquid, organic, n.o.s.
+3187|Self-heating liquid, toxic, inorganic, n.o.s.
+3184|Self-heating liquid, toxic, organic, n.o.s.
+3192|Self-heating solid, corrosive, inorganic, n.o.s.
+3126|Self-heating solid, corrosive, organic, n.o.s
+3190|Self-heating solid, inorganic, n.o.s.
+3088|Self-heating solid, organic, n.o.s
+3127|Self-heating solid, oxidizing, n.o.s.
+3191|Self-heating solid, toxic, inorganic, n.o.s.
+3128|Self-heating solid, toxic, organic, n.o.s.
+3221|Self-reactive liquid type B
+3231|Self-reactive liquid type B, temperature controlled
+3223|Self-reactive liquid type C
+3233|Self-reactive liquid type C, temperature controlled
+3225|Self-reactive liquid type D
+3235|Self-reactive liquid type D, temperature controlled
+3227|Self-reactive liquid type E
+3237|Self-reactive liquid type E, temperature controlled
+3229|Self-reactive liquid type F
+3239|Self-reactive liquid type F, temperature controlled
+3222|Self-reactive solid type B
+3232|Self-reactive solid type B, temperature controlled
+3224|Self-reactive solid type C
+3234|Self-reactive solid type C, temperature controlled
+3226|Self-reactive solid type D
+3236|Self-reactive solid type D, temperature controlled
+3228|Self-reactive solid type E
+3238|Self-reactive solid type E, temperature controlled
+3230|Self-reactive solid type F
+3240|Self-reactive solid type F, temperature controlled
+1288|Shale oil
+0191|Signal devices, hand
+0373|Signal devices, hand
+0194|Signals, distress, ship
+0195|Signals, distress, ship
+0505|Signals, distress, ship
+0506|Signals, distress, ship
+0192|Signals, railway track, explosive
+0193|Signals, railway track, explosive
+0492|Signals, railway track, explosive
+0493|Signals, railway track, explosive
+0196|Signals, smoke
+0197|Signals, smoke
+0313|Signals, smoke
+0487|Signals, smoke
+0507|Signals, smoke
+2203|Silane
+1346|Silicon powder, amorphous
+1818|Silicon tetrachloride
+1859|Silicon tetrafluoride
+3521|Silicon tetrafluoride, adsorbed
+1683|Silver arsenite
+1684|Silver cyanide
+1493|Silver nitrate
+1347|Silver picrate, wetted with not less than 30% water, by mass
+1906|Sludge, acid
+3178|Smokeless powder for small arms (100 pounds or less)
+1907|Soda lime with more than 4% sodium hydroxide
+1428|Sodium
+2812|Sodium aluminate, solid
+1819|Sodium aluminate, solution
+2835|Sodium aluminum hydride
+2863|Sodium ammonium vanadate
+2473|Sodium arsanilate
+1685|Sodium arsenate
+1686|Sodium arsenite, aqueous solutions
+2027|Sodium arsenite, solid
+1687|Sodium azide
+1426|Sodium borohydride
+1494|Sodium bromate
+1688|Sodium cacodylate
+3378|Sodium carbonate peroxyhydrate
+1495|Sodium chlorate
+2428|Sodium chlorate, aqueous solution
+1496|Sodium chlorite
+2659|Sodium chloroacetate
+2316|Sodium cuprocyanide, solid
+2317|Sodium cuprocyanide, solution
+3414|Sodium cyanide solution
+1689|Sodium cyanide, solid
+0234|Sodium dinitro-o-cresolate, dry or wetted with less than 15% water, by mass
+3369|Sodium dinitro-o-cresolate, wetted with not less than 10% water, by mass
+1348|Sodium dinitro-o-cresolate, wetted with not less than 15% water, by mass
+1384|Sodium dithionite or Sodium hydrosulfite
+3415|Sodium fluoride solution
+1690|Sodium fluoride, solid
+2629|Sodium fluoroacetate
+2674|Sodium fluorosilicate
+1427|Sodium hydride
+2439|Sodium hydrogendifluoride
+2949|Sodium hydrosulfide with not less than 25% water of crystallization
+2318|Sodium hydrosulfide, with less than 25% water of crystallization
+1824|Sodium hydroxide solution
+1823|Sodium hydroxide, solid
+1431|Sodium methylate
+1289|Sodium methylate solutions in alcohol
+1825|Sodium monoxide
+1498|Sodium nitrate
+1499|Sodium nitrate and potassium nitrate mixtures
+1500|Sodium nitrite
+2567|Sodium pentachlorophenate
+3377|Sodium perborate monohydrate
+1502|Sodium perchlorate
+1503|Sodium permanganate
+1504|Sodium peroxide
+3247|Sodium peroxoborate, anhydrous
+1505|Sodium persulfate
+1432|Sodium phosphide
+0235|Sodium picramate, dry or wetted with less than 20% water, by mass
+1349|Sodium picramate, wetted with not less than 20% water, by mass
+1385|Sodium sulfide, anhydrous or Sodium sulfide with less than 30% water of crystallization
+1849|Sodium sulfide, hydrated with not less than 30% water
+2547|Sodium superoxide
+3244|Solids containing corrosive liquid, n.o.s.
+3175|Solids containing flammable liquid, n.o.s.
+3243|Solids containing toxic liquid, n.o.s.
+0204|Sounding devices, explosive
+0296|Sounding devices, explosive
+0374|Sounding devices, explosive
+0375|Sounding devices, explosive
+2440|Stannic chloride pentahydrate
+1827|Stannic chloride, anhydrous
+1433|Stannic phosphide
+2676|Stibine
+1691|Strontium arsenite
+1506|Strontium chlorate
+1507|Strontium nitrate
+1508|Strontium perchlorate
+1509|Strontium peroxide
+2013|Strontium phosphide
+1692|Strychnine or Strychnine salts
+2055|Styrene monomer, stabilized
+0357|Substances, explosive, n.o.s.
+0358|Substances, explosive, n.o.s.
+0359|Substances, explosive, n.o.s.
+0473|Substances, explosive, n.o.s.
+0474|Substances, explosive, n.o.s.
+0475|Substances, explosive, n.o.s.
+0476|Substances, explosive, n.o.s.
+0477|Substances, explosive, n.o.s.
+0478|Substances, explosive, n.o.s.
+0479|Substances, explosive, n.o.s.
+0480|Substances, explosive, n.o.s.
+0481|Substances, explosive, n.o.s.
+0485|Substances, explosive, n.o.s.
+0482|Substances, explosive, very insensitive, n.o.s. or Substances, EVI, n.o.s.
+2780|Substituted nitrophenol pesticides, liquid, flammable, toxic, flash point less than 23 degrees C
+3014|Substituted nitrophenol pesticides, liquid, toxic
+3013|Substituted nitrophenol pesticides, liquid, toxic, flammable, flash point not less than 23 degrees C
+2779|Substituted nitrophenol pesticides, solid, toxic
+2967|Sulfamic acid
+1350|Sulfur
+1828|Sulfur chlorides
+1079|Sulfur dioxide
+1080|Sulfur hexafluoride
+2418|Sulfur tetrafluoride
+1829|Sulfur trioxide, stabilized
+2448|Sulfur, molten
+1830|Sulfuric acid with more than 51% acid
+2796|Sulfuric acid with not more than 51% acid
+1831|Sulfuric acid, fuming with 30% or more free sulfur trioxide
+1831|Sulfuric acid, fuming with less than 30% free sulfur trioxide
+1832|Sulfuric acid, spent
+1833|Sulfurous acid
+1834|Sulfuryl chloride
+2191|Sulfuryl fluoride
+1999|Tars, liquid including road oils and cutback bitumens
+1700|Tear gas candles
+1693|Tear gas devices with more than 2% tear gas substances, by mass
+3448|Tear gas substance, solid, n.o.s.
+1693|Tear gas substances, liquid, n.o.s.
+3284|Tellurium compound, n.o.s.
+2195|Tellurium hexafluoride
+2319|Terpene hydrocarbons, n.o.s.
+2541|Terpinolene
+2504|Tetrabromoethane
+1702|1,1,2,2-Tetrachloroethane
+1897|Tetrachloroethylene
+1704|Tetraethyl dithiopyrophosphate
+1292|Tetraethyl silicate
+2320|Tetraethylenepentamine
+3159|1,1,1,2-Tetrafluoroethane or Refrigerant gas R 134a
+1081|Tetrafluoroethylene, stabilized
+1982|Tetrafluoromethane or Refrigerant gas R 14
+2498|1,2,3,6-Tetrahydrobenzaldehyde
+2056|Tetrahydrofuran
+2943|Tetrahydrofurfurylamine
+2698|Tetrahydrophthalic anhydrides with more than 0.05% of maleic anhydride
+2410|1,2,3,6-Tetrahydropyridine
+2412|Tetrahydrothiophene
+1835|Tetramethylammonium hydroxide solution
+3423|Tetramethylammonium hydroxide, solid
+2749|Tetramethylsilane
+0207|Tetranitroaniline
+1510|Tetranitromethane
+2413|Tetrapropylorthotitanate
+0407|Tetrazol-1-acetic acid
+0504|1H-Tetrazole
+1857|Textile waste, wet
+2573|Thallium chlorate
+1707|Thallium compounds, n.o.s.
+2727|Thallium nitrate
+2785|4-Thiapentanal
+2436|Thioacetic acid
+2772|Thiocarbamate pesticide, liquid, flammable, toxic, flash point less than 23 degrees C
+3006|Thiocarbamate pesticide, liquid, toxic
+3005|Thiocarbamate pesticide, liquid, toxic, flammable, flash point not less than 23 degrees C
+2771|Thiocarbamate pesticides, solid, toxic
+2966|Thioglycol
+1940|Thioglycolic acid
+2936|Thiolactic acid
+1836|Thionyl chloride
+2414|Thiophene
+2474|Thiophosgene
+1837|Thiophosphoryl chloride
+3341|Thiourea dioxide
+1293|Tinctures, medicinal
+3174|Titanium disulphide
+1871|Titanium hydride
+2546|Titanium powder, dry
+2878|Titanium sponge granules or Titanium sponge powders
+1838|Titanium tetrachloride
+2869|Titanium trichloride mixtures
+2441|Titanium trichloride, pyrophoric or Titanium trichloride mixtures, pyrophoric
+1294|Toluene
+2078|Toluene diisocyanate
+1708|Toluidines, liquid
+3451|Toluidines, solid
+3418|2,4-Toluylenediamine solution or 2,4-Toluenediamine solution
+1709|2,4-Toluylenediamine, solid or 2,4-Toluenediamine, solid
+0329|Torpedoes with bursting charge
+0330|Torpedoes with bursting charge
+0451|Torpedoes with bursting charge
+0450|Torpedoes, liquid fueled, with inert head
+0449|Torpedoes, liquid fueled, with or without bursting charge
+3289|Toxic liquid, corrosive, inorganic, n.o.s.
+3287|Toxic liquid, inorganic, n.o.s.
+2927|Toxic liquids, corrosive, organic, n.o.s.
+2929|Toxic liquids, flammable, organic, n.o.s.
+3122|Toxic liquids, oxidizing, n.o.s.
+3123|Toxic liquids, water-reactive, n.o.s.
+3290|Toxic solid, corrosive, inorganic, n.o.s.
+3288|Toxic solid, inorganic, n.o.s.
+2928|Toxic solids, corrosive, organic, n.o.s.
+2930|Toxic solids, flammable, organic, n.o.s.
+2811|Toxic solids, organic, n.o.s.
+3086|Toxic solids, oxidizing, n.o.s.
+3124|Toxic solids, self-heating, n.o.s.
+3125|Toxic solids, water-reactive, n.o.s.
+2810|Toxic, liquids, organic, n.o.s.
+3172|Toxins, extracted from living sources, liquid, n.o.s.
+3462|Toxins, extracted from living sources, solid, n.o.s.
+0337|Toy caps
+0212|Tracers for ammunition
+0306|Tracers for ammunition
+2609|Triallyl borate
+2610|Triallylamine
+2764|Triazine pesticides, liquid, flammable, toxic, flash point less than 23 degrees C
+2998|Triazine pesticides, liquid, toxic
+2997|Triazine pesticides, liquid, toxic, flammable, flash point not less than 23 degrees C
+2763|Triazine pesticides, solid, toxic
+2542|Tributylamine
+3254|Tributylphosphane
+1839|Trichloroacetic acid
+2564|Trichloroacetic acid, solution
+2442|Trichloroacetyl chloride
+2321|Trichlorobenzenes, liquid
+2322|Trichlorobutene
+2831|1,1,1-Trichloroethane
+1710|Trichloroethylene
+2468|Trichloroisocyanuric acid, dry
+1295|Trichlorosilane
+2574|Tricresyl phosphate with more than 3% ortho isomer
+2323|Triethyl phosphite
+1296|Triethylamine
+2259|Triethylenetetramine
+2699|Trifluoroacetic acid
+3057|Trifluoroacetyl chloride
+1082|Trifluorochloroethylene, stabilized or Refrigerant gas R 1113
+2035|1,1,1-Trifluoroethane or Refrigerant gas, R 143a
+1984|Trifluoromethane or Refrigerant gas R 23
+3136|Trifluoromethane, refrigerated liquid
+2942|2-Trifluoromethylaniline
+2948|3-Trifluoromethylaniline
+2324|Triisobutylene
+2616|Triisopropyl borate
+9269|Trimethoxysilane
+2416|Trimethyl borate
+2329|Trimethyl phosphite
+2438|Trimethylacetyl chloride
+1083|Trimethylamine, anhydrous
+1297|Trimethylamine, aqueous solutions with not more than 50% trimethylamine by mass
+2325|1,3,5-Trimethylbenzene
+1298|Trimethylchlorosilane
+2326|Trimethylcyclohexylamine
+2328|Trimethylhexamethylene diisocyanate
+2327|Trimethylhexamethylenediamines
+0153|Trinitroaniline or Picramide
+0213|Trinitroanisole
+0214|Trinitrobenzene, dry or wetted with less than 30% water, by mass
+1354|Trinitrobenzene, wetted with not less than 30% water, by mass
+3367|Trinitrobenzene, wetted, with not less than 10% water, by mass
+0386|Trinitrobenzenesulfonic acid
+0215|Trinitrobenzoic acid, dry or wetted with less than 30% water, by mass
+3368|Trinitrobenzoic acid, wetted with not less than 10% water by mass
+1355|Trinitrobenzoic acid, wetted with not less than 30% water, by mass
+3365|Trinitrochlorobenzene (picryl chloride), wetted, with not less than 10% water by mass
+0155|Trinitrochlorobenzene or Picryl chloride
+0387|Trinitrofluorenone
+0216|Trinitro-m-cresol
+0217|Trinitronaphthalene
+0218|Trinitrophenetole
+3364|Trinitrophenol (picric acid), wetted, with not less than 10% water by mass
+0154|Trinitrophenol or Picric acid, dry or wetted with less than 30% water, by mass
+1344|Trinitrophenol, wetted with not less than 30% water, by mass
+0208|Trinitrophenylmethylnitramine or Tetryl
+3366|Trinitrotoluene (TNT), wetted, with not less than 10% water by mass
+0209|Trinitrotoluene or TNT, dry or wetted with less than 30% water, by mass
+1356|Trinitrotoluene, wetted or TNT, wetted, with not less than 30% water by mass
+2260|Tripropylamine
+2057|Tripropylene
+2501|Tris-(1-aziridinyl)phosphine oxide, solution
+0390|Tritonal
+2196|Tungsten hexafluoride
+1299|Turpentine
+1300|Turpentine substitute
+2330|Undecane
+1511|Urea hydrogen peroxide
+0220|Urea nitrate, dry or wetted with less than 20% water, by mass
+1357|Urea nitrate, wetted with not less than 20% water, by mass
+3370|Urea nitrate, wetted with not less than 10% water, by mass
+2058|Valeraldehyde
+2502|Valeryl chloride
+3285|Vanadium compound, n.o.s
+2443|Vanadium oxytrichloride
+2862|Vanadium pentoxide, non-fused form
+2444|Vanadium tetrachloride
+2475|Vanadium trichloride
+2931|Vanadyl sulfate
+3166|Vehicle, flammable gas powered or Vehicle, fuel cell, flammable gas powered
+3166|Vehicle, flammable liquid powered or Vehicle, fuel cell, flammable liquid powered
+1301|Vinyl acetate, stabilized
+1085|Vinyl bromide, stabilized
+2838|Vinyl butyrate, stabilized
+1086|Vinyl chloride, stabilized
+2589|Vinyl chloroacetate
+1302|Vinyl ethyl ether, stabilized
+1860|Vinyl fluoride, stabilized
+1304|Vinyl isobutyl ether, stabilized
+1087|Vinyl methyl ether, stabilized
+1303|Vinylidene chloride, stabilized
+3073|Vinylpyridines, stabilized
+2618|Vinyltoluenes, stabilized
+1305|Vinyltrichlorosilane
+0370|WWarheads, rocket with burster or expelling charge
+0371|Warheads, rocket with burster or expelling charge
+0286|Warheads, rocket with bursting charge
+0287|Warheads, rocket with bursting charge
+0369|Warheads, rocket with bursting charge
+0221|Warheads, torpedo with bursting charge
+3129|Water-reactive liquid, corrosive, n.o.s.
+3148|Water-reactive liquid, n.o.s.
+3130|Water-reactive liquid, toxic, n.o.s.
+3131|Water-reactive solid, corrosive, n.o.s.
+3132|Water-reactive solid, flammable, n.o.s.
+2813|Water-reactive solid, n.o.s.
+3135|Water-reactive solid, self-heating, n.o.s.
+3134|Water-reactive solid, toxic, n.o.s.
+3133|Water-reactive, solid, oxidizing, n.o.s.
+1306|Wood preservatives, liquid
+1387|Wool waste, wet
+3342|XXanthates
+2036|Xenon, compressed
+2591|Xenon, refrigerated liquid (cryogenic liquids)
+1307|Xylenes
+3430|Xylenols, liquid
+2261|Xylenols, solid
+1711|Xylidines, liquid
+3452|Xylidines, solid
+1701|Xylyl bromide, liquid
+3417|Xylyl bromide, solid
+1512|Zinc ammonium nitrite
+1712|Zinc arsenate or Zinc arsenite or Zinc arsenate and zinc arsenite mixtures
+1435|Zinc ashes
+2469|Zinc bromate
+1513|Zinc chlorate
+2331|Zinc chloride, anhydrous
+1840|Zinc chloride, solution
+1713|Zinc cyanide
+1931|Zinc dithionite or Zinc hydrosulfite
+2855|Zinc fluorosilicate
+1514|Zinc nitrate
+1515|Zinc permanganate
+1516|Zinc peroxide
+1714|Zinc phosphide
+1436|Zinc powder or Zinc dust
+2714|Zinc resinate
+1437|Zirconium hydride
+2728|Zirconium nitrate
+0236|Zirconium picramate, dry or wetted with less than 20% water, by mass
+1517|Zirconium picramate, wetted with not less than 20% water, by mass
+2008|Zirconium powder, dry
+1932|Zirconium scrap
+1308|Zirconium suspended in a liquid
+2503|Zirconium tetrachloride
+2009|Zirconium, dry, finished sheets, strip or coiled wire
