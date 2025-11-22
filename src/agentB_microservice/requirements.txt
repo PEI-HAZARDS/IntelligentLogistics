@@ -1,4 +1,7 @@
-easyocr
 opencv-python-headless
+easyocr
 ultralytics
 confluent_kafka
+gdown
+pillow
+numpy

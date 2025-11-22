@@ -133,9 +133,12 @@ class AgentB:
                         logger.info("[AgentB] OCR extracting text…")
                         try:
                             text, ocr_conf = self.ocr._extract_text(crop)
-                            lp_results.append((text, float(ocr_conf)))
-                            lp_crop = crop
-                            logger.info(f"[AgentB] OCR: '{text}' (conf={ocr_conf:.2f})")
+                            if text and ocr_conf > 0.0:  # Only append valid results
+                                lp_results.append((text, float(ocr_conf)))
+                                lp_crop = crop
+                                logger.info(f"[AgentB] OCR: '{text}' (conf={ocr_conf:.2f})")
+                            else:
+                                logger.debug(f"[AgentB] OCR returned no text for crop {i}")
                         except Exception as e:
                             logger.exception(f"[AgentB] OCR failure: {e}")
                 else:
@@ -164,13 +167,12 @@ class AgentB:
 
 
 
-    def _publish_lp_detected(self, timestamp, truck_id, plate_text, plate_conf, correlation_id):
+    def _publish_lp_detected(self, timestamp, truck_id, plate_text, plate_conf):
         """Publica evento 'license-plate-detected' com propagação do correlationId."""
 
         # Payload com o conteudo da mensagem
         payload = {
             "timestamp": timestamp or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "truckId": truck_id,
             "licensePlate": plate_text,
             "confidence": float(plate_conf if plate_conf is not None else 0.0)
         }
@@ -181,7 +183,7 @@ class AgentB:
             topic=TOPIC_PRODUCE,
             key=None,
             value=json.dumps(payload).encode("utf-8"),
-            headers={"correlationId": correlation_id or str(uuid.uuid4())}
+            headers={"truckId": truck_id or str(uuid.uuid4())}
         )
         self.producer.poll(0)
 
@@ -207,17 +209,16 @@ class AgentB:
                     continue
 
                 # correlationId (propagar se existir)
-                correlation_id = None
+                truck_id = None
                 for k, v in (msg.headers() or []):
-                    if k == "correlationId" and v is not None:
-                        correlation_id = v.decode() if isinstance(v, (bytes, bytearray)) else str(v)
+                    if k == "truckId" and v is not None:
+                        truck_id = v.decode() if isinstance(v, (bytes, bytearray)) else str(v)
                         break
-                if correlation_id is None:
-                    correlation_id = str(uuid.uuid4())
+                if truck_id is None:
+                    truck_id = str(uuid.uuid4())
 
                 # dados de entrada (truckId, timestamp)
                 in_timestamp = data.get("timestamp")
-                truck_id = data.get("truckId")
                 
                 logger.info("[AgentB] Recieved 'truck-detected'. Starting LP pipeline…")
                 plate_text, plate_conf, _lp_img = self.process_license_plate_detection()
@@ -232,8 +233,7 @@ class AgentB:
                     timestamp=in_timestamp,
                     truck_id=truck_id,
                     plate_text=plate_text,
-                    plate_conf=plate_conf,
-                    correlation_id=correlation_id
+                    plate_conf=plate_conf
                 )
             
 
