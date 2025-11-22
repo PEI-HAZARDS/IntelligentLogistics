@@ -3,7 +3,7 @@ FROM python:3.11-slim
 
 # Variáveis de ambiente (podem ser sobrescritas no docker run/compose)
 ENV PYTHONPATH=/app \
-    KAFKA_BOOTSTRAP=10.255.32.64:9092 \
+    KAFKA_BOOTSTRAP=10.255.32.143:9092 \
     MODELS_PATH=/app/agentA_microservice/data
 
 WORKDIR /app
