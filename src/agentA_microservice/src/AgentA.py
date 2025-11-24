@@ -59,12 +59,10 @@ class AgentA:
         - Usa correlationId (header) novo por evento.
         - Gera um pseudo 'truckId' (é um ID de deteção; o AgentB ligará isto à leitura de matrícula).
         """
-        correlation_id = str(uuid.uuid4())
-        detection_id = "TRK" + correlation_id[:8]
+        truck_id = "TRK" + str(uuid.uuid4())[:8]
 
         payload = {
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "truckId": detection_id,
             "confidence": float(max_conf),
             "detections": int(num_boxes),
             # campo extra opcional (útil para debug/observabilidade)
@@ -77,7 +75,7 @@ class AgentA:
             topic=KAFKA_TOPIC,
             key=None,
             value=json.dumps(payload).encode("utf-8"),
-            headers={"correlationId": correlation_id},
+            headers={"truckId": truck_id},
             callback=_delivery_callback
         )
         # drena callbacks sem bloquear muito; flush completo é feito no stop()

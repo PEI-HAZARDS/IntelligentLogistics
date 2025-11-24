@@ -22,41 +22,23 @@ class OCR:
         return None
 
     def _preprocess_plate(self, cv_img):
-        # Resize a bit if very small (helps recognition)
-        h, w = cv_img.shape[:2]
-        if w < 200:
-            scale = max(1.0, 200 / w)
-            cv_img = cv2.resize(cv_img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
-
-        gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
-        # Try CLAHE for better local contrast
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
-        gray = clahe.apply(gray)
-        blur = cv2.GaussianBlur(gray, (3, 3), 0)
-
-        # Try both polarities (text dark on light and light on dark)
-        thresh_inv = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
-                                           cv2.THRESH_BINARY_INV, 25, 15)
-        thresh = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
-                                       cv2.THRESH_BINARY, 25, 15)
-
-        # Choose the one with higher overall stroke area (heuristic)
-        if thresh_inv.sum() > thresh.sum():
-            chosen = thresh_inv
+        """Convert image to grayscale (black and white)."""
+        if cv_img is None:
+            raise ValueError("Could not convert input to CV image")
+        
+        # Convert to grayscale if image has color channels
+        if len(cv_img.shape) == 3:
+            gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
         else:
-            chosen = thresh
-
-        # Optionally apply a small morphological open to remove speckles
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2,2))
-        chosen = cv2.morphologyEx(chosen, cv2.MORPH_OPEN, kernel)
-
-        # Convert back to BGR because PaddleOCR expects color images (it will convert internally)
-        return cv2.cvtColor(chosen, cv2.COLOR_GRAY2BGR)
+            gray = cv_img
+        
+        return gray
     
     def _extract_text(self, cv_img):
         results = self.reader.readtext(cv_img)
         if not results:
-            raise ValueError("EasyOCR returned empty results")
+            # Return empty string with 0 confidence instead of raising
+            return "", 0.0
 
         full_text = " ".join([res[1] for res in results])
         avg_confidence = sum([res[2] for res in results]) / len(results)
