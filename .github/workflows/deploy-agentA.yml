@@ -191,3 +191,36 @@ jobs:
           docker run -d --name agentA agentA:latest
 
           echo "Deploy concluído com sucesso ✔️"
+
+      
+      # ------------------------------------------------------------------
+      # 5 — Build + Deploy FORÇADO na VM (com -H ssh://) + CACHE
+      # ------------------------------------------------------------------
+      #- name: Build & Deploy Agent A (com cache entre runs!)
+      #  env:
+      #    DOCKER_HOST: ssh://agenta-vm
+      #  run: |
+      #    # Força tudo a correr na VM (nunca cai no modo local)
+      #    docker -H ssh://agenta-vm version
+
+          # Build com cache explícito no registry do GitHub (ou Docker Hub)
+      #    docker buildx create --use --name vm-builder --driver remote ssh://agenta-vm 2>/dev/null || true
+          
+          # Usa cache do GitHub Container Registry (ghcr.io)
+      #    docker buildx build \
+      #      --push \
+      #      --cache-to type=registry,ref=ghcr.io/${{ github.repository }}/cache/agenta:latest,mode=max \
+      #     --cache-from type=registry,ref=ghcr.io/${{ github.repository }}/cache/agenta:latest \
+      #      -t ghcr.io/${{ github.repository }}/agenta:latest \
+      #      -t agenta:latest \
+      #      -f src/agentA_microservice/Dockerfile .
+
+          # Deploy
+      #    docker -H ssh://agenta-vm stop agentA || true
+      #    docker -H ssh://agenta-vm rm agentA || true
+      #    docker -H ssh://agenta-vm run -d \
+      #      --name agentA \
+      #      --restart unless-stopped \
+      #      agenta:latest
+
+      #    echo "Deploy Agent A concluído com sucesso"
