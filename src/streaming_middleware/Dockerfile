@@ -22,6 +22,9 @@ RUN nginx -t || (echo "=== nginx.conf has errors ==="; cat /etc/nginx/nginx.conf
 COPY entrypoint.sh /entrypoint.sh
 COPY ingest_streams.sh /usr/local/bin/ingest_streams.sh
 
+# Copiar HTML player para Nginx
+COPY test_nginx_hls.html /usr/local/nginx/html/player.html
+
 # Dar permissões
 RUN chmod +x /entrypoint.sh /usr/local/bin/ingest_streams.sh
 

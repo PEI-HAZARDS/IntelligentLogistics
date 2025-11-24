@@ -210,9 +210,24 @@ Este serviço é **infraestrutura**, não um microserviço. Ele:
 - ✅ Serve múltiplos portões (basta adicionar `GATE_ID=gate02`)
 
 
+
+## Install on VM
+
+```bash 
+sudo apt install docker.io
+```
+
+```bash
+
+```
+
 ## 🚀 Como Usar
 
 ### **Build da imagem:**
+
+```bash
+docker context create NGINX --docker "host=ssh://pei_user@10.255.32.35"
+```
 
 ```bash
 docker-compose build

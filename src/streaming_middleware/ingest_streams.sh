@@ -29,13 +29,13 @@ echo "  RTSP HIGH: ${RTSP_URL_HIGH}"
 
 # ============================================
 # Stream LOW (720p) - Always-on
-# Codec: H.264 (copy direto, sem transcoding)
+# Sem áudio, apenas vídeo H.264
 # ============================================
-echo "[Ingest] Starting LOW stream (720p)..."
+echo "[Ingest] Starting LOW stream (720p, video-only)..."
 ffmpeg -rtsp_transport tcp \
        -i "${RTSP_URL_LOW}" \
+       -an \
        -c:v copy \
-       -c:a aac -b:a 128k \
        -f flv "${RTMP_URL_LOW}" \
        2>&1 | sed 's/^/[FFmpeg-LOW] /' &
 
@@ -47,12 +47,12 @@ sleep 2
 
 # ============================================
 # Stream HIGH (4K) - Always-on
-# Codec: HEVC → H.264 (TRANSCODE obrigatório!)
-# Nota: FLV/RTMP não suporta HEVC, precisa converter
+# HEVC → H.264 transcoding, sem áudio
 # ============================================
-echo "[Ingest] Starting HIGH stream (4K - HEVC→H.264 transcoding)..."
+echo "[Ingest] Starting HIGH stream (4K - HEVC→H.264 transcoding, video-only)..."
 ffmpeg -rtsp_transport tcp \
        -i "${RTSP_URL_HIGH}" \
+       -an \
        -c:v libx264 \
        -preset ultrafast \
        -tune zerolatency \
@@ -60,7 +60,8 @@ ffmpeg -rtsp_transport tcp \
        -maxrate 20M \
        -bufsize 40M \
        -pix_fmt yuv420p \
-       -c:a aac -b:a 192k \
+       -g 30 \
+       -keyint_min 30 \
        -f flv "${RTMP_URL_HIGH}" \
        2>&1 | sed 's/^/[FFmpeg-HIGH] /' &
 
@@ -91,8 +92,8 @@ while true; do
         echo "[Ingest] LOW stream died, restarting..."
         ffmpeg -rtsp_transport tcp \
                -i "${RTSP_URL_LOW}" \
+               -an \
                -c:v copy \
-               -c:a aac -b:a 128k \
                -f flv "${RTMP_URL_LOW}" \
                2>&1 | sed 's/^/[FFmpeg-LOW] /' &
         LOW_PID=$!
@@ -104,6 +105,7 @@ while true; do
         echo "[Ingest] HIGH stream died, restarting..."
         ffmpeg -rtsp_transport tcp \
                -i "${RTSP_URL_HIGH}" \
+               -an \
                -c:v libx264 \
                -preset ultrafast \
                -tune zerolatency \
@@ -111,7 +113,8 @@ while true; do
                -maxrate 20M \
                -bufsize 40M \
                -pix_fmt yuv420p \
-               -c:a aac -b:a 192k \
+               -g 30 \
+               -keyint_min 30 \
                -f flv "${RTMP_URL_HIGH}" \
                2>&1 | sed 's/^/[FFmpeg-HIGH] /' &
         HIGH_PID=$!
