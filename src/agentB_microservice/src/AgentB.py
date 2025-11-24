@@ -16,7 +16,15 @@ from shared_utils.RTSPstream import *
 # URL do stream HIGH (4K) via Nginx RTMP
 # Antes: rtsp://10.255.35.86:554/stream1
 # Agora: rtmp://nginx-rtmp/streams_high/gate01
-RTSP_STREAM_HIGH = os.getenv("RTSP_STREAM_HIGH", "rtmp://nginx-rtmp/streams_high/gate01")
+NGINX_RTMP_HOST = os.getenv("NGINX_RTMP_HOST", "10.255.32.35")  #IP da VM do Nginx
+NGINX_RTMP_PORT = os.getenv("NGINX_RTMP_PORT", "1935")
+MAX_CONNECTION_RETRIES = 10
+RETRY_DELAY = 5  # seconds
+
+RTSP_STREAM_HIGH = os.getenv(
+    "RTSP_STREAM_HIGH", 
+    f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_high/gate01"
+)
 CROPS_PATH = "agentB_microservice/data/lp_crops"
 os.makedirs(CROPS_PATH, exist_ok=True)
 
@@ -200,7 +208,6 @@ class AgentB:
             headers={"truckId": truck_id or str(uuid.uuid4())}
         )
         self.producer.poll(0)
-
 
 
     def _loop(self):

@@ -247,3 +247,11 @@ time ffmpeg -i rtsp://10.255.35.86:554/stream2 -frames:v 1 -f null - 2>&1 | grep
 
 # Testar latência RTMP via Nginx
 time ffmpeg -i rtmp://localhost:1935/streams_low/gate01 -frames:v 1 -f null - 2>&1 | grep "time="
+
+
+
+## Importante
+
+sudo ufw allow 8080/tcp
+sudo ufw allow 1935/tcp
+sudo ufw reload

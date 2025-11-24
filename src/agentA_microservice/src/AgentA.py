@@ -10,8 +10,16 @@ import json
 # URL do stream LOW (720p) via Nginx RTMP
 # Antes: rtsp://10.255.35.86:554/stream2
 # Agora: rtmp://nginx-rtmp/streams_low/gate01
+NGINX_RTMP_HOST = os.getenv("NGINX_RTMP_HOST", "10.255.32.35")  #IP da VM do Nginx
+NGINX_RTMP_PORT = os.getenv("NGINX_RTMP_PORT", "1935")
+MAX_CONNECTION_RETRIES = 10
+RETRY_DELAY = 5  # seconds
+
 RTSP_STREAM_LOW = os.getenv(
-    "RTSP_STREAM_LOW", "rtmp://nginx-rtmp/streams_low/gate01")
+    "RTSP_STREAM_LOW", 
+    f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_low/gate01"
+)
+
 MESSAGE_INTERVAL = 30  # seconds
 KAFKA_TOPIC = "truck-detected"
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
@@ -69,8 +77,9 @@ class AgentA:
             "source": "rtsp_low"
         }
 
-        logger.info(f"[AgentA] Publishing 'truck-detected' (truckId={detection_id}, "
+        logger.info(f"[AgentA] Publishing 'truck-detected' (truckId={truck_id}, "
                     f"detections={num_boxes}, max_conf={max_conf:.2f}) …")
+        
         self.producer.produce(
             topic=KAFKA_TOPIC,
             key=None,
@@ -81,16 +90,47 @@ class AgentA:
         # drena callbacks sem bloquear muito; flush completo é feito no stop()
         self.producer.poll(0)
 
+
+    def _connect_to_stream_with_retry(self, max_retries=MAX_CONNECTION_RETRIES):
+        """
+        Tenta conectar ao stream RTMP com retry automático.
+        Aguarda que o serviço nginx-rtmp esteja disponível.
+        """
+        for attempt in range(1, max_retries + 1):
+            try:
+                logger.info(
+                    f"[AgentA] Connection attempt {attempt}/{max_retries} to: {RTSP_STREAM_LOW}")
+                cap = RTSPStream(RTSP_STREAM_LOW)
+                logger.info("[AgentA] Successfully connected to stream!")
+                return cap
+            except ConnectionError as e:
+                logger.warning(
+                    f"[AgentA] Connection failed (attempt {attempt}/{max_retries}): {e}")
+                
+                if attempt < max_retries:
+                    logger.info(f"[AgentA] Waiting {RETRY_DELAY}s before retry...")
+                    time.sleep(RETRY_DELAY)
+                else:
+                    logger.error("[AgentA] Max retries reached. Could not connect to stream.")
+                    raise
+            except Exception as e:
+                logger.exception(f"[AgentA] Unexpected error during connection: {e}")
+                raise
+
+
+
     def _loop(self):
+        
         logger.info("[AgentA] Starting Agent A main loop…")
+        logger.info(f"[AgentA] Target stream: {RTSP_STREAM_LOW}")
+        logger.info(f"[AgentA] Kafka bootstrap: {KAFKA_BOOTSTRAP}")
 
         cap = None
         try:
-            logger.info(
-                f"[AgentA] Connecting to RTMP stream (via Nginx): {RTSP_STREAM_LOW}")
-            cap = RTSPStream(RTSP_STREAM_LOW)
+            # Usar retry logic para conexão inicial
+            cap = self._connect_to_stream_with_retry()
         except Exception as e:
-            logger.exception(f"[AgentA] Failed to initialize stream: {e}")
+            logger.exception(f"[AgentA] Failed to initialize stream after retries: {e}")
             return
 
         while self.running:

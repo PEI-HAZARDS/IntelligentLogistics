@@ -1,14 +1,26 @@
-# docker-compose.yml
 services:
   nginx-rtmp:
     build: .
     container_name: nginx-rtmp
     ports:
-      - "1935:1935"
-      - "8080:8080"
+      - "1935:1935"  # RTMP - EXPOSTO para rede externa
+      - "8080:8080"  # HTTP/HLS - EXPOSTO para frontend
     environment:
-      CAMERA_IP: 10.255.35.86
-      STREAM_LOW_PATH: stream2
-      STREAM_HIGH_PATH: stream1
-      GATE_ID: gate01
+      - CAMERA_IP=10.255.35.86
+      - RTSP_PORT=554
+      - STREAM_LOW_PATH=stream2
+      - STREAM_HIGH_PATH=stream1
+      - GATE_ID=gate01
     restart: unless-stopped
+    networks:
+      - host  # Usar rede host para acesso externo simplificado
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  host:
+    external: true
