@@ -13,7 +13,18 @@ from queue import Queue, Empty
 from confluent_kafka import Producer, Consumer, KafkaException # type: ignore
 from shared_utils.RTSPstream import *
 
-RTSP_STREAM_HIGH = "rtsp://10.255.35.86:554/stream1"
+# URL do stream HIGH (4K) via Nginx RTMP
+# Antes: rtsp://10.255.35.86:554/stream1
+# Agora: rtmp://nginx-rtmp/streams_high/gate01
+NGINX_RTMP_HOST = os.getenv("NGINX_RTMP_HOST", "10.255.32.35")  #IP da VM do Nginx
+NGINX_RTMP_PORT = os.getenv("NGINX_RTMP_PORT", "1935")
+MAX_CONNECTION_RETRIES = 10
+RETRY_DELAY = 5  # seconds
+
+RTSP_STREAM_HIGH = os.getenv(
+    "RTSP_STREAM_HIGH", 
+    f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_high/gate01"
+)
 CROPS_PATH = "agentB_microservice/data/lp_crops"
 os.makedirs(CROPS_PATH, exist_ok=True)
 
@@ -39,8 +50,10 @@ class AgentB:
         self.ocr = OCR()
         self.running = True
         self.frames_queue = Queue()
-        # Liga a stream RTSP
-        self.stream = RTSPStream(RTSP_STREAM_HIGH)
+        
+        # NÃO conecta ao stream no __init__
+        # Conecta on-demand quando recebe evento do Kafka
+        self.stream = None
 
         bootstrap = kafka_bootstrap or KAFKA_BOOTSTRAP
         logger.info(f"[AgentB/Kafka] bootstrap: {bootstrap}")
@@ -64,8 +77,17 @@ class AgentB:
 
 
     def _get_frames(self, num_frames=1):
-        """Captura alguns frames do RTSP."""
-        logger.info(f"[AgentB] reading {num_frames} frame(s) from RTSP…")
+        """Captura alguns frames do RTMP/RTSP."""
+        # Conectar ao stream se não estiver conectado
+        if self.stream is None:
+            logger.info(f"[AgentB] Connecting to RTMP stream (via Nginx): {RTSP_STREAM_HIGH}")
+            try:
+                self.stream = RTSPStream(RTSP_STREAM_HIGH)
+            except Exception as e:
+                logger.exception(f"[AgentB] Failed to connect to stream: {e}")
+                return
+        
+        logger.info(f"[AgentB] reading {num_frames} frame(s) from RTMP…")
         captured = 0
         while captured < num_frames and self.running:
             try:
@@ -133,9 +155,12 @@ class AgentB:
                         logger.info("[AgentB] OCR extracting text…")
                         try:
                             text, ocr_conf = self.ocr._extract_text(crop)
-                            lp_results.append((text, float(ocr_conf)))
-                            lp_crop = crop
-                            logger.info(f"[AgentB] OCR: '{text}' (conf={ocr_conf:.2f})")
+                            if text and ocr_conf > 0.0:  # Only append valid results
+                                lp_results.append((text, float(ocr_conf)))
+                                lp_crop = crop
+                                logger.info(f"[AgentB] OCR: '{text}' (conf={ocr_conf:.2f})")
+                            else:
+                                logger.debug(f"[AgentB] OCR returned no text for crop {i}")
                         except Exception as e:
                             logger.exception(f"[AgentB] OCR failure: {e}")
                 else:
@@ -164,13 +189,12 @@ class AgentB:
 
 
 
-    def _publish_lp_detected(self, timestamp, truck_id, plate_text, plate_conf, correlation_id):
+    def _publish_lp_detected(self, timestamp, truck_id, plate_text, plate_conf):
         """Publica evento 'license-plate-detected' com propagação do correlationId."""
 
         # Payload com o conteudo da mensagem
         payload = {
             "timestamp": timestamp or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "truckId": truck_id,
             "licensePlate": plate_text,
             "confidence": float(plate_conf if plate_conf is not None else 0.0)
         }
@@ -181,10 +205,9 @@ class AgentB:
             topic=TOPIC_PRODUCE,
             key=None,
             value=json.dumps(payload).encode("utf-8"),
-            headers={"correlationId": correlation_id or str(uuid.uuid4())}
+            headers={"truckId": truck_id or str(uuid.uuid4())}
         )
         self.producer.poll(0)
-
 
 
     def _loop(self):
@@ -207,17 +230,16 @@ class AgentB:
                     continue
 
                 # correlationId (propagar se existir)
-                correlation_id = None
+                truck_id = None
                 for k, v in (msg.headers() or []):
-                    if k == "correlationId" and v is not None:
-                        correlation_id = v.decode() if isinstance(v, (bytes, bytearray)) else str(v)
+                    if k == "truckId" and v is not None:
+                        truck_id = v.decode() if isinstance(v, (bytes, bytearray)) else str(v)
                         break
-                if correlation_id is None:
-                    correlation_id = str(uuid.uuid4())
+                if truck_id is None:
+                    truck_id = str(uuid.uuid4())
 
                 # dados de entrada (truckId, timestamp)
                 in_timestamp = data.get("timestamp")
-                truck_id = data.get("truckId")
                 
                 logger.info("[AgentB] Recieved 'truck-detected'. Starting LP pipeline…")
                 plate_text, plate_conf, _lp_img = self.process_license_plate_detection()
@@ -232,8 +254,7 @@ class AgentB:
                     timestamp=in_timestamp,
                     truck_id=truck_id,
                     plate_text=plate_text,
-                    plate_conf=plate_conf,
-                    correlation_id=correlation_id
+                    plate_conf=plate_conf
                 )
             
 
@@ -246,10 +267,11 @@ class AgentB:
         finally:
             logger.info("[AgentB] Freeing resources…")
             try:
-                self.stream.release()
-                logger.debug("[AgentB] RTSP stream released.")
+                if self.stream is not None:
+                    self.stream.release()
+                    logger.debug("[AgentB] RTMP stream released.")
             except Exception as e:
-                logger.exception(f"[AgentB] Error releasing RTSP stream: {e}")
+                logger.exception(f"[AgentB] Error releasing RTMP stream: {e}")
             try:
                 self.producer.flush(5)
             except Exception:
