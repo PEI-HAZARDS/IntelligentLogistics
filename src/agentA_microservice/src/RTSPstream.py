@@ -8,9 +8,9 @@ logger = logging.getLogger("RTSPStream")
 
 class RTSPStream:
     """
-    Stream reader genérico - suporta RTSP, RTMP e outros protocolos via FFmpeg.
+    Generic stream reader - supports RTSP, RTMP and other protocols via FFmpeg.
 
-    Exemplos de URLs suportadas:
+    Supported URL examples:
     - RTSP: rtsp://10.255.35.86:554/stream1
     - RTMP: rtmp://nginx-rtmp/streams_low/gate01
     - HTTP: http://example.com/stream.m3u8
@@ -19,28 +19,28 @@ class RTSPStream:
     def __init__(self, url):
         logger.info(f"[RTSPStream] Starting stream from: {url}")
 
-        # OpenCV com backend FFmpeg suporta múltiplos protocolos
+        # OpenCV with FFmpeg backend supports multiple protocols
         self.cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
 
-        # Configurações para baixa latência
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Buffer mínimo
+        # Settings for low latency
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Minimum buffer
 
         if not self.cap.isOpened():
             raise ConnectionError(f"Failed to connect to stream: {url}")
 
-        # Lock para não alterar o mesmo frame em threads diferentes
+        # Lock to prevent modifying the same frame in different threads
         self.lock = threading.Lock()
         self.frame = None
         self.running = True
         self.url = url
 
-        # Thread em paralelo para ler a stream continuamente
+        # Thread in parallel to read stream continuously
         t = threading.Thread(target=self.update, daemon=True)
         t.start()
         logger.info(f"[RTSPStream] Stream started successfully.")
 
     def update(self):
-        """Thread que lê frames continuamente"""
+        """Thread that reads frames continuously"""
         consecutive_failures = 0
         max_failures = 10
 
@@ -49,7 +49,7 @@ class RTSPStream:
             if ret:
                 with self.lock:
                     self.frame = frame
-                consecutive_failures = 0  # Reset contador
+                consecutive_failures = 0  # Reset counter
             else:
                 consecutive_failures += 1
                 logger.warning(
@@ -61,18 +61,18 @@ class RTSPStream:
                     self.running = False
                     break
 
-                time.sleep(0.5)  # Aguardar antes de tentar novamente
+                time.sleep(0.5)  # Wait before trying again
 
-    # Frame bloqueado para evitar alteração enquanto se está a ler
+    # Frame locked to avoid alteration while reading
     def read(self):
-        """Retorna cópia thread-safe do último frame"""
+        """Returns thread-safe copy of the last frame"""
         with self.lock:
             return None if self.frame is None else self.frame.copy()
 
     def release(self):
-        """Libera recursos e para thread"""
+        """Releases resources and stops thread"""
         logger.info(f"[RTSPStream] Releasing stream: {self.url}")
         self.running = False
-        time.sleep(0.2)  # Aguardar thread terminar
+        time.sleep(0.2)  # Wait for thread to finish
         self.cap.release()
         logger.info(f"[RTSPStream] Stream released successfully.")
