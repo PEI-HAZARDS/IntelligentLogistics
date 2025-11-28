@@ -1,28 +1,27 @@
 # AgentB.py — versão Kafka
-from shared_utils import RTSPstream
-from shared_utils.RTSPstream import *
+from agentB_microservice.src.RTSPstream import RTSPStream
 from agentB_microservice.src.YOLO_License_Plate import *
 from agentB_microservice.src.OCR import *
 
 import os
 import time
-import cv2 # type: ignore
+import cv2  # type: ignore
 import json
 import uuid
 from queue import Queue, Empty
-from confluent_kafka import Producer, Consumer, KafkaException # type: ignore
-from shared_utils.RTSPstream import *
+from confluent_kafka import Producer, Consumer, KafkaException  # type: ignore
 
 # URL do stream HIGH (4K) via Nginx RTMP
 # Antes: rtsp://10.255.35.86:554/stream1
 # Agora: rtmp://nginx-rtmp/streams_high/gate01
-NGINX_RTMP_HOST = os.getenv("NGINX_RTMP_HOST", "10.255.32.35")  #IP da VM do Nginx
+NGINX_RTMP_HOST = os.getenv(
+    "NGINX_RTMP_HOST", "10.255.32.35")  # IP da VM do Nginx
 NGINX_RTMP_PORT = os.getenv("NGINX_RTMP_PORT", "1935")
 MAX_CONNECTION_RETRIES = 10
 RETRY_DELAY = 5  # seconds
 
 RTSP_STREAM_HIGH = os.getenv(
-    "RTSP_STREAM_HIGH", 
+    "RTSP_STREAM_HIGH",
     f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_high/gate01"
 )
 CROPS_PATH = "agentB_microservice/data/lp_crops"
@@ -50,7 +49,7 @@ class AgentB:
         self.ocr = OCR()
         self.running = True
         self.frames_queue = Queue()
-        
+
         # NÃO conecta ao stream no __init__
         # Conecta on-demand quando recebe evento do Kafka
         self.stream = None
@@ -63,7 +62,8 @@ class AgentB:
             "bootstrap.servers": bootstrap,
             "group.id": "agentB-group",
             "auto.offset.reset": "earliest",
-            "enable.auto.commit": True,        # simples para começar; mudar p/ manual se precisares de controle fino
+            # simples para começar; mudar p/ manual se precisares de controle fino
+            "enable.auto.commit": True,
             "session.timeout.ms": 10000,
             "max.poll.interval.ms": 300000,
         })
@@ -75,18 +75,18 @@ class AgentB:
             # "enable.idempotence": True, "acks": "all"  # liga em produção se precisares de garantias fortes
         })
 
-
     def _get_frames(self, num_frames=1):
         """Captura alguns frames do RTMP/RTSP."""
         # Conectar ao stream se não estiver conectado
         if self.stream is None:
-            logger.info(f"[AgentB] Connecting to RTMP stream (via Nginx): {RTSP_STREAM_HIGH}")
+            logger.info(
+                f"[AgentB] Connecting to RTMP stream (via Nginx): {RTSP_STREAM_HIGH}")
             try:
                 self.stream = RTSPStream(RTSP_STREAM_HIGH)
             except Exception as e:
                 logger.exception(f"[AgentB] Failed to connect to stream: {e}")
                 return
-        
+
         logger.info(f"[AgentB] reading {num_frames} frame(s) from RTMP…")
         captured = 0
         while captured < num_frames and self.running:
@@ -103,11 +103,11 @@ class AgentB:
                 logger.exception(f"[AgentB] Error when capturing frame {e}")
                 time.sleep(0.2)
 
-
     def process_license_plate_detection(self):
         """Pipeline principal para detetar e extrair texto da matrícula."""
 
-        logger.info("[AgentB] Starting license plate pipeline detection process…")
+        logger.info(
+            "[AgentB] Starting license plate pipeline detection process…")
         self._get_frames(1)
 
         if self.frames_queue.empty():
@@ -131,17 +131,20 @@ class AgentB:
                 results = self.yolo.detect(frame)
 
                 if not results:
-                    logger.debug("[AgentB] YOLO did not return a result for this frame.")
+                    logger.debug(
+                        "[AgentB] YOLO did not return a result for this frame.")
                     continue
 
                 if self.yolo.found_license_plate(results):
                     boxes = self.yolo.get_boxes(results)
-                    logger.info(f"[AgentB] {len(boxes)} license plates detected.")
+                    logger.info(
+                        f"[AgentB] {len(boxes)} license plates detected.")
 
                     for i, box in enumerate(boxes, start=1):
                         x1, y1, x2, y2, conf = map(float, box)
                         if conf < 0.5:
-                            logger.debug(f"[AgentB] Ignored low confidence result (conf={conf:.2f}).")
+                            logger.debug(
+                                f"[AgentB] Ignored low confidence result (conf={conf:.2f}).")
                             continue
 
                         crop = frame[int(y1):int(y2), int(x1):int(x2)]
@@ -158,13 +161,16 @@ class AgentB:
                             if text and ocr_conf > 0.0:  # Only append valid results
                                 lp_results.append((text, float(ocr_conf)))
                                 lp_crop = crop
-                                logger.info(f"[AgentB] OCR: '{text}' (conf={ocr_conf:.2f})")
+                                logger.info(
+                                    f"[AgentB] OCR: '{text}' (conf={ocr_conf:.2f})")
                             else:
-                                logger.debug(f"[AgentB] OCR returned no text for crop {i}")
+                                logger.debug(
+                                    f"[AgentB] OCR returned no text for crop {i}")
                         except Exception as e:
                             logger.exception(f"[AgentB] OCR failure: {e}")
                 else:
-                    logger.info("[AgentB] No license plate detected for this frame.")
+                    logger.info(
+                        "[AgentB] No license plate detected for this frame.")
 
             except Exception as e:
                 logger.exception(f"[AgentB] Error on detection loop: {e}")
@@ -175,7 +181,8 @@ class AgentB:
 
         try:
             final_text, conf = self.consensus_Alg(lp_results)
-            logger.info(f"[AgentB] Final license plate: '{final_text}' (conf={conf:.2f})")
+            logger.info(
+                f"[AgentB] Final license plate: '{final_text}' (conf={conf:.2f})")
             return final_text, conf, lp_crop
         except Exception as e:
             logger.exception(f"[AgentB] Error calculating results: {e}")
@@ -187,8 +194,6 @@ class AgentB:
         logger.debug("[AgentB] Obtaining final result.")
         return results[-1][0], results[-1][1]
 
-
-
     def _publish_lp_detected(self, timestamp, truck_id, plate_text, plate_conf):
         """Publica evento 'license-plate-detected' com propagação do correlationId."""
 
@@ -198,7 +203,8 @@ class AgentB:
             "licensePlate": plate_text,
             "confidence": float(plate_conf if plate_conf is not None else 0.0)
         }
-        logger.info(f"[AgentB] Publishing '{TOPIC_PRODUCE}' (truckId={truck_id}, plate={plate_text}) …")
+        logger.info(
+            f"[AgentB] Publishing '{TOPIC_PRODUCE}' (truckId={truck_id}, plate={plate_text}) …")
 
         # Publica o topico de deteção de matrícula
         self.producer.produce(
@@ -209,9 +215,9 @@ class AgentB:
         )
         self.producer.poll(0)
 
-
     def _loop(self):
-        logger.info(f"[AgentB] Main loop starting… (topic in='{TOPIC_CONSUME}')")
+        logger.info(
+            f"[AgentB] Main loop starting… (topic in='{TOPIC_CONSUME}')")
 
         try:
             while self.running:
@@ -240,15 +246,17 @@ class AgentB:
 
                 # dados de entrada (truckId, timestamp)
                 in_timestamp = data.get("timestamp")
-                
-                logger.info("[AgentB] Recieved 'truck-detected'. Starting LP pipeline…")
+
+                logger.info(
+                    "[AgentB] Recieved 'truck-detected'. Starting LP pipeline…")
                 plate_text, plate_conf, _lp_img = self.process_license_plate_detection()
 
                 if not plate_text:
-                    logger.warning("[AgentB] No final text results — not publishing.")
+                    logger.warning(
+                        "[AgentB] No final text results — not publishing.")
                     # dependendo do teu desenho, poderias publicar mesmo assim com conf=0.0
                     continue
-                
+
                 # Publica a mensagem de matrícula detetada
                 self._publish_lp_detected(
                     timestamp=in_timestamp,
@@ -256,7 +264,6 @@ class AgentB:
                     plate_text=plate_text,
                     plate_conf=plate_conf
                 )
-            
 
         except KeyboardInterrupt:
             logger.info("[AgentB] Interrupted by user.")
@@ -280,8 +287,6 @@ class AgentB:
                 self.consumer.close()
             except Exception:
                 pass
-        
-
 
     def stop(self):
         """Para parar o agente de forma limpa."""
