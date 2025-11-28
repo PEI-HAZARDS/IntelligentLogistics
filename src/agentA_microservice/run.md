@@ -1,9 +1,14 @@
 
 estar na pasta do agentA
 
-docker build \
-    --cache-from agenta:latest \
-    -t agenta-microservice:latest .
+docker build --rm -t agenta:latest .
 
-docker run -d agenta:latest
+docker run -d agenta:
+
+# Para ver nome da imagem
+docker ps -a
+
+# Para ver os logs
+docker logs -f <nome-imagem>
+
 
