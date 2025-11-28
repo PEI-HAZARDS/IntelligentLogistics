@@ -1,5 +1,5 @@
 # AgentA.py — versão Kafka (KRaft/ZooKeeper-agnostic)
-from shared_utils.RTSPstream import *
+from agentA_microservice.src.RTSPstream import RTSPStream
 from agentA_microservice.src.YOLO_Truck import *
 import os
 import time
@@ -10,13 +10,14 @@ import json
 # URL do stream LOW (720p) via Nginx RTMP
 # Antes: rtsp://10.255.35.86:554/stream2
 # Agora: rtmp://nginx-rtmp/streams_low/gate01
-NGINX_RTMP_HOST = os.getenv("NGINX_RTMP_HOST", "10.255.32.35")  #IP da VM do Nginx
+NGINX_RTMP_HOST = os.getenv(
+    "NGINX_RTMP_HOST", "10.255.32.35")  # IP da VM do Nginx
 NGINX_RTMP_PORT = os.getenv("NGINX_RTMP_PORT", "1935")
 MAX_CONNECTION_RETRIES = 10
 RETRY_DELAY = 5  # seconds
 
 RTSP_STREAM_LOW = os.getenv(
-    "RTSP_STREAM_LOW", 
+    "RTSP_STREAM_LOW",
     f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_low/gate01"
 )
 
@@ -79,7 +80,7 @@ class AgentA:
 
         logger.info(f"[AgentA] Publishing 'truck-detected' (truckId={truck_id}, "
                     f"detections={num_boxes}, max_conf={max_conf:.2f}) …")
-        
+
         self.producer.produce(
             topic=KAFKA_TOPIC,
             key=None,
@@ -89,7 +90,6 @@ class AgentA:
         )
         # drena callbacks sem bloquear muito; flush completo é feito no stop()
         self.producer.poll(0)
-
 
     def _connect_to_stream_with_retry(self, max_retries=MAX_CONNECTION_RETRIES):
         """
@@ -106,21 +106,22 @@ class AgentA:
             except ConnectionError as e:
                 logger.warning(
                     f"[AgentA] Connection failed (attempt {attempt}/{max_retries}): {e}")
-                
+
                 if attempt < max_retries:
-                    logger.info(f"[AgentA] Waiting {RETRY_DELAY}s before retry...")
+                    logger.info(
+                        f"[AgentA] Waiting {RETRY_DELAY}s before retry...")
                     time.sleep(RETRY_DELAY)
                 else:
-                    logger.error("[AgentA] Max retries reached. Could not connect to stream.")
+                    logger.error(
+                        "[AgentA] Max retries reached. Could not connect to stream.")
                     raise
             except Exception as e:
-                logger.exception(f"[AgentA] Unexpected error during connection: {e}")
+                logger.exception(
+                    f"[AgentA] Unexpected error during connection: {e}")
                 raise
 
-
-
     def _loop(self):
-        
+
         logger.info("[AgentA] Starting Agent A main loop…")
         logger.info(f"[AgentA] Target stream: {RTSP_STREAM_LOW}")
         logger.info(f"[AgentA] Kafka bootstrap: {KAFKA_BOOTSTRAP}")
@@ -130,7 +131,8 @@ class AgentA:
             # Usar retry logic para conexão inicial
             cap = self._connect_to_stream_with_retry()
         except Exception as e:
-            logger.exception(f"[AgentA] Failed to initialize stream after retries: {e}")
+            logger.exception(
+                f"[AgentA] Failed to initialize stream after retries: {e}")
             return
 
         while self.running:
