@@ -11,6 +11,7 @@ WORKDIR /app
 # 1. System dependencies (OpenCV, etc.)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+    chafa  \
     libgl1 \
     libglib2.0-0 && \
     rm -rf /var/lib/apt/lists/*
