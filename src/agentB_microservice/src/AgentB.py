@@ -19,7 +19,7 @@ MAX_CONNECTION_RETRIES = 10
 RETRY_DELAY = 5  # seconds
 
 RTSP_STREAM_HIGH = os.getenv(
-    "RTSP_STREAM_HIGH", 
+    "RTSP_STREAM_HIGH",
     f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_high/gate01"
 )
 CROPS_PATH = "agentB_microservice/data/lp_crops"
@@ -46,7 +46,7 @@ class AgentB:
         self.ocr = OCR()
         self.running = True
         self.frames_queue = Queue()
-        
+
         # NÃO conecta ao stream no __init__
         # Conecta on-demand quando recebe evento do Kafka
         self.stream = None
@@ -112,13 +112,14 @@ class AgentB:
         """Captura alguns frames do RTMP/RTSP."""
         # Conectar ao stream se não estiver conectado
         if self.stream is None:
-            logger.info(f"[AgentB] Connecting to RTMP stream (via Nginx): {RTSP_STREAM_HIGH}")
+            logger.info(
+                f"[AgentB] Connecting to RTMP stream (via Nginx): {RTSP_STREAM_HIGH}")
             try:
                 self.stream = RTSPStream(RTSP_STREAM_HIGH)
             except Exception as e:
                 logger.exception(f"[AgentB] Failed to connect to stream: {e}")
                 return
-        
+
         logger.info(f"[AgentB] reading {num_frames} frame(s) from RTMP…")
         captured = 0
         while captured < num_frames and self.running:
@@ -382,7 +383,8 @@ class AgentB:
             "licensePlate": plate_text,
             "confidence": float(plate_conf if plate_conf is not None else 0.0)
         }
-        logger.info(f"[AgentB] Publishing '{TOPIC_PRODUCE}' (truckId={truck_id}, plate={plate_text}) …")
+        logger.info(
+            f"[AgentB] Publishing '{TOPIC_PRODUCE}' (truckId={truck_id}, plate={plate_text}) …")
 
         # Publica o tópico de deteção de matrícula
         self.producer.produce(
@@ -393,9 +395,9 @@ class AgentB:
         )
         self.producer.poll(0)
 
-
     def _loop(self):
-        logger.info(f"[AgentB] Main loop starting… (topic in='{TOPIC_CONSUME}')")
+        logger.info(
+            f"[AgentB] Main loop starting… (topic in='{TOPIC_CONSUME}')")
 
         try:
             while self.running:
