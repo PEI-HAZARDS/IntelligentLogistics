@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="4m0LvqJDSNqgWIynUXRR" name="Page-1">
-        <mxGraphModel dx="2110" dy="795" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+        <mxGraphModel dx="2240" dy="795" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -104,8 +104,8 @@
                 <mxCell id="28" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Descrição&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="-320" y="460" width="70" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="31" value="&lt;font style=&quot;font-size: 14px;&quot;&gt;Camião&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
-                    <mxGeometry x="-485" y="130" width="70" height="30" as="geometry"/>
+                <mxCell id="31" value="&lt;font style=&quot;font-size: 14px;&quot;&gt;Veiculo_Pesado&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="-530" y="130" width="120" height="30" as="geometry"/>
                 </mxCell>
                 <mxCell id="32" value="&lt;font style=&quot;font-size: 14px;&quot;&gt;Conduz&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
                     <mxGeometry x="-485" y="230" width="70" height="30" as="geometry"/>
@@ -248,7 +248,7 @@
                 <mxCell id="111" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Id_empresa (FK)&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="155" y="160" width="100" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="113" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Matricula_camião (FK)&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                <mxCell id="113" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Matricula_pesado (FK)&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="-80" y="59" width="130" height="20" as="geometry"/>
                 </mxCell>
                 <mxCell id="114" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Id_turno (FK)&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
@@ -260,7 +260,7 @@
                 <mxCell id="116" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Estado_entrega&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="585" y="59" width="90" height="20" as="geometry"/>
                 </mxCell>
-                <mxCell id="117" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;&lt;u&gt;Matricula_camião (PK)(FK)&lt;/u&gt;&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                <mxCell id="117" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;&lt;u&gt;Matricula_pesado (PK)(FK)&lt;/u&gt;&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="-460" y="260" width="150" height="20" as="geometry"/>
                 </mxCell>
                 <mxCell id="122" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;ADR&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">

@@ -1,0 +1,22 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# PostgreSQL
+psycopg2-binary
+SQLAlchemy
+alembic
+
+# Kafka
+kafka-python
+
+# Security (Not sure if its needed here)
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+
+# Utils
+loguru
+requests
+python-dotenv
