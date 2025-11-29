@@ -1,6 +1,5 @@
 # AgentB.py — versão Kafka (CORRIGIDA)
-from shared_utils import RTSPstream
-from shared_utils.RTSPstream import *
+from agentB_microservice.src.RTSPstream import RTSPStream
 from agentB_microservice.src.YOLO_License_Plate import *
 from agentB_microservice.src.OCR import *
 
@@ -173,7 +172,7 @@ class AgentB:
             # Se atingiu consenso completo, retornar imediatamente
             if result:
                 text, conf, crop = result
-                logger.info(f"[AgentB] ✅ Consensus reached: '{text}' (conf={conf:.2f})")
+                logger.info(f"[AgentB] Consensus reached: '{text}' (conf={conf:.2f})")
                 return text, conf, crop
         
         # Se não atingiu consenso completo, retornar melhor resultado parcial
@@ -204,8 +203,8 @@ class AgentB:
             for i, box in enumerate(boxes, start=1):
                 x1, y1, x2, y2, conf = map(float, box)
                 
-                if conf < 0.85:
-                    logger.debug(f"[AgentB] Ignored low confidence box (conf={conf:.2f}).")
+                if conf < 0.75:
+                    logger.info(f"[AgentB] Ignored low confidence box (conf={conf:.2f}).")
                     continue
 
                 # Extrair crop

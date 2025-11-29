@@ -6,7 +6,7 @@ This Dockerfile builds a Docker image for the AgentA microservice, which appears
 1. Navigate to the directory containing the Dockerfile.
 2. Run the following command to build the image:
    ```
-   docker build -t agenta:latest . 
+   docker build --rm  -t agenta:latest . 
    ```
    - `-t agenta:latest`: Tags the image with a name (you can change this).
    - The build process will:
