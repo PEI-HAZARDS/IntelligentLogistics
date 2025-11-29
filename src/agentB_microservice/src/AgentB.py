@@ -59,23 +59,18 @@ class AgentB:
         # ============================================================
         # ESTADO DO CONSENSO
         # ============================================================
-        # Contador para consenso: cada posição (0-7) mapeia caractere
-        self.counter = {
-            0: {},  # Posição 0
-            1: {},  # Posição 1
-            2: {},  # Posição 2
-            3: {},  # Posição 3
-            4: {},  # Posição 4
-            5: {},  # Posição 5
-            6: {},  # Posição 6
-            7: {}   # Posição 7
-        }
+        # Contador dinâmico: cada posição mapeia {caractere: contagem}
+        # Exemplo: {0: {'A': 3, 'B': 1}, 1: {'B': 4}, ...}
+        self.counter = {}
 
-        # Rastreio de caracteres já decididos
+        # Rastreio de caracteres já decididos: {posição: caractere}
         self.decided_chars = {}
 
         # Threshold para decisão (quantas vezes precisa aparecer)
-        self.decision_threshold = 5
+        self.decision_threshold = 3
+
+        # Percentagem mínima de posições decididas para consenso (80%)
+        self.consensus_percentage = 0.8
 
         # Melhor crop até agora
         self.best_crop = None
@@ -103,8 +98,7 @@ class AgentB:
 
     def _reset_consensus_state(self):
         """Reseta o estado do algoritmo de consenso."""
-        for pos in self.counter:
-            self.counter[pos] = {}
+        self.counter = {}
         self.decided_chars = {}
         self.best_crop = None
         self.best_confidence = 0.0
@@ -176,6 +170,17 @@ class AgentB:
                 text, conf, crop = result
                 logger.info(
                     f"[AgentB] Consensus reached: '{text}' (conf={conf:.2f})")
+
+                # Limpar frames restantes da queue
+                remaining = self.frames_queue.qsize()
+                if remaining > 0:
+                    logger.debug(f"[AgentB] Clearing {remaining} remaining frames from queue")
+                    while not self.frames_queue.empty():
+                        try:
+                            self.frames_queue.get_nowait()
+                        except Empty:
+                            break
+
                 return text, conf, crop
 
         # Se não atingiu consenso completo, retornar melhor resultado parcial
@@ -206,7 +211,7 @@ class AgentB:
             for i, box in enumerate(boxes, start=1):
                 x1, y1, x2, y2, conf = map(float, box)
 
-                if conf < 0.75:
+                if conf < 0.4:
                     logger.info(
                         f"[AgentB] Ignored low confidence box (conf={conf:.2f}).")
                     continue
@@ -239,6 +244,8 @@ class AgentB:
 
                 # Guardar crop aceito
                 crop_path = f"{CROPS_PATH}/lp_crop_{int(time.time())}_{i}.jpg"
+                logger.info(f"[AgentB] Saving crop {i} to {crop_path}…")
+
                 try:
                     # Salvar com visualização
                     self.classifier.visualize_classification(
@@ -285,6 +292,7 @@ class AgentB:
     def _add_to_consensus(self, text: str, confidence: float):
         """
         Adiciona resultado do OCR ao algoritmo de consenso.
+        Vota em cada caractere na sua posição.
         """
 
         # Ignorar confianças baixas
@@ -293,110 +301,125 @@ class AgentB:
                 f"[AgentB] Confidence too low ({confidence:.2f}), skipping")
             return
 
-        logger.debug(f"[AgentB] Adding to consensus: '{text}'")
+        # Normalizar texto (uppercase, remover espaços)
+        text_normalized = text.upper().replace(" ", "").replace("-", "")
 
-        # Expande o dicionário se o texto tiver mais posições do que as já vistas
-        for pos in range(len(text)):
+        # Ignorar se muito curto
+        if len(text_normalized) < 4:
+            logger.debug(
+                f"[AgentB] Text too short ('{text_normalized}'), skipping")
+            return
+
+        logger.debug(
+            f"[AgentB] Adding to consensus: '{text_normalized}' (conf={confidence:.2f})")
+
+        # Expandir o dicionário dinamicamente para novas posições
+        for pos in range(len(text_normalized)):
             if pos not in self.counter:
                 self.counter[pos] = {}
 
-        # Adiciona cada caractere ao consenso da posição correta
-        for pos, char in enumerate(text):
+        # Adicionar cada caractere ao consenso da posição correta
+        for pos, char in enumerate(text_normalized):
             if char not in self.counter[pos]:
                 self.counter[pos][char] = 0
+
+            # Votos ponderados por confiança
             if confidence >= 0.8:
                 self.counter[pos][char] += 2
             else:
                 self.counter[pos][char] += 1
 
-            # Verificar consenso por posição
+            # Verificar se esta posição atingiu threshold
             if self.counter[pos][char] >= self.decision_threshold:
                 if pos not in self.decided_chars:
                     self.decided_chars[pos] = char
                     logger.debug(f"[AgentB] Position {pos} decided: '{char}'")
+                elif self.decided_chars[pos] != char:
+                    # Se mudou, atualizar
+                    old_char = self.decided_chars[pos]
+                    self.decided_chars[pos] = char
+                    logger.debug(
+                        f"[AgentB] Position {pos} changed: '{old_char}' -> '{char}'")
 
     def _check_full_consensus(self) -> bool:
         """
-        Verifica se todas as posições necessárias foram decididas.
-
+        Verifica se atingiu consenso baseado em percentagem de posições decididas.
+        Exemplo: se tem 8 posições e 80% = 6.4, precisa de 7 posições decididas.
         """
-        decided_count = len(self.decided_chars)
-        total_simbols = len(self.counter)
+        if not self.counter:
+            return False
 
-        # Considera consenso se tiver pelo menos 6 caracteres decididos
-        if decided_count == total_simbols:
-            logger.debug(
-                f"[AgentB] Consensus check: {decided_count}/6+ positions decided ✓")
+        total_positions = len(self.counter)
+        decided_count = len(self.decided_chars)
+
+        # Calcular quantas posições precisam estar decididas (arredondar para cima)
+        import math
+        required_positions = math.ceil(
+            total_positions * self.consensus_percentage)
+
+        if decided_count >= required_positions:
+            logger.info(
+                f"[AgentB] Consensus reached! {decided_count}/{total_positions} positions decided (need {required_positions}) ✓")
             return True
 
         logger.debug(
-            f"[AgentB] Consensus check: {decided_count}/6 positions decided")
+            f"[AgentB] Consensus check: {decided_count}/{total_positions} positions decided (need {required_positions})")
         return False
 
     def _build_final_text(self) -> str:
         """Constrói o texto final a partir dos caracteres decididos."""
+        if not self.decided_chars:
+            return ""
+
         # Construir texto na ordem das posições
         text_chars = []
         for pos in sorted(self.decided_chars.keys()):
             text_chars.append(self.decided_chars[pos])
 
         final_text = "".join(text_chars)
+        logger.debug(f"[AgentB] Built final text: '{final_text}'")
 
         return final_text
 
     def _get_best_partial_result(self):
         """
         Retorna o melhor resultado parcial se consenso completo não foi atingido.
+        Preenche posições não decididas com o caractere mais votado.
         """
-        if not self.decided_chars:
+        if not self.counter:
             logger.warning(
                 "[AgentB] No valid license plates detected in any frame.")
             return None, None, None
 
-        # Construir texto parcial
-        partial_text = self._build_partial_text()
+        # Construir texto com posições decididas + melhores candidatos
+        text_chars = []
+        total_positions = max(self.counter.keys()) + 1
 
-        # Calcular confiança baseada em quantos caracteres foram decididos
-        # Normalizar para 6 caracteres
-        confidence = len(self.decided_chars) / 6.0
+        for pos in range(total_positions):
+            if pos in self.decided_chars:
+                # Usar caractere decidido
+                text_chars.append(self.decided_chars[pos])
+            elif pos in self.counter and self.counter[pos]:
+                # Usar o caractere com mais votos
+                best_char = max(
+                    self.counter[pos].items(), key=lambda x: x[1])[0]
+                text_chars.append(best_char)
+            else:
+                # Posição sem dados (improvável)
+                text_chars.append("_")
+
+        partial_text = "".join(text_chars)
+
+        # Calcular confiança baseada em percentagem de posições decididas
+        decided_count = len(self.decided_chars)
+        confidence = decided_count / total_positions
         # Máximo 0.95 para resultado parcial
         confidence = min(confidence, 0.95)
 
         logger.info(
-            f"[AgentB] Partial result: '{partial_text}' (conf={confidence:.2f})")
+            f"[AgentB] Partial result: '{partial_text}' ({decided_count}/{total_positions} decided, conf={confidence:.2f})")
 
         return partial_text, confidence, self.best_crop
-
-    def _build_partial_text(self) -> str:
-        """
-        Constrói texto parcial, preenchendo posições não decididas com '_'.
-        """
-
-        # Determinar tamanho esperado
-        max_pos = max(self.counter.keys())
-        expected_length = max_pos
-
-        # Verifica se aparece muitas vezes uma placa com esse tamanho senão o tamanha passa a ser o maior encontrado - 1
-        if len(self.counter[max_pos]) < 10:
-            expected_length = max_pos - 1
-
-        text_chars = []
-        for pos in range(expected_length):
-            if pos in self.decided_chars:
-                text_chars.append(self.decided_chars[pos])
-            else:
-                # Usar o caractere com mais votos, se existir
-                if pos in self.counter and self.counter[pos]:
-                    # Faz uma tupla apartir dos itens do dicionario e obtem o maior valor de contagem
-                    best_char = max(
-                        self.counter[pos].items(), key=lambda x: x[1])[0]
-                    text_chars.append(best_char)
-                else:
-                    text_chars.append("_")
-
-        final_text = "".join(text_chars)
-
-        return final_text
 
     def _publish_lp_detected(self, timestamp, truck_id, plate_text, plate_conf):
         """Publica evento 'license-plate-detected' com propagação do correlationId."""

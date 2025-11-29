@@ -19,8 +19,8 @@ class PlateClassifier:
     def __init__(self):
         # Thresholds para classificação
         # Matrículas são largas (width/height > 1.8)
-        self.min_aspect_ratio_license = 1.8
-        self.max_aspect_ratio_hazard = 1.5   # Placas de perigo são quadradas/verticais
+        self.min_aspect_ratio_license = 1.5
+        self.max_aspect_ratio_hazard = 1.2   # Placas de perigo são quadradas/verticais
 
         # Ranges de cor HSV
         # Branco/Amarelo (matrículas)
