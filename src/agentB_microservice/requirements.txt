@@ -1,7 +1,10 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+torch==2.4.1+cpu
 ultralytics>=8.3.0
 opencv-python-headless>=4.12.0.88
-easyocr
-confluent_kafka
-gdown
-pillow
-numpy
+easyocr==1.7.2
+confluent_kafka==2.12.2
+gdown==5.2.0
+pillow==12.0.0
+numpy==2.3.5
