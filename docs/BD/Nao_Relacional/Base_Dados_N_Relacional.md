@@ -1,97 +1,94 @@
-# Base de Dados Não Relacional — Redis (Agente de Decisão)
+*Arquitetura da Base de Dados Não Relacional (MongoDB)*
 
-## Objetivo
-O **Redis** será usado como **base de dados não relacional e in-memory**, servindo como camada de **decisão e cache temporária** para o sistema do **Porto Inteligente**.  
-Está integrada dentro do **Agente de Decisão**, responsável por processar eventos em tempo real, decisões automáticas e comunicações rápidas entre componentes.
+Projeto: PEI – Intelligent Logistics
 
----
+A base de dados MongoDB funciona como um sistema de armazenamento orientado a eventos, complementando o modelo relacional do porto em PostgreSQL.
 
-## Papel no Sistema
-Redis atua como **memória de curta duração** e **broker auxiliar**:
-- Armazena o **estado corrente** de camiões, cais, e deteções ativas;
-- Permite **resposta imediata** a eventos de deteção e autorização;
-- Garante **sincronização** entre APIs e microserviços sem necessidade de acesso constante ao PostgreSQL;
-- Pode atuar como **fallback de decisão** em caso de falha de rede ou latência da BD principal.
+Enquanto o PostgreSQL guarda o estado oficial e validado, o MongoDB captura detecções IA, logs técnicos, eventos operacionais e telemetria, servindo como fonte para o Decision Feed.
 
----
+# 1. Objetivo do MongoDB
 
-## Estrutura Geral
-O modelo de dados em Redis segue uma **organização baseada em coleções (namespaces)** com **tipos de dados otimizados**:
+MongoDB é utilizado para armazenar dados não estruturados ou altamente variáveis, tais como:
 
-| Namespace | Tipo | Descrição |
-|------------|------|------------|
-| `truck:*` | Hash | Estado e informação temporária de cada camião detetado |
-| `detection:*` | Hash | Dados de deteções ativas (IA/manual) |
-| `alerts:*` | List / Stream | Fila de alertas ou eventos críticos |
-| `gate:*` | Hash | Estado da cancela e dos cais ativos |
-| `decision_queue` | Stream | Fila de decisões do agente |
-| `system:metrics` | Hash | Estatísticas e contadores operacionais |
+    - Detecções IA (matrículas, confiança, imagens, metadados)
+    - Eventos operacionais (ações do operador, autorizações, workflow)
+    - Logs internos de microserviços
+    - Dados de sensores / telemetria
+    - Falhas de OCR / YOLO
+    - Outputs volumosos de IA
 
----
+# 2. Estrutura das Coleções MongoDB
 
-## **1.Estrutura — `truck:<matricula>`**
-Representa o estado **atual de um camião detetado ou em trânsito**.
+A BD NoSQL organiza-se em coleções independentes, otimizadas para cada tipo de evento.
 
-**Tipo:** `HASH`  
-**Chave:** `truck:<matricula>`
+## 2.1 detections — Detecções IA
 
-**Campos:**
-| Campo | Exemplo | Descrição |
-|--------|----------|------------|
-| `matricula` | "AA-11-BB" | Identificador |
-| `estado` | "em_espera" / "autorizado" / "descarga" | Estado atual |
-| `tipo` | "cisterna" | Tipo de veículo |
-| `carga_tipo` | "líquido" | Tipo da carga |
-| `adr` | true | Se é perigosa |
-| `id_cais` | 5 | Cais atribuído |
-| `timestamp` | 1730728000 | Epoch da última atualização |
+Cada vez que um camião é detetado pela IA ou sensores visuais, um documento é criado.
 
-**TTL (Time to Live):** 6h — após isso o registo é removido (evita lixo de dados).
+    {
+      "timestamp": "2025-02-16T10:22:53Z",
+      "gate_id": 2,
+      "matricula_detectada": "00-AA-11",
+      "confidence": 0.93,
+      "source": "IA",
+      "image_path": "/detections/2025/02/16/abc123.jpg",
+      "processed": false,
+      "matched_chegada_id": null,
+      "alert_generated": false,
+      "metadata": {
+        "camera_id": "C1",
+        "yolo_model": "yolov11",
+        "latency_ms": 32
+      }
+    }
 
----
+Índices recomendados: timestamp, matricula_detectada, gate_id, processed
 
-## **2.Estrutura — `detection:<id>`**
-Contém informações da **última deteção processada** pelo sistema de IA.
+## 2.2 events — Eventos Operacionais
 
-**Tipo:** `HASH`  
-**Chave:** `detection:<id>` (ex: `detection:20251105153000_AA11BB`)
+Regista ações humanas/automáticas relacionadas ao fluxo logístico.
 
-**Campos:**
-| Campo | Exemplo | Descrição |
-|--------|----------|------------|
-| `id` | "20251105153000_AA11BB" | Identificador único |
-| `matricula` | "AA-11-BB" | Veículo detetado |
-| `origem` | "IA" / "manual" | Origem da deteção |
-| `nivel_confianca` | 0.92 | Confiança da IA |
-| `estado_autorizacao` | "pendente" | Estado atual |
-| `imagem_ref` | "cam1_20251105_153000.jpg" | Referência ao frame da IA |
-| `timestamp` | 1730728000 | Hora da deteção (epoch) |
+    {
+      "timestamp": "2025-02-16T10:45:00Z",
+      "type": "operador_validou",
+      "gate_id": 1,
+      "user_id": 103,
+      "data": {
+        "matricula": "AA-00-XY",
+        "id_chegada": 332,
+        "estado": "autorizada"
+      }
+    }
 
-**TTL:** 24h  
-**Ações:**  
-- O **Agente de Decisão** lê estas deteções e decide:  
-  → autorizar entrada → atualizar `truck:<matricula>`  
-  → negar → enviar `alert` e marcar `estado_autorizacao = negado`
+## 2.3 system_logs — Logs Técnicos
 
----
+Regista mensagens técnicas provenientes dos microserviços.
 
-## **3 Estrutura — `alerts`**
-Lista de **alertas e eventos críticos recentes**, como erros de leitura ou deteções suspeitas.
+    {
+      "timestamp": "2025-02-16T09:10:00Z",
+      "service": "ocr-service",
+      "level": "warn",
+      "message": "Timeout na câmara 2",
+      "context": {
+        "camera_id": "C2",
+        "retry": 1
+      }
+    }
 
-**Tipo:** `LIST` (ou `STREAM` se houver integração MQTT)
+## 2.4 ocr_failures — Falhas de OCR
 
-**Chave:** `alerts`
+    {
+      "timestamp": "2025-02-16T11:10:00Z",
+      "image_path": "/failed/001.jpg",
+      "reason": "---",
+      "gate_id": 3
+    }
 
-**Elementos:**
-```json
-{
-  "id": "alert:20251105_001",
-  "tipo": "matricula_desconhecida",
-  "descricao": "Camião sem correspondência com entregas agendadas",
-  "severidade": 4,
-  "timestamp": 1730728123
-}
 
-{
-  ""
-}
+Integração com o Decision Feed
+
+O Decision Feed é o pipeline de decisão que transforma detecções em ações logísticas.
+
+Fluxo geral:
+
+    
