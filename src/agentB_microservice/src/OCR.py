@@ -35,7 +35,16 @@ class OCR:
         return gray
     
     def _extract_text(self, cv_img):
-        results = self.reader.readtext(cv_img)
+        #cv_img = self._preprocess_plate(cv_img)
+
+        # Define allowed characters: A-Z, 0-9, and hyphen
+        allowed_chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789- '
+        
+        results = self.reader.readtext(
+            cv_img,
+            allowlist=allowed_chars
+        )
+        
         if not results:
             # Return empty string with 0 confidence instead of raising
             return "", 0.0

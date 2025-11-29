@@ -2,6 +2,7 @@ from agentB_microservice.src.RTSPstream import RTSPStream
 from agentB_microservice.src.YOLO_License_Plate import *
 from agentB_microservice.src.OCR import *
 from agentB_microservice.src.CropStorage import CropStorage
+from agentB_microservice.src.PlateClassifier import PlateClassifier
 
 import os
 import time
@@ -54,28 +55,30 @@ class AgentB:
         # Initialize models
         self.yolo = YOLO_License_Plate()
         self.ocr = OCR()
+        self.classifier = PlateClassifier()
         self.running = True
         self.frames_queue = Queue()
 
         # Connect on-demand when a Kafka event is received.
         self.stream = None
 
-        # --- Consensus State Initialization ---
-        # Counter for consensus: each position (0-7) maps to character votes
-        self.counter = {
-            0: {},  # Position 0
-            1: {},  # Position 1
-            2: {},  # Position 2
-            3: {},  # Position 3
-            4: {},  # Position 4
-            5: {},  # Position 5
-            6: {},  # Position 6 
-            7: {}   # Position 7 
-        }
-        
-        # Tracking decided characters and best crops
+        # ============================================================
+        # ESTADO DO CONSENSO
+        # ============================================================
+        # Contador dinâmico: cada posição mapeia {caractere: contagem}
+        # Exemplo: {0: {'A': 3, 'B': 1}, 1: {'B': 4}, ...}
+        self.counter = {}
+
+        # Rastreio de caracteres já decididos: {posição: caractere}
         self.decided_chars = {}
-        self.decision_threshold = 5  # Votes required to confirm a character
+
+        # Threshold para decisão (quantas vezes precisa aparecer)
+        self.decision_threshold = 6
+
+        # Percentagem mínima de posições decididas para consenso (80%)
+        self.consensus_percentage = 0.8
+
+        # Melhor crop até agora
         self.best_crop = None
         self.best_confidence = 0.0
 
@@ -88,8 +91,9 @@ class AgentB:
         self.consumer = Consumer({
             "bootstrap.servers": KAFKA_BOOTSTRAP,
             "group.id": "agentB-group",
-            "auto.offset.reset": "latest",  # "latest" to get only new messages
-            "enable.auto.commit": True,     # Real-time processing
+            #: "latest" para ir buscar a ultima mensagem disponivel de
+            "auto.offset.reset": "latest",
+            "enable.auto.commit": True,  # :  maneira a ler em tempo real
             "session.timeout.ms": 10000,
             "max.poll.interval.ms": 300000,
         })
@@ -102,14 +106,11 @@ class AgentB:
         })
 
     def _reset_consensus_state(self):
-        """Resets the internal state of the consensus algorithm."""
-        for pos in self.counter:
-            self.counter[pos] = {}
-        
+        """Reseta o estado do algoritmo de consenso."""
+        self.counter = {}
         self.decided_chars = {}
         self.best_crop = None
         self.best_confidence = 0.0
-
         logger.debug("[AgentB] Consensus state reset.")
 
     def _get_frames(self, num_frames=30):
@@ -156,14 +157,15 @@ class AgentB:
         Returns:
             tuple: (plate_text, confidence, crop_image) or (None, None, None)
         """
-        logger.info("[AgentB] Starting license plate pipeline detection process…")
+        logger.info(
+            "[AgentB] Starting license plate pipeline detection process…")
 
         # Reset consensus state before starting new detection
         self._reset_consensus_state()
         
         # Capture frames
         self._get_frames(30)
-        
+
         if self.frames_queue.empty():
             logger.warning("[AgentB] No frame captured from RTSP.")
             return None, None, None
@@ -181,14 +183,26 @@ class AgentB:
 
             # Process single frame
             result = self._process_single_frame(frame)
-            
-            # If full consensus reached, return immediately
+
+            # Se atingiu consenso completo, retornar imediatamente
             if result:
                 text, conf, crop = result
-                logger.info(f"[AgentB] Consensus reached: '{text}' (conf={conf:.2f})")
+                logger.info(
+                    f"[AgentB] Consensus reached: '{text}' (conf={conf:.2f})")
+
+                # Limpar frames restantes da queue
+                remaining = self.frames_queue.qsize()
+                if remaining > 0:
+                    logger.debug(f"[AgentB] Clearing {remaining} remaining frames from queue")
+                    while not self.frames_queue.empty():
+                        try:
+                            self.frames_queue.get_nowait()
+                        except Empty:
+                            break
+
                 return text, conf, crop
-        
-        # If no full consensus, return the best partial result found
+
+        # Se não atingiu consenso completo, retornar melhor resultado parcial
         return self._get_best_partial_result()
 
     def _process_single_frame(self, frame):
@@ -202,11 +216,13 @@ class AgentB:
             results = self.yolo.detect(frame)
 
             if not results:
-                logger.debug("[AgentB] YOLO did not return a result for this frame.")
+                logger.debug(
+                    "[AgentB] YOLO did not return a result for this frame.")
                 return None
 
             if not self.yolo.found_license_plate(results):
-                logger.info("[AgentB] No license plate detected for this frame.")
+                logger.info(
+                    "[AgentB] No license plate detected for this frame.")
                 return None
 
             boxes = self.yolo.get_boxes(results)
@@ -214,177 +230,216 @@ class AgentB:
 
             for i, box in enumerate(boxes, start=1):
                 x1, y1, x2, y2, conf = map(float, box)
-                
-                if conf < 0.75:
-                    logger.info(f"[AgentB] Ignored low confidence box (conf={conf:.2f}).")
+
+                if conf < 0.4:
+                    logger.info(
+                        f"[AgentB] Ignored low confidence box (conf={conf:.2f}).")
                     continue
 
                 # Extract Crop
                 crop = frame[int(y1):int(y2), int(x1):int(x2)]
 
+                # ============================================================
+                # NOVO: Classificar o crop (matrícula vs placa de perigo)
+                # ============================================================
+                classification = self.classifier.classify(crop)
+
+                if classification != PlateClassifier.LICENSE_PLATE:
+                    # Salvar crop rejeitado para debug
+                    rejected_path = f"{REJECTED_CROPS_PATH}/{classification}_{int(time.time())}_{i}.jpg"
+                    try:
+                        self.classifier.visualize_classification(
+                            crop, classification, rejected_path)
+                    except Exception as e:
+                        logger.warning(
+                            f"[AgentB] Failed saving rejected crop: {e}")
+
+                    logger.warning(
+                        f"[AgentB] ❌ Crop {i} rejected: classified as {classification.upper()}"
+                    )
+                    continue
+
+                logger.info(f"[AgentB] ✅ Crop {i} accepted as LICENSE_PLATE")
+                # ============================================================
+
+                # Guardar crop aceito
+                crop_path = f"{CROPS_PATH}/lp_crop_{int(time.time())}_{i}.jpg"
+                logger.info(f"[AgentB] Saving crop {i} to {crop_path}…")
+
+                try:
+                    # Salvar com visualização
+                    self.classifier.visualize_classification(
+                        crop, classification, crop_path)
+                except Exception as e:
+                    logger.warning(f"[AgentB] Failed saving crop: {e}")
+
                 # Run OCR
                 logger.info("[AgentB] OCR extracting text…")
                 try:
                     text, ocr_conf = self.ocr._extract_text(crop)
-                    
+
                     if not text or ocr_conf <= 0.0:
-                        logger.debug(f"[AgentB] OCR returned no valid text for crop {i}")
+                        logger.debug(
+                            f"[AgentB] OCR returned no valid text for crop {i}")
                         continue
-                    
-                    logger.info(f"[AgentB] OCR: '{text}' (conf={ocr_conf:.2f})")
-                    
-                    # Update best crop
+
+                    logger.info(
+                        f"[AgentB] OCR: '{text}' (conf={ocr_conf:.2f})")
+
+                    # Atualizar melhor crop
                     if ocr_conf > self.best_confidence:
                         self.best_crop = crop
                         self.best_confidence = ocr_conf
-                    
-                    # Add to consensus voting
+
+                    # Adicionar ao consenso
                     self._add_to_consensus(text, ocr_conf)
-                    
-                    # Check if consensus has been reached
+
+                    # Verificar se atingiu consenso
                     if self._check_full_consensus():
                         final_text = self._build_final_text()
-                        logger.info(f"[AgentB] Full consensus achieved: '{final_text}'")
+                        logger.info(
+                            f"[AgentB] Full consensus achieved: '{final_text}'")
                         return final_text, 1.0, crop
-                    
+
                 except Exception as e:
                     logger.exception(f"[AgentB] OCR failure: {e}")
 
         except Exception as e:
             logger.exception(f"[AgentB] Error processing frame: {e}")
-        
+
         return None
 
     def _add_to_consensus(self, text: str, confidence: float):
         """
-        Adds an OCR result to the consensus voting algorithm.
+        Adiciona resultado do OCR ao algoritmo de consenso.
+        Vota em cada caractere na sua posição.
         """
-        # Ignore low confidence results
+
+        # Ignorar confianças baixas
         if confidence < 0.5:
-            logger.debug(f"[AgentB] Confidence too low ({confidence:.2f}), skipping")
+            logger.debug(
+                f"[AgentB] Confidence too low ({confidence:.2f}), skipping")
             return
 
-        logger.debug(f"[AgentB] Adding to consensus: '{text}'")
+        # Normalizar texto (uppercase, remover espaços)
+        text_normalized = text.upper().replace(" ", "").replace("-", "")
 
-        # Expand dictionary if text has more positions than currently tracked
-        for pos in range(len(text)):
+        # Ignorar se muito curto
+        if len(text_normalized) < 4:
+            logger.debug(
+                f"[AgentB] Text too short ('{text_normalized}'), skipping")
+            return
+
+        logger.debug(
+            f"[AgentB] Adding to consensus: '{text_normalized}' (conf={confidence:.2f})")
+
+        # Expandir o dicionário dinamicamente para novas posições
+        for pos in range(len(text_normalized)):
             if pos not in self.counter:
                 self.counter[pos] = {}
 
-        # Vote for each character in the correct position
-        for pos, char in enumerate(text):
+        # Adicionar cada caractere ao consenso da posição correta
+        for pos, char in enumerate(text_normalized):
             if char not in self.counter[pos]:
                 self.counter[pos][char] = 0
-            
-            # Weighted voting: High confidence gets double vote
+
+            # Votos ponderados por confiança
             if confidence >= 0.8:
                 self.counter[pos][char] += 2
             else:
                 self.counter[pos][char] += 1
 
-            # Check consensus for this specific position
+            # Verificar se esta posição atingiu threshold
             if self.counter[pos][char] >= self.decision_threshold:
                 if pos not in self.decided_chars:
                     self.decided_chars[pos] = char
                     logger.debug(f"[AgentB] Position {pos} decided: '{char}'")
+                elif self.decided_chars[pos] != char:
+                    # Se mudou, atualizar
+                    old_char = self.decided_chars[pos]
+                    self.decided_chars[pos] = char
+                    logger.debug(
+                        f"[AgentB] Position {pos} changed: '{old_char}' -> '{char}'")
 
     def _check_full_consensus(self) -> bool:
         """
-        Checks if all necessary positions have been decided.
+        Verifica se atingiu consenso baseado em percentagem de posições decididas.
+        Exemplo: se tem 8 posições e 80% = 6.4, precisa de 7 posições decididas.
         """
-        decided_count = len(self.decided_chars)
-        total_simbols = len(self.counter)
+        if not self.counter:
+            return False
 
-        # Consider consensus reached if at least 6 characters are decided
-        if decided_count == total_simbols:
-            logger.debug(f"[AgentB] Consensus check: {decided_count}/6+ positions decided ✓")
+        total_positions = len(self.counter)
+        decided_count = len(self.decided_chars)
+
+        # Calcular quantas posições precisam estar decididas (arredondar para cima)
+        import math
+        required_positions = math.ceil(
+            total_positions * self.consensus_percentage)
+
+        if decided_count >= required_positions:
+            logger.info(
+                f"[AgentB] Consensus reached! {decided_count}/{total_positions} positions decided (need {required_positions}) ✓")
             return True
-        
-        logger.debug(f"[AgentB] Consensus check: {decided_count}/6 positions decided")
+
+        logger.debug(
+            f"[AgentB] Consensus check: {decided_count}/{total_positions} positions decided (need {required_positions})")
         return False
 
     def _build_final_text(self) -> str:
-        """Constructs the final text from the decided characters."""
+        """Constrói o texto final a partir dos caracteres decididos."""
+        if not self.decided_chars:
+            return ""
+
+        # Construir texto na ordem das posições
         text_chars = []
         for pos in sorted(self.decided_chars.keys()):
             text_chars.append(self.decided_chars[pos])
-        
+
         final_text = "".join(text_chars)
+        logger.debug(f"[AgentB] Built final text: '{final_text}'")
+
         return final_text
-    
+
     def _get_best_partial_result(self):
         """
-        Returns the best partial result if full consensus was not reached.
+        Retorna o melhor resultado parcial se consenso completo não foi atingido.
+        Preenche posições não decididas com o caractere mais votado.
         """
-        if not self.decided_chars:
-            logger.warning("[AgentB] No valid license plates detected in any frame.")
+        if not self.counter:
+            logger.warning(
+                "[AgentB] No valid license plates detected in any frame.")
             return None, None, None
-        
-        # Build partial text
-        partial_text = self._build_partial_text()
-        
-        # Calculate confidence based on how many characters were decided
-        confidence = len(self.decided_chars) / 6.0  # Normalize to 6 characters
-        confidence = min(confidence, 0.95)  # Max 0.95 for partial result
-        
-        logger.info(f"[AgentB] Partial result: '{partial_text}' (conf={confidence:.2f})")
-        
-        return partial_text, confidence, self.best_crop
 
-    def _build_partial_text(self) -> str:
-        """
-        Constructs partial text, filling undecided positions with '_'.
-        """
-        # Determine expected length
-        max_pos = max(self.counter.keys())
-        expected_length = max_pos
-        
-        # Heuristic: If the longest plate length appears rarely, assume standard size (max - 1)
-        if len(self.counter[max_pos]) < 10:
-            expected_length = max_pos - 1
-        
+        # Construir texto com posições decididas + melhores candidatos
         text_chars = []
-        for pos in range(expected_length):
+        total_positions = max(self.counter.keys()) + 1
+
+        for pos in range(total_positions):
             if pos in self.decided_chars:
+                # Usar caractere decidido
                 text_chars.append(self.decided_chars[pos])
+            elif pos in self.counter and self.counter[pos]:
+                # Usar o caractere com mais votos
+                best_char = max(
+                    self.counter[pos].items(), key=lambda x: x[1])[0]
+                text_chars.append(best_char)
             else:
-                # Use the character with the most votes, if any
-                if pos in self.counter and self.counter[pos]:
-                    # Get item with max count from dictionary
-                    best_char = max(self.counter[pos].items(), key=lambda x: x[1])[0]
-                    text_chars.append(best_char)
-                else:
-                    text_chars.append("_")
-        
-        final_text = "".join(text_chars)
-        return final_text
+                # Posição sem dados (improvável)
+                text_chars.append("_")
 
-    def _delivery_callback(self, err: Optional[KafkaError], msg) -> None:
-        """
-        Callback for Kafka message delivery confirmation.
-        
-        Args:
-            err: Error object if delivery failed
-            msg: Message object with metadata
-        """
+        partial_text = "".join(text_chars)
 
-        if err is not None:
-            logger.error(
-                f"[AgentA/Kafka] Message delivery failed: {err} "
-                f"(topic={msg.topic()}, partition={msg.partition()})"
-            )
-        else:
-            logger.debug(
-                f"[AgentA/Kafka] Message delivered successfully to "
-                f"{msg.topic()}[{msg.partition()}] at offset {msg.offset()}"
-            )
+        # Calcular confiança baseada em percentagem de posições decididas
+        decided_count = len(self.decided_chars)
+        confidence = decided_count / total_positions
+        # Máximo 0.95 para resultado parcial
+        confidence = min(confidence, 0.95)
 
+        logger.info(
+            f"[AgentB] Partial result: '{partial_text}' ({decided_count}/{total_positions} decided, conf={confidence:.2f})")
 
-    def _publish_lp_detected(self, truck_id, plate_text, plate_conf, crop_url):
-        """
-        Publishes the 'license-plate-detected' event to Kafka.
-        Propagates the correlation ID and includes MinIO crop URL.
-        """
+        return partial_text, confidence, self.best_crop
 
         timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -420,8 +475,8 @@ class AgentB:
                 # SKIP OLD MESSAGES - Process only the latest
                 msg = None
                 msgs_buffer = []
-                
-                # Poll multiple times to drain old messages
+
+                # Poll múltiplas vezes para drenar mensagens antigas
                 while True:
                     temp_msg = self.consumer.poll(timeout=0.1)
                     if temp_msg is None:
@@ -429,17 +484,18 @@ class AgentB:
                     if temp_msg.error():
                         continue
                     msgs_buffer.append(temp_msg)
-                
-                # If messages exist, take only the last one
+
+                # Se há mensagens, pegar apenas a última
                 if msgs_buffer:
                     msg = msgs_buffer[-1]  # ← Last message in buffer
                     skipped = len(msgs_buffer) - 1
                     if skipped > 0:
-                        logger.info(f"[AgentB] Skipped {skipped} old messages, processing latest only")
+                        logger.info(
+                            f"[AgentB] Skipped {skipped} old messages, processing latest only")
                 else:
                     # Wait for new message
                     msg = self.consumer.poll(timeout=1.0)
-                
+
                 if msg is None:
                     continue
                 if msg.error():
@@ -461,13 +517,18 @@ class AgentB:
                 if truck_id is None:
                     truck_id = str(uuid.uuid4())
 
-                logger.info(f"[AgentB] Received 'truck-detected' (truckId={truck_id}). Starting LP pipeline…")
-                
-                # Run License Plate Detection Pipeline
+                # dados de entrada (truckId, timestamp)
+                in_timestamp = data.get("timestamp")
+
+                logger.info(
+                    f"[AgentB] Received 'truck-detected' (truckId={truck_id}). Starting LP pipeline…")
+
+                # Processar detecção de matrícula
                 plate_text, plate_conf, _lp_img = self.process_license_plate_detection()
 
                 if not plate_text:
-                    logger.warning("[AgentB] No final text results — not publishing.")
+                    logger.warning(
+                        "[AgentB] No final text results — not publishing.")
                     continue
                 
                 # Upload best crop to MinIO
@@ -486,6 +547,8 @@ class AgentB:
                         logger.exception(f"[AgentB] Error uploading crop to MinIO: {e}")
                 
                 # Publish result
+
+                # Publicar a mensagem de matrícula detetada
                 self._publish_lp_detected(
                     truck_id=truck_id,
                     plate_text=plate_text,
@@ -525,3 +588,5 @@ class AgentB:
 
         logger.info("[AgentB] Stopping agent and freeing resources…")
         self.running = False
+        self.running = False
+        logger.info("[AgentB] Stopped successfully.")
