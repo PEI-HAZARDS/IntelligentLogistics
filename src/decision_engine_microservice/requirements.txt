@@ -10,9 +10,6 @@ dnspython
 # Redis (para caching)
 redis[hiredis]
 
-# Kafka
-kafka-python
-
 # Utils
 loguru
 requests

@@ -8,15 +8,21 @@ psycopg2-binary
 SQLAlchemy
 alembic
 
-# Kafka
-kafka-python
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
 
-# Security (Not sure if its needed here)
-python-jose[cryptography]
-passlib[bcrypt]
-python-multipart
+# MongoDB
+pymongo
+dnspython
+
+# Redis (para caching)
+redis[hiredis]
 
 # Utils
 loguru
 requests
 python-dotenv
+httpx
+
