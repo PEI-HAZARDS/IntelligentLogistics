@@ -1,0 +1,19 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# MongoDB
+pymongo
+dnspython
+
+# Redis (para caching)
+redis[hiredis]
+
+# Kafka
+kafka-python
+
+# Utils
+loguru
+requests
+python-dotenv

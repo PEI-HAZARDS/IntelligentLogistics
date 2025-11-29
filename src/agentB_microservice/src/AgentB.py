@@ -1,7 +1,7 @@
-# AgentB.py — versão Kafka (CORRIGIDA)
 from agentB_microservice.src.RTSPstream import RTSPStream
 from agentB_microservice.src.YOLO_License_Plate import *
 from agentB_microservice.src.OCR import *
+from agentB_microservice.src.CropStorage import CropStorage
 from agentB_microservice.src.PlateClassifier import PlateClassifier
 
 import os
@@ -10,50 +10,56 @@ import cv2
 import json
 import uuid
 from queue import Queue, Empty
-from confluent_kafka import Producer, Consumer, KafkaException
+from confluent_kafka import Producer, Consumer, KafkaException, KafkaError
+import logging
+from typing import Optional, Tuple
 
-# URL do stream HIGH (4K) via Nginx RTMP
+# --- Configuration ---
+# Load environment variables or fallback to default network settings
 NGINX_RTMP_HOST = os.getenv("NGINX_RTMP_HOST", "10.255.32.35")
 NGINX_RTMP_PORT = os.getenv("NGINX_RTMP_PORT", "1935")
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
+GATE_ID = os.getenv("GATE_ID", "gate01")
+RTSP_STREAM_HIGH = os.getenv("RTSP_STREAM_HIGH", f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_high/{GATE_ID}")
+
+# MinIO Configuration
+MINIO_CONF = {
+    "endpoint": os.getenv("MINIO_HOST"),
+    "access_key": os.getenv("ACCESS_KEY"),
+    "secret_key": os.getenv("SECRET_KEY"),
+    "secure": True  #use HTTPS
+}
+
+BUCKET_NAME = os.getenv("BUCKET_NAME", "lp-crops")
+
+# --- Operational Constants ---
 MAX_CONNECTION_RETRIES = 10
 RETRY_DELAY = 5  # seconds
+TOPIC_CONSUME = f"truck-detected-{GATE_ID}"
+TOPIC_PRODUCE = "lp-results-{GATE_ID}"
 
-RTSP_STREAM_HIGH = os.getenv(
-    "RTSP_STREAM_HIGH",
-    f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_high/gate01"
-)
-CROPS_PATH = "agentB_microservice/data/lp_crops"
-os.makedirs(CROPS_PATH, exist_ok=True)
-
-# Pasta para crops rejeitados (debug)
-REJECTED_CROPS_PATH = "agentB_microservice/data/rejected_crops"
-os.makedirs(REJECTED_CROPS_PATH, exist_ok=True)
-
-# Configurações Kafka
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
-TOPIC_CONSUME = "truck-detected-gate01"
-TOPIC_PRODUCE = "license-plate-detected"
 logger = logging.getLogger("AgentB")
 
 
 class AgentB:
     """
     Agent B:
-    - Consome 'truck-detected' do Kafka.
-    - Ao receber, captura frames do RTSP (alta qualidade).
-    - Deteta matrícula com YOLO e extrai texto com OCR.
-    - Publica 'license-plate-detected' no Kafka, propagando correlationId.
+    - Consumes 'truck-detected' events from Kafka.
+    - Upon receipt, connects to/reads from the High-Quality RTSP stream.
+    - Detects license plates using YOLO and extracts text using OCR.
+    - Uses a consensus algorithm to validate characters across multiple frames.
+    - Publishes 'license-plate-detected' to Kafka, propagating the correlationId.
     """
 
-    def __init__(self, kafka_bootstrap: str | None = None):
+    def __init__(self):
+        # Initialize models
         self.yolo = YOLO_License_Plate()
         self.ocr = OCR()
         self.classifier = PlateClassifier()
         self.running = True
         self.frames_queue = Queue()
 
-        # NÃO conecta ao stream no __init__
-        # Conecta on-demand quando recebe evento do Kafka
+        # Connect on-demand when a Kafka event is received.
         self.stream = None
 
         # ============================================================
@@ -76,12 +82,14 @@ class AgentB:
         self.best_crop = None
         self.best_confidence = 0.0
 
-        bootstrap = kafka_bootstrap or KAFKA_BOOTSTRAP
-        logger.info(f"[AgentB/Kafka] bootstrap: {bootstrap}")
+        self.crop_storage = CropStorage(MINIO_CONF, BUCKET_NAME)
 
-        # Kafka Consumer
+        # Initialize Kafka
+        logger.info(f"[AgentB/Kafka] Connecting to kafka via '{KAFKA_BOOTSTRAP}' …")
+
+        # Kafka Consumer configuration
         self.consumer = Consumer({
-            "bootstrap.servers": bootstrap,
+            "bootstrap.servers": KAFKA_BOOTSTRAP,
             "group.id": "agentB-group",
             #: "latest" para ir buscar a ultima mensagem disponivel de
             "auto.offset.reset": "latest",
@@ -89,11 +97,12 @@ class AgentB:
             "session.timeout.ms": 10000,
             "max.poll.interval.ms": 300000,
         })
+
         self.consumer.subscribe([TOPIC_CONSUME])
 
-        # Kafka Producer
+        # Kafka Producer configuration
         self.producer = Producer({
-            "bootstrap.servers": bootstrap,
+            "bootstrap.servers": KAFKA_BOOTSTRAP,
         })
 
     def _reset_consensus_state(self):
@@ -105,18 +114,25 @@ class AgentB:
         logger.debug("[AgentB] Consensus state reset.")
 
     def _get_frames(self, num_frames=30):
-        """Captura alguns frames do RTMP/RTSP."""
-        # Conectar ao stream se não estiver conectado
+        """
+        Captures a burst of frames from the RTMP/RTSP stream.
+        
+        Args:
+            num_frames: The number of frames to buffer for processing.
+        """
+        # Connect to stream if not already
         if self.stream is None:
             logger.info(
                 f"[AgentB] Connecting to RTMP stream (via Nginx): {RTSP_STREAM_HIGH}")
             try:
                 self.stream = RTSPStream(RTSP_STREAM_HIGH)
+            
             except Exception as e:
                 logger.exception(f"[AgentB] Failed to connect to stream: {e}")
                 return
 
-        logger.info(f"[AgentB] reading {num_frames} frame(s) from RTMP…")
+        logger.info(f"[AgentB] Reading {num_frames} frame(s) from RTMP…")
+
         captured = 0
         while captured < num_frames and self.running:
             try:
@@ -125,44 +141,47 @@ class AgentB:
                     self.frames_queue.put(frame)
                     captured += 1
                     logger.debug(f"[AgentB] Captured {captured}/{num_frames}.")
+                
                 else:
                     logger.debug("[AgentB] No frame yet, trying again…")
                     time.sleep(0.1)
+            
             except Exception as e:
                 logger.exception(f"[AgentB] Error when capturing frame {e}")
                 time.sleep(0.2)
 
     def process_license_plate_detection(self):
         """
-        Pipeline principal para detetar e extrair texto da matrícula.
-
+        Main pipeline to detect and extract license plate text.
+        
         Returns:
-            tuple: (plate_text, confidence, crop_image) ou (None, None, None)
+            tuple: (plate_text, confidence, crop_image) or (None, None, None)
         """
         logger.info(
             "[AgentB] Starting license plate pipeline detection process…")
 
-        # Reset do estado de consenso
+        # Reset consensus state before starting new detection
         self._reset_consensus_state()
-
-        # Capturar frames
+        
+        # Capture frames
         self._get_frames(30)
 
         if self.frames_queue.empty():
             logger.warning("[AgentB] No frame captured from RTSP.")
             return None, None, None
 
-        # Processar frames até atingir consenso ou acabarem os frames
+        # Process frames until consensus is reached or queue is empty
         while self.running and not self.frames_queue.empty():
             try:
                 frame = self.frames_queue.get_nowait()
                 logger.debug("[AgentB] Frame obtained from queue.")
+
             except Empty:
                 logger.warning("[AgentB] Frames queue is empty.")
                 time.sleep(0.05)
                 continue
 
-            # Processar frame
+            # Process single frame
             result = self._process_single_frame(frame)
 
             # Se atingiu consenso completo, retornar imediatamente
@@ -188,9 +207,10 @@ class AgentB:
 
     def _process_single_frame(self, frame):
         """
-        Processa um único frame.
-        Retorna (text, conf, crop) se atingir consenso, senão None.
+        Processes a single video frame.
+        Retuns (text, conf, crop) if consensus is reached, else None.
         """
+        
         try:
             logger.info("[AgentB] YOLO (LP) running…")
             results = self.yolo.detect(frame)
@@ -216,7 +236,7 @@ class AgentB:
                         f"[AgentB] Ignored low confidence box (conf={conf:.2f}).")
                     continue
 
-                # Extrair crop
+                # Extract Crop
                 crop = frame[int(y1):int(y2), int(x1):int(x2)]
 
                 # ============================================================
@@ -253,7 +273,7 @@ class AgentB:
                 except Exception as e:
                     logger.warning(f"[AgentB] Failed saving crop: {e}")
 
-                # OCR
+                # Run OCR
                 logger.info("[AgentB] OCR extracting text…")
                 try:
                     text, ocr_conf = self.ocr._extract_text(crop)
@@ -421,36 +441,38 @@ class AgentB:
 
         return partial_text, confidence, self.best_crop
 
-    def _publish_lp_detected(self, timestamp, truck_id, plate_text, plate_conf):
-        """Publica evento 'license-plate-detected' com propagação do correlationId."""
+        timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
-        # Payload com o conteúdo da mensagem
+        # Construct JSON payload
         payload = {
-            "timestamp": timestamp or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "timestamp": timestamp,
             "licensePlate": plate_text,
-            "confidence": float(plate_conf if plate_conf is not None else 0.0)
+            "confidence": float(plate_conf if plate_conf is not None else 0.0),
+            "cropUrl": crop_url
         }
+        
         logger.info(
             f"[AgentB] Publishing '{TOPIC_PRODUCE}' (truckId={truck_id}, plate={plate_text}) …")
 
-        # Publica o tópico de deteção de matrícula
+        # Send to Kafka
         self.producer.produce(
             topic=TOPIC_PRODUCE,
             key=None,
             value=json.dumps(payload).encode("utf-8"),
-            headers={"truckId": truck_id or str(uuid.uuid4())}
+            headers={"truckId": truck_id},
+            callback=self._delivery_callback
         )
+
         self.producer.poll(0)
 
     def _loop(self):
+        """Main loop for Agent B."""
         logger.info(
             f"[AgentB] Main loop starting… (topic in='{TOPIC_CONSUME}')")
 
         try:
             while self.running:
-                # ============================================================
-                # SKIP MENSAGENS ANTIGAS - Pegar apenas a última
-                # ============================================================
+                # SKIP OLD MESSAGES - Process only the latest
                 msg = None
                 msgs_buffer = []
 
@@ -458,20 +480,20 @@ class AgentB:
                 while True:
                     temp_msg = self.consumer.poll(timeout=0.1)
                     if temp_msg is None:
-                        break  # Não há mais mensagens
+                        break  # No more messages
                     if temp_msg.error():
                         continue
                     msgs_buffer.append(temp_msg)
 
                 # Se há mensagens, pegar apenas a última
                 if msgs_buffer:
-                    msg = msgs_buffer[-1]  # ← Última mensagem do buffer
+                    msg = msgs_buffer[-1]  # ← Last message in buffer
                     skipped = len(msgs_buffer) - 1
                     if skipped > 0:
                         logger.info(
                             f"[AgentB] Skipped {skipped} old messages, processing latest only")
                 else:
-                    # Aguardar por nova mensagem
+                    # Wait for new message
                     msg = self.consumer.poll(timeout=1.0)
 
                 if msg is None:
@@ -479,14 +501,14 @@ class AgentB:
                 if msg.error():
                     continue
 
-                # payload de entrada
+                # Parse Input Payload
                 try:
                     data = json.loads(msg.value())
                 except json.JSONDecodeError:
                     logger.warning("[AgentB] Invalid message (JSON). Ignored.")
                     continue
 
-                # correlationId (propagar se existir)
+                # Extract truckId (Propagate if exists)
                 truck_id = None
                 for k, v in (msg.headers() or []):
                     if k == "truckId" and v is not None:
@@ -508,15 +530,36 @@ class AgentB:
                     logger.warning(
                         "[AgentB] No final text results — not publishing.")
                     continue
+                
+                # Upload best crop to MinIO
+                crop_url = None
+                if self.best_crop is not None:
+                    try:
+                        # Generate unique object name
+                        object_name = f"lp_{truck_id}_{plate_text}.jpg"
+                        crop_url = self.crop_storage.upload_memory_image(self.best_crop, object_name)
+                        
+                        if crop_url:
+                            logger.info(f"[AgentB] Crop uploaded to MinIO: {crop_url}")
+                        else:
+                            logger.warning("[AgentB] Failed to upload crop to MinIO")
+                    except Exception as e:
+                        logger.exception(f"[AgentB] Error uploading crop to MinIO: {e}")
+                
+                # Publish result
 
                 # Publicar a mensagem de matrícula detetada
                 self._publish_lp_detected(
-                    timestamp=in_timestamp,
                     truck_id=truck_id,
                     plate_text=plate_text,
-                    plate_conf=plate_conf
+                    plate_conf=plate_conf,
+                    crop_url=crop_url
                 )
 
+                # Clear frames queue for next detection
+                with self.frames_queue.mutex:
+                    self.frames_queue.queue.clear()
+                
         except KeyboardInterrupt:
             logger.info("[AgentB] Interrupted by user.")
         except KafkaException as e:
@@ -541,7 +584,9 @@ class AgentB:
                 pass
 
     def stop(self):
-        """Para parar o agente de forma limpa."""
+        """Gracefully stop Agent B."""
+
         logger.info("[AgentB] Stopping agent and freeing resources…")
+        self.running = False
         self.running = False
         logger.info("[AgentB] Stopped successfully.")
