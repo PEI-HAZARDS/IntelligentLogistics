@@ -67,7 +67,7 @@ class AgentB:
         self.decided_chars = {}
 
         # Threshold para decisão (quantas vezes precisa aparecer)
-        self.decision_threshold = 3
+        self.decision_threshold = 6
 
         # Percentagem mínima de posições decididas para consenso (80%)
         self.consensus_percentage = 0.8
