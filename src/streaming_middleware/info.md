@@ -64,7 +64,7 @@ Nginx RTMP Server
 ### **1. Verificar se streams estão ativos:**
 
 ```bash
-curl http://localhost:8080/stat
+curl http://10.255.32.35:8080/stat
 ```
 
 ### **2. Consumir HLS no navegador:**
@@ -76,13 +76,13 @@ http://localhost:8080/hls/low/gate01.m3u8
 ### **3. Testar RTMP com ffplay:**
 
 ```bash
-ffplay rtmp://localhost:1935/streams_low/gate01
+ffplay rtmp://10.255.32.35:1935/streams_low/gate01
 ```
 
 ### **4. Health check:**
 
 ```bash
-curl http://localhost:8080/health
+curl http://10.255.32.35:8080/health
 # Expected: OK
 ```
 

@@ -27,7 +27,7 @@ os.makedirs(CROPS_PATH, exist_ok=True)
 
 # Configurações Kafka
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
-TOPIC_CONSUME = "truck-detected"
+TOPIC_CONSUME = "truck-detected-gate01"
 TOPIC_PRODUCE = "license-plate-detected"
 logger = logging.getLogger("AgentB")
 
@@ -83,8 +83,8 @@ class AgentB:
         self.consumer = Consumer({
             "bootstrap.servers": bootstrap,
             "group.id": "agentB-group",
-            "auto.offset.reset": "earliest",
-            "enable.auto.commit": True,
+            "auto.offset.reset": "latest",  #: "latest" para ir buscar a ultima mensagem disponivel de    
+            "enable.auto.commit": True,     #:  maneira a ler em tempo real
             "session.timeout.ms": 10000,
             "max.poll.interval.ms": 300000,
         })
@@ -203,7 +203,7 @@ class AgentB:
             for i, box in enumerate(boxes, start=1):
                 x1, y1, x2, y2, conf = map(float, box)
                 
-                if conf < 0.5:
+                if conf < 0.85:
                     logger.debug(f"[AgentB] Ignored low confidence box (conf={conf:.2f}).")
                     continue
 
@@ -240,7 +240,7 @@ class AgentB:
                     # Verificar se atingiu consenso
                     if self._check_full_consensus():
                         final_text = self._build_final_text()
-                        logger.info(f"[AgentB] 🎯 Full consensus achieved: '{final_text}'")
+                        logger.info(f"[AgentB] Full consensus achieved: '{final_text}'")
                         return final_text, 1.0, crop
                     
                 except Exception as e:
@@ -260,7 +260,7 @@ class AgentB:
 
 
         # Ignorar confianças baixas
-        if confidence < 0.8:
+        if confidence < 0.5:
             logger.debug(f"[AgentB] Confidence too low ({confidence:.2f}), skipping")
             return
 
@@ -275,7 +275,10 @@ class AgentB:
         for pos, char in enumerate(text):
             if char not in self.counter[pos]:
                 self.counter[pos][char] = 0
-            self.counter[pos][char] += 1
+            if confidence >= 0.8:
+                self.counter[pos][char] += 2
+            else:
+                self.counter[pos][char] += 1
 
             # Verificar consenso por posição
             if self.counter[pos][char] >= self.decision_threshold:
@@ -290,13 +293,13 @@ class AgentB:
         """
         Verifica se todas as posições necessárias foram decididas.
         
-        Para matrícula portuguesa (XX-00-XX ou 00-XX-00):
-        - Mínimo 6 caracteres decididos
         """
         decided_count = len(self.decided_chars)
-        
+        total_simbols = len(self.counter)
+
+
         # Considera consenso se tiver pelo menos 6 caracteres decididos
-        if decided_count >= 6:
+        if decided_count == total_simbols:
             logger.debug(f"[AgentB] Consensus check: {decided_count}/6+ positions decided ✓")
             return True
         
@@ -396,7 +399,31 @@ class AgentB:
 
         try:
             while self.running:
-                msg = self.consumer.poll(timeout=1.0)
+                # ============================================================
+                # SKIP MENSAGENS ANTIGAS - Pegar apenas a última
+                # ============================================================
+                msg = None
+                msgs_buffer = []
+                
+                # Poll múltiplas vezes para drenar mensagens antigas
+                while True:
+                    temp_msg = self.consumer.poll(timeout=0.1)
+                    if temp_msg is None:
+                        break  # Não há mais mensagens
+                    if temp_msg.error():
+                        continue
+                    msgs_buffer.append(temp_msg)
+                
+                # Se há mensagens, pegar apenas a última
+                if msgs_buffer:
+                    msg = msgs_buffer[-1]  # ← Última mensagem do buffer
+                    skipped = len(msgs_buffer) - 1
+                    if skipped > 0:
+                        logger.info(f"[AgentB] Skipped {skipped} old messages, processing latest only")
+                else:
+                    # Aguardar por nova mensagem
+                    msg = self.consumer.poll(timeout=1.0)
+                
                 if msg is None:
                     continue
                 if msg.error():
