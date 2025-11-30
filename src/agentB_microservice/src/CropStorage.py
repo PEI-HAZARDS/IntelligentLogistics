@@ -6,18 +6,6 @@ import logging
 import cv2
 import io
 
-# --- Configuration ---
-MINIO_CONF = {
-    "endpoint": "10.255.32.132:9000",
-    "access_key": "admin",
-    "secret_key": "adminadmin",
-    "secure": False  # Set to True if using HTTPS
-}
-
-BUCKET_NAME = "hz-crops"
-FILE_PATH = "test.jpg"           # The file on your computer
-OBJECT_NAME = "test.jpg"    # The name it will have in MinIO
-
 logger = logging.getLogger("CropStorage")
 
 class CropStorage:
