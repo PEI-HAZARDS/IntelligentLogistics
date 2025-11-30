@@ -1,0 +1,89 @@
+version: "3.9"
+services:
+  # Serviço mock do Decision Engine (DE) para testes locais (remover em produção)
+  decision-engine:
+    build: .
+    container_name: dm_decision_engine
+    command: uvicorn de_stub:app --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  postgres:
+    image: postgres:15
+    container_name: dm_postgres
+    environment:
+      POSTGRES_USER: porto
+      POSTGRES_PASSWORD: porto_password
+      POSTGRES_DB: porto_logistica
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U porto"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo:
+    image: mongo:6
+    container_name: dm_mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin123
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: dm_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  data-module:
+    build: .
+    container_name: dm_data_module
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      MONGO_URL: mongodb://admin:admin123@mongo:27017
+      REDIS_HOST: redis
+      DECISION_ENGINE_URL: http://decision-engine:8001  # Assume DE rodando externamente
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://decision-engine:8001/health"]  # Verifica se DE está up
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  pgdata:
+  mongodata:
+
+networks:
+  default:
+    driver: bridge

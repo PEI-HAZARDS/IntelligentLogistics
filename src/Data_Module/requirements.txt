@@ -8,21 +8,17 @@ psycopg2-binary
 SQLAlchemy
 alembic
 
-fastapi
-uvicorn[standard]
-pydantic
-pydantic-settings
-
 # MongoDB
 pymongo
 dnspython
 
-# Redis (para caching)
+# Redis
 redis[hiredis]
+
+# HTTP calls
+httpx
 
 # Utils
 loguru
 requests
 python-dotenv
-httpx
-
