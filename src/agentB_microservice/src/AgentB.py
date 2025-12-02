@@ -62,12 +62,17 @@ class AgentB:
         self.running = True
         self.frames_queue = Queue()
 
+
         # Connect on-demand when a Kafka event is received.
         self.stream = None
 
         # ============================================================
         # CONSENSUS STATE
         # ============================================================
+        
+        # Flag indicating if full consensus reached
+        self.consensus_reached = False
+        
         # Dynamic counter: each position maps {character: count}
         # Example: {0: {'A': 3, 'B': 1}, 1: {'B': 4}, ...}
         self.counter = {}
@@ -80,6 +85,12 @@ class AgentB:
 
         # Minimum percentage of decided positions for consensus (80%)
         self.consensus_percentage = 0.8
+
+        # Maximum frames to process before returning best result
+        self.max_frames = 40
+        
+        # Counter for processed frames
+        self.frames_processed = 0
 
         # Best crop so far
         self.best_crop = None
@@ -111,8 +122,10 @@ class AgentB:
         """Resets the consensus algorithm state."""
         self.counter = {}
         self.decided_chars = {}
+        self.consensus_reached = False
         self.best_crop = None
         self.best_confidence = 0.0
+        self.frames_processed = 0
         logger.debug("[AgentB] Consensus state reset.")
 
     def _get_frames(self, num_frames=30):
@@ -164,16 +177,19 @@ class AgentB:
 
         # Reset consensus state before starting new detection
         self._reset_consensus_state()
-        
-        # Capture frames
-        self._get_frames(30)
 
-        if self.frames_queue.empty():
-            logger.warning("[AgentB] No frame captured from RTSP.")
-            return None, None, None
+        # Process frames until consensus is reached, frame limit reached, or queue is empty
+        while self.running and not self.consensus_reached and self.frames_processed < self.max_frames:
+            # Ensure there are frames to process
+            if self.frames_queue.empty():
+                logger.debug("[AgentB] Frames queue is empty, capturing more frames.")
+                self._get_frames(5)
 
-        # Process frames until consensus is reached or queue is empty
-        while self.running and not self.frames_queue.empty():
+            # return None if no frames were returned
+            if self.frames_queue.empty():
+                logger.warning("[AgentB] No frame captured from RTSP.")
+                return None, None, None
+            
             try:
                 frame = self.frames_queue.get_nowait()
                 logger.debug("[AgentB] Frame obtained from queue.")
@@ -182,6 +198,10 @@ class AgentB:
                 logger.warning("[AgentB] Frames queue is empty.")
                 time.sleep(0.05)
                 continue
+
+            # Increment frame counter
+            self.frames_processed += 1
+            logger.debug(f"[AgentB] Processing frame {self.frames_processed}/{self.max_frames}")
 
             # Process single frame
             result = self._process_single_frame(frame)
@@ -203,6 +223,10 @@ class AgentB:
                             break
 
                 return text, conf, crop
+
+        # Check if frame limit reached
+        if self.frames_processed >= self.max_frames:
+            logger.info(f"[AgentB] Frame limit reached ({self.max_frames}), returning best partial result")
 
         # If full consensus not reached, return best partial result
         return self._get_best_partial_result()
@@ -380,6 +404,7 @@ class AgentB:
         if decided_count >= required_positions:
             logger.info(
                 f"[AgentB] Consensus reached! {decided_count}/{total_positions} positions decided (need {required_positions}) ✓")
+            self.consensus_reached = True
             return True
 
         logger.debug(
