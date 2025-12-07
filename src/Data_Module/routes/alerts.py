@@ -33,7 +33,7 @@ def get_alert(alert_id: int, db: Session = Depends(get_db)):
 @router.post("/alerts", response_model=AlertaResponse, status_code=status.HTTP_201_CREATED)
 def create_alert(payload: AlertaBase, db: Session = Depends(get_db)):
     """
-    Cria um alerta no Postgres. Usado por serviços internos/admin.
+    Cria um alerta no Postgres. Usado por serviços internos -> decision engine.
     """
     nova = Alerta(
         tipo=payload.tipo,

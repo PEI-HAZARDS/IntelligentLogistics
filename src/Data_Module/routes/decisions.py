@@ -1,8 +1,9 @@
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException, status
+from typing import List, Optional, Dict, Any
+from fastapi import APIRouter, HTTPException, status, Body
 from bson.objectid import ObjectId
 from db.mongo import events_collection
 from models.pydantic_models import EventResponse
+from services.decision_service import process_decision_manual
 
 router = APIRouter()
 
@@ -72,3 +73,34 @@ def get_decision(event_id: str):
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Evento não encontrado")
     return _doc_to_event_response(doc)
+
+
+@router.post("/decision/{gate_id}/{decision}")
+def post_decision(gate_id: int, decision: str, payload: Dict[str, Any] = Body({})):
+    """
+    Endpoint interno para o Decision Engine enviar decisões.
+    - gate_id: identificador do gate
+    - decision: 'granted', 'denied', 'pending', etc.
+    - payload: dados adicionais (truck_id, matricula, matched_chegada_id, etc.)
+    """
+    result = process_decision_manual(gate_id=gate_id, decision=decision, data=payload)
+    return {"status": "ok", "event_id": result.get("event_id"), "decision": decision}
+
+
+@router.put("/manual_review/{gate_id}/{truck_id}/{decision}")
+def manual_review(gate_id: int, truck_id: str, decision: str, payload: Dict[str, Any] = Body({})):
+    """
+    Endpoint para revisão manual do operador.
+    - gate_id: identificador do gate
+    - truck_id: identificador do camião (correlationId ou truckId)
+    - decision: 'approved', 'rejected', 'pending_review'
+    - payload: observações, motivo, etc.
+    """
+    payload["truck_id"] = truck_id
+    result = process_decision_manual(
+        gate_id=gate_id,
+        decision=decision,
+        data=payload,
+        manual=True
+    )
+    return {"status": "ok", "event_id": result.get("event_id"), "decision": decision}

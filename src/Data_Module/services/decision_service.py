@@ -1,7 +1,7 @@
 import json
 import time
 import httpx
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import datetime as dt
 from config import settings
 from db.mongo import detections_collection, events_collection
@@ -257,3 +257,79 @@ def process_detection(detection: dict) -> dict:
     detection_doc["decision"] = decision_result
 
     return detection_doc
+
+
+def process_decision_manual(gate_id: int, decision: str, data: Dict[str, Any], manual: bool = False) -> Dict[str, Any]:
+    """
+    Processa uma decisão manual (operador) ou automática (decision engine).
+    Grava evento no MongoDB e opcionalmente atualiza Postgres.
+    
+    Args:
+        gate_id: ID do gate
+        decision: 'granted', 'denied', 'approved', 'rejected', etc.
+        data: payload adicional (truck_id, matricula, matched_chegada_id, observações, etc.)
+        manual: True se é revisão manual do operador
+    
+    Returns:
+        Dict com event_id e status
+    """
+    ts_float = time.time()
+    
+    # Criar evento no MongoDB
+    event_doc = {
+        "timestamp": dt.utcfromtimestamp(ts_float),
+        "type": "manual_review" if manual else "decision",
+        "gate_id": gate_id,
+        "user_id": data.get("user_id"),
+        "data": {
+            "decision": decision,
+            "truck_id": data.get("truck_id"),
+            "matricula": data.get("matricula"),
+            "matched_chegada_id": data.get("matched_chegada_id"),
+            "observacoes": data.get("observacoes"),
+            "reason": data.get("reason"),
+            "manual": manual,
+            "payload": data
+        }
+    }
+    
+    try:
+        insert_res = events_collection.insert_one(event_doc)
+        event_id = str(insert_res.inserted_id)
+    except Exception as e:
+        event_id = None
+    
+    # Se há matched_chegada_id e decisão é 'approved' ou 'granted', atualizar Postgres
+    matched_id = data.get("matched_chegada_id")
+    if matched_id and decision in ["approved", "granted"]:
+        db = SessionLocal()
+        try:
+            chegada = db.query(ChegadaDiaria).filter(ChegadaDiaria.id_chegada == matched_id).first()
+            if chegada:
+                # Atualizar estado conforme decisão
+                if decision == "approved" or decision == "granted":
+                    chegada.estado_entrega = "em_descarga"
+                # Adicionar observações se fornecidas
+                obs = data.get("observacoes")
+                if obs:
+                    if chegada.observacoes:
+                        chegada.observacoes += f" | {obs}"
+                    else:
+                        chegada.observacoes = obs
+                db.commit()
+        except Exception:
+            pass
+        finally:
+            db.close()
+    
+    # Publicar notificação
+    payload = {
+        "type": "manual_review" if manual else "decision",
+        "decision": decision,
+        "gate_id": gate_id,
+        "event_id": event_id,
+        "data": data
+    }
+    publish_notification(data.get("notify_channel"), payload)
+    
+    return {"event_id": event_id, "status": "ok", "decision": decision}

@@ -1,83 +1,40 @@
-Endpoints do Data_Module
+## Endpoints
+### External
+- POST: api/auth/login
+- POST: api/auth/logout
 
-## Visão Geral
-O `data_module` expõe APIs REST para interação com PostgreSQL (dados oficiais), MongoDB (eventos/notificações) e Redis (cache). Endpoints internos suportam o Decision Engine; externos, o frontend.
+- GET: api/arrivals                                 
 
-- **Base URL**: `http://data-module:8000/api/v1`
-- **Autenticação**: Futura (JWT).
-- **Formato**: JSON.
+- GET: api/arrivals/{gate_id}                       
+- GET: api/arrivals/{gate_id}/{shift}                       
+- GET: api/arrivals/{gate_id}/{shift}/total                
 
-## 1. Endpoints Internos (Decision Engine ↔ Data_Module)
-Usados pelo Decision Engine para consultar/atualizar PostgreSQL (decisões, chegadas). Focam em persistência e validação.
+- GET: api/arrivals/{gate_id}/pending               
+- GET: api/arrivals/{gate_id}/{shift}/pending               
+- GET: api/arrivals/{gate_id}/{shift}/pending/total         
 
-### Chegadas (PostgreSQL)
-- **GET /arrivals**  
-  Consulta chegadas (para matching de matrículas).  
-  *Query Params*: `matricula` (filtro).  
-  *Response*: Lista de chegadas.  
-  *Uso*: DE compara matrícula detetada.
+- GET: api/arrivals/{gate_id}/in_progress           
+- GET: api/arrivals/{gate_id}/{shift}/in_progress           
+- GET: api/arrivals/{gate_id}/{shift}/in_progress/total     
 
-- **PUT /arrivals/{id}**  
-  Atualiza chegada (e.g., estado_entrega).  
-  *Body*: `{"estado_entrega": "concluida"}`.  
-  *Response*: Chegada atualizada.  
-  *Uso*: DE persiste decisão.
+- GET: api/arrivals/{gate_id}/finished              
+- GET: api/arrivals/{gate_id}/{shift}/finished              
+- GET: api/arrivals/{gate_id}/{shift}/finished/total        
 
-### Eventos (MongoDB - Interno)
-- **POST /events**  
-  Insere evento de decisão.  
-  *Body*: `{"type": "autorizado", "data": {"id_chegada": 123}}`.  
-  *Response*: Sucesso.  
-  *Uso*: DE armazena eventos pós-decisão.
+- GET: api/stream/{gate_id}/high
+- GET: api/stream/{gate_id}/low
 
-## 2. Endpoints Externos (Frontend ↔ Data_Module)
-Usados pelo frontend para consultas em tempo real. PostgreSQL para listas/detalhes; MongoDB para notificações instantâneas.
+- PUT: api/manual_review/{gate_id}/{truck_id}/{decision}
 
-### Chegadas (PostgreSQL - Externas)
-- **GET /arrivals**  
-  Lista chegadas para display.  
-  *Query Params*: `page`, `limit`, `estado`.  
-  *Response*: Lista paginada.  
-  *Uso*: Frontend mostra tabela de chegadas.
+- Listening on kafka topic (decision_made)
 
-- **GET /arrivals/{id}**  
-  Detalhes de uma chegada.  
-  *Response*: Objeto chegada.  
-  *Uso*: Frontend mostra modal de detalhes.
+### Internal
+- POST: api/decision/{gate_id}/{decision}
+- GET: api/arrivals/{gate_id}/pending
 
-### Eventos/Notificações (MongoDB - Externas)
-- **GET /events**  
-  Lista eventos recentes (para notificações).  
-  *Query Params*: `type` (e.g., "autorizado"), `limit`.  
-  *Response*: Lista de eventos.  
-  *Uso*: Frontend busca notificações ("Camião autorizado").
+### Notes:
+- Chegadas estão associadas a turnos se um gajo chega mais cedo (noutro turno) o decision engine troca o turno na BD e ele vai aparecer no frontend como dauele turni
 
-- **GET /detections**  
-  Lista detecções não processadas.  
-  *Response*: Lista.  
-  *Uso*: Frontend para debug ou display.
+- Qual é o processo de tomada de decisão no decision engine tendo em conta as horas?
 
-### Deteções (MongoDB - Externas/Internas)
-- **POST /detections**  
-  Recebe deteção de agentes.  
-  *Body*: Detecção JSON.  
-  *Response*: Processado.  
-  *Uso*: Agentes enviam; DE consulta via interno.
-
-## 3. Futuros Endpoints
-### Agregados (Gestor Logístico)
-- **GET /dashboard/summary**  
-  Dados agregados (e.g., chegadas por dia).  
-  *Uso*: Relatórios para gestor.
-
-### Admin
-- **POST /admin/reset**  
-  Reset dados (admin only).  
-  *Uso*: Manutenção.
-
----
-
-**Notas**:
-- Prioriza internos primeiro (para integração com DE).
-- Testa com Postman/Swagger.
-- Adiciona paginação/filtros conforme cresce.
+- GET para MinIO???

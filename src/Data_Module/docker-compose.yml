@@ -1,18 +1,7 @@
 version: "3.9"
 services:
-  # Serviço mock do Decision Engine (DE) para testes locais (remover em produção)
-  decision-engine:
-    build: .
-    container_name: dm_decision_engine
-    command: uvicorn de_stub:app --host 0.0.0.0 --port 8001
-    ports:
-      - "8001:8001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-  
+
+  # Serviço de base de dados PostgreSQL (Simulação de dados do Porto)
   postgres:
     image: postgres:15
     container_name: dm_postgres
@@ -30,6 +19,7 @@ services:
       timeout: 5s
       retries: 5
 
+  # Serviço de base de dados MongoDB (Guarda internamente dados de eventos kafka e mais tarde logs gerais de atividades)
   mongo:
     image: mongo:6
     container_name: dm_mongo
@@ -46,6 +36,7 @@ services:
       timeout: 5s
       retries: 5
 
+  # Serviço de cache Redis (para otimização de performance) -> complementa o Data Module
   redis:
     image: redis:7
     container_name: dm_redis
@@ -57,6 +48,7 @@ services:
       timeout: 5s
       retries: 5
 
+  # Serviço do Data Module
   data-module:
     build: .
     container_name: dm_data_module
@@ -71,10 +63,11 @@ services:
       POSTGRES_HOST: postgres
       MONGO_URL: mongodb://admin:admin123@mongo:27017
       REDIS_HOST: redis
-      DECISION_ENGINE_URL: http://decision-engine:8001  # Assume DE rodando externamente
+      # Decision Engine URL (roda noutro container noutra virtual machine)
+      DECISION_ENGINE_URL: http://decision-engine:8001
     ports:
-      - "8000:8000"
-    healthcheck:
+      - "8080:8080" # default port for Data Module API
+    healthcheck: # Verifica se o Decision Engine está a responder (Importante para o Data Module)
       test: ["CMD", "curl", "-f", "http://decision-engine:8001/health"]  # Verifica se DE está up
       interval: 30s
       timeout: 10s

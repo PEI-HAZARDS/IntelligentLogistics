@@ -3,9 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 
 from routes.arrivals import router as arrivals_router
-from routes.detections import router as detections_router
 from routes.events import router as events_router
-from routes.drivers import router as drivers_router
+from routes.decisions import router as decisions_router
+from Data_Module.routes.driver import router as drivers_router
 from routes.alerts import router as alerts_router
 
 # DB / infra imports used for startup checks
@@ -27,8 +27,8 @@ app.add_middleware(
 )
 
 app.include_router(arrivals_router, prefix="/api/v1")
-app.include_router(detections_router, prefix="/api/v1")
 app.include_router(events_router, prefix="/api/v1")
+app.include_router(decisions_router, prefix="/api/v1")
 app.include_router(drivers_router, prefix="/api/v1")
 app.include_router(alerts_router, prefix="/api/v1")
 
