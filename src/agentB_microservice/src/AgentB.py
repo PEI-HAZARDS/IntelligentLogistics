@@ -81,7 +81,7 @@ class AgentB:
         self.decided_chars = {}
 
         # Threshold for decision (how many times it needs to appear)
-        self.decision_threshold = 6
+        self.decision_threshold = 8
 
         # Minimum percentage of decided positions for consensus (80%)
         self.consensus_percentage = 0.8
@@ -91,6 +91,9 @@ class AgentB:
         
         # Counter for processed frames
         self.frames_processed = 0
+        
+        # Track text lengths to find most common length
+        self.length_counter = {}  # {length: count}
 
         # Best crop so far
         self.best_crop = None
@@ -126,6 +129,7 @@ class AgentB:
         self.best_crop = None
         self.best_confidence = 0.0
         self.frames_processed = 0
+        self.length_counter = {}
         logger.debug("[AgentB] Consensus state reset.")
 
     def _get_frames(self, num_frames=30):
@@ -345,17 +349,33 @@ class AgentB:
                 f"[AgentB] Confidence too low ({confidence:.2f}), skipping")
             return
 
-        # Normalize text (uppercase, remove spaces)
-        text_normalized = text.upper().replace(" ", "").replace("-", "")
+        # Normalize text (uppercase, remove only dashes, keep spaces for position tracking)
+        text_normalized = text.upper().replace("-", "")
 
         # Ignore if too short
         if len(text_normalized) < 4:
             logger.debug(
                 f"[AgentB] Text too short ('{text_normalized}'), skipping")
             return
+        
+        # Track the length of this text
+        text_len = len(text_normalized)
+        if text_len not in self.length_counter:
+            self.length_counter[text_len] = 0
+        self.length_counter[text_len] += 1
+        
+        # After collecting some samples, only accept the most common length
+        # This prevents mixing "0N25" (4 chars) with "A0N25" (5 chars)
+        if sum(self.length_counter.values()) >= 3:
+            most_common_length = max(self.length_counter.items(), key=lambda x: x[1])[0]
+            if text_len != most_common_length:
+                logger.debug(
+                    f"[AgentB] Text length mismatch: '{text_normalized}' has {text_len} chars, "
+                    f"expected {most_common_length} (most common). Skipping to avoid misalignment.")
+                return
 
         logger.debug(
-            f"[AgentB] Adding to consensus: '{text_normalized}' (conf={confidence:.2f})")
+            f"[AgentB] Adding to consensus: '{text_normalized}' (conf={confidence:.2f}, len={text_len})")
 
         # Dynamically expand dictionary for new positions
         for pos in range(len(text_normalized)):
