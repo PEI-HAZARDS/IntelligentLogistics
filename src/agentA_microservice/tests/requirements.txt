@@ -1,0 +1,6 @@
+mockito
+pytest
+opencv-python-headless
+ultralytics
+confluent_kafka
+gdown
