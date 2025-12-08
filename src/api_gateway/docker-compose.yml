@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  api-gateway:
+    build: .
+    container_name: api_gateway
+    environment:
+      # URL do Data Module — AJUSTA ISTO conforme o teu caso:
+      # Se Data Module está na máquina local:
+      #   http://host.docker.internal:8080
+      # Se está noutro servidor:
+      #   http://10.0.0.20:8080  (exemplo)
+      DATA_MODULE_URL: "http://host.docker.internal:8080"
+
+      # Ambiente (apenas para logs)
+      ENV: "dev"
+    ports:
+      - "8000:8000"
