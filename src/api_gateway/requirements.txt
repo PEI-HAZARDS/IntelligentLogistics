@@ -7,3 +7,5 @@ httpx
 
 python-dotenv
 loguru
+
+aiokafka

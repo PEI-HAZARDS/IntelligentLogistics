@@ -1,19 +1,21 @@
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 
-# Routers 
+# Routers (apenas os que são realmente usados)
 from .routers import (
     arrivals,
-    decisions,
     manual_review,
     alerts,
     drivers,
-    events,
-    auth,
     stream,
+    realtime,   # WebSockets para decisões em tempo real
 )
+
+# Kafka consumer para decisões
+from .realtime.kafka_consumer import start_consumer
 
 
 def create_app() -> FastAPI:
@@ -25,7 +27,9 @@ def create_app() -> FastAPI:
         version="1.0.0",
     )
 
+    # ----------------------
     # CORS
+    # ----------------------
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.CORS_ALLOW_ORIGINS,
@@ -34,25 +38,33 @@ def create_app() -> FastAPI:
         allow_headers=settings.CORS_ALLOW_HEADERS,
     )
 
-    # Include routers
-    # Cada router já terá o seu prefixo interno (ex: /arrivals),
-    # aqui aplicamos apenas o prefixo global /api.
+    # ----------------------
+    # Routers HTTP
+    # ----------------------
     app.include_router(arrivals.router, prefix=settings.API_PREFIX)
-    app.include_router(decisions.router, prefix=settings.API_PREFIX)
     app.include_router(manual_review.router, prefix=settings.API_PREFIX)
     app.include_router(alerts.router, prefix=settings.API_PREFIX)
     app.include_router(drivers.router, prefix=settings.API_PREFIX)
-    app.include_router(events.router, prefix=settings.API_PREFIX)
-
-    # Routers mais "especiais"
-    app.include_router(auth.router, prefix=settings.API_PREFIX)
     app.include_router(stream.router, prefix=settings.API_PREFIX)
 
+    # ----------------------
+    # Router WebSocket
+    # ----------------------
+    app.include_router(realtime.router, prefix=settings.API_PREFIX)
+
+    # ----------------------
+    # Kafka consumer startup
+    # ----------------------
+    @app.on_event("startup")
+    async def on_startup():
+        loop = asyncio.get_event_loop()
+        start_consumer(loop)
+
+    # ----------------------
+    # Healthcheck
+    # ----------------------
     @app.get("/health", tags=["health"])
     def health():
-        """
-        Health-check simples do API Gateway.
-        """
         return {"status": "ok", "env": settings.ENV}
 
     return app
