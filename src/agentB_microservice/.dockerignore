@@ -1,0 +1,21 @@
+# Ignore the virtual environment (often the culprit for large sizes)
+**venv/
+**env/
+**.env
+
+# Ignore data folders
+**data/
+
+# Ignore git history (can be huge)
+**.git/
+
+# Ignore compiled python files
+**__pycache__/
+*.pyc
+
+# Ignore local IDE settings
+**.vscode/
+**.idea/
+
+# Ignore documentation or datasets not needed in the app
+**docs/

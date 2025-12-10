@@ -25,7 +25,6 @@ ENV/
 # =====================================
 **/data/
 **/datasets/
-**/models/
 **/checkpoints/
 **/logs/
 **/experiments/

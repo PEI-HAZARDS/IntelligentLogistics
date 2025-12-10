@@ -20,31 +20,7 @@ services:
       # Nó único
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      # Desliga auto-criação: queremos controlo total
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      # Com auto-criação durante desenvolvimento
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       # Cluster ID (gera com kafka-storage.sh random-uuid e formata antes do primeiro arranque)
       CLUSTER_ID: "5L6g3nShT-eMCtK--X86sw"
-
-  topic-init:
-    image: apache/kafka:latest
-    container_name: kafka-topic-init
-    depends_on:
-      - kafka
-    entrypoint: ["/bin/bash","-lc"]
-    command: >
-      '
-      echo "A aguardar Kafka..." ;
-      for i in {1..60}; do
-        /opt/kafka/bin/kafka-topics.sh --bootstrap-server 10.255.32.64:9092 --list >/dev/null 2>&1 && break;
-        sleep 2;
-      done;
-      echo "A criar tópicos..." ;
-      /opt/kafka/bin/kafka-topics.sh --bootstrap-server 10.255.32.64:9092 --create --if-not-exists \
-        --topic truck-detected --partitions 3 --replication-factor 1 ;
-      /opt/kafka/bin/kafka-topics.sh --bootstrap-server 10.255.32.64:9092 --create --if-not-exists \
-        --topic license-plate-detected --partitions 3 --replication-factor 1 ;
-      /opt/kafka/bin/kafka-topics.sh --bootstrap-server 10.255.32.64:9092 --create --if-not-exists \
-        --topic access-decision --partitions 3 --replication-factor 1 ;
-      echo "Tópicos prontos."
-      '
-    restart: "no"

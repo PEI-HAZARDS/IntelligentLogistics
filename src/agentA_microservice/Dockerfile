@@ -1,33 +1,36 @@
 # Use Python 3.11 slim image as base
-FROM python:3.11-slim
+FROM docker.io/python:3.11-slim@sha256:193fdd0bbcb3d2ae612bd6cc3548d2f7c78d65b549fcaa8af75624c47474444d
 
-# Set working directory
+# Environment variables
+ENV PYTHONPATH=/app \
+    KAFKA_BOOTSTRAP=10.255.32.143:9092 \
+    MODELS_PATH=/app/agentA_microservice/data \
+    GATE_ID=gate01 \
+    NGINX_RTMP_HOST=10.255.32.35 \
+    NGINX_RTMP_PORT=1935
+
 WORKDIR /app
 
-# Install Python dependencies
-COPY src/agentA_microservice/requirements.txt /app/agentA_microservice/requirements.txt
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r /app/agentA_microservice/requirements.txt
-
-    # Install system dependencies (openCV, ffmpeg, etc.)
-RUN apt-get update && apt-get install -y \
+# 1. System dependencies (OpenCV, etc.)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     libgl1 \
-    libglib2.0-0
+    libglib2.0-0 && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy shared utils
-COPY src/shared_utils /app/shared_utils
+# 2. Python dependencies
+COPY requirements.txt ./agentA_microservice/
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r agentA_microservice/requirements.txt
 
-# Copy agentA microservice
-COPY src/agentA_microservice/src /app/agentA_microservice/src
-COPY src/agentA_microservice/data /app/agentA_microservice/data
-COPY src/agentA_microservice/init.py /app/agentA_microservice/init.py
+# 3. Copy source code
+COPY src/ ./agentA_microservice/src/
+COPY init.py setup.py ./agentA_microservice/
+COPY tests/ ./agentA_microservice/tests/
 
+# 4. Download YOLO model
+RUN python -c "from agentA_microservice.setup import setup; setup()" && \
+    echo "Models ready in $MODELS_PATH"
 
-# Set PYTHONPATH to include the app directory
-ENV PYTHONPATH=/app
-
-# Set environment variables for Kafka (can be overridden at runtime)
-ENV KAFKA_BOOTSTRAP=10.255.32.64:9092
-
-# Run the agent
-CMD ["python", "/app/agentA_microservice/init.py"]
+# 5. Start the microservice
+CMD ["python", "agentA_microservice/init.py"]

@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Nginx RTMP - HLS Player</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <style>
+    body {
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      color: #fff;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      padding: 20px;
+      margin: 0;
+    }
+    h1 {
+      text-align: center;
+      color: #4CAF50;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .player-box {
+      background: rgba(255,255,255,0.05);
+      border-radius: 10px;
+      padding: 20px;
+      margin: 20px 0;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    h2 {
+      margin-top: 0;
+      color: #64B5F6;
+    }
+    video {
+      width: 100%;
+      border-radius: 5px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+    }
+    .status {
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+    .status.loading { background: #FF9800; color: #000; }
+    .status.success { background: #4CAF50; }
+    .status.error { background: #f44336; }
+    .info {
+      background: rgba(255,255,255,0.1);
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 5px;
+      font-size: 12px;
+    }
+    button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      margin: 5px;
+    }
+    button:hover { background: #45a049; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Nginx RTMP Streaming</h1>
+    
+    <!-- Stream LOW -->
+    <div class="player-box">
+      <h2>Stream LOW (720p)</h2>
+      <div id="status-low" class="status loading">Initializing...</div>
+      <video id="video-low" controls></video>
+      <div class="info" id="info-low">
+        <strong>URL:</strong> <span id="url-low">-</span><br>
+        <strong>Resolution:</strong> <span id="res-low">-</span><br>
+        <strong>Buffered:</strong> <span id="buf-low">0s</span>
+      </div>
+      <button onclick="reloadLow()">Reload</button>
+    </div>
+    
+    <!-- Stream HIGH -->
+    <div class="player-box">
+      <h2>Stream HIGH (4K)</h2>
+      <div id="status-high" class="status loading">Initializing...</div>
+      <video id="video-high" controls></video>
+      <div class="info" id="info-high">
+        <strong>URL:</strong> <span id="url-high">-</span><br>
+        <strong>Resolution:</strong> <span id="res-high">-</span><br>
+        <strong>Buffered:</strong> <span id="buf-high">0s</span>
+      </div>
+      <button onclick="reloadHigh()">Reload</button>
+    </div>
+  </div>
+
+  <script>
+    const BASE_URL = window.location.origin;
+    const URLS = {
+      low: `${BASE_URL}/hls/low/gate01/index.m3u8`,
+      high: `${BASE_URL}/hls/high/gate01/index.m3u8`
+    };
+
+    let hlsLow, hlsHigh;
+
+    function initLow() {
+      const video = document.getElementById('video-low');
+      const status = document.getElementById('status-low');
+      
+      document.getElementById('url-low').textContent = URLS.low;
+      status.textContent = '⏳ Connecting...';
+      
+      if (Hls.isSupported()) {
+        hlsLow = new Hls({
+          debug: true,
+          enableWorker: true,
+          lowLatencyMode: true,
+          backBufferLength: 10,
+          maxBufferLength: 30,
+          maxMaxBufferLength: 60,
+          liveSyncDuration: 3,
+          liveMaxLatencyDuration: 10,
+          maxFragLookUpTolerance: 0.2
+        });
+        
+        hlsLow.loadSource(URLS.low);
+        hlsLow.attachMedia(video);
+        
+        hlsLow.on(Hls.Events.MANIFEST_PARSED, () => {
+          status.className = 'status success';
+          status.textContent = 'Ready! Click play';
+          console.log('[LOW] Manifest OK');
+        });
+        
+        hlsLow.on(Hls.Events.ERROR, (event, data) => {
+          console.error('[LOW] Error:', data);
+          
+          if (data.fatal) {
+            status.className = 'status error';
+            
+            switch(data.type) {
+              case Hls.ErrorTypes.NETWORK_ERROR:
+                status.textContent = 'Network error - retrying...';
+                setTimeout(() => hlsLow.startLoad(), 1000);
+                break;
+              case Hls.ErrorTypes.MEDIA_ERROR:
+                status.textContent = 'Media error - recovering...';
+                hlsLow.recoverMediaError();
+                break;
+              default:
+                status.textContent = `Fatal: ${data.details}`;
+                break;
+            }
+          }
+        });
+        
+        hlsLow.on(Hls.Events.FRAG_LOADED, () => {
+          const buf = video.buffered.length > 0 ? 
+            Math.round(video.buffered.end(0) - video.currentTime) : 0;
+          document.getElementById('buf-low').textContent = buf + 's';
+        });
+        
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = URLS.low;
+        status.className = 'status success';
+        status.textContent = 'Native HLS';
+      }
+      
+      video.addEventListener('loadedmetadata', () => {
+        document.getElementById('res-low').textContent = 
+          `${video.videoWidth}x${video.videoHeight}`;
+      });
+    }
+
+    function initHigh() {
+      const video = document.getElementById('video-high');
+      const status = document.getElementById('status-high');
+      
+      document.getElementById('url-high').textContent = URLS.high;
+      status.textContent = 'Connecting...';
+      
+      if (Hls.isSupported()) {
+        hlsHigh = new Hls({
+          debug: true,
+          enableWorker: true,
+          lowLatencyMode: true,
+          backBufferLength: 10,
+          maxBufferLength: 30,
+          maxMaxBufferLength: 60,
+          liveSyncDuration: 3,
+          liveMaxLatencyDuration: 10,
+          maxFragLookUpTolerance: 0.2
+        });
+        
+        hlsHigh.loadSource(URLS.high);
+        hlsHigh.attachMedia(video);
+        
+        hlsHigh.on(Hls.Events.MANIFEST_PARSED, () => {
+          status.className = 'status success';
+          status.textContent = 'Ready! Click play';
+          console.log('[HIGH] Manifest OK');
+        });
+        
+        hlsHigh.on(Hls.Events.ERROR, (event, data) => {
+          console.error('[HIGH] Error:', data);
+          
+          if (data.fatal) {
+            status.className = 'status error';
+            
+            switch(data.type) {
+              case Hls.ErrorTypes.NETWORK_ERROR:
+                status.textContent = 'Network error - retrying...';
+                setTimeout(() => hlsHigh.startLoad(), 1000);
+                break;
+              case Hls.ErrorTypes.MEDIA_ERROR:
+                status.textContent = 'Media error - recovering...';
+                hlsHigh.recoverMediaError();
+                break;
+              default:
+                status.textContent = `Fatal: ${data.details}`;
+                break;
+            }
+          }
+        });
+        
+        hlsHigh.on(Hls.Events.FRAG_LOADED, () => {
+          const buf = video.buffered.length > 0 ? 
+            Math.round(video.buffered.end(0) - video.currentTime) : 0;
+          document.getElementById('buf-high').textContent = buf + 's';
+        });
+        
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = URLS.high;
+        status.className = 'status success';
+        status.textContent = 'Native HLS';
+      }
+      
+      video.addEventListener('loadedmetadata', () => {
+        document.getElementById('res-high').textContent = 
+          `${video.videoWidth}x${video.videoHeight}`;
+      });
+    }
+
+    function reloadLow() {
+      if (hlsLow) hlsLow.destroy();
+      initLow();
+    }
+
+    function reloadHigh() {
+      if (hlsHigh) hlsHigh.destroy();
+      initHigh();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      console.log('URLs:', URLS);
+      setTimeout(() => {
+        initLow();
+        initHigh();
+      }, 500);
+    });
+  </script>
+</body>
+</html>

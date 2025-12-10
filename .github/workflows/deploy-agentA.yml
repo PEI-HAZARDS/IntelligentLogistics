@@ -72,26 +72,18 @@ jobs:
             sleep 2
           done
           
-          # Forçar DNS manualmente
-          echo "Configurando DNS..."
-          echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf > /dev/null
-          echo "nameserver 8.8.4.4" | sudo tee -a /etc/resolv.conf > /dev/null
-          
           # Verificações
           echo "--- Status VPN ---"
           ip addr show tun0 || echo "⚠️  Interface tun0 não encontrada"
           
+          echo "Removing Faulty Route"
+          sudo ip route delete 193.136.92.0/23 via 172.16.10.1 dev tun0
+
           echo "--- Rotas ---"
-          ip route | head -20
-          
-          echo "--- Log OpenVPN ---"
-          sudo tail -n 50 /tmp/openvpn.log
-          
-          echo "--- Teste DNS ---"
-          nslookup temp-pfsense.av.it.pt || echo "⚠️  DNS falhou (esperado em CI)"
+          ip route 
           
           echo "--- Teste ping ---"
-          ping -c 3 ${{ secrets.AGENTA }} || echo "⚠️  Ping falhou"
+          ping -c 5 ${{ secrets.AGENTA }} || echo "⚠️  Ping falhou"
 
       ######################################################################
       # 3.5 — Test connectivity
@@ -105,9 +97,10 @@ jobs:
           sleep 5
           
           echo "--- VPN Status ---"
+          ip r
           ip addr show tun0 || echo "⚠️  tun0 não existe"
           ip route | grep $TARGET_IP || echo "⚠️  Sem rota para $TARGET_IP"
-          
+
           echo "--- Ping (tentativa 1) ---"
           ping -c 5 $TARGET_IP && echo "✅ Ping OK" || echo "❌ Ping falhou"
           
@@ -184,7 +177,7 @@ jobs:
       ######################################################################
       - name: Configure Docker context
         run: |
-          docker context create agentA --docker "host=ssh://${{ secrets.VM_USERNAME }}@${{ secrets.AGENTA }}"
+          docker context create agentA --docker "host=ssh://agenta-vm"
           docker context use agentA
 
       ######################################################################
@@ -192,9 +185,42 @@ jobs:
       ######################################################################
       - name: Build and Deploy Agent A
         run: |
-          docker build -t agentA:latest -f src/agentA_microservice/Dockerfile .
+          docker build -t agenta:latest -f src/agentA_microservice/Dockerfile .
           docker stop agentA || true
           docker rm agentA || true
           docker run -d --name agentA agentA:latest
 
           echo "Deploy concluído com sucesso ✔️"
+
+      
+      # ------------------------------------------------------------------
+      # 5 — Build + Deploy FORÇADO na VM (com -H ssh://) + CACHE
+      # ------------------------------------------------------------------
+      #- name: Build & Deploy Agent A (com cache entre runs!)
+      #  env:
+      #    DOCKER_HOST: ssh://agenta-vm
+      #  run: |
+      #    # Força tudo a correr na VM (nunca cai no modo local)
+      #    docker -H ssh://agenta-vm version
+
+          # Build com cache explícito no registry do GitHub (ou Docker Hub)
+      #    docker buildx create --use --name vm-builder --driver remote ssh://agenta-vm 2>/dev/null || true
+          
+          # Usa cache do GitHub Container Registry (ghcr.io)
+      #    docker buildx build \
+      #      --push \
+      #      --cache-to type=registry,ref=ghcr.io/${{ github.repository }}/cache/agenta:latest,mode=max \
+      #     --cache-from type=registry,ref=ghcr.io/${{ github.repository }}/cache/agenta:latest \
+      #      -t ghcr.io/${{ github.repository }}/agenta:latest \
+      #      -t agenta:latest \
+      #      -f src/agentA_microservice/Dockerfile .
+
+          # Deploy
+      #    docker -H ssh://agenta-vm stop agentA || true
+      #    docker -H ssh://agenta-vm rm agentA || true
+      #    docker -H ssh://agenta-vm run -d \
+      #      --name agentA \
+      #      --restart unless-stopped \
+      #      agenta:latest
+
+      #    echo "Deploy Agent A concluído com sucesso"

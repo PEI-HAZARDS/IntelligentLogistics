@@ -1,0 +1,36 @@
+# Web framework
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# Kafka
+confluent-kafka
+
+# MongoDB
+pymongo
+dnspython
+
+# Redis
+redis[hiredis]
+
+# HTTP client
+httpx
+requests
+
+# Utils
+loguru
+python-dotenv
+
+# Testing
+pytest
+pytest-asyncio
+httpx[http2]
+
+# Database
+sqlalchemy
+psycopg2-binary
+
+# Security
+passlib[bcrypt]
+bcrypt==4.0.1

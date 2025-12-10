@@ -1,38 +1,33 @@
 # Use Python 3.11 slim image as base
-FROM python:3.11-slim
+FROM docker.io/python:3.11-slim@sha256:193fdd0bbcb3d2ae612bd6cc3548d2f7c78d65b549fcaa8af75624c47474444d
 
-# Set working directory
+# Variáveis de ambiente (podem ser sobrescritas no docker run/compose)
+ENV PYTHONPATH=/app \
+    KAFKA_BOOTSTRAP=10.255.32.143:9092 \
+    MODELS_PATH=/app/agentB_microservice/data
+
 WORKDIR /app
 
-# Install system dependencies (needed for OpenCV, PaddleOCR, Tesseract, etc.)
-RUN apt-get update && apt-get install -y \
+# 1. System dependencies (OpenCV, etc.)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     libgl1 \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender1 \
-    libgomp1 \
-    ffmpeg \
-    tesseract-ocr \
-    && rm -rf /var/lib/apt/lists/*
+    libglib2.0-0 && \
+    rm -rf /var/lib/apt/lists/*
 
-# Copy shared utilities
-COPY src/shared_utils /app/shared_utils
-
-# Copy agentB microservice
-COPY src/agentB_microservice/src /app/agentB_microservice/src
-COPY src/agentB_microservice/init.py /app/agentB_microservice/init.py
-COPY src/agentB_microservice/requirements.txt /app/agentB_microservice/requirements.txt
-
-# Install Python dependencies
+# 2. Python dependencies
+COPY requirements.txt ./agentB_microservice/
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r /app/agentB_microservice/requirements.txt
+    pip install --no-cache-dir -r agentB_microservice/requirements.txt
 
-# Set PYTHONPATH to include the app directory
-ENV PYTHONPATH=/app
+# 3. Copiar código do agent
+COPY src/ ./agentB_microservice/src/
+COPY init.py setup.py ./agentB_microservice/
+COPY tests/ ./agentB_microservice/tests/
 
-# Set environment variables for Kafka (can be overridden at runtime)
-ENV KAFKA_BOOTSTRAP=10.255.32.64:9092
+# 4. Download do modelo YOLO + OCR (cache permanente)
+RUN python -c "from agentB_microservice.setup import setup; setup()" && \
+    echo "Modelos prontos em $MODELS_PATH"
 
-# Default command to run the service
-CMD ["python", "/app/agentB_microservice/init.py"]
+# 5. Comando de arranque
+CMD ["python", "agentB_microservice/init.py"]
