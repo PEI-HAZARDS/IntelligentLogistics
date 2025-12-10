@@ -10,10 +10,8 @@ dnspython
 # Redis (para caching)
 redis[hiredis]
 
-# Kafka
-kafka-python
-
 # Utils
 loguru
 requests
 python-dotenv
+confluent_kafka

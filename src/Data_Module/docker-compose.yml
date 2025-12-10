@@ -1,7 +1,7 @@
 version: "3.9"
-
 services:
 
+  # Serviço de base de dados PostgreSQL (Simulação de dados do Porto)
   postgres:
     image: postgres:15
     container_name: dm_postgres
@@ -13,23 +13,81 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U porto"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  adminer:
-    image: adminer
-    container_name: dm_adminer
+  # Serviço de base de dados MongoDB (Guarda internamente dados de eventos kafka e mais tarde logs gerais de atividades)
+  mongo:
+    image: mongo:6
+    container_name: dm_mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin123
     ports:
-      - "8080:8080"
+      - "27017:27017"
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # Serviço de cache Redis (para otimização de performance) -> complementa o Data Module
+  redis:
+    image: redis:7
+    container_name: dm_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Serviço do Data Module
   data-module:
     build: .
-    container_name: data_module
+    container_name: dm_data_module
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
+      POSTGRES_USER: porto
+      POSTGRES_PASSWORD: porto_password
+      POSTGRES_DB: porto_logistica
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
       DATABASE_URL: postgresql://porto:porto_password@postgres:5432/porto_logistica
-      KAFKA_HOST: kafka:9092
+      MONGO_URL: mongodb://admin:admin123@mongo:27017
+      MONGO_HOST: mongo
+      MONGO_PORT: 27017
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # Decision Engine URL (roda noutro container noutra virtual machine)
+      DECISION_ENGINE_URL: http://decision-engine:8001
+      PYTHONUNBUFFERED: 1
     ports:
-      - "8000:8000"
+      - "8080:8000" # default port for Data Module API
+    volumes:
+      - ./:/app
+    healthcheck: # Verifica se o servidor está a responder
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   pgdata:
+  mongodata:
+
+networks:
+  default:
+    driver: bridge

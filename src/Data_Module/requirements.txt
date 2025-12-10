@@ -1,22 +1,36 @@
+# Web framework
 fastapi
 uvicorn[standard]
 pydantic
 pydantic-settings
 
-# PostgreSQL
-psycopg2-binary
-SQLAlchemy
-alembic
-
 # Kafka
-kafka-python
+confluent-kafka
 
-# Security (Not sure if its needed here)
-python-jose[cryptography]
-passlib[bcrypt]
-python-multipart
+# MongoDB
+pymongo
+dnspython
+
+# Redis
+redis[hiredis]
+
+# HTTP client
+httpx
+requests
 
 # Utils
 loguru
-requests
 python-dotenv
+
+# Testing
+pytest
+pytest-asyncio
+httpx[http2]
+
+# Database
+sqlalchemy
+psycopg2-binary
+
+# Security
+passlib[bcrypt]
+bcrypt==4.0.1

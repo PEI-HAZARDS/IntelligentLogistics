@@ -5,7 +5,7 @@ info:
   description: |
     API para gestão de chegadas, motoristas e decisões.
     Source of Truth para o Porto de Aveiro.
-    
+
     **Consumidores:**
     - Frontend Operador (Web) - Dashboard, controle manual
     - App Mobile Motorista - Login, reclamação de cargas
@@ -31,7 +31,6 @@ tags:
     description: Histórico de eventos (MongoDB)
 
 paths:
-
   ######################################
   # ARRIVALS
   ######################################
@@ -527,7 +526,7 @@ paths:
                     type: string
 
   /decisions/query-arrivals:
-    post:
+    get:
       tags:
         - Decisions
       summary: Consultar chegadas candidatas
@@ -1324,7 +1323,6 @@ paths:
 
 components:
   schemas:
-
     ######################################
     # Chegada (Arrival)
     ######################################
@@ -1706,7 +1704,6 @@ components:
         estado_fisico:
           type: string
 
-
     Cais:
       type: object
       properties:
@@ -1866,4 +1863,3 @@ components:
           type: object
           additionalProperties:
             type: integer
-
