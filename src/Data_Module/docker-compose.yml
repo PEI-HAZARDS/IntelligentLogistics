@@ -60,15 +60,26 @@ services:
       redis:
         condition: service_healthy
     environment:
+      POSTGRES_USER: porto
+      POSTGRES_PASSWORD: porto_password
+      POSTGRES_DB: porto_logistica
       POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      DATABASE_URL: postgresql://porto:porto_password@postgres:5432/porto_logistica
       MONGO_URL: mongodb://admin:admin123@mongo:27017
+      MONGO_HOST: mongo
+      MONGO_PORT: 27017
       REDIS_HOST: redis
+      REDIS_PORT: 6379
       # Decision Engine URL (roda noutro container noutra virtual machine)
       DECISION_ENGINE_URL: http://decision-engine:8001
+      PYTHONUNBUFFERED: 1
     ports:
-      - "8080:8080" # default port for Data Module API
-    healthcheck: # Verifica se o Decision Engine está a responder (Importante para o Data Module)
-      test: ["CMD", "curl", "-f", "http://decision-engine:8001/health"]  # Verifica se DE está up
+      - "8080:8000" # default port for Data Module API
+    volumes:
+      - ./:/app
+    healthcheck: # Verifica se o servidor está a responder
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3

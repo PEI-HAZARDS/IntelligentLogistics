@@ -1,12 +1,11 @@
+# Web framework
 fastapi
 uvicorn[standard]
 pydantic
 pydantic-settings
 
-# PostgreSQL
-psycopg2-binary
-SQLAlchemy
-alembic
+# Kafka
+confluent-kafka
 
 # MongoDB
 pymongo
@@ -15,10 +14,22 @@ dnspython
 # Redis
 redis[hiredis]
 
-# HTTP calls
+# HTTP client
 httpx
+requests
 
 # Utils
 loguru
-requests
 python-dotenv
+
+# Testing
+pytest
+pytest-asyncio
+httpx[http2]
+
+# Database
+sqlalchemy
+psycopg2-binary
+
+# Security
+passlib[bcrypt]

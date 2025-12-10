@@ -1,0 +1,400 @@
+{
+  "info": {
+    "_postman_id": "intelligent-logistics-data-module-clean",
+    "name": "Intelligent Logistics - Data Module API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Clean, complete Postman collection for Intelligent Logistics Data Module (no scripts, fully importable)"
+  },
+  "item": [
+    {
+      "name": "Health & Status",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/health" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Arrivals",
+      "item": [
+        {
+          "name": "List all arrivals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/arrivals?skip=0&limit=10" }
+          }
+        },
+        {
+          "name": "Get arrival statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/arrivals/stats" }
+          }
+        },
+        {
+          "name": "Get next arrivals for gate",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/arrivals/next/1?limit=5" }
+          }
+        },
+        {
+          "name": "Get arrival by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/arrivals/1" }
+          }
+        },
+        {
+          "name": "Get arrival by PIN",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/arrivals/pin/PRT-0001" }
+          }
+        },
+        {
+          "name": "Query arrivals by license plate",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/arrivals/query/matricula/XX-XX-XX" }
+          }
+        },
+        {
+          "name": "Get decision candidates",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/arrivals/decision/candidates/1/XX-XX-XX"
+            }
+          }
+        },
+        {
+          "name": "Update arrival status",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"estado_entrega\": \"unloading\", \"observacoes\": \"Chegada a descarregar\"}"
+            },
+            "url": { "raw": "{{base_url}}/arrivals/1/status" }
+          }
+        },
+        {
+          "name": "Process arrival decision",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"decision\": \"approved\", \"estado_entrega\": \"unloading\", \"observacoes\": \"Decisão automática: aprovado\"}"
+            },
+            "url": { "raw": "{{base_url}}/arrivals/1/decision" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Drivers",
+      "item": [
+        {
+          "name": "Driver login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"num_carta_cond\": \"PT12345678\", \"password\": \"driver123\"}"
+            },
+            "url": { "raw": "{{base_url}}/drivers/login" }
+          }
+        },
+        {
+          "name": "Claim arrival with PIN",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"pin_acesso\": \"PRT-0001\"}" },
+            "url": {
+              "raw": "{{base_url}}/drivers/claim?num_carta_cond=PT12345678"
+            }
+          }
+        },
+        {
+          "name": "Get driver active arrival",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/drivers/me/active?num_carta_cond=PT12345678"
+            }
+          }
+        },
+        {
+          "name": "Get driver today arrivals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/drivers/me/today?num_carta_cond=PT12345678"
+            }
+          }
+        },
+        {
+          "name": "List all drivers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/drivers?skip=0&limit=10&only_active=true"
+            }
+          }
+        },
+        {
+          "name": "Get specific driver",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/drivers/PT12345678" }
+          }
+        },
+        {
+          "name": "Get driver arrivals history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/drivers/PT12345678/arrivals?limit=10"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Decisions",
+      "item": [
+        {
+          "name": "Query arrivals for decision",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"matricula\": \"XX-XX-XX\", \"gate_id\": 1}"
+            },
+            "url": { "raw": "{{base_url}}/decisions/query-arrivals" }
+          }
+        },
+        {
+          "name": "Register detection event",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"type\": \"license_plate_detection\", \"matricula\": \"XX-XX-XX\", \"gate_id\": 1, \"confidence\": 0.95, \"agent\": \"AgentB\"}"
+            },
+            "url": { "raw": "{{base_url}}/decisions/detection-event" }
+          }
+        },
+        {
+          "name": "Process decision",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"matricula\": \"XX-XX-XX\", \"gate_id\": 1, \"id_chegada\": 1, \"decision\": \"approved\", \"estado_entrega\": \"in_transit\", \"observacoes\": \"Aprovado pelo Decision Engine\"}"
+            },
+            "url": { "raw": "{{base_url}}/decisions/process" }
+          }
+        },
+        {
+          "name": "Get detection events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/decisions/events/detections?limit=10"
+            }
+          }
+        },
+        {
+          "name": "Get decision events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/decisions/events/decisions?limit=10" }
+          }
+        },
+        {
+          "name": "Manual review decision",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/decisions/manual-review/1?decision=approved&observacoes=Revisão manual aprovada"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Alerts",
+      "item": [
+        {
+          "name": "List alerts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/alerts?skip=0&limit=20" }
+          }
+        },
+        {
+          "name": "Get active alerts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/alerts/active?limit=10" }
+          }
+        },
+        {
+          "name": "Get alert statistics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/alerts/stats" }
+          }
+        },
+        {
+          "name": "Get ADR reference codes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/alerts/reference/adr-codes" }
+          }
+        },
+        {
+          "name": "Get Kemler reference codes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/alerts/reference/kemler-codes" }
+          }
+        },
+        {
+          "name": "Get alert by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/alerts/1" }
+          }
+        },
+        {
+          "name": "Create alert",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id_historico_ocorrencia\":1,\"id_carga\":1,\"tipo\":\"DELAY\",\"severidade\":2,\"descricao\":\"Chegada atrasada por trânsito\"}"
+            },
+            "url": { "raw": "{{base_url}}/alerts" }
+          }
+        },
+        {
+          "name": "Create ADR alert",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"id_chegada\":1,\"un_code\":\"1203\",\"kemler_code\":\"33\",\"detected_hazmat\":\"Gasolina - Muito Inflamável\"}"
+            },
+            "url": { "raw": "{{base_url}}/alerts/adr" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Workers",
+      "item": [
+        {
+          "name": "Worker login",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"email\":\"carlos.oliveira@porto.pt\",\"password\":\"password123\"}"
+            },
+            "url": { "raw": "{{base_url}}/workers/login" }
+          }
+        },
+        {
+          "name": "List workers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/workers?skip=0&limit=10" }
+          }
+        },
+        {
+          "name": "Get operator dashboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/workers/operators/1/dashboard/1" }
+          }
+        },
+        {
+          "name": "Get manager overview",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/workers/managers/1/overview" }
+          }
+        },
+        {
+          "name": "List operators",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/workers/operators" }
+          }
+        },
+        {
+          "name": "List managers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/workers/managers" }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080/api/v1",
+      "type": "string"
+    },
+    { "key": "driver_token", "value": "", "type": "string" },
+    { "key": "worker_token", "value": "", "type": "string" },
+    { "key": "driver_num_carta", "value": "", "type": "string" },
+    { "key": "worker_id", "value": "", "type": "string" }
+  ]
+}

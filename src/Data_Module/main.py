@@ -5,8 +5,9 @@ import logging
 from routes.arrivals import router as arrivals_router
 from routes.events import router as events_router
 from routes.decisions import router as decisions_router
-from Data_Module.routes.driver import router as drivers_router
+from routes.driver import router as drivers_router
 from routes.alerts import router as alerts_router
+from routes.worker import router as workers_router
 
 # DB / infra imports used for startup checks
 from db.postgres import engine
@@ -15,7 +16,11 @@ from db.mongo import client as mongo_client  # MongoClient instance
 from db.redis import redis_client
 from config import settings
 
-app = FastAPI(title="Data Module API", version="1.0.0")
+app = FastAPI(
+    title="Data Module API",
+    version="1.0.0",
+    description="Intelligent Logistics - Data Module (Source of Truth)"
+)
 
 # CORS para frontend (ajustar origins em produção)
 app.add_middleware(
@@ -26,11 +31,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Incluir routers - os prefixos já estão definidos nos routers
+# arrivals: /arrivals
+# decisions: /decisions  
+# drivers: /drivers
+# alerts: /alerts
+# workers: /workers
+# events: /events (legacy)
 app.include_router(arrivals_router, prefix="/api/v1")
 app.include_router(events_router, prefix="/api/v1")
 app.include_router(decisions_router, prefix="/api/v1")
 app.include_router(drivers_router, prefix="/api/v1")
 app.include_router(alerts_router, prefix="/api/v1")
+app.include_router(workers_router, prefix="/api/v1")
 
 # readiness flags set at startup
 _ready = {"postgres": False, "mongo": False, "redis": False}

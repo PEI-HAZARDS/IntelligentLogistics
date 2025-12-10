@@ -1,165 +1,195 @@
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+"""
+Arrivals Routes - Endpoints para gestão de chegadas diárias.
+Consumido por: Frontend operador, Decision Engine, App motorista.
+"""
+
+from typing import List, Optional, Dict, Any
+from datetime import date
+from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
-from models.pydantic_models import ChegadaResponse, ChegadaCreate
+
+from models.pydantic_models import (
+    Chegada, ChegadaResponse, ArrivalStatusUpdate, ArrivalDecisionUpdate
+)
 from services.arrival_service import (
     get_all_arrivals,
-    get_arrivals_by_gate,
-    get_arrivals_by_gate_and_shift,
-    get_arrivals_by_lpate,
-    get_arrivals_count,
-    get_arrivals_by_status,
+    get_arrival_by_id,
+    get_arrival_by_pin,
+    get_arrivals_by_matricula,
+    get_arrivals_for_decision,
     get_arrivals_count_by_status,
-    update_arrival
+    update_arrival_status,
+    update_arrival_from_decision,
+    get_next_arrivals
 )
 from db.postgres import get_db
 
-router = APIRouter()
+router = APIRouter(prefix="/arrivals", tags=["Arrivals"])
 
-# GET /api/v1/arrivals - todas as chegadas (opcional: filtro por matricula)
-@router.get("/arrivals", response_model=List[ChegadaResponse])
-def list_all_arrivals(
-    matricula: Optional[str] = None,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+
+# ==================== GET ENDPOINTS ====================
+
+@router.get("/", response_model=List[Chegada])
+def list_arrivals(
+    skip: int = Query(0, ge=0, description="Número de registos a saltar"),
+    limit: int = Query(100, ge=1, le=500, description="Máximo de registos"),
+    id_gate: Optional[int] = Query(None, description="Filtrar por gate de entrada"),
+    id_turno: Optional[int] = Query(None, description="Filtrar por turno"),
+    estado_entrega: Optional[str] = Query(None, description="Filtrar por estado"),
+    data_prevista: Optional[date] = Query(None, description="Filtrar por data prevista"),
     db: Session = Depends(get_db)
 ):
-    """Lista todas as chegadas (com paginação opcional e filtro por matrícula)."""
-    return get_all_arrivals(db, matricula=matricula, page=page, limit=limit)
+    """
+    Lista chegadas com filtros opcionais.
+    Usado pelo frontend do operador para listar chegadas do dia/turno.
+    """
+    chegadas = get_all_arrivals(
+        db, skip=skip, limit=limit,
+        id_gate=id_gate, id_turno=id_turno,
+        estado_entrega=estado_entrega, data_prevista=data_prevista
+    )
+    return [Chegada.model_validate(c) for c in chegadas]
 
-# GET /api/v1/arrivals/{gate_id} - chegadas por gate
-@router.get("/arrivals/{gate_id}", response_model=List[ChegadaResponse])
-def list_arrivals_by_gate(
-    gate_id: int,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+
+@router.get("/stats", response_model=Dict[str, int])
+def get_arrivals_stats(
+    id_gate: Optional[int] = Query(None, description="Filtrar por gate"),
+    data: Optional[date] = Query(None, description="Data a consultar (default: hoje)"),
     db: Session = Depends(get_db)
 ):
-    """Lista chegadas filtradas por gate."""
-    return get_arrivals_by_gate(db, gate_id=gate_id, page=page, limit=limit)
+    """
+    Estatísticas de chegadas por estado.
+    Usado no dashboard do operador.
+    """
+    return get_arrivals_count_by_status(db, id_gate=id_gate, data=data)
 
-# GET /api/v1/arrivals/{gate_id}/{shift} - chegadas por gate e turno
-@router.get("/arrivals/{gate_id}/{shift}", response_model=List[ChegadaResponse])
-def list_arrivals_by_gate_shift(
-    gate_id: int,
-    shift: int,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+
+@router.get("/next/{id_gate}", response_model=List[Chegada])
+def get_upcoming_arrivals(
+    id_gate: int = Path(..., description="ID do gate"),
+    limit: int = Query(5, ge=1, le=20, description="Número de chegadas"),
     db: Session = Depends(get_db)
 ):
-    """Lista chegadas filtradas por gate e turno (shift id)."""
-    return get_arrivals_by_gate_and_shift(db, gate_id=gate_id, shift=shift, page=page, limit=limit)
+    """
+    Próximas chegadas previstas para um gate.
+    Usado no painel lateral do operador.
+    """
+    chegadas = get_next_arrivals(db, id_gate=id_gate, limit=limit)
+    return [Chegada.model_validate(c) for c in chegadas]
 
-# GET /api/v1/arrivals/{gate_id}/{shift}/total - contador total
-@router.get("/arrivals/{gate_id}/{shift}/total")
-def count_arrivals_by_gate_shift(gate_id: int, shift: int, db: Session = Depends(get_db)):
-    """Retorna o total de chegadas para um gate e turno."""
-    total = get_arrivals_count(db, gate_id=gate_id, shift=shift)
-    return {"gate_id": gate_id, "shift": shift, "total": total}
 
-# GET /api/v1/arrivals/{gate_id}/pending - chegadas pendentes por gate
-@router.get("/arrivals/{gate_id}/pending", response_model=List[ChegadaResponse])
-def list_arrivals_pending(
-    gate_id: int,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+@router.get("/{id_chegada}", response_model=Chegada)
+def get_arrival(
+    id_chegada: int = Path(..., description="ID da chegada"),
     db: Session = Depends(get_db)
 ):
-    """Lista chegadas com estado 'em_transito' (pendentes) por gate."""
-    return get_arrivals_by_status(db, gate_id=gate_id, status="em_transito", page=page, limit=limit)
+    """Obtém detalhes de uma chegada específica."""
+    chegada = get_arrival_by_id(db, id_chegada)
+    if not chegada:
+        raise HTTPException(status_code=404, detail="Chegada não encontrada")
+    return Chegada.model_validate(chegada)
 
-# GET /api/v1/arrivals/{gate_id}/{shift}/pending - chegadas pendentes por gate e turno
-@router.get("/arrivals/{gate_id}/{shift}/pending", response_model=List[ChegadaResponse])
-def list_arrivals_pending_shift(
-    gate_id: int,
-    shift: int,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+
+@router.get("/pin/{pin_acesso}", response_model=Chegada)
+def get_arrival_by_pin_code(
+    pin_acesso: str = Path(..., description="PIN de acesso"),
     db: Session = Depends(get_db)
 ):
-    """Lista chegadas pendentes por gate e turno."""
-    return get_arrivals_by_status(db, gate_id=gate_id, shift=shift, status="em_transito", page=page, limit=limit)
+    """
+    Obtém chegada pelo PIN de acesso.
+    Usado pelo motorista para consultar sua chegada.
+    """
+    chegada = get_arrival_by_pin(db, pin_acesso)
+    if not chegada:
+        raise HTTPException(status_code=404, detail="PIN inválido ou chegada não encontrada")
+    return Chegada.model_validate(chegada)
 
-# GET /api/v1/arrivals/{gate_id}/{shift}/pending/total - contador pendentes
-@router.get("/arrivals/{gate_id}/{shift}/pending/total")
-def count_arrivals_pending(gate_id: int, shift: int, db: Session = Depends(get_db)):
-    """Retorna o total de chegadas pendentes para um gate e turno."""
-    total = get_arrivals_count_by_status(db, gate_id=gate_id, shift=shift, status="em_transito")
-    return {"gate_id": gate_id, "shift": shift, "status": "pending", "total": total}
 
-# GET /api/v1/arrivals/{gate_id}/in_progress - chegadas em progresso por gate
-@router.get("/arrivals/{gate_id}/in_progress", response_model=List[ChegadaResponse])
-def list_arrivals_in_progress(
-    gate_id: int,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db)
-):
-    """Lista chegadas com estado 'em_descarga' (in progress) por gate."""
-    return get_arrivals_by_status(db, gate_id=gate_id, status="em_descarga", page=page, limit=limit)
+# ==================== DECISION ENGINE ENDPOINTS ====================
 
-# GET /api/v1/arrivals/{gate_id}/{shift}/in_progress - chegadas em progresso por gate e turno
-@router.get("/arrivals/{gate_id}/{shift}/in_progress", response_model=List[ChegadaResponse])
-def list_arrivals_in_progress_shift(
-    gate_id: int,
-    shift: int,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db)
-):
-    """Lista chegadas em progresso por gate e turno."""
-    return get_arrivals_by_status(db, gate_id=gate_id, shift=shift, status="em_descarga", page=page, limit=limit)
-
-# GET /api/v1/arrivals/{gate_id}/{shift}/in_progress/total - contador em progresso
-@router.get("/arrivals/{gate_id}/{shift}/in_progress/total")
-def count_arrivals_in_progress(gate_id: int, shift: int, db: Session = Depends(get_db)):
-    """Retorna o total de chegadas em progresso para um gate e turno."""
-    total = get_arrivals_count_by_status(db, gate_id=gate_id, shift=shift, status="em_descarga")
-    return {"gate_id": gate_id, "shift": shift, "status": "in_progress", "total": total}
-
-# GET /api/v1/arrivals/{gate_id}/finished - chegadas concluídas por gate
-@router.get("/arrivals/{gate_id}/finished", response_model=List[ChegadaResponse])
-def list_arrivals_finished(
-    gate_id: int,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db)
-):
-    """Lista chegadas com estado 'concluida' (finished) por gate."""
-    return get_arrivals_by_status(db, gate_id=gate_id, status="concluida", page=page, limit=limit)
-
-# GET /api/v1/arrivals/{gate_id}/{shift}/finished - chegadas concluídas por gate e turno
-@router.get("/arrivals/{gate_id}/{shift}/finished", response_model=List[ChegadaResponse])
-def list_arrivals_finished_shift(
-    gate_id: int,
-    shift: int,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    db: Session = Depends(get_db)
-):
-    """Lista chegadas concluídas por gate e turno."""
-    return get_arrivals_by_status(db, gate_id=gate_id, shift=shift, status="concluida", page=page, limit=limit)
-
-# GET /api/v1/arrivals/{gate_id}/{shift}/finished/total - contador concluídas
-@router.get("/arrivals/{gate_id}/{shift}/finished/total")
-def count_arrivals_finished(gate_id: int, shift: int, db: Session = Depends(get_db)):
-    """Retorna o total de chegadas concluídas para um gate e turno."""
-    total = get_arrivals_count_by_status(db, gate_id=gate_id, shift=shift, status="concluida")
-    return {"gate_id": gate_id, "shift": shift, "status": "finished", "total": total}
-
-# PUT /api/v1/arrivals/{id} - atualizar chegada
-@router.put("/arrivals/{id}", response_model=ChegadaResponse)
-def update_arrival_endpoint(id: int, chegada: ChegadaCreate, db: Session = Depends(get_db)):
-    """Atualiza os dados de uma chegada existente."""
-    return update_arrival(db, id, chegada)
-
-# Query para o decision engine obter as chegadas com matricula específica
-@router.get("/arrivals/query?matricula={matricula}", response_model=List[ChegadaResponse])
+@router.get("/query/matricula/{matricula}", response_model=List[Chegada])
 def query_arrivals_by_matricula(
-    matricula: str,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    matricula: str = Path(..., description="Matrícula do veículo"),
+    id_turno: Optional[int] = Query(None, description="Filtrar por turno"),
+    estado_entrega: Optional[str] = Query(None, description="Filtrar por estado"),
+    data_prevista: Optional[date] = Query(None, description="Data (default: hoje)"),
     db: Session = Depends(get_db)
 ):
-    """Consulta chegadas por matrícula (usado pelo Decision Engine)."""
-    return get_arrivals_by_lpate(db, matricula=matricula, page=page, limit=limit)
+    """
+    Consulta chegadas por matrícula.
+    Usado pelo Decision Engine para encontrar chegadas candidatas.
+    """
+    chegadas = get_arrivals_by_matricula(
+        db, matricula=matricula,
+        id_turno=id_turno, estado_entrega=estado_entrega,
+        data_prevista=data_prevista
+    )
+    return [Chegada.model_validate(c) for c in chegadas]
+
+
+@router.get("/decision/candidates/{id_gate}/{matricula}")
+def get_decision_candidates(
+    id_gate: int = Path(..., description="ID do gate"),
+    matricula: str = Path(..., description="Matrícula detectada"),
+    db: Session = Depends(get_db)
+) -> List[Dict[str, Any]]:
+    """
+    Obtém chegadas candidatas para decisão.
+    Retorna dados enriquecidos (carga, cais, ADR status).
+    
+    Usado pelo Decision Engine após detecção de matrícula.
+    """
+    return get_arrivals_for_decision(db, matricula=matricula, id_gate=id_gate)
+
+
+# ==================== UPDATE ENDPOINTS ====================
+
+@router.patch("/{id_chegada}/status", response_model=Chegada)
+def update_status(
+    id_chegada: int = Path(..., description="ID da chegada"),
+    update_data: ArrivalStatusUpdate = ...,
+    db: Session = Depends(get_db)
+):
+    """
+    Atualiza estado de uma chegada.
+    Usado pelo operador ou sistema para atualizar manualmente.
+    """
+    chegada = update_arrival_status(
+        db, id_chegada=id_chegada,
+        novo_estado=update_data.estado_entrega,
+        data_hora_chegada=update_data.data_hora_chegada,
+        id_gate_saida=update_data.id_gate_saida,
+        observacoes=update_data.observacoes
+    )
+    if not chegada:
+        raise HTTPException(status_code=404, detail="Chegada não encontrada")
+    return Chegada.model_validate(chegada)
+
+
+@router.post("/{id_chegada}/decision", response_model=Chegada)
+def process_decision(
+    id_chegada: int = Path(..., description="ID da chegada"),
+    decision: ArrivalDecisionUpdate = ...,
+    db: Session = Depends(get_db)
+):
+    """
+    Processa decisão do Decision Engine.
+    Atualiza estado e cria alertas se necessário.
+    
+    Payload esperado:
+    {
+        "decision": "approved",
+        "estado_entrega": "unloading",
+        "observacoes": "Aprovado automaticamente",
+        "alertas": [
+            {"tipo": "ADR", "severidade": 3, "descricao": "UN 1203 - Gasolina"}
+        ]
+    }
+    """
+    chegada = update_arrival_from_decision(
+        db, id_chegada=id_chegada,
+        decision_payload=decision.model_dump()
+    )
+    if not chegada:
+        raise HTTPException(status_code=404, detail="Chegada não encontrada")
+    return Chegada.model_validate(chegada)
