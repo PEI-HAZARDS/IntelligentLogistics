@@ -14,3 +14,4 @@ redis[hiredis]
 loguru
 requests
 python-dotenv
+confluent_kafka
