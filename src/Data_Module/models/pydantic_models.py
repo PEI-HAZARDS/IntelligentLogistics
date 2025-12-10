@@ -42,11 +42,6 @@ class EstadoEnum(str, Enum):
     closed = "closed"
 
 
-class TipoTrabalhadorEnum(str, Enum):
-    manager = "manager"
-    operator = "operator"
-
-
 # ==========================
 # EMPRESA
 # ==========================
@@ -92,7 +87,7 @@ class CondutorCreate(CondutorBase):
 
 class Condutor(CondutorBase):
     num_carta_cond: str
-    empresa: Optional[Empresa]
+    empresa: Optional[Empresa] = None
 
     model_config = {"from_attributes": True}
 
@@ -276,7 +271,7 @@ class ChegadaBase(BaseModel):
     id_gate_entrada: int
     id_gate_saida: Optional[int] = None
     id_cais: int
-    id_turno: int
+    id_turno: Optional[int] = None  # Nullable - atribuído após chegada ser processada
     matricula_pesado: str
     id_carga: int
     data_prevista: Optional[date] = None
@@ -292,7 +287,7 @@ class ChegadaCreate(ChegadaBase):
 
 class Chegada(ChegadaBase):
     id_chegada: int
-    pin_acesso: Optional[str] = None  # PIN gerado automaticamente
+    token_acesso: Optional[str] = None  # PIN gerado automaticamente
     cais: Optional[Cais]
     carga: Optional[Carga]
     veiculo: Optional[Veiculo]
@@ -311,7 +306,6 @@ class TrabalhadorBase(BaseModel):
     """Base para trabalhador"""
     nome: str
     email: str
-    role: str  # "operador" ou "gestor"
 
 
 class TrabalhadorCreate(TrabalhadorBase):
@@ -322,8 +316,6 @@ class TrabalhadorCreate(TrabalhadorBase):
 class Trabalhador(TrabalhadorBase):
     """Modelo de trabalhador para leitura"""
     num_trabalhador: int
-    ativo: bool
-    criado_em: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -333,9 +325,7 @@ class GestorInfo(BaseModel):
     num_trabalhador: int
     nome: str
     email: str
-    role: str
     nivel_acesso: str
-    ativo: bool
 
 
 class OperadorInfo(BaseModel):
@@ -343,8 +333,6 @@ class OperadorInfo(BaseModel):
     num_trabalhador: int
     nome: str
     email: str
-    role: str
-    ativo: bool
 
 
 # ==========================
@@ -363,8 +351,6 @@ class WorkerLoginResponse(BaseModel):
     num_trabalhador: int
     nome: str
     email: str
-    role: str
-    ativo: bool
 
 # ==========================
 # GESTOR
@@ -408,7 +394,7 @@ class DriverLoginResponse(BaseModel):
 
 class ClaimChegadaRequest(BaseModel):
     """Request para motorista usar PIN e associar-se à chegada"""
-    pin_acesso: str
+    token_acesso: str
 
 
 class ClaimChegadaResponse(BaseModel):

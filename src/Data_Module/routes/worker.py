@@ -26,8 +26,7 @@ from services.worker_service import (
     update_worker_password,
     update_worker_email,
     deactivate_worker,
-    promote_to_manager,
-    hash_password
+    promote_to_manager
 )
 from db.postgres import get_db
 
@@ -48,8 +47,6 @@ class WorkerLoginResponse(BaseModel):
     num_trabalhador: int
     nome: str
     email: str
-    role: str  # "operador" ou "gestor"
-    ativo: bool
 
 
 class CreateWorkerRequest(BaseModel):
@@ -77,8 +74,6 @@ class WorkerInfo(BaseModel):
     num_trabalhador: int
     nome: str
     email: str
-    role: str
-    ativo: bool
 
 
 class OperatorDashboard(BaseModel):
@@ -131,9 +126,7 @@ def login(
         token=token,
         num_trabalhador=trabalhador.num_trabalhador,
         nome=trabalhador.nome,
-        email=trabalhador.email,
-        role=trabalhador.role,
-        ativo=trabalhador.ativo
+        email=trabalhador.email
     )
 
 
@@ -151,9 +144,7 @@ def list_operators(
         WorkerInfo(
             num_trabalhador=op.trabalhador.num_trabalhador,
             nome=op.trabalhador.nome,
-            email=op.trabalhador.email,
-            role=op.trabalhador.role,
-            ativo=op.trabalhador.ativo
+            email=op.trabalhador.email
         )
         for op in operadores
     ]
@@ -255,9 +246,7 @@ def list_managers(
         WorkerInfo(
             num_trabalhador=g.trabalhador.num_trabalhador,
             nome=g.trabalhador.nome,
-            email=g.trabalhador.email,
-            role=g.trabalhador.role,
-            ativo=g.trabalhador.ativo
+            email=g.trabalhador.email
         )
         for g in gestores
     ]
@@ -330,18 +319,15 @@ def get_manager_dashboard(
 def list_all_workers(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    only_active: bool = Query(True),
     db: Session = Depends(get_db)
 ):
     """Lista todos os trabalhadores (backoffice)."""
-    workers = get_all_workers(db, skip=skip, limit=limit, only_active=only_active)
+    workers = get_all_workers(db, skip=skip, limit=limit, only_active=True)
     return [
         WorkerInfo(
             num_trabalhador=w.num_trabalhador,
             nome=w.nome,
-            email=w.email,
-            role=w.role,
-            ativo=w.ativo
+            email=w.email
         )
         for w in workers
     ]
@@ -360,10 +346,7 @@ def get_worker(
     return {
         "num_trabalhador": worker.num_trabalhador,
         "nome": worker.nome,
-        "email": worker.email,
-        "role": worker.role,
-        "ativo": worker.ativo,
-        "criado_em": worker.criado_em.isoformat() if worker.criado_em else None
+        "email": worker.email
     }
 
 
@@ -432,9 +415,7 @@ def create_new_worker(
     return {
         "num_trabalhador": worker.num_trabalhador,
         "nome": worker.nome,
-        "email": worker.email,
-        "role": worker.role,
-        "ativo": worker.ativo
+        "email": worker.email
     }
 
 

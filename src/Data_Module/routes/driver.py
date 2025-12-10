@@ -143,11 +143,10 @@ def get_my_today_arrivals(
 def list_all_drivers(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    only_active: bool = Query(True, description="Apenas condutores ativos"),
     db: Session = Depends(get_db)
 ):
     """Lista todos os condutores (backoffice)."""
-    drivers = get_drivers(db, skip=skip, limit=limit, only_active=only_active)
+    drivers = get_drivers(db, skip=skip, limit=limit, only_active=True)
     return [Condutor.model_validate(d) for d in drivers]
 
 

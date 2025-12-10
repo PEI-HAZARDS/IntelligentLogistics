@@ -59,18 +59,14 @@ def init_data(db: Session):
         gestor1 = TrabalhadorPorto(
             nome="João Silva",
             email="joao.silva@porto.pt",
-            password_hash=pwd_context.hash("password123"),
-            role="manager",
-            ativo=True
+            password_hash=pwd_context.hash("password123")
         )
 
         # Operador
         operador1 = TrabalhadorPorto(
             nome="Carlos Oliveira",
             email="carlos.oliveira@porto.pt",
-            password_hash=pwd_context.hash("password123"),
-            role="operator",
-            ativo=True
+            password_hash=pwd_context.hash("password123")
         )
 
         db.add_all([gestor1, operador1])
@@ -118,7 +114,6 @@ def init_data(db: Session):
         print("Adding test passwords for drivers...")
         for condutor in condutores:
             condutor.password_hash = pwd_context.hash("driver123")
-            condutor.ativo = True
         
         db.add_all(condutores)
         db.flush()

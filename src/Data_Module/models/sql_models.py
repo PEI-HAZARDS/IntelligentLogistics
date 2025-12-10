@@ -13,7 +13,6 @@ tipo_carga_enum = SEnum('general', 'hazardous', 'refrigerated', 'live', 'bulk', 
 estado_fisico_enum = SEnum('liquid', 'solid', 'gaseous', 'hybrid', name='physical_state')
 nivel_acesso_enum = SEnum('admin', 'basic', name='access_level')
 estado_enum = SEnum('maintenance', 'operational', 'closed', name='operational_status')
-tipo_trabalhador_enum = SEnum('manager', 'operator', name='worker_type')
 
 class TipoTurno(enum.Enum):
     MANHA = "06:00-14:00"
@@ -34,9 +33,6 @@ class TrabalhadorPorto(Base):
     nome = Column(Text, nullable=False)
     email = Column(Text, unique=True)
     password_hash = Column(Text)
-    role = Column(tipo_trabalhador_enum, nullable=False)
-    ativo = Column(Boolean, default=True)
-    criado_em = Column(TIMESTAMP, server_default=func.now())
 
     gestor = relationship("Gestor", back_populates="trabalhador", uselist=False)
     operador = relationship("Operador", back_populates="trabalhador", uselist=False)
@@ -69,8 +65,6 @@ class Condutor(Base):
     
     # Autenticação para app mobile
     password_hash = Column(Text)
-    ativo = Column(Boolean, default=True)
-    criado_em = Column(TIMESTAMP, server_default=func.now())
     
     empresa = relationship("Empresa")
 
@@ -123,7 +117,8 @@ class Turno(Base):
     operador = relationship("Operador")
     gestor = relationship("Gestor")
     gate = relationship("Gate")
-    chegadas = relationship("ChegadaDiaria", backref="turno")
+
+    chegadas = relationship("ChegadaDiaria", back_populates="turno")
     historicos = relationship("HistoricoOcorrencias", back_populates="turno")
 
     def __init__(self, tipo_turno: TipoTurno, data, **kwargs):
@@ -142,26 +137,32 @@ class Turno(Base):
 
 class ChegadaDiaria(Base):
     __tablename__ = "chegadas_diarias"
+
     id_chegada = Column(Integer, primary_key=True)
     id_gate_entrada = Column(Integer, ForeignKey('gate.id_gate'))
     id_gate_saida = Column(Integer, ForeignKey('gate.id_gate'), nullable=True)
     id_cais = Column(Integer, ForeignKey('cais.id_cais'))
-    id_turno = Column(Integer, ForeignKey('turno.id_turno'))
+    
+    # Turno REAL (pode ser nulo até a deteção do decision começar)
+    id_turno = Column(Integer, ForeignKey('turno.id_turno'), nullable=True)
+
     matricula_pesado = Column(Text, ForeignKey('veiculo_pesado.matricula'))
     id_carga = Column(Integer, ForeignKey('carga.id_carga'))
+
     data_prevista = Column(Date)
     hora_prevista = Column(Time)
     data_hora_chegada = Column(TIMESTAMP)
+
     observacoes = Column(Text)
     estado_entrega = Column(estado_entrega_enum, default='in_transit')
     
-    # PIN para app mobile do motorista
-    pin_acesso = Column(String(12), unique=True, index=True)
+    # token para app mobile do motorista
+    token_acesso = Column(String(12), unique=True, index=True)
 
     cais = relationship("Cais")
     carga = relationship("Carga")
     veiculo = relationship("VeiculoPesado")
-    
+
     gate_entrada = relationship(
         "Gate",
         foreign_keys=[id_gate_entrada],
@@ -173,6 +174,8 @@ class ChegadaDiaria(Base):
         foreign_keys=[id_gate_saida],
         back_populates="chegadas_saida"
     )
+
+    turno = relationship("Turno", back_populates="chegadas")
 
 class HistoricoOcorrencias(Base):
     __tablename__ = "historico_ocorrencias"
