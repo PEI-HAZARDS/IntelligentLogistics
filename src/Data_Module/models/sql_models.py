@@ -108,7 +108,6 @@ class Turno(Base):
 
     num_operador_cancela = Column(Integer, ForeignKey('operador.num_trabalhador'))
     num_gestor_responsavel = Column(Integer, ForeignKey('gestor.num_trabalhador'))
-    id_gate = Column(Integer, ForeignKey('gate.id_gate'))
 
     hora_inicio = Column(Time, nullable=False)
     hora_fim = Column(Time, nullable=False)
@@ -116,7 +115,6 @@ class Turno(Base):
 
     operador = relationship("Operador")
     gestor = relationship("Gestor")
-    gate = relationship("Gate")
 
     chegadas = relationship("ChegadaDiaria", back_populates="turno")
     historicos = relationship("HistoricoOcorrencias", back_populates="turno")

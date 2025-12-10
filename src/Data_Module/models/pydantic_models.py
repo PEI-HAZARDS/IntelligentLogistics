@@ -246,7 +246,6 @@ class TurnoBase(BaseModel):
     """Base para turno"""
     num_operador_cancela: Optional[int] = None
     num_gestor_responsavel: Optional[int] = None
-    id_gate: Optional[int] = None
     hora_inicio: Optional[time] = None
     hora_fim: Optional[time] = None
     descricao: Optional[str] = None
