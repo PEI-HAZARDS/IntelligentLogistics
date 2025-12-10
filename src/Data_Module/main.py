@@ -12,7 +12,7 @@ from routes.worker import router as workers_router
 # DB / infra imports used for startup checks
 from db.postgres import engine
 from models.sql_models import Base
-from db.mongo import client as mongo_client  # MongoClient instance
+from db.mongo import mongo_client  # MongoClient instance
 from db.redis import redis_client
 from config import settings
 
@@ -118,7 +118,7 @@ def on_shutdown():
         logger.exception("Error during shutdown cleanup.")
 
 
-@app.get("/health")
+@app.get("/api/v1/health")
 def health():
     """
     Health endpoint:

@@ -56,7 +56,7 @@ class TestHealth:
 
     def test_health_check(self, client: httpx.Client):
         """Verifica se o servidor está respondendo"""
-        response = client.get("/health")
+        response = client.get("health")
         assert response.status_code == 200
 
 
@@ -398,7 +398,7 @@ class TestWorkers:
         assert response.status_code == 200
         data = response.json()
         assert "token" in data
-        assert data["role"] == "gestor"
+        assert data["role"] == "manager"
 
     def test_list_workers(self, client: httpx.Client):
         """Lista trabalhadores"""

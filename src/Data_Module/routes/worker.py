@@ -326,7 +326,7 @@ def get_manager_dashboard(
 
 # ==================== GENERAL WORKER ENDPOINTS ====================
 
-@router.get("/", response_model=List[WorkerInfo])
+@router.get("", response_model=List[WorkerInfo])
 def list_all_workers(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
@@ -408,7 +408,7 @@ def change_email(
 
 # ==================== ADMIN ENDPOINTS ====================
 
-@router.post("/", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
 def create_new_worker(
     request: CreateWorkerRequest,
     db: Session = Depends(get_db)

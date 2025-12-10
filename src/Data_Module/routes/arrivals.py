@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
 
 from models.pydantic_models import (
-    Chegada, ChegadaResponse, ArrivalStatusUpdate, ArrivalDecisionUpdate
+    Chegada, ArrivalStatusUpdate, ArrivalDecisionUpdate
 )
 from services.arrival_service import (
     get_all_arrivals,
@@ -29,7 +29,7 @@ router = APIRouter(prefix="/arrivals", tags=["Arrivals"])
 
 # ==================== GET ENDPOINTS ====================
 
-@router.get("/", response_model=List[Chegada])
+@router.get("", response_model=List[Chegada])
 def list_arrivals(
     skip: int = Query(0, ge=0, description="Número de registos a saltar"),
     limit: int = Query(100, ge=1, le=500, description="Máximo de registos"),

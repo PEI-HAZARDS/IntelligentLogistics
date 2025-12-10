@@ -1,3 +1,4 @@
+import enum
 from datetime import datetime
 from sqlalchemy import func
 from sqlalchemy import Column, Integer, String, Date, Time, TIMESTAMP, DECIMAL, Boolean, ForeignKey, Text, Enum as SEnum
@@ -14,7 +15,7 @@ nivel_acesso_enum = SEnum('admin', 'basic', name='access_level')
 estado_enum = SEnum('maintenance', 'operational', 'closed', name='operational_status')
 tipo_trabalhador_enum = SEnum('manager', 'operator', name='worker_type')
 
-class TipoTurno(SEnum):
+class TipoTurno(enum.Enum):
     MANHA = "06:00-14:00"
     TARDE = "14:00-22:00"
     NOITE = "22:00-06:00"
@@ -34,6 +35,8 @@ class TrabalhadorPorto(Base):
     email = Column(Text, unique=True)
     password_hash = Column(Text)
     role = Column(tipo_trabalhador_enum, nullable=False)
+    ativo = Column(Boolean, default=True)
+    criado_em = Column(TIMESTAMP, server_default=func.now())
 
     gestor = relationship("Gestor", back_populates="trabalhador", uselist=False)
     operador = relationship("Operador", back_populates="trabalhador", uselist=False)
@@ -66,6 +69,8 @@ class Condutor(Base):
     
     # Autenticação para app mobile
     password_hash = Column(Text)
+    ativo = Column(Boolean, default=True)
+    criado_em = Column(TIMESTAMP, server_default=func.now())
     
     empresa = relationship("Empresa")
 
@@ -119,7 +124,7 @@ class Turno(Base):
     gestor = relationship("Gestor")
     gate = relationship("Gate")
     chegadas = relationship("ChegadaDiaria", backref="turno")
-    historicos = relationship("HistoricoOcorrencias", backref="turno")
+    historicos = relationship("HistoricoOcorrencias", back_populates="turno")
 
     def __init__(self, tipo_turno: TipoTurno, data, **kwargs):
         """Inicia o turno definindo nas horas com base no enum."""
@@ -176,7 +181,7 @@ class HistoricoOcorrencias(Base):
     hora_inicio = Column(TIMESTAMP)
     hora_fim = Column(TIMESTAMP)
     descricao = Column(Text)
-    turno = relationship("Turno")
+    turno = relationship("Turno", back_populates="historicos")
 
 class Alerta(Base):
     __tablename__ = "alerta"
@@ -186,6 +191,7 @@ class Alerta(Base):
     data_hora = Column(TIMESTAMP, server_default=func.now())
 
     url_imagem = Column(Text)
+    tipo = Column(Text, default='generic')
     severidade = Column(Integer)
     descricao = Column(Text)
 

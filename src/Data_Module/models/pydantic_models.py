@@ -10,25 +10,25 @@ from enum import Enum
 # ==========================
 
 class EstadoEntregaEnum(str, Enum):
-    em_transito = "em_transito"
-    atrasada = "atrasada"
-    em_descarga = "em_descarga"
-    concluida = "concluida"
+    in_transit = "in_transit"
+    delayed = "delayed"
+    unloading = "unloading"
+    completed = "completed"
 
 
 class TipoCargaEnum(str, Enum):
-    geral = "geral"
-    perigosa = "perigosa"
-    refrigerada = "refrigerada"
-    viva = "viva"
-    granel = "granel"
+    general = "general"
+    hazardous = "hazardous"
+    refrigerated = "refrigerated"
+    live = "live"
+    bulk = "bulk"
 
 
 class EstadoFisicoEnum(str, Enum):
-    liquido = "liquido"
-    solido = "solido"
-    gasoso = "gasoso"
-    hibrido = "hibrido"
+    liquid = "liquid"
+    solid = "solid"
+    gaseous = "gaseous"
+    hybrid = "hybrid"
 
 
 class NivelAcessoEnum(str, Enum):
@@ -37,14 +37,14 @@ class NivelAcessoEnum(str, Enum):
 
 
 class EstadoEnum(str, Enum):
-    manutencao = "manutencao"
-    operacional = "operacional"
-    fechado = "fechado"
+    maintenance = "maintenance"
+    operational = "operational"
+    closed = "closed"
 
 
 class TipoTrabalhadorEnum(str, Enum):
-    gestor = "gestor"
-    operador = "operador"
+    manager = "manager"
+    operator = "operator"
 
 
 # ==========================
@@ -162,7 +162,7 @@ class Carga(CargaBase):
 # ==========================
 
 class CaisBase(BaseModel):
-    estado: EstadoEnum = EstadoEnum.operacional
+    estado: EstadoEnum = EstadoEnum.operational
     capacidade_max: Optional[int] = None
     localizacao_gps: Optional[str] = None
 
@@ -183,7 +183,7 @@ class Cais(CaisBase):
 
 class GateBase(BaseModel):
     nome: str
-    estado: EstadoEnum = EstadoEnum.operacional
+    estado: EstadoEnum = EstadoEnum.operational
     localizacao_gps: Optional[str] = None
     descricao: Optional[str] = None
 
@@ -283,7 +283,7 @@ class ChegadaBase(BaseModel):
     hora_prevista: Optional[time] = None
     data_hora_chegada: Optional[datetime] = None
     observacoes: Optional[str] = None
-    estado_entrega: EstadoEntregaEnum = EstadoEntregaEnum.em_transito
+    estado_entrega: EstadoEntregaEnum = EstadoEntregaEnum.in_transit
 
 
 class ChegadaCreate(ChegadaBase):
@@ -489,3 +489,14 @@ class DecisionResponse(BaseModel):
     found: bool
     candidates: List[DecisionCandidate]
     message: Optional[str] = None
+
+from typing import Dict, Any
+
+class EventResponse(BaseModel):
+    """Response genérico para eventos."""
+    id: Optional[str] = None
+    type: str
+    timestamp: Optional[datetime] = None
+    gate_id: Optional[int] = None
+    matricula: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None

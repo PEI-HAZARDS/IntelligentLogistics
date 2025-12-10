@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from utils.hashing_pass import hash_password, verify_password
 
-from models.sql_models import Trabalhador, Gestor, Operador, Turno, Gate, ChegadaDiaria
+from models.sql_models import TrabalhadorPorto as Trabalhador, Gestor, Operador, Turno, Gate, ChegadaDiaria
 
 
 # ==================== AUTHENTICATION ====================

@@ -10,5 +10,6 @@ class Settings(BaseSettings):
     redis_host: str = "redis"
     redis_port: int = 6379
     decision_engine_url: str = "http://decision-engine:8001"
+    environment: str = "development"
 
 settings = Settings()

@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Instalar dependências OS (PostgreSQL, netcat para aguardar serviços)
 RUN apt-get update && apt-get install -y \
-    gcc libpq-dev netcat-openbsd curl \
+    gcc libpq-dev netcat-openbsd curl postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

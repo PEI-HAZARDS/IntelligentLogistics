@@ -33,3 +33,4 @@ psycopg2-binary
 
 # Security
 passlib[bcrypt]
+bcrypt==4.0.1

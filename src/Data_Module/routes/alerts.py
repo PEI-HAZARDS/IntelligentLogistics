@@ -46,7 +46,7 @@ class CreateADRAlertRequest(BaseModel):
 
 # ==================== QUERY ENDPOINTS ====================
 
-@router.get("/", response_model=List[AlertaPydantic])
+@router.get("", response_model=List[AlertaPydantic])
 def list_alerts(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
@@ -126,7 +126,7 @@ def get_kemler_codes():
 
 # ==================== CREATE ENDPOINTS ====================
 
-@router.post("/", response_model=AlertaPydantic, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=AlertaPydantic, status_code=status.HTTP_201_CREATED)
 def create_manual_alert(
     request: CreateAlertRequest,
     db: Session = Depends(get_db)

@@ -4,7 +4,7 @@ from config import settings
 from models.sql_models import Base
 
 DATABASE_URL = (
-    f"postgresql+psycopg://{settings.postgres_user}:{settings.postgres_password}"
+    f"postgresql+psycopg2://{settings.postgres_user}:{settings.postgres_password}"
     f"@{settings.postgres_host}:{settings.postgres_port}/{settings.postgres_db}"
 )
 

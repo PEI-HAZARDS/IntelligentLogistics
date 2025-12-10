@@ -12,6 +12,10 @@ from passlib.context import CryptContext
 import os
 import random
 import sys
+import os
+
+# Add parent directory to path so we can import models
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 # Tentar importar os modelos pelo caminho do pacote (assumindo PYTHONPATH inclui `src`)
 try:
@@ -42,6 +46,11 @@ def init_data(db: Session):
     """
     print("Populating database with initial data...")
 
+    # Check if data already exists
+    if db.query(TrabalhadorPorto).first():
+        print("Data already exists. Skipping initialization.")
+        return
+
     try:
         # ===== TRABALHADORES =====
         print("Creating workers...")
@@ -51,7 +60,8 @@ def init_data(db: Session):
             nome="João Silva",
             email="joao.silva@porto.pt",
             password_hash=pwd_context.hash("password123"),
-            role="manager"
+            role="manager",
+            ativo=True
         )
 
         # Operador
@@ -59,7 +69,8 @@ def init_data(db: Session):
             nome="Carlos Oliveira",
             email="carlos.oliveira@porto.pt",
             password_hash=pwd_context.hash("password123"),
-            role="operator"
+            role="operator",
+            ativo=True
         )
 
         db.add_all([gestor1, operador1])
