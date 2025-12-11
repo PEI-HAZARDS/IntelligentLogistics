@@ -1,0 +1,186 @@
+erDiagram
+    InfrastructureZone ||--o{ Gate : "contains"
+    InfrastructureZone ||--o{ InternalLocation : "contains"
+    Gate ||--o{ GateVisit : "entry point for"
+    Gate ||--o{ GateVisit : "exit point for"
+    Gate ||--o{ AIRecognitionEvent : "monitors"
+    Gate ||--o{ Worker : "assigned to"
+    Gate ||--o{ AccessDecision : "receives"
+    InternalLocation ||--o{ VisitEventLog : "location of"
+    HaulerCompany ||--o{ Truck : "owns"
+    HaulerCompany ||--o{ Driver : "employs"
+    HaulerCompany ||--o{ Appointment : "schedules"
+    Truck ||--o{ Appointment : "assigned to"
+    Truck ||--o{ GateVisit : "performs"
+    Driver ||--o{ Appointment : "assigned to"
+    Driver ||--o{ GateVisit : "performs"
+    Cargo ||--o{ Booking : "contains"
+    Booking ||--o{ Appointment : "has"
+    Appointment ||--o{ GateVisit : "results in"
+    GateVisit ||--o{ VisitEventLog : "logs"
+    AIRecognitionEvent ||--o{ AICorrection : "corrected by"
+    Worker ||--o{ AICorrection : "performs"
+    Worker ||--o{ AccessDecision : "reviews"
+    Shift ||--o{ Worker : "scheduled for"
+
+    InfrastructureZone {
+        int zone_id PK
+        string zone_code
+        string zone_name
+        enum zone_type
+        boolean is_hazmat_approved
+        geometry geo_polygon
+        int max_capacity_teu
+    }
+    Gate {
+        int gate_id PK
+        int zone_id FK
+        string gate_label
+        enum direction
+        string camera_rtsp_url
+        string barrier_device_id
+        enum operational_status
+    }
+    InternalLocation {
+        bigint location_id PK
+        int zone_id FK
+        string aisle_number
+        string bay_number
+        int tier_height
+        enum current_usage_status
+    }
+    HaulerCompany {
+        int hauler_id PK
+        string company_name
+        string tax_id
+        string api_key
+        decimal safety_rating
+    }
+    Truck {
+        bigint truck_id PK
+        int hauler_id FK
+        string license_plate
+        string country_of_registration
+        enum chassis_type
+        enum emission_standard
+        datetime last_seen_date
+    }
+    Driver {
+        bigint driver_id PK
+        int hauler_id FK
+        string license_number
+        string full_name
+        string mobile_device_token
+        boolean is_banned
+        string biometric_hash
+    }
+    Cargo {
+        bigint cargo_id PK
+        string iso_code
+        string size_type
+        int tare_weight_kg
+        int max_payload_kg
+    }
+    Booking {
+        bigint booking_id PK
+        string booking_ref
+        enum direction
+        bigint cargo_id FK
+    }
+    Appointment {
+        bigint appointment_id PK
+        bigint booking_id FK
+        int hauler_id FK
+        bigint truck_id FK
+        bigint driver_id FK
+        datetime scheduled_start_time
+        datetime scheduled_end_time
+        enum appointment_status
+    }
+    GateVisit {
+        bigint visit_id PK
+        bigint appointment_id FK
+        bigint truck_id FK
+        bigint driver_id FK
+        int entry_gate_id FK
+        int exit_gate_id FK
+        datetime gate_in_time
+        datetime gate_out_time
+        enum visit_stage
+    }
+    VisitEventLog {
+        bigint log_id PK
+        bigint visit_id FK
+        enum event_type
+        datetime timestamp
+        bigint location_id FK
+        text description
+    }
+    AIRecognitionEvent {
+        bigint recognition_id PK
+        int gate_id FK
+        datetime timestamp
+        string object_class
+        string detected_text
+        float confidence_score
+        jsonb bounding_box_json
+        string image_storage_path
+        int processing_duration_ms
+    }
+    AICorrection {
+        bigint correction_id PK
+        bigint recognition_id FK
+        string corrected_value
+        int operator_id FK
+        enum reason_code
+        boolean is_retrained
+        datetime created_at
+    }
+    SystemResourceMetrics {
+        bigint metric_id PK
+        datetime timestamp
+        string node_id
+        float cpu_usage_pct
+        float gpu_usage_pct
+        float power_consumption_watts
+        int active_camera_streams
+        int traffic_volume_in_gate
+    }
+    Shift {
+        int shift_id PK
+        enum shift_type
+        time start_time
+        time end_time
+        string description
+    }
+    Worker {
+        int worker_id PK
+        string full_name
+        string email
+        string password_hash
+        string role
+        int assigned_gate_id FK
+        int shift_id FK
+        boolean is_active
+        datetime created_at
+    }
+    AccessDecision {
+        bigint decision_id PK
+        string event_id
+        int gate_id FK
+        enum decision
+        text reason
+        string license_plate
+        string un_number
+        string kemler_code
+        string plate_image_url
+        string hazard_image_url
+        jsonb route
+        jsonb alerts
+        float lp_confidence
+        float hz_confidence
+        int reviewed_by FK
+        datetime reviewed_at
+        string original_decision
+        datetime created_at
+    }
