@@ -7,11 +7,11 @@ import time
 from datetime import datetime, timedelta
 
 
-KAFKA_CONSUME_TOPIC_LP = "lp_result"
-KAFKA_CONSUME_TOPIC_HZ = "hz_result"
 KAFKA_PRODUCE_TOPIC = "decision_results"
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
-GATE_ID = int(os.getenv("GATE_ID", 1))
+GATE_ID = os.getenv("GATE_ID", 1)
+KAFKA_CONSUME_TOPIC_LP = f"lp-results-{GATE_ID}"
+KAFKA_CONSUME_TOPIC_HZ = f"hz-results-{GATE_ID}"
 API_URL = os.getenv("API_URL", "http://localhost:8080/api/v1")
 TIME_TOLERANCE_MINUTES = int(os.getenv("TIME_TOLERANCE_MINUTES", 30))
 
@@ -74,7 +74,7 @@ class DecisionEngine:
                 # Extract truck_id from headers
                 truck_id = None
                 for k, v in (msg.headers() or []):
-                    if k == "truck_id":
+                    if k == "truckId":
                         truck_id = v.decode("utf-8") if isinstance(v, bytes) else v
                         break
 
