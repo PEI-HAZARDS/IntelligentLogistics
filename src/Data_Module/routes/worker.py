@@ -1,6 +1,6 @@
 """
-Worker Routes - Endpoints para operadores de cancela e gestores.
-Consumido por: Frontend backoffice, API Gateway (autenticação).
+Worker Routes - Endpoints for operators and managers.
+Consumed by: Backoffice frontend, API Gateway (authentication).
 """
 
 from typing import List, Optional, Dict, Any
@@ -8,10 +8,11 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from models.pydantic_models import Trabalhador as TrabalhadorPydantic
+from models.pydantic_models import Worker, Manager, Operator, Shift, WorkerLoginRequest, WorkerLoginResponse
 from services.worker_service import (
     authenticate_worker,
-    get_worker_by_id,
+    get_worker_by_nif,
+    get_worker_role,
     get_all_workers,
     get_operators,
     get_managers,
@@ -34,70 +35,56 @@ from db.postgres import get_db
 router = APIRouter(prefix="/workers", tags=["Workers"])
 
 
-# ==================== PYDANTIC MODELS ====================
-
-class WorkerLoginRequest(BaseModel):
-    """Request para login de trabalhador."""
-    email: str
-    password: str
-
-
-class WorkerLoginResponse(BaseModel):
-    """Response do login com JWT token."""
-    token: str
-    num_trabalhador: int
-    nome: str
-    email: str
-    role: str  # "operador" ou "gestor"
-    ativo: bool
-
+# ==================== LOCAL PYDANTIC MODELS ====================
 
 class CreateWorkerRequest(BaseModel):
-    """Request para criar novo trabalhador."""
-    nome: str
+    """Request to create new worker."""
+    nif: str
+    name: str
     email: str
     password: str
-    role: str  # "operador" ou "gestor"
-    nivel_acesso: Optional[str] = None  # Para gestores
+    role: str  # "operator" or "manager"
+    access_level: Optional[str] = None  # For managers
+    phone: Optional[str] = None
 
 
 class UpdatePasswordRequest(BaseModel):
-    """Request para atualizar password."""
+    """Request to update password."""
     current_password: str
     new_password: str
 
 
 class UpdateEmailRequest(BaseModel):
-    """Request para atualizar email."""
+    """Request to update email."""
     new_email: str
 
 
 class WorkerInfo(BaseModel):
-    """Informação de trabalhador."""
-    num_trabalhador: int
-    nome: str
+    """Worker information."""
+    nif: str
+    name: str
     email: str
     role: str
-    ativo: bool
+    active: bool
 
 
 class OperatorDashboard(BaseModel):
-    """Dashboard do operador."""
-    operador: int
-    gate: int
-    data: str
-    proximas_chegadas: List[Dict[str, Any]]
+    """Operator dashboard."""
+    operator_nif: str
+    gate_id: int
+    date: str
+    upcoming_arrivals: List[Dict[str, Any]]
     stats: Dict[str, int]
 
 
 class ManagerOverview(BaseModel):
-    """Visão geral do gestor."""
-    gestor: int
-    data: str
-    gates_ativos: int
-    turnos_hoje: int
-    alertas_recentes: int
-    estatisticas: Dict[str, int]
+    """Manager overview."""
+    manager_nif: str
+    date: str
+    active_gates: int
+    shifts_today: int
+    recent_alerts: int
+    statistics: Dict[str, int]
 
 
 # ==================== AUTH ENDPOINTS ====================
@@ -108,32 +95,31 @@ def login(
     db: Session = Depends(get_db)
 ):
     """
-    Login de trabalhador (operador ou gestor).
-    Retorna token para autenticação.
+    Worker login (operator or manager).
+    Returns token for authentication.
     """
-    trabalhador = authenticate_worker(
+    worker = authenticate_worker(
         db,
         email=credentials.email,
         password=credentials.password
     )
     
-    if not trabalhador:
+    if not worker:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Credenciais inválidas ou conta desativada"
+            detail="Invalid credentials or account deactivated"
         )
     
-    # MVP: gerar token simples (em produção usar JWT)
+    # MVP: generate simple token (in production use JWT)
     import secrets
     token = secrets.token_hex(32)
     
     return WorkerLoginResponse(
         token=token,
-        num_trabalhador=trabalhador.num_trabalhador,
-        nome=trabalhador.nome,
-        email=trabalhador.email,
-        role=trabalhador.role,
-        ativo=trabalhador.ativo
+        nif=worker.nif,
+        name=worker.name,
+        email=worker.email,
+        active=worker.active
     )
 
 
@@ -145,99 +131,99 @@ def list_operators(
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db)
 ):
-    """Lista operadores de cancela."""
-    operadores = get_operators(db, skip=skip, limit=limit)
+    """Lists operators."""
+    operators = get_operators(db, skip=skip, limit=limit)
     return [
         WorkerInfo(
-            num_trabalhador=op.trabalhador.num_trabalhador,
-            nome=op.trabalhador.nome,
-            email=op.trabalhador.email,
-            role=op.trabalhador.role,
-            ativo=op.trabalhador.ativo
+            nif=op.worker.nif,
+            name=op.worker.name,
+            email=op.worker.email,
+            role="operator",
+            active=op.worker.active
         )
-        for op in operadores
+        for op in operators if op.worker
     ]
 
 
 @router.get("/operators/me", response_model=Dict[str, Any])
 def get_my_operator_info(
-    num_trabalhador: int = Query(..., description="ID do operador (do JWT)"),
+    nif: str = Query(..., description="Operator NIF (from JWT)"),
     db: Session = Depends(get_db)
 ):
     """
-    Obtém informação do operador autenticado.
-    Em produção: num_trabalhador viria do JWT.
+    Gets authenticated operator information.
+    In production: nif would come from JWT.
     """
-    info = get_operator_info(db, num_trabalhador)
+    info = get_operator_info(db, nif)
     if not info:
-        raise HTTPException(status_code=404, detail="Operador não encontrado")
+        raise HTTPException(status_code=404, detail="Operator not found")
     return info
 
 
-@router.get("/operators/{num_trabalhador}")
+@router.get("/operators/{nif}")
 def get_operator(
-    num_trabalhador: int = Path(..., description="ID do operador"),
+    nif: str = Path(..., description="Operator NIF"),
     db: Session = Depends(get_db)
 ):
-    """Obtém informação de um operador específico."""
-    info = get_operator_info(db, num_trabalhador)
+    """Gets information of a specific operator."""
+    info = get_operator_info(db, nif)
     if not info:
-        raise HTTPException(status_code=404, detail="Operador não encontrado")
+        raise HTTPException(status_code=404, detail="Operator not found")
     return info
 
 
-@router.get("/operators/{num_trabalhador}/current-shift/{id_gate}")
+@router.get("/operators/{nif}/current-shift/{gate_id}")
 def get_operator_shift(
-    num_trabalhador: int = Path(...),
-    id_gate: int = Path(...),
+    nif: str = Path(...),
+    gate_id: int = Path(...),
     db: Session = Depends(get_db)
 ):
-    """Obtém turno atual do operador para um gate."""
-    turno = get_operator_current_shift(db, num_trabalhador, id_gate)
-    if not turno:
+    """Gets operator's current shift for a gate."""
+    shift = get_operator_current_shift(db, nif, gate_id)
+    if not shift:
         return None
     
     return {
-        "id_turno": turno.id_turno,
-        "data": turno.data.isoformat(),
-        "hora_inicio": turno.hora_inicio.isoformat(),
-        "hora_fim": turno.hora_fim.isoformat(),
-        "id_gate": turno.id_gate
+        "id": shift.id,
+        "date": shift.date.isoformat(),
+        "shift_type": shift.shift_type.name if shift.shift_type else None,
+        "start_time": shift.start_time.isoformat() if shift.start_time else None,
+        "end_time": shift.end_time.isoformat() if shift.end_time else None,
+        "gate_id": shift.gate_id
     }
 
 
-@router.get("/operators/{num_trabalhador}/shifts")
+@router.get("/operators/{nif}/shifts")
 def list_operator_shifts(
-    num_trabalhador: int = Path(...),
-    id_gate: Optional[int] = Query(None),
+    nif: str = Path(...),
+    gate_id: Optional[int] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db)
 ):
-    """Lista turnos de um operador."""
-    turnos = get_operator_shifts(db, num_trabalhador, id_gate)
+    """Lists shifts for an operator."""
+    shifts = get_operator_shifts(db, nif, gate_id)
     return [
         {
-            "id_turno": t.id_turno,
-            "data": t.data.isoformat(),
-            "hora_inicio": t.hora_inicio.isoformat(),
-            "hora_fim": t.hora_fim.isoformat(),
-            "id_gate": t.id_gate
+            "id": s.id,
+            "date": s.date.isoformat(),
+            "shift_type": s.shift_type.name if s.shift_type else None,
+            "gate_id": s.gate_id
         }
-        for t in turnos[:limit]
+        for s in shifts[:limit]
     ]
 
 
-@router.get("/operators/{num_trabalhador}/dashboard/{id_gate}", response_model=OperatorDashboard)
+@router.get("/operators/{nif}/dashboard/{gate_id}", response_model=OperatorDashboard)
 def get_operator_dashboard(
-    num_trabalhador: int = Path(...),
-    id_gate: int = Path(...),
+    nif: str = Path(...),
+    gate_id: int = Path(...),
     db: Session = Depends(get_db)
 ):
     """
-    Dashboard do operador para um gate.
-    Próximas chegadas, alertas, estatísticas.
+    Operator dashboard for a gate.
+    Upcoming arrivals, alerts, statistics.
     """
-    dashboard = get_operator_gate_dashboard(db, num_trabalhador, id_gate)
+    dashboard = get_operator_gate_dashboard(db, nif, gate_id)
     return OperatorDashboard(**dashboard)
 
 
@@ -249,78 +235,77 @@ def list_managers(
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db)
 ):
-    """Lista gestores."""
-    gestores = get_managers(db, skip=skip, limit=limit)
+    """Lists managers."""
+    managers = get_managers(db, skip=skip, limit=limit)
     return [
         WorkerInfo(
-            num_trabalhador=g.trabalhador.num_trabalhador,
-            nome=g.trabalhador.nome,
-            email=g.trabalhador.email,
-            role=g.trabalhador.role,
-            ativo=g.trabalhador.ativo
+            nif=m.worker.nif,
+            name=m.worker.name,
+            email=m.worker.email,
+            role="manager",
+            active=m.worker.active
         )
-        for g in gestores
+        for m in managers if m.worker
     ]
 
 
 @router.get("/managers/me", response_model=Dict[str, Any])
 def get_my_manager_info(
-    num_trabalhador: int = Query(..., description="ID do gestor (do JWT)"),
+    nif: str = Query(..., description="Manager NIF (from JWT)"),
     db: Session = Depends(get_db)
 ):
     """
-    Obtém informação do gestor autenticado.
-    Em produção: num_trabalhador viria do JWT.
+    Gets authenticated manager information.
+    In production: nif would come from JWT.
     """
-    info = get_manager_info(db, num_trabalhador)
+    info = get_manager_info(db, nif)
     if not info:
-        raise HTTPException(status_code=404, detail="Gestor não encontrado")
+        raise HTTPException(status_code=404, detail="Manager not found")
     return info
 
 
-@router.get("/managers/{num_trabalhador}")
+@router.get("/managers/{nif}")
 def get_manager(
-    num_trabalhador: int = Path(...),
+    nif: str = Path(...),
     db: Session = Depends(get_db)
 ):
-    """Obtém informação de um gestor específico."""
-    info = get_manager_info(db, num_trabalhador)
+    """Gets information of a specific manager."""
+    info = get_manager_info(db, nif)
     if not info:
-        raise HTTPException(status_code=404, detail="Gestor não encontrado")
+        raise HTTPException(status_code=404, detail="Manager not found")
     return info
 
 
-@router.get("/managers/{num_trabalhador}/shifts")
+@router.get("/managers/{nif}/shifts")
 def list_manager_shifts(
-    num_trabalhador: int = Path(...),
+    nif: str = Path(...),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db)
 ):
-    """Lista turnos supervisionados por um gestor."""
-    turnos = get_manager_shifts(db, num_trabalhador)
+    """Lists shifts supervised by a manager."""
+    shifts = get_manager_shifts(db, nif)
     return [
         {
-            "id_turno": t.id_turno,
-            "data": t.data.isoformat(),
-            "hora_inicio": t.hora_inicio.isoformat(),
-            "hora_fim": t.hora_fim.isoformat(),
-            "id_gate": t.id_gate,
-            "num_operador_cancela": t.num_operador_cancela
+            "id": s.id,
+            "date": s.date.isoformat(),
+            "shift_type": s.shift_type.name if s.shift_type else None,
+            "gate_id": s.gate_id,
+            "operator_nif": s.operator_nif
         }
-        for t in turnos[:limit]
+        for s in shifts[:limit]
     ]
 
 
-@router.get("/managers/{num_trabalhador}/overview", response_model=ManagerOverview)
+@router.get("/managers/{nif}/overview", response_model=ManagerOverview)
 def get_manager_dashboard(
-    num_trabalhador: int = Path(...),
+    nif: str = Path(...),
     db: Session = Depends(get_db)
 ):
     """
-    Dashboard/visão geral do gestor.
-    Gates, turnos, alertas, performance.
+    Manager dashboard/overview.
+    Gates, shifts, alerts, performance.
     """
-    overview = get_manager_overview(db, num_trabalhador)
+    overview = get_manager_overview(db, nif)
     return ManagerOverview(**overview)
 
 
@@ -333,37 +318,41 @@ def list_all_workers(
     only_active: bool = Query(True),
     db: Session = Depends(get_db)
 ):
-    """Lista todos os trabalhadores (backoffice)."""
+    """Lists all workers (backoffice)."""
     workers = get_all_workers(db, skip=skip, limit=limit, only_active=only_active)
-    return [
-        WorkerInfo(
-            num_trabalhador=w.num_trabalhador,
-            nome=w.nome,
+    results = []
+    for w in workers:
+        role = get_worker_role(db, w.nif) or "unknown"
+        results.append(WorkerInfo(
+            nif=w.nif,
+            name=w.name,
             email=w.email,
-            role=w.role,
-            ativo=w.ativo
-        )
-        for w in workers
-    ]
+            role=role,
+            active=w.active
+        ))
+    return results
 
 
-@router.get("/{num_trabalhador}", response_model=Dict[str, Any])
+@router.get("/{nif}", response_model=Dict[str, Any])
 def get_worker(
-    num_trabalhador: int = Path(...),
+    nif: str = Path(...),
     db: Session = Depends(get_db)
 ):
-    """Obtém dados de um trabalhador."""
-    worker = get_worker_by_id(db, num_trabalhador)
+    """Gets worker data."""
+    worker = get_worker_by_nif(db, nif)
     if not worker:
-        raise HTTPException(status_code=404, detail="Trabalhador não encontrado")
+        raise HTTPException(status_code=404, detail="Worker not found")
+    
+    role = get_worker_role(db, nif) or "unknown"
     
     return {
-        "num_trabalhador": worker.num_trabalhador,
-        "nome": worker.nome,
+        "nif": worker.nif,
+        "name": worker.name,
         "email": worker.email,
-        "role": worker.role,
-        "ativo": worker.ativo,
-        "criado_em": worker.criado_em.isoformat() if worker.criado_em else None
+        "phone": worker.phone,
+        "role": role,
+        "active": worker.active,
+        "created_at": worker.created_at.isoformat() if worker.created_at else None
     }
 
 
@@ -372,38 +361,38 @@ def get_worker(
 @router.post("/password", status_code=status.HTTP_200_OK)
 def change_password(
     request: UpdatePasswordRequest,
-    num_trabalhador: int = Query(..., description="ID do trabalhador (do JWT)"),
+    nif: str = Query(..., description="Worker NIF (from JWT)"),
     db: Session = Depends(get_db)
 ):
-    """Atualiza password do trabalhador."""
-    worker = get_worker_by_id(db, num_trabalhador)
+    """Updates worker's password."""
+    worker = get_worker_by_nif(db, nif)
     if not worker:
-        raise HTTPException(status_code=404, detail="Trabalhador não encontrado")
+        raise HTTPException(status_code=404, detail="Worker not found")
     
-    # Verificar password atual
-    from services.worker_service import verify_password
+    # Verify current password
+    from utils.hashing_pass import verify_password
     if not verify_password(request.current_password, worker.password_hash):
-        raise HTTPException(status_code=401, detail="Password atual incorreta")
+        raise HTTPException(status_code=401, detail="Current password incorrect")
     
-    updated = update_worker_password(db, num_trabalhador, request.new_password)
+    updated = update_worker_password(db, nif, request.new_password)
     if not updated:
-        raise HTTPException(status_code=500, detail="Erro ao atualizar password")
+        raise HTTPException(status_code=500, detail="Error updating password")
     
-    return {"message": "Password atualizada com sucesso"}
+    return {"message": "Password updated successfully"}
 
 
 @router.post("/email", status_code=status.HTTP_200_OK)
 def change_email(
     request: UpdateEmailRequest,
-    num_trabalhador: int = Query(..., description="ID do trabalhador (do JWT)"),
+    nif: str = Query(..., description="Worker NIF (from JWT)"),
     db: Session = Depends(get_db)
 ):
-    """Atualiza email do trabalhador."""
-    updated = update_worker_email(db, num_trabalhador, request.new_email)
+    """Updates worker's email."""
+    updated = update_worker_email(db, nif, request.new_email)
     if not updated:
-        raise HTTPException(status_code=400, detail="Email já em uso ou trabalhador não encontrado")
+        raise HTTPException(status_code=400, detail="Email already in use or worker not found")
     
-    return {"message": "Email atualizado com sucesso"}
+    return {"message": "Email updated successfully"}
 
 
 # ==================== ADMIN ENDPOINTS ====================
@@ -414,52 +403,54 @@ def create_new_worker(
     db: Session = Depends(get_db)
 ):
     """
-    Cria novo trabalhador (operador ou gestor).
-    Requer autenticação de admin.
+    Creates new worker (operator or manager).
+    Requires admin authentication.
     """
     worker = create_worker(
         db,
-        nome=request.nome,
+        nif=request.nif,
+        name=request.name,
         email=request.email,
         password=request.password,
         role=request.role,
-        nivel_acesso=request.nivel_acesso
+        access_level=request.access_level,
+        phone=request.phone
     )
     
     if not worker:
-        raise HTTPException(status_code=400, detail="Email já em uso ou erro na criação")
+        raise HTTPException(status_code=400, detail="Email or NIF already in use")
     
     return {
-        "num_trabalhador": worker.num_trabalhador,
-        "nome": worker.nome,
+        "nif": worker.nif,
+        "name": worker.name,
         "email": worker.email,
-        "role": worker.role,
-        "ativo": worker.ativo
+        "role": request.role,
+        "active": worker.active
     }
 
 
-@router.delete("/{num_trabalhador}", status_code=status.HTTP_200_OK)
+@router.delete("/{nif}", status_code=status.HTTP_200_OK)
 def deactivate_worker_endpoint(
-    num_trabalhador: int = Path(...),
+    nif: str = Path(...),
     db: Session = Depends(get_db)
 ):
-    """Desativa um trabalhador."""
-    worker = deactivate_worker(db, num_trabalhador)
+    """Deactivates a worker."""
+    worker = deactivate_worker(db, nif)
     if not worker:
-        raise HTTPException(status_code=404, detail="Trabalhador não encontrado")
+        raise HTTPException(status_code=404, detail="Worker not found")
     
-    return {"message": f"Trabalhador {worker.nome} desativado"}
+    return {"message": f"Worker {worker.name} deactivated"}
 
 
-@router.post("/{num_trabalhador}/promote", status_code=status.HTTP_200_OK)
+@router.post("/{nif}/promote", status_code=status.HTTP_200_OK)
 def promote_operator_to_manager(
-    num_trabalhador: int = Path(...),
-    nivel_acesso: str = Query("basic"),
+    nif: str = Path(...),
+    access_level: str = Query("basic"),
     db: Session = Depends(get_db)
 ):
-    """Promove um operador a gestor."""
-    gestor = promote_to_manager(db, num_trabalhador, nivel_acesso)
-    if not gestor:
-        raise HTTPException(status_code=400, detail="Trabalhador não é operador ou não encontrado")
+    """Promotes an operator to manager."""
+    manager = promote_to_manager(db, nif, access_level)
+    if not manager:
+        raise HTTPException(status_code=400, detail="Worker is not an operator or not found")
     
-    return {"message": f"Operador promovido a gestor com acesso {nivel_acesso}"}
+    return {"message": f"Operator promoted to manager with access level {access_level}"}

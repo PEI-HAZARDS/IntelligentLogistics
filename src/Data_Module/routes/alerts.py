@@ -1,6 +1,6 @@
 """
-Alerts Routes - Endpoints para gestão de alertas.
-Consumido por: Frontend operador, Decision Engine.
+Alerts Routes - Endpoints for alert management.
+Consumed by: Operator frontend, Decision Engine.
 """
 
 from typing import List, Optional, Dict, Any
@@ -9,15 +9,14 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from db.postgres import get_db
-from models.pydantic_models import Alerta as AlertaPydantic, AlertaCreate
+from models.pydantic_models import Alert as AlertPydantic, AlertCreate
 from services.alert_service import (
     get_alerts,
     get_alert_by_id,
-    get_alerts_by_historico,
     get_active_alerts,
     get_alerts_count_by_type,
     create_alert,
-    create_adr_alert,
+    create_hazmat_alert,
     ADR_CODES,
     KEMLER_CODES
 )
@@ -28,17 +27,17 @@ router = APIRouter(prefix="/alerts", tags=["Alerts"])
 # ==================== PYDANTIC MODELS ====================
 
 class CreateAlertRequest(BaseModel):
-    """Request para criar alerta manualmente."""
-    id_historico_ocorrencia: int
-    id_carga: int
-    tipo: str
-    severidade: int  # 1-5
-    descricao: str
+    """Request to create alert manually."""
+    cargo_id: Optional[int] = None
+    type: str
+    severity: int  # 1-5
+    description: str
+    image_url: Optional[str] = None
 
 
-class CreateADRAlertRequest(BaseModel):
-    """Request para criar alerta ADR específico."""
-    id_chegada: int
+class CreateHazmatAlertRequest(BaseModel):
+    """Request to create hazmat/ADR specific alert."""
+    appointment_id: int
     un_code: Optional[str] = None
     kemler_code: Optional[str] = None
     detected_hazmat: Optional[str] = None
@@ -46,62 +45,52 @@ class CreateADRAlertRequest(BaseModel):
 
 # ==================== QUERY ENDPOINTS ====================
 
-@router.get("", response_model=List[AlertaPydantic])
+@router.get("", response_model=List[AlertPydantic])
 def list_alerts(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    tipo: Optional[str] = Query(None, description="Filtrar por tipo (ADR, delay, etc.)"),
-    severidade_min: Optional[int] = Query(None, ge=1, le=5, description="Severidade mínima"),
-    id_carga: Optional[int] = Query(None, description="Filtrar por carga"),
+    alert_type: Optional[str] = Query(None, description="Filter by type (hazmat, delay, etc.)"),
+    severity_min: Optional[int] = Query(None, ge=1, le=5, description="Minimum severity"),
+    cargo_id: Optional[int] = Query(None, description="Filter by cargo"),
     db: Session = Depends(get_db)
 ):
-    """Lista alertas com filtros opcionais."""
+    """Lists alerts with optional filters."""
     alerts = get_alerts(
         db, skip=skip, limit=limit,
-        tipo=tipo, severidade_min=severidade_min, id_carga=id_carga
+        alert_type=alert_type, severity_min=severity_min, cargo_id=cargo_id
     )
-    return [AlertaPydantic.model_validate(a) for a in alerts]
+    return [AlertPydantic.model_validate(a) for a in alerts]
 
 
-@router.get("/active", response_model=List[AlertaPydantic])
+@router.get("/active", response_model=List[AlertPydantic])
 def list_active_alerts(
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db)
 ):
     """
-    Lista alertas ativos (últimas 24h) ordenados por severidade.
-    Usado no dashboard do operador.
+    Lists active alerts (last 24h) ordered by severity.
+    Used in operator dashboard.
     """
     alerts = get_active_alerts(db, limit=limit)
-    return [AlertaPydantic.model_validate(a) for a in alerts]
+    return [AlertPydantic.model_validate(a) for a in alerts]
 
 
 @router.get("/stats", response_model=Dict[str, int])
 def get_alerts_stats(db: Session = Depends(get_db)):
-    """Estatísticas de alertas por tipo (últimas 24h)."""
+    """Alert statistics by type (last 24h)."""
     return get_alerts_count_by_type(db)
 
 
-@router.get("/historico/{id_historico}", response_model=List[AlertaPydantic])
-def get_alerts_for_historico(
-    id_historico: int = Path(..., description="ID do histórico de ocorrência"),
-    db: Session = Depends(get_db)
-):
-    """Lista alertas de um histórico de ocorrência específico."""
-    alerts = get_alerts_by_historico(db, id_historico)
-    return [AlertaPydantic.model_validate(a) for a in alerts]
-
-
-@router.get("/{id_alerta}", response_model=AlertaPydantic)
+@router.get("/{alert_id}", response_model=AlertPydantic)
 def get_single_alert(
-    id_alerta: int = Path(..., description="ID do alerta"),
+    alert_id: int = Path(..., description="Alert ID"),
     db: Session = Depends(get_db)
 ):
-    """Obtém detalhes de um alerta específico."""
-    alert = get_alert_by_id(db, id_alerta)
+    """Gets details of a specific alert."""
+    alert = get_alert_by_id(db, alert_id)
     if not alert:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alerta não encontrado")
-    return AlertaPydantic.model_validate(alert)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alert not found")
+    return AlertPydantic.model_validate(alert)
 
 
 # ==================== REFERENCE DATA ====================
@@ -109,8 +98,8 @@ def get_single_alert(
 @router.get("/reference/adr-codes")
 def get_adr_codes():
     """
-    Lista códigos ADR/UN disponíveis.
-    Usado para referência pelo Decision Engine e frontend.
+    Lists available ADR/UN codes.
+    Used for reference by Decision Engine and frontend.
     """
     return ADR_CODES
 
@@ -118,64 +107,64 @@ def get_adr_codes():
 @router.get("/reference/kemler-codes")
 def get_kemler_codes():
     """
-    Lista códigos Kemler disponíveis.
-    Usado para referência pelo Decision Engine e frontend.
+    Lists available Kemler codes.
+    Used for reference by Decision Engine and frontend.
     """
     return KEMLER_CODES
 
 
 # ==================== CREATE ENDPOINTS ====================
 
-@router.post("", response_model=AlertaPydantic, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=AlertPydantic, status_code=status.HTTP_201_CREATED)
 def create_manual_alert(
     request: CreateAlertRequest,
     db: Session = Depends(get_db)
 ):
     """
-    Cria um alerta manualmente.
-    Usado pelo operador ou Decision Engine.
+    Creates an alert manually.
+    Used by operator or Decision Engine.
     """
     alert = create_alert(
         db,
-        id_historico_ocorrencia=request.id_historico_ocorrencia,
-        id_carga=request.id_carga,
-        tipo=request.tipo,
-        severidade=request.severidade,
-        descricao=request.descricao
+        cargo_id=request.cargo_id,
+        alert_type=request.type,
+        severity=request.severity,
+        description=request.description,
+        image_url=request.image_url
     )
-    return AlertaPydantic.model_validate(alert)
+    return AlertPydantic.model_validate(alert)
 
 
-@router.post("/adr", response_model=AlertaPydantic, status_code=status.HTTP_201_CREATED)
-def create_adr_hazmat_alert(
-    request: CreateADRAlertRequest,
+@router.post("/hazmat", response_model=AlertPydantic, status_code=status.HTTP_201_CREATED)
+def create_hazmat_adr_alert(
+    request: CreateHazmatAlertRequest,
     db: Session = Depends(get_db)
 ):
     """
-    Cria alerta ADR/hazmat específico.
-    Usado pelo Decision Engine quando detecta carga perigosa.
+    Creates hazmat/ADR specific alert.
+    Used by Decision Engine when detecting hazardous cargo.
     
-    Parâmetros:
-    - id_chegada: ID da chegada associada
-    - un_code: Código UN (ex: "1203" para gasolina)
-    - kemler_code: Código Kemler (ex: "33" para inflamável)
-    - detected_hazmat: Descrição da detecção (do Agent C)
+    Parameters:
+    - appointment_id: Associated appointment ID
+    - un_code: UN code (e.g., "1203" for gasoline)
+    - kemler_code: Kemler code (e.g., "33" for flammable)
+    - detected_hazmat: Detection description (from Agent C)
     """
-    from models.sql_models import ChegadaDiaria
+    from models.sql_models import Appointment
     
-    chegada = db.query(ChegadaDiaria).filter(
-        ChegadaDiaria.id_chegada == request.id_chegada
+    appointment = db.query(Appointment).filter(
+        Appointment.id == request.appointment_id
     ).first()
     
-    if not chegada:
+    if not appointment:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Chegada não encontrada"
+            detail="Appointment not found"
         )
     
-    alert = create_adr_alert(
+    alert = create_hazmat_alert(
         db,
-        chegada=chegada,
+        appointment=appointment,
         un_code=request.un_code,
         kemler_code=request.kemler_code,
         detected_hazmat=request.detected_hazmat
@@ -184,8 +173,7 @@ def create_adr_hazmat_alert(
     if not alert:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Erro ao criar alerta ADR"
+            detail="Error creating hazmat alert"
         )
     
-    return AlertaPydantic.model_validate(alert)
-
+    return AlertPydantic.model_validate(alert)

@@ -1,6 +1,6 @@
 """
-Driver Routes - Endpoints para condutores e autenticação mobile.
-Consumido por: App mobile do motorista, backoffice.
+Driver Routes - Endpoints for drivers and mobile authentication.
+Consumed by: Driver mobile app, backoffice.
 """
 
 from typing import List, Optional
@@ -8,18 +8,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
 
 from models.pydantic_models import (
-    Condutor, Chegada,
+    Driver, Appointment,
     DriverLoginRequest, DriverLoginResponse,
-    ClaimChegadaRequest, ClaimChegadaResponse
+    ClaimAppointmentRequest, ClaimAppointmentResponse
 )
 from services.driver_service import (
     get_drivers,
-    get_driver_arrivals,
-    get_driver_today_arrivals,
-    get_driver_by_num_carta,
+    get_driver_appointments,
+    get_driver_today_appointments,
+    get_driver_by_license,
     authenticate_driver,
-    claim_chegada_by_pin,
-    get_driver_active_chegada,
+    claim_appointment_by_pin,
+    get_driver_active_appointment,
     create_driver,
     hash_password
 )
@@ -36,139 +36,144 @@ def login(
     db: Session = Depends(get_db)
 ):
     """
-    Login do motorista na app mobile.
-    Retorna token JWT para autenticação subsequente.
+    Driver login for mobile app.
+    Returns JWT token for subsequent authentication.
     
-    Para MVP: token é placeholder, em produção usar JWT real.
+    For MVP: token is placeholder, in production use real JWT.
     """
-    condutor = authenticate_driver(
+    driver = authenticate_driver(
         db,
-        num_carta_cond=credentials.num_carta_cond,
+        drivers_license=credentials.drivers_license,
         password=credentials.password
     )
     
-    if not condutor:
+    if not driver:
         raise HTTPException(
             status_code=401,
-            detail="Credenciais inválidas ou conta desativada"
+            detail="Invalid credentials or account deactivated"
         )
     
-    # MVP: gerar token simples (em produção usar JWT)
+    # MVP: generate simple token (in production use JWT)
     import secrets
     token = secrets.token_hex(32)
     
     return DriverLoginResponse(
         token=token,
-        num_carta_cond=condutor.num_carta_cond,
-        nome=condutor.nome,
-        id_empresa=condutor.id_empresa or 0,
-        empresa_nome=condutor.empresa.nome if condutor.empresa else "Sem empresa"
+        drivers_license=driver.drivers_license,
+        name=driver.name,
+        company_nif=driver.company_nif,
+        company_name=driver.company.name if driver.company else "No company"
     )
 
 
-@router.post("/claim", response_model=ClaimChegadaResponse)
+@router.post("/claim", response_model=ClaimAppointmentResponse)
 def claim_arrival(
-    claim_data: ClaimChegadaRequest,
-    num_carta_cond: str = Query(..., description="Número carta condução (do token)"),
+    claim_data: ClaimAppointmentRequest,
+    drivers_license: str = Query(..., description="Driver's license (from token)"),
     db: Session = Depends(get_db)
 ):
     """
-    Motorista usa PIN para reclamar uma chegada.
-    Após validação, retorna detalhes para navegação ao cais.
+    Driver uses PIN to claim an appointment.
+    After validation, returns details for navigation to dock.
     
-    Em produção: num_carta_cond viria do JWT token decodificado.
+    In production: drivers_license would come from decoded JWT token.
     """
-    chegada = claim_chegada_by_pin(db, num_carta_cond, claim_data.pin_acesso)
+    appointment = claim_appointment_by_pin(db, drivers_license, claim_data.arrival_id)
     
-    if not chegada:
+    if not appointment:
         raise HTTPException(
             status_code=404,
-            detail="PIN inválido ou chegada não disponível"
+            detail="Invalid PIN or appointment not available"
         )
     
-    # Construir URL de navegação para o cais
-    navegacao_url = None
-    if chegada.cais and chegada.cais.localizacao_gps:
-        # Formato: "lat,lon" -> Google Maps URL
-        gps = chegada.cais.localizacao_gps
-        navegacao_url = f"https://www.google.com/maps/dir/?api=1&destination={gps}"
+    # Build navigation URL for the terminal
+    navigation_url = None
+    if appointment.terminal and appointment.terminal.latitude and appointment.terminal.longitude:
+        lat = appointment.terminal.latitude
+        lon = appointment.terminal.longitude
+        navigation_url = f"https://www.google.com/maps/dir/?api=1&destination={lat},{lon}"
     
-    return ClaimChegadaResponse(
-        id_chegada=chegada.id_chegada,
-        id_cais=chegada.id_cais,
-        cais_localizacao=chegada.cais.localizacao_gps if chegada.cais else "N/A",
-        matricula_veiculo=chegada.matricula_pesado,
-        carga_descricao=chegada.carga.descricao if chegada.carga else "N/A",
-        carga_adr=chegada.carga.adr if chegada.carga else False,
-        navegacao_url=navegacao_url
+    # Get cargo description
+    cargo_description = None
+    if appointment.booking and appointment.booking.cargos:
+        cargo = appointment.booking.cargos[0]
+        cargo_description = cargo.description
+    
+    return ClaimAppointmentResponse(
+        appointment_id=appointment.id,
+        dock_bay_number=None,  # Would need to add dock assignment logic
+        dock_location=None,
+        license_plate=appointment.truck_license_plate,
+        cargo_description=cargo_description,
+        navigation_url=navigation_url
     )
 
 
-@router.get("/me/active", response_model=Optional[Chegada])
+@router.get("/me/active", response_model=Optional[Appointment])
 def get_my_active_arrival(
-    num_carta_cond: str = Query(..., description="Número carta condução (do token)"),
+    drivers_license: str = Query(..., description="Driver's license (from token)"),
     db: Session = Depends(get_db)
 ):
     """
-    Obtém a chegada ativa do motorista.
-    Retorna None se não houver chegada ativa.
+    Gets the driver's active appointment.
+    Returns None if no active appointment.
     
-    Em produção: num_carta_cond viria do JWT token decodificado.
+    In production: drivers_license would come from decoded JWT token.
     """
-    chegada = get_driver_active_chegada(db, num_carta_cond)
+    appointment = get_driver_active_appointment(db, drivers_license)
     
-    if not chegada:
+    if not appointment:
         return None
     
-    return Chegada.model_validate(chegada)
+    return Appointment.model_validate(appointment)
 
 
-@router.get("/me/today", response_model=List[Chegada])
+@router.get("/me/today", response_model=List[Appointment])
 def get_my_today_arrivals(
-    num_carta_cond: str = Query(..., description="Número carta condução (do token)"),
+    drivers_license: str = Query(..., description="Driver's license (from token)"),
     db: Session = Depends(get_db)
 ):
     """
-    Obtém chegadas de hoje do motorista.
+    Gets today's appointments for the driver.
     
-    Em produção: num_carta_cond viria do JWT token decodificado.
+    In production: drivers_license would come from decoded JWT token.
     """
-    chegadas = get_driver_today_arrivals(db, num_carta_cond)
-    return [Chegada.model_validate(c) for c in chegadas]
+    appointments = get_driver_today_appointments(db, drivers_license)
+    return [Appointment.model_validate(a) for a in appointments]
 
 
 # ==================== QUERY ENDPOINTS ====================
 
-@router.get("", response_model=List[Condutor])
+@router.get("", response_model=List[Driver])
 def list_all_drivers(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    only_active: bool = Query(True, description="Apenas condutores ativos"),
+    only_active: bool = Query(True, description="Only active drivers"),
     db: Session = Depends(get_db)
 ):
-    """Lista todos os condutores (backoffice)."""
+    """Lists all drivers (backoffice)."""
     drivers = get_drivers(db, skip=skip, limit=limit, only_active=only_active)
-    return [Condutor.model_validate(d) for d in drivers]
+    return [Driver.model_validate(d) for d in drivers]
 
 
-@router.get("/{num_carta_cond}", response_model=Condutor)
+@router.get("/{drivers_license}", response_model=Driver)
 def get_driver(
-    num_carta_cond: str = Path(..., description="Número da carta de condução"),
+    drivers_license: str = Path(..., description="Driver's license number"),
     db: Session = Depends(get_db)
 ):
-    """Obtém detalhes de um condutor específico."""
-    driver = get_driver_by_num_carta(db, num_carta_cond)
+    """Gets details of a specific driver."""
+    driver = get_driver_by_license(db, drivers_license)
     if not driver:
-        raise HTTPException(status_code=404, detail="Condutor não encontrado")
-    return Condutor.model_validate(driver)
+        raise HTTPException(status_code=404, detail="Driver not found")
+    return Driver.model_validate(driver)
 
 
-@router.get("/{num_carta_cond}/arrivals", response_model=List[Chegada])
+@router.get("/{drivers_license}/arrivals", response_model=List[Appointment])
 def get_arrivals_for_driver(
-    num_carta_cond: str = Path(..., description="Número da carta de condução"),
+    drivers_license: str = Path(..., description="Driver's license number"),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db)
 ):
-    """Obtém histórico de chegadas de um condutor."""
-    chegadas = get_driver_arrivals(db, num_carta_cond, limit=limit)
-    return [Chegada.model_validate(c) for c in chegadas]
+    """Gets appointment history for a driver."""
+    appointments = get_driver_appointments(db, drivers_license, limit=limit)
+    return [Appointment.model_validate(a) for a in appointments]

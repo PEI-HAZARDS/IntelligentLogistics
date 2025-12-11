@@ -1,45 +1,46 @@
 """
-Alert Service - Gestão de alertas (PostgreSQL).
-Responsabilidades:
-- Criar alertas (ADR/hazmat, delays, segurança)
-- Associar alertas a chegadas via HistoricoOcorrencias
-- Listar e filtrar alertas
+Alert Service - Alert management (PostgreSQL).
+Responsibilities:
+- Create alerts (hazmat, delays, security)
+- Associate alerts to cargo
+- List and filter alerts
 """
 
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from db.postgres import SessionLocal
-from models.sql_models import Alerta, HistoricoOcorrencias, ChegadaDiaria
+from models.sql_models import Alert, Cargo, Appointment, Booking
 
 
-# ==================== ADR/HAZMAT CODES ====================
+# ==================== HAZMAT/ADR CODES ====================
 
-# Códigos UN perigosos comuns (simplificado para MVP)
+# Common dangerous UN codes (simplified for MVP)
 ADR_CODES = {
-    "1203": {"descricao": "Gasolina", "classe": "3", "perigo": "Líquido inflamável"},
-    "1202": {"descricao": "Gasóleo", "classe": "3", "perigo": "Líquido inflamável"},
-    "1073": {"descricao": "Oxigénio líquido", "classe": "2.2", "perigo": "Gás não inflamável"},
-    "1978": {"descricao": "Propano", "classe": "2.1", "perigo": "Gás inflamável"},
-    "1789": {"descricao": "Ácido clorídrico", "classe": "8", "perigo": "Corrosivo"},
-    "2031": {"descricao": "Ácido nítrico", "classe": "8", "perigo": "Corrosivo/Oxidante"},
-    "1830": {"descricao": "Ácido sulfúrico", "classe": "8", "perigo": "Corrosivo"},
-    "1005": {"descricao": "Amoníaco anidro", "classe": "2.3", "perigo": "Gás tóxico"},
-    "1017": {"descricao": "Cloro", "classe": "2.3", "perigo": "Gás tóxico"},
+    "1203": {"description": "Gasoline", "class": "3", "hazard": "Flammable liquid"},
+    "1202": {"description": "Diesel", "class": "3", "hazard": "Flammable liquid"},
+    "1073": {"description": "Liquid oxygen", "class": "2.2", "hazard": "Non-flammable gas"},
+    "1978": {"description": "Propane", "class": "2.1", "hazard": "Flammable gas"},
+    "1789": {"description": "Hydrochloric acid", "class": "8", "hazard": "Corrosive"},
+    "2031": {"description": "Nitric acid", "class": "8", "hazard": "Corrosive/Oxidizing"},
+    "1830": {"description": "Sulfuric acid", "class": "8", "hazard": "Corrosive"},
+    "1005": {"description": "Anhydrous ammonia", "class": "2.3", "hazard": "Toxic gas"},
+    "1017": {"description": "Chlorine", "class": "2.3", "hazard": "Toxic gas"},
 }
 
-# Códigos Kemler (número de perigo)
+# Kemler codes (hazard numbers)
 KEMLER_CODES = {
-    "33": "Líquido muito inflamável",
-    "30": "Líquido inflamável",
-    "23": "Gás inflamável",
-    "22": "Gás refrigerado",
-    "20": "Gás asfixiante",
-    "X80": "Corrosivo - reage com água",
-    "80": "Corrosivo",
-    "60": "Tóxico",
-    "X66": "Muito tóxico - reage com água",
+    "33": "Highly flammable liquid",
+    "30": "Flammable liquid",
+    "23": "Flammable gas",
+    "22": "Refrigerated gas",
+    "20": "Asphyxiant gas",
+    "X80": "Corrosive - reacts with water",
+    "80": "Corrosive",
+    "60": "Toxic",
+    "X66": "Very toxic - reacts with water",
 }
 
 
@@ -47,134 +48,123 @@ KEMLER_CODES = {
 
 def create_alert(
     db: Session,
-    id_historico_ocorrencia: int,
-    id_carga: int,
-    tipo: str,
-    severidade: int,
-    descricao: str
-) -> Alerta:
+    cargo_id: Optional[int],
+    alert_type: str,
+    severity: int,
+    description: str,
+    image_url: Optional[str] = None
+) -> Alert:
     """
-    Cria um alerta associado a um histórico de ocorrência.
+    Creates an alert associated to cargo.
     """
-    alerta = Alerta(
-        id_historico_ocorrencia=id_historico_ocorrencia,
-        id_carga=id_carga,
-        tipo=tipo,
-        severidade=severidade,
-        descricao=descricao,
-        data_hora=datetime.now(timezone.utc)
+    alert = Alert(
+        cargo_id=cargo_id,
+        type=alert_type,
+        severity=severity,
+        description=description,
+        image_url=image_url,
+        timestamp=datetime.now(timezone.utc)
     )
-    db.add(alerta)
+    db.add(alert)
     db.commit()
-    db.refresh(alerta)
-    return alerta
+    db.refresh(alert)
+    return alert
 
 
-def create_alerts_for_arrival(
+def create_alerts_for_appointment(
     db: Session,
-    chegada: ChegadaDiaria,
-    alertas_payload: List[Dict[str, Any]]
-) -> List[Alerta]:
+    appointment: Appointment,
+    alerts_payload: List[Dict[str, Any]]
+) -> List[Alert]:
     """
-    Cria alertas para uma chegada.
-    Primeiro cria HistoricoOcorrencias, depois os alertas associados.
+    Creates alerts for an appointment.
+    Associates alerts to cargo from booking.
     
-    alertas_payload esperado:
+    alerts_payload expected:
     [
-        {"tipo": "ADR", "severidade": 3, "descricao": "UN 1203 - Gasolina"},
-        {"tipo": "delay", "severidade": 1, "descricao": "Atraso de 30 min"}
+        {"type": "hazmat", "severity": 3, "description": "UN 1203 - Gasoline"},
+        {"type": "delay", "severity": 1, "description": "30 min delay"}
     ]
     """
-    if not alertas_payload:
+    if not alerts_payload:
         return []
     
-    # Criar HistoricoOcorrencias se não existir
-    historico = HistoricoOcorrencias(
-        id_turno=chegada.id_turno,
-        hora_inicio=datetime.now(),
-        descricao=f"Alertas para chegada {chegada.id_chegada} - {chegada.matricula_pesado}"
-    )
-    db.add(historico)
-    db.commit()
-    db.refresh(historico)
+    # Get cargo ID from booking
+    cargo_id = None
+    if appointment.booking and appointment.booking.cargos:
+        cargo_id = appointment.booking.cargos[0].id
     
-    # Criar alertas
-    alertas_criados = []
-    for alert_data in alertas_payload:
-        alerta = Alerta(
-            id_historico_ocorrencia=historico.id_historico,
-            id_carga=chegada.id_carga,
-            tipo=alert_data.get("tipo", "generic"),
-            severidade=alert_data.get("severidade", 2),
-            descricao=alert_data.get("descricao", "Alerta sem descrição"),
-            data_hora=datetime.now(timezone.utc)
+    # Create alerts
+    created_alerts = []
+    for alert_data in alerts_payload:
+        alert = Alert(
+            cargo_id=cargo_id,
+            type=alert_data.get("type", "generic"),
+            severity=alert_data.get("severity", 2),
+            description=alert_data.get("description", "Alert without description"),
+            image_url=alert_data.get("image_url"),
+            timestamp=datetime.now(timezone.utc)
         )
-        db.add(alerta)
-        alertas_criados.append(alerta)
+        db.add(alert)
+        created_alerts.append(alert)
     
     db.commit()
     
     # Refresh all alerts
-    for a in alertas_criados:
+    for a in created_alerts:
         db.refresh(a)
     
-    return alertas_criados
+    return created_alerts
 
 
-def create_adr_alert(
+def create_hazmat_alert(
     db: Session,
-    chegada: ChegadaDiaria,
+    appointment: Appointment,
     un_code: Optional[str] = None,
     kemler_code: Optional[str] = None,
     detected_hazmat: Optional[str] = None
-) -> Optional[Alerta]:
+) -> Optional[Alert]:
     """
-    Cria alerta ADR/hazmat específico.
-    Usado pelo Decision Engine quando detecta carga perigosa.
+    Creates hazmat/ADR specific alert.
+    Used by Decision Engine when detecting hazardous cargo.
     """
-    # Construir descrição
-    descricao_parts = ["Carga perigosa detectada"]
-    severidade = 3  # Default: alta
+    # Build description
+    description_parts = ["Hazardous cargo detected"]
+    severity = 3  # Default: high
     
     if un_code and un_code in ADR_CODES:
         info = ADR_CODES[un_code]
-        descricao_parts.append(f"UN {un_code} - {info['descricao']}")
-        descricao_parts.append(f"Classe: {info['classe']}")
-        descricao_parts.append(f"Perigo: {info['perigo']}")
-        severidade = 4 if info['classe'] in ['2.3', '6.1'] else 3  # Tóxicos = crítico
+        description_parts.append(f"UN {un_code} - {info['description']}")
+        description_parts.append(f"Class: {info['class']}")
+        description_parts.append(f"Hazard: {info['hazard']}")
+        severity = 4 if info['class'] in ['2.3', '6.1'] else 3  # Toxic = critical
     
     if kemler_code and kemler_code in KEMLER_CODES:
-        descricao_parts.append(f"Kemler {kemler_code}: {KEMLER_CODES[kemler_code]}")
+        description_parts.append(f"Kemler {kemler_code}: {KEMLER_CODES[kemler_code]}")
         if kemler_code.startswith('X'):
-            severidade = 5  # Reage com água = máximo
+            severity = 5  # Reacts with water = maximum
     
     if detected_hazmat:
-        descricao_parts.append(f"Deteção: {detected_hazmat}")
+        description_parts.append(f"Detection: {detected_hazmat}")
     
-    # Criar histórico de ocorrência
-    historico = HistoricoOcorrencias(
-        id_turno=chegada.id_turno,
-        hora_inicio=datetime.now(),
-        descricao=f"Alerta ADR - Chegada {chegada.id_chegada}"
+    # Get cargo ID
+    cargo_id = None
+    if appointment.booking and appointment.booking.cargos:
+        cargo_id = appointment.booking.cargos[0].id
+    
+    # Create alert
+    alert = Alert(
+        cargo_id=cargo_id,
+        type="hazmat",
+        severity=severity,
+        description=" | ".join(description_parts),
+        timestamp=datetime.now(timezone.utc)
     )
-    db.add(historico)
+    db.add(alert)
     db.commit()
-    db.refresh(historico)
+    db.refresh(alert)
     
-    # Criar alerta
-    alerta = Alerta(
-        id_historico_ocorrencia=historico.id_historico,
-        id_carga=chegada.id_carga,
-        tipo="ADR",
-        severidade=severidade,
-        descricao=" | ".join(descricao_parts),
-        data_hora=datetime.now(timezone.utc)
-    )
-    db.add(alerta)
-    db.commit()
-    db.refresh(alerta)
-    
-    return alerta
+    return alert
 
 
 # ==================== QUERY FUNCTIONS ====================
@@ -183,105 +173,49 @@ def get_alerts(
     db: Session,
     skip: int = 0,
     limit: int = 100,
-    tipo: Optional[str] = None,
-    severidade_min: Optional[int] = None,
-    id_carga: Optional[int] = None
-) -> List[Alerta]:
-    """Obtém alertas com filtros."""
-    query = db.query(Alerta)
+    alert_type: Optional[str] = None,
+    severity_min: Optional[int] = None,
+    cargo_id: Optional[int] = None
+) -> List[Alert]:
+    """Gets alerts with filters."""
+    query = db.query(Alert)
     
-    if tipo:
-        query = query.filter(Alerta.tipo == tipo)
-    if severidade_min:
-        query = query.filter(Alerta.severidade >= severidade_min)
-    if id_carga:
-        query = query.filter(Alerta.id_carga == id_carga)
+    if alert_type:
+        query = query.filter(Alert.type == alert_type)
+    if severity_min:
+        query = query.filter(Alert.severity >= severity_min)
+    if cargo_id:
+        query = query.filter(Alert.cargo_id == cargo_id)
     
-    return query.order_by(Alerta.data_hora.desc()).offset(skip).limit(limit).all()
+    return query.order_by(Alert.timestamp.desc()).offset(skip).limit(limit).all()
 
 
-def get_alert_by_id(db: Session, id_alerta: int) -> Optional[Alerta]:
-    """Obtém alerta por ID."""
-    return db.query(Alerta).filter(Alerta.id_alerta == id_alerta).first()
+def get_alert_by_id(db: Session, alert_id: int) -> Optional[Alert]:
+    """Gets alert by ID."""
+    return db.query(Alert).filter(Alert.id == alert_id).first()
 
 
-def get_alerts_by_historico(db: Session, id_historico: int) -> List[Alerta]:
-    """Obtém alertas de um histórico de ocorrência."""
-    return db.query(Alerta).filter(
-        Alerta.id_historico_ocorrencia == id_historico
-    ).order_by(Alerta.data_hora.desc()).all()
-
-
-def get_active_alerts(db: Session, limit: int = 50) -> List[Alerta]:
+def get_active_alerts(db: Session, limit: int = 50) -> List[Alert]:
     """
-    Obtém alertas recentes (últimas 24h) por severidade.
-    Usado no painel do operador.
+    Gets recent alerts (last 24h) by severity.
+    Used in operator panel.
     """
-    from datetime import timedelta
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     
-    return db.query(Alerta).filter(
-        Alerta.data_hora >= cutoff
-    ).order_by(Alerta.severidade.desc(), Alerta.data_hora.desc()).limit(limit).all()
+    return db.query(Alert).filter(
+        Alert.timestamp >= cutoff
+    ).order_by(Alert.severity.desc(), Alert.timestamp.desc()).limit(limit).all()
 
 
 def get_alerts_count_by_type(db: Session) -> Dict[str, int]:
-    """Conta alertas por tipo (últimas 24h)."""
-    from sqlalchemy import func
-    from datetime import timedelta
-    
+    """Counts alerts by type (last 24h)."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     
     results = db.query(
-        Alerta.tipo,
-        func.count(Alerta.id_alerta)
+        Alert.type,
+        func.count(Alert.id)
     ).filter(
-        Alerta.data_hora >= cutoff
-    ).group_by(Alerta.tipo).all()
+        Alert.timestamp >= cutoff
+    ).group_by(Alert.type).all()
     
-    return {tipo: count for tipo, count in results}
-
-
-# ==================== LEGACY FUNCTIONS (para compatibilidade) ====================
-
-def create_alert_legacy(tipo: str, severidade: int, descricao: str, data: dict):
-    """
-    Função legacy para criar alerta sem histórico.
-    DEPRECATED: usar create_alert ou create_alerts_for_arrival
-    """
-    db = SessionLocal()
-    try:
-        # Criar histórico dummy
-        historico = HistoricoOcorrencias(
-            id_turno=1,  # Dummy
-            hora_inicio=datetime.now(),
-            descricao="Alerta legacy"
-        )
-        db.add(historico)
-        db.commit()
-        db.refresh(historico)
-        
-        alerta = Alerta(
-            id_historico_ocorrencia=historico.id_historico,
-            id_carga=data.get("id_carga", 1),
-            tipo=tipo,
-            severidade=severidade,
-            descricao=descricao,
-            data_hora=datetime.now(timezone.utc)
-        )
-        db.add(alerta)
-        db.commit()
-        db.refresh(alerta)
-        
-        return alerta.id_alerta
-    finally:
-        db.close()
-
-
-def get_alerts_legacy(limit: int = 100):
-    """Função legacy para obter alertas."""
-    db = SessionLocal()
-    try:
-        return db.query(Alerta).order_by(Alerta.data_hora.desc()).limit(limit).all()
-    finally:
-        db.close()
+    return {alert_type: count for alert_type, count in results}
