@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  api-gateway:
+    build: .
+    container_name: api_gateway
+
+    environment:
+      # ---------------------------
+      # Backend Internal API (Data Module)
+      # ---------------------------
+      # AJUSTA ISTO PARA O ENDEREÇO REAL DO DATA MODULE
+      DATA_MODULE_URL: "http://host.docker.internal:8080"
+      # Exemplo remoto:
+      # DATA_MODULE_URL: "http://10.0.0.20:8080"
+
+      # ---------------------------
+      # Streams (Nginx-RTMP / HLS)
+      # ---------------------------
+      STREAM_BASE_URL: "http://host.docker.internal:8080"
+      # Exemplo remoto:
+      # STREAM_BASE_URL: "http://10.0.0.30:8080"
+
+      # ---------------------------
+      # Kafka (decisions realtime)
+      # ---------------------------
+      # Aponta para o broker Kafka REAL
+      KAFKA_BOOTSTRAP_SERVERS: "host.docker.internal:9092"
+      # Exemplo remoto:
+      # KAFKA_BOOTSTRAP_SERVERS: "10.0.0.40:9092"
+
+      KAFKA_DECISION_TOPIC: "decision_results"
+      KAFKA_CONSUMER_GROUP: "api-gateway-decisions"
+
+      # Ambiente
+      ENV: "dev"
+
+    ports:
+      - "8000:8000"
