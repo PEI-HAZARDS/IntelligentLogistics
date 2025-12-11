@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from fastapi import APIRouter, Query
 
@@ -12,20 +12,20 @@ router = APIRouter(tags=["arrivals"])
 # -------------------------------
 @router.get("/arrivals")
 async def list_all_arrivals(
-    matricula: Optional[str] = None,
+    license_plate: Optional[str] = Query(None, alias="matricula"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
 ):
     """
-    Proxy para GET /api/v1/arrivals no Data Module.
-    Lista todas as chegadas, opcionalmente filtradas por matrícula.
+    Proxy to GET /api/v1/arrivals in Data Module.
     """
+    skip = (page - 1) * limit
     params = {
-        "page": page,
+        "skip": skip,
         "limit": limit,
     }
-    if matricula:
-        params["matricula"] = matricula
+    if license_plate:
+        params["license_plate"] = license_plate # DataModule expects license_plate not matricula
 
     return await internal_client.get("/arrivals", params=params)
 
@@ -40,12 +40,16 @@ async def list_arrivals_by_gate(
     limit: int = Query(20, ge=1, le=100),
 ):
     """
-    Proxy para GET /api/v1/arrivals/{gate_id} no Data Module.
-    Lista chegadas filtradas por gate.
+    Lists arrivals filtered by gate.
+    Maps to GET /api/v1/arrivals?gate_id={gate_id}
     """
-    params = {"page": page, "limit": limit}
-    path = f"/arrivals/{gate_id}"
-    return await internal_client.get(path, params=params)
+    skip = (page - 1) * limit
+    params = {
+        "skip": skip,
+        "limit": limit,
+        "gate_id": gate_id
+    }
+    return await internal_client.get("/arrivals", params=params)
 
 
 # -------------------------------
@@ -59,12 +63,17 @@ async def list_arrivals_by_gate_shift(
     limit: int = Query(20, ge=1, le=100),
 ):
     """
-    Proxy para GET /api/v1/arrivals/{gate_id}/{shift} no Data Module.
-    Lista chegadas por gate e turno.
+    Lists arrivals by gate and shift.
+    Maps to GET /api/v1/arrivals?gate_id={gate_id}&shift_id={shift}
     """
-    params = {"page": page, "limit": limit}
-    path = f"/arrivals/{gate_id}/{shift}"
-    return await internal_client.get(path, params=params)
+    skip = (page - 1) * limit
+    params = {
+        "skip": skip,
+        "limit": limit,
+        "gate_id": gate_id,
+        "shift_id": shift
+    }
+    return await internal_client.get("/arrivals", params=params)
 
 
 # -------------------------------
@@ -76,11 +85,20 @@ async def count_arrivals_by_gate_shift(
     shift: int,
 ):
     """
-    Proxy para GET /api/v1/arrivals/{gate_id}/{shift}/total no Data Module.
-    Retorna o total de chegadas para um gate e turno.
+    Total arrivals for gate and shift.
+    Uses /arrivals/stats?gate_id={gate_id} (and currently filtering client-side or we accept stats limitation)
+    DataModule stats endpoint: /alerts/stats or /arrivals/stats
+    /arrivals/stats params: gate_id, target_date. Does not support shift_id yet.
+    
+    Fallback: call /arrivals with limit=1 just to get count? 
+    Data Module response is a list, doesn't have metadata 'total'.
+    
+    For now, return a placeholder or sum from stats if possible.
+    Let's return the stats for the gate.
     """
-    path = f"/arrivals/{gate_id}/{shift}/total"
-    return await internal_client.get(path)
+    # NOTE: shift_id is not filtered in stats yet. Returning stats for gate.
+    params = {"gate_id": gate_id}
+    return await internal_client.get("/arrivals/stats", params=params)
 
 
 # -------------------------------
@@ -93,12 +111,16 @@ async def list_arrivals_pending(
     limit: int = Query(20, ge=1, le=100),
 ):
     """
-    Proxy para GET /api/v1/arrivals/{gate_id}/pending no Data Module.
-    Lista chegadas pendentes (em_transito) por gate.
+    Lists pending arrivals (status='pending') by gate.
     """
-    params = {"page": page, "limit": limit}
-    path = f"/arrivals/{gate_id}/pending"
-    return await internal_client.get(path, params=params)
+    skip = (page - 1) * limit
+    params = {
+        "skip": skip,
+        "limit": limit,
+        "gate_id": gate_id,
+        "status": "pending"
+    }
+    return await internal_client.get("/arrivals", params=params)
 
 
 # -------------------------------
@@ -111,29 +133,15 @@ async def list_arrivals_pending_shift(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
 ):
-    """
-    Proxy para GET /api/v1/arrivals/{gate_id}/{shift}/pending no Data Module.
-    Lista chegadas pendentes por gate e turno.
-    """
-    params = {"page": page, "limit": limit}
-    path = f"/arrivals/{gate_id}/{shift}/pending"
-    return await internal_client.get(path, params=params)
-
-
-# -------------------------------
-# GET: /api/arrivals/{gate_id}/{shift}/pending/total
-# -------------------------------
-@router.get("/arrivals/{gate_id}/{shift}/pending/total")
-async def count_arrivals_pending(
-    gate_id: int,
-    shift: int,
-):
-    """
-    Proxy para GET /api/v1/arrivals/{gate_id}/{shift}/pending/total no Data Module.
-    Retorna o total de chegadas pendentes para um gate e turno.
-    """
-    path = f"/arrivals/{gate_id}/{shift}/pending/total"
-    return await internal_client.get(path)
+    skip = (page - 1) * limit
+    params = {
+        "skip": skip,
+        "limit": limit,
+        "gate_id": gate_id,
+        "shift_id": shift,
+        "status": "pending"
+    }
+    return await internal_client.get("/arrivals", params=params)
 
 
 # -------------------------------
@@ -146,12 +154,19 @@ async def list_arrivals_in_progress(
     limit: int = Query(20, ge=1, le=100),
 ):
     """
-    Proxy para GET /api/v1/arrivals/{gate_id}/in_progress no Data Module.
-    Lista chegadas em progresso (em_descarga) por gate.
+    Lists in-progress arrivals (status='approved' or visit state).
+    Data Module Appointment status: pending, approved, completed, canceled.
+    'In progress' usually means 'approved' (waiting/entering) or 'unloading'?
+    Let's map to 'approved' for now.
     """
-    params = {"page": page, "limit": limit}
-    path = f"/arrivals/{gate_id}/in_progress"
-    return await internal_client.get(path, params=params)
+    skip = (page - 1) * limit
+    params = {
+        "skip": skip,
+        "limit": limit,
+        "gate_id": gate_id,
+        "status": "approved"
+    }
+    return await internal_client.get("/arrivals", params=params)
 
 
 # -------------------------------
@@ -164,29 +179,15 @@ async def list_arrivals_in_progress_shift(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
 ):
-    """
-    Proxy para GET /api/v1/arrivals/{gate_id}/{shift}/in_progress no Data Module.
-    Lista chegadas em progresso por gate e turno.
-    """
-    params = {"page": page, "limit": limit}
-    path = f"/arrivals/{gate_id}/{shift}/in_progress"
-    return await internal_client.get(path, params=params)
-
-
-# -------------------------------
-# GET: /api/arrivals/{gate_id}/{shift}/in_progress/total
-# -------------------------------
-@router.get("/arrivals/{gate_id}/{shift}/in_progress/total")
-async def count_arrivals_in_progress(
-    gate_id: int,
-    shift: int,
-):
-    """
-    Proxy para GET /api/v1/arrivals/{gate_id}/{shift}/in_progress/total no Data Module.
-    Retorna o total de chegadas em progresso para um gate e turno.
-    """
-    path = f"/arrivals/{gate_id}/{shift}/in_progress/total"
-    return await internal_client.get(path)
+    skip = (page - 1) * limit
+    params = {
+        "skip": skip,
+        "limit": limit,
+        "gate_id": gate_id,
+        "shift_id": shift,
+        "status": "approved"
+    }
+    return await internal_client.get("/arrivals", params=params)
 
 
 # -------------------------------
@@ -199,12 +200,16 @@ async def list_arrivals_finished(
     limit: int = Query(20, ge=1, le=100),
 ):
     """
-    Proxy para GET /api/v1/arrivals/{gate_id}/finished no Data Module.
-    Lista chegadas concluídas (concluida) por gate.
+    Lists finished arrivals (status='completed').
     """
-    params = {"page": page, "limit": limit}
-    path = f"/arrivals/{gate_id}/finished"
-    return await internal_client.get(path, params=params)
+    skip = (page - 1) * limit
+    params = {
+        "skip": skip,
+        "limit": limit,
+        "gate_id": gate_id,
+        "status": "completed"
+    }
+    return await internal_client.get("/arrivals", params=params)
 
 
 # -------------------------------
@@ -217,26 +222,12 @@ async def list_arrivals_finished_shift(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
 ):
-    """
-    Proxy para GET /api/v1/arrivals/{gate_id}/{shift}/finished no Data Module.
-    Lista chegadas concluídas por gate e turno.
-    """
-    params = {"page": page, "limit": limit}
-    path = f"/arrivals/{gate_id}/{shift}/finished"
-    return await internal_client.get(path, params=params)
-
-
-# -------------------------------
-# GET: /api/arrivals/{gate_id}/{shift}/finished/total
-# -------------------------------
-@router.get("/arrivals/{gate_id}/{shift}/finished/total")
-async def count_arrivals_finished(
-    gate_id: int,
-    shift: int,
-):
-    """
-    Proxy para GET /api/v1/arrivals/{gate_id}/{shift}/finished/total no Data Module.
-    Retorna o total de chegadas concluídas para um gate e turno.
-    """
-    path = f"/arrivals/{gate_id}/{shift}/finished/total"
-    return await internal_client.get(path)
+    skip = (page - 1) * limit
+    params = {
+        "skip": skip,
+        "limit": limit,
+        "gate_id": gate_id,
+        "shift_id": shift,
+        "status": "completed"
+    }
+    return await internal_client.get("/arrivals", params=params)

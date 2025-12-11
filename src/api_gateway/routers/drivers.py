@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Query
-from typing import Dict, Any
+from fastapi import APIRouter, Query, Path
+from typing import Dict, Any, List, Optional
+from pydantic import BaseModel
 
 from ..clients import internal_api_client as internal_client
 
@@ -12,41 +13,43 @@ router = APIRouter(tags=["drivers"])
 @router.get("/drivers")
 async def list_drivers(
     limit: int = Query(default=100, ge=1, le=500),
+    skip: int = Query(default=0, ge=0),
 ):
     """
-    Proxy para GET /api/v1/drivers no Data Module.
-
-    No Data Module:
-      @router.get("/drivers", response_model=List[CondutorResponse])
-      def list_drivers(db: Session = Depends(get_db))
+    Proxy to GET /api/v1/drivers in Data Module.
     """
-    # O Data Module atualmente não tem paginação neste endpoint, portanto
-    # o parâmetro `limit` aqui é só para futura extensão, se decidirem adicionar.
-    params: Dict[str, Any] = {}
-    # Se quiserem suportar limit no futuro, podem adicionar ao Data Module e descomentar:
-    # params["limit"] = limit
-
-    return await internal_client.get("/drivers", params=params or None)
+    params = {
+        "skip": skip,
+        "limit": limit
+    }
+    return await internal_client.get("/drivers", params=params)
 
 
 # ---------------------------------
-# GET: /api/drivers/{id}/arrivals
+# GET: /api/drivers/{drivers_license}
 # ---------------------------------
-@router.get("/drivers/{driver_id}/arrivals")
+@router.get("/drivers/{drivers_license}")
+async def get_driver(
+    drivers_license: str = Path(..., description="Driver's License"),
+):
+    """
+    Proxy to GET /api/v1/drivers/{drivers_license}
+    """
+    # URL encode if necessary, but requests handles it usually
+    return await internal_client.get(f"/drivers/{drivers_license}")
+
+
+# ---------------------------------
+# GET: /api/drivers/{drivers_license}/arrivals
+# ---------------------------------
+@router.get("/drivers/{drivers_license}/arrivals")
 async def get_arrivals_for_driver(
-    driver_id: int,
+    drivers_license: str = Path(..., description="Driver's License"),
     limit: int = Query(default=50, ge=1, le=200),
 ):
     """
-    Proxy para GET /api/v1/drivers/{id}/arrivals no Data Module.
-
-    No Data Module:
-      @router.get("/drivers/{id}/arrivals", response_model=List[ChegadaResponse])
-      def get_arrivals_for_driver(id: int, db: Session = Depends(get_db))
+    Proxy to GET /api/v1/drivers/{drivers_license}/arrivals
     """
-    path = f"/drivers/{driver_id}/arrivals"
-    # Tal como em list_drivers, o Data Module não usa `limit` ainda, mas já deixamos preparado.
-    params: Dict[str, Any] = {}
-    # params["limit"] = limit  # se decidirem adicionar no Data Module
-
-    return await internal_client.get(path, params=params or None)
+    path = f"/drivers/{drivers_license}/arrivals"
+    params = {"limit": limit}
+    return await internal_client.get(path, params=params)
