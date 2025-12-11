@@ -7,213 +7,308 @@ from sqlalchemy.orm import relationship
 
 Base = declarative_base()
 
-# ENUMs traduzidos
-estado_entrega_enum = SEnum('in_transit', 'delayed', 'unloading', 'completed', name='delivery_status')
-tipo_carga_enum = SEnum('general', 'hazardous', 'refrigerated', 'live', 'bulk', name='cargo_type')
-estado_fisico_enum = SEnum('liquid', 'solid', 'gaseous', 'hybrid', name='physical_state')
-nivel_acesso_enum = SEnum('admin', 'basic', name='access_level')
-estado_enum = SEnum('maintenance', 'operational', 'closed', name='operational_status')
-tipo_trabalhador_enum = SEnum('manager', 'operator', name='worker_type')
+# ==========================
+# ENUMS
+# ==========================
 
-class TipoTurno(enum.Enum):
-    MANHA = "06:00-14:00"
-    TARDE = "14:00-22:00"
-    NOITE = "22:00-06:00"
+delivery_status_enum = SEnum('in_transit', 'delayed', 'unloading', 'completed', name='delivery_status')
+physical_state_enum = SEnum('liquid', 'solid', 'gaseous', 'hybrid', name='physical_state')
+access_level_enum = SEnum('admin', 'basic', name='access_level')
+operational_status_enum = SEnum('maintenance', 'operational', 'closed', name='operational_status')
+appointment_status_enum = SEnum('pending', 'approved', 'canceled', 'completed', name='appointment_status')
 
-    def get_horarios(self):
-        """Converte as strings do enum para objetos time."""
-        ini_str, fim_str = self.value.split("-")
-        hora_inicio = datetime.strptime(ini_str, "%H:%M").time()
-        hora_fim = datetime.strptime(fim_str, "%H:%M").time()
-        return hora_inicio, hora_fim
 
-# Tabelas
-class TrabalhadorPorto(Base):
-    __tablename__ = "trabalhador_porto"
-    num_trabalhador = Column(Integer, primary_key=True)
-    nome = Column(Text, nullable=False)
-    email = Column(Text, unique=True)
-    password_hash = Column(Text)
-    role = Column(tipo_trabalhador_enum, nullable=False)
-    ativo = Column(Boolean, default=True)
-    criado_em = Column(TIMESTAMP, server_default=func.now())
+class ShiftType(enum.Enum):
+    MORNING = "06:00-14:00"
+    AFTERNOON = "14:00-22:00"
+    NIGHT = "22:00-06:00"
 
-    gestor = relationship("Gestor", back_populates="trabalhador", uselist=False)
-    operador = relationship("Operador", back_populates="trabalhador", uselist=False)
+    def get_hours(self):
+        """Converts enum strings to time objects."""
+        start_str, end_str = self.value.split("-")
+        start_time = datetime.strptime(start_str, "%H:%M").time()
+        end_time = datetime.strptime(end_str, "%H:%M").time()
+        return start_time, end_time
 
-class Gestor(Base):
-    __tablename__ = "gestor"
-    num_trabalhador = Column(Integer, ForeignKey('trabalhador_porto.num_trabalhador'), primary_key=True)
-    nivel_acesso = Column(nivel_acesso_enum, default='basic')
-    trabalhador = relationship("TrabalhadorPorto", back_populates="gestor")
 
-class Operador(Base):
-    __tablename__ = "operador"
-    num_trabalhador = Column(Integer, ForeignKey('trabalhador_porto.num_trabalhador'), primary_key=True)
-    trabalhador = relationship("TrabalhadorPorto", back_populates="operador")
+# ==========================
+# INFRASTRUCTURE: Terminal, Dock, Gate
+# ==========================
 
-class Empresa(Base):
-    __tablename__ = "empresa"
-    id_empresa = Column(Integer, primary_key=True)
-    nome = Column(Text, nullable=False)
-    nif = Column(Text, unique=True)
-    contacto = Column(Text)
-    descricao = Column(Text)
-
-class Condutor(Base):
-    __tablename__ = "condutor"
-    num_carta_cond = Column(Text, primary_key=True)
-    id_empresa = Column(Integer, ForeignKey('empresa.id_empresa'))
-    nome = Column(Text, nullable=False)
-    contacto = Column(Text)
+class Terminal(Base):
+    __tablename__ = "terminal"
     
-    # Autenticação para app mobile
-    password_hash = Column(Text)
-    ativo = Column(Boolean, default=True)
-    criado_em = Column(TIMESTAMP, server_default=func.now())
+    id = Column(Integer, primary_key=True)
+    latitude = Column(DECIMAL(10, 8))
+    longitude = Column(DECIMAL(11, 8))
     
-    empresa = relationship("Empresa")
+    # Relationships
+    docks = relationship("Dock", back_populates="terminal")
+    appointments = relationship("Appointment", back_populates="terminal")
 
-class VeiculoPesado(Base):
-    __tablename__ = "veiculo_pesado"
-    matricula = Column(Text, primary_key=True)
-    marca = Column(Text)
 
-class Conduz(Base):
-    __tablename__ = "conduz"
-    matricula_veiculo = Column(Text, ForeignKey('veiculo_pesado.matricula'), primary_key=True)
-    num_carta_cond = Column(Text, ForeignKey('condutor.num_carta_cond'), primary_key=True)
-    inicio = Column(TIMESTAMP, primary_key=True)
-    fim = Column(TIMESTAMP)
-    veiculo = relationship("VeiculoPesado")
-    condutor = relationship("Condutor")
-
-class Carga(Base):
-    __tablename__ = "carga"
-    id_carga = Column(Integer, primary_key=True)
-    peso = Column(DECIMAL(10,2), nullable=False)
-    descricao = Column(Text)
-    adr = Column(Boolean, default=False)
-    tipo_carga = Column(tipo_carga_enum, nullable=False)
-    estado_fisico = Column(estado_fisico_enum, nullable=False)
-    unidade_medida = Column(String(10), default='Kg')
-
-class Cais(Base):
-    __tablename__ = "cais"
-    id_cais = Column(Integer, primary_key=True)
-    estado = Column(estado_enum, default='operational')
-    capacidade_max = Column(Integer)
-    localizacao_gps = Column(Text)
-
-class Turno(Base):
-    __tablename__ = "turno"
-
-    id_turno = Column(Integer, primary_key=True)
-
-    tipo_turno = Column(SEnum(TipoTurno), nullable=False)
-
-    num_operador_cancela = Column(Integer, ForeignKey('operador.num_trabalhador'))
-    num_gestor_responsavel = Column(Integer, ForeignKey('gestor.num_trabalhador'))
-    id_gate = Column(Integer, ForeignKey('gate.id_gate'))
-
-    hora_inicio = Column(Time, nullable=False)
-    hora_fim = Column(Time, nullable=False)
-    data = Column(Date, nullable=False)
-
-    operador = relationship("Operador")
-    gestor = relationship("Gestor")
-    gate = relationship("Gate")
-    chegadas = relationship("ChegadaDiaria", backref="turno")
-    historicos = relationship("HistoricoOcorrencias", back_populates="turno")
-
-    def __init__(self, tipo_turno: TipoTurno, data, **kwargs):
-        """Inicia o turno definindo nas horas com base no enum."""
-        self.tipo_turno = tipo_turno
-        self.data = data
-
-        # Obtém horários do enum automaticamente
-        inicio, fim = tipo_turno.get_horarios()
-        self.hora_inicio = inicio
-        self.hora_fim = fim
-
-        # Atribui outros campos normais
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-
-class ChegadaDiaria(Base):
-    __tablename__ = "chegadas_diarias"
-    id_chegada = Column(Integer, primary_key=True)
-    id_gate_entrada = Column(Integer, ForeignKey('gate.id_gate'))
-    id_gate_saida = Column(Integer, ForeignKey('gate.id_gate'), nullable=True)
-    id_cais = Column(Integer, ForeignKey('cais.id_cais'))
-    id_turno = Column(Integer, ForeignKey('turno.id_turno'))
-    matricula_pesado = Column(Text, ForeignKey('veiculo_pesado.matricula'))
-    id_carga = Column(Integer, ForeignKey('carga.id_carga'))
-    data_prevista = Column(Date)
-    hora_prevista = Column(Time)
-    data_hora_chegada = Column(TIMESTAMP)
-    observacoes = Column(Text)
-    estado_entrega = Column(estado_entrega_enum, default='in_transit')
+class Dock(Base):
+    __tablename__ = "dock"
     
-    # PIN para app mobile do motorista
-    pin_acesso = Column(String(12), unique=True, index=True)
-
-    cais = relationship("Cais")
-    carga = relationship("Carga")
-    veiculo = relationship("VeiculoPesado")
+    id = Column(Integer, primary_key=True)
+    terminal_id = Column(Integer, ForeignKey('terminal.id'), nullable=False)
+    bay_number = Column(String(50))
+    latitude = Column(DECIMAL(10, 8))
+    longitude = Column(DECIMAL(11, 8))
+    current_usage = Column(operational_status_enum, default='operational')
     
-    gate_entrada = relationship(
-        "Gate",
-        foreign_keys=[id_gate_entrada],
-        back_populates="chegadas_entrada"
-    )
+    # Relationships
+    terminal = relationship("Terminal", back_populates="docks")
 
-    gate_saida = relationship(
-        "Gate",
-        foreign_keys=[id_gate_saida],
-        back_populates="chegadas_saida"
-    )
-
-class HistoricoOcorrencias(Base):
-    __tablename__ = "historico_ocorrencias"
-    id_historico = Column(Integer, primary_key=True)
-    id_turno = Column(Integer, ForeignKey('turno.id_turno'))
-    hora_inicio = Column(TIMESTAMP)
-    hora_fim = Column(TIMESTAMP)
-    descricao = Column(Text)
-    turno = relationship("Turno", back_populates="historicos")
-
-class Alerta(Base):
-    __tablename__ = "alerta"
-    id_alerta = Column(Integer, primary_key=True)
-    id_historico_ocorrencia = Column(Integer, ForeignKey('historico_ocorrencias.id_historico'))
-    id_carga = Column(Integer, ForeignKey('carga.id_carga'))
-    data_hora = Column(TIMESTAMP, server_default=func.now())
-
-    url_imagem = Column(Text)
-    tipo = Column(Text, default='generic')
-    severidade = Column(Integer)
-    descricao = Column(Text)
-
-    historico = relationship("HistoricoOcorrencias")
-    carga = relationship("Carga")
 
 class Gate(Base):
     __tablename__ = "gate"
-    id_gate = Column(Integer, primary_key=True)
-    nome = Column(Text, nullable=False)
-    estado = Column(estado_enum, default='operational')
-    localizacao_gps = Column(Text)
-    descricao = Column(Text)
-
-    chegadas_entrada = relationship(
-        "ChegadaDiaria",
-        foreign_keys="ChegadaDiaria.id_gate_entrada",
-        back_populates="gate_entrada"
+    
+    id = Column(Integer, primary_key=True)
+    label = Column(String(100), nullable=False)
+    latitude = Column(DECIMAL(10, 8))
+    longitude = Column(DECIMAL(11, 8))
+    
+    # Relationships
+    shifts = relationship("Shift", back_populates="gate")
+    appointments_in = relationship(
+        "Appointment",
+        foreign_keys="Appointment.gate_in_id",
+        back_populates="gate_in"
+    )
+    appointments_out = relationship(
+        "Appointment",
+        foreign_keys="Appointment.gate_out_id",
+        back_populates="gate_out"
     )
 
-    chegadas_saida = relationship(
-        "ChegadaDiaria",
-        foreign_keys="ChegadaDiaria.id_gate_saida",
-        back_populates="gate_saida"
+
+# ==========================
+# EXTERNAL: Company, Driver, Truck
+# ==========================
+
+class Company(Base):
+    __tablename__ = "company"
+    
+    nif = Column(String(20), primary_key=True)
+    name = Column(String(200), nullable=False)
+    contact = Column(String(50))
+    
+    # Relationships
+    drivers = relationship("Driver", back_populates="company")
+    trucks = relationship("Truck", back_populates="company")
+
+
+class Driver(Base):
+    __tablename__ = "driver"
+    
+    drivers_license = Column(String(50), primary_key=True)
+    company_nif = Column(String(20), ForeignKey('company.nif'))
+    name = Column(String(100), nullable=False)
+    password_hash = Column(Text)
+    mobile_device_token = Column(Text)
+    active = Column(Boolean, default=True)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    
+    # Relationships
+    company = relationship("Company", back_populates="drivers")
+    appointments = relationship("Appointment", back_populates="driver")
+
+
+class Truck(Base):
+    __tablename__ = "truck"
+    
+    license_plate = Column(String(20), primary_key=True)
+    company_nif = Column(String(20), ForeignKey('company.nif'))
+    brand = Column(String(100))
+    
+    # Relationships
+    company = relationship("Company", back_populates="trucks")
+    appointments = relationship("Appointment", back_populates="truck")
+
+
+# ==========================
+# STAFF: Worker, Manager, Operator
+# ==========================
+
+class Worker(Base):
+    __tablename__ = "worker"
+    
+    nif = Column(String(20), primary_key=True)
+    name = Column(String(200), nullable=False)
+    phone = Column(String(50))
+    email = Column(String(200), unique=True)
+    password_hash = Column(Text)
+    active = Column(Boolean, default=True)
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    
+    # Relationships (disjoint specialization)
+    manager = relationship("Manager", back_populates="worker", uselist=False)
+    operator = relationship("Operator", back_populates="worker", uselist=False)
+
+
+class Manager(Base):
+    __tablename__ = "manager"
+    
+    nif = Column(String(20), ForeignKey('worker.nif'), primary_key=True)
+    access_level = Column(access_level_enum, default='basic')
+    
+    # Relationships
+    worker = relationship("Worker", back_populates="manager")
+    shifts = relationship("Shift", back_populates="manager")
+
+
+class Operator(Base):
+    __tablename__ = "operator"
+    
+    nif = Column(String(20), ForeignKey('worker.nif'), primary_key=True)
+    
+    # Relationships
+    worker = relationship("Worker", back_populates="operator")
+    shifts = relationship("Shift", back_populates="operator")
+
+
+class Shift(Base):
+    __tablename__ = "shift"
+    
+    id = Column(Integer, primary_key=True)
+    operator_nif = Column(String(20), ForeignKey('operator.nif'))
+    manager_nif = Column(String(20), ForeignKey('manager.nif'))
+    gate_id = Column(Integer, ForeignKey('gate.id'), nullable=False)
+    
+    shift_type = Column(SEnum(ShiftType), nullable=False)
+    date = Column(Date, nullable=False)
+    
+    # Relationships
+    operator = relationship("Operator", back_populates="shifts")
+    manager = relationship("Manager", back_populates="shifts")
+    gate = relationship("Gate", back_populates="shifts")
+    visits = relationship("Visit", back_populates="shift")
+    
+    @property
+    def start_time(self):
+        """Gets start time from enum."""
+        return self.shift_type.get_hours()[0]
+    
+    @property
+    def end_time(self):
+        """Gets end time from enum."""
+        return self.shift_type.get_hours()[1]
+
+
+# ==========================
+# BOOKING & CARGO
+# ==========================
+
+class Booking(Base):
+    __tablename__ = "booking"
+    
+    id = Column(Integer, primary_key=True)
+    reference = Column(String(50), unique=True)
+    direction = Column(String(20))  # 'inbound' or 'outbound'
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    
+    # Relationships
+    cargos = relationship("Cargo", back_populates="booking")
+    appointments = relationship("Appointment", back_populates="booking")
+
+
+class Cargo(Base):
+    __tablename__ = "cargo"
+    
+    id = Column(Integer, primary_key=True)
+    booking_id = Column(Integer, ForeignKey('booking.id'), nullable=False)
+    quantity = Column(DECIMAL(10, 2), nullable=False)
+    state = Column(physical_state_enum, nullable=False)
+    description = Column(Text)
+    
+    # Relationships
+    booking = relationship("Booking", back_populates="cargos")
+    alerts = relationship("Alert", back_populates="cargo")
+
+
+# ==========================
+# PLANNING: Appointment
+# ==========================
+
+class Appointment(Base):
+    __tablename__ = "appointment"
+    
+    id = Column(Integer, primary_key=True)
+    arrival_id = Column(String(50), unique=True, index=True)  # PIN e.g.: "PRT-0001"
+    
+    # Foreign Keys
+    booking_id = Column(Integer, ForeignKey('booking.id'), nullable=False)
+    driver_license = Column(String(50), ForeignKey('driver.drivers_license'), nullable=False)
+    truck_license_plate = Column(String(20), ForeignKey('truck.license_plate'), nullable=False)
+    terminal_id = Column(Integer, ForeignKey('terminal.id'), nullable=False)
+    gate_in_id = Column(Integer, ForeignKey('gate.id'))
+    gate_out_id = Column(Integer, ForeignKey('gate.id'))
+    
+    # Scheduling
+    scheduled_start_time = Column(TIMESTAMP)
+    expected_duration = Column(Integer)  # Expected duration in minutes
+    
+    # Status
+    status = Column(appointment_status_enum, default='pending')
+    notes = Column(Text)
+    
+    # Relationships
+    booking = relationship("Booking", back_populates="appointments")
+    driver = relationship("Driver", back_populates="appointments")
+    truck = relationship("Truck", back_populates="appointments")
+    terminal = relationship("Terminal", back_populates="appointments")
+    gate_in = relationship(
+        "Gate",
+        foreign_keys=[gate_in_id],
+        back_populates="appointments_in"
     )
+    gate_out = relationship(
+        "Gate",
+        foreign_keys=[gate_out_id],
+        back_populates="appointments_out"
+    )
+    visit = relationship("Visit", back_populates="appointment", uselist=False)
+
+
+# ==========================
+# EXECUTION: Visit
+# ==========================
+
+class Visit(Base):
+    __tablename__ = "visit"
+    
+    # PK = FK (1:1 relationship with Appointment)
+    appointment_id = Column(Integer, ForeignKey('appointment.id'), primary_key=True)
+    shift_id = Column(Integer, ForeignKey('shift.id'), nullable=False)
+    
+    # Actual times
+    entry_time = Column(TIMESTAMP)
+    out_time = Column(TIMESTAMP)
+    
+    # Status
+    state = Column(delivery_status_enum, default='in_transit')
+    
+    # Relationships
+    appointment = relationship("Appointment", back_populates="visit")
+    shift = relationship("Shift", back_populates="visits")
+
+
+# ==========================
+# ALERTS
+# ==========================
+
+class Alert(Base):
+    __tablename__ = "alert"
+    
+    id = Column(Integer, primary_key=True)
+    cargo_id = Column(Integer, ForeignKey('cargo.id'))
+    timestamp = Column(TIMESTAMP, server_default=func.now())
+    
+    image_url = Column(Text)
+    type = Column(String(50), default='generic')
+    severity = Column(Integer)
+    description = Column(Text)
+    
+    # Relationships
+    cargo = relationship("Cargo", back_populates="alerts")

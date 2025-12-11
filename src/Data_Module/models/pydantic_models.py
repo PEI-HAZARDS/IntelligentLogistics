@@ -1,6 +1,6 @@
 from datetime import date, time, datetime
 from decimal import Decimal
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 from enum import Enum
 
@@ -9,170 +9,76 @@ from enum import Enum
 # ENUMS
 # ==========================
 
-class EstadoEntregaEnum(str, Enum):
+class DeliveryStatusEnum(str, Enum):
     in_transit = "in_transit"
     delayed = "delayed"
     unloading = "unloading"
     completed = "completed"
 
 
-class TipoCargaEnum(str, Enum):
-    general = "general"
-    hazardous = "hazardous"
-    refrigerated = "refrigerated"
-    live = "live"
-    bulk = "bulk"
-
-
-class EstadoFisicoEnum(str, Enum):
+class PhysicalStateEnum(str, Enum):
     liquid = "liquid"
     solid = "solid"
     gaseous = "gaseous"
     hybrid = "hybrid"
 
 
-class NivelAcessoEnum(str, Enum):
+class AccessLevelEnum(str, Enum):
     admin = "admin"
     basic = "basic"
 
 
-class EstadoEnum(str, Enum):
+class OperationalStatusEnum(str, Enum):
     maintenance = "maintenance"
     operational = "operational"
     closed = "closed"
 
 
-class TipoTrabalhadorEnum(str, Enum):
-    manager = "manager"
-    operator = "operator"
+class AppointmentStatusEnum(str, Enum):
+    pending = "pending"
+    approved = "approved"
+    canceled = "canceled"
+    completed = "completed"
 
 
 # ==========================
-# EMPRESA
+# TERMINAL
 # ==========================
 
-class EmpresaBase(BaseModel): # Modelo Base
-    nome: str
-    nif: Optional[str] = None
-    contacto: Optional[str] = None
-    descricao: Optional[str] = None
+class TerminalBase(BaseModel):
+    latitude: Optional[Decimal] = None
+    longitude: Optional[Decimal] = None
 
 
-class EmpresaCreate(EmpresaBase): # Modelo para criação
+class TerminalCreate(TerminalBase):
     pass
 
 
-class EmpresaUpdate(BaseModel): # Modelo para atualização
-    nome: Optional[str] = None
-    nif: Optional[str] = None
-    contacto: Optional[str] = None
-    descricao: Optional[str] = None
-
-
-class Empresa(EmpresaBase): # Modelo para leitura
-    id_empresa: int
+class Terminal(TerminalBase):
+    id: int
 
     model_config = {"from_attributes": True}
 
 
 # ==========================
-# CONDUTOR
+# DOCK
 # ==========================
 
-class CondutorBase(BaseModel):
-    nome: str
-    contacto: Optional[str] = None
-    id_empresa: Optional[int] = None
+class DockBase(BaseModel):
+    terminal_id: int
+    bay_number: Optional[str] = None
+    latitude: Optional[Decimal] = None
+    longitude: Optional[Decimal] = None
+    current_usage: OperationalStatusEnum = OperationalStatusEnum.operational
 
 
-class CondutorCreate(CondutorBase):
-    num_carta_cond: str
-    password: str  # Password em texto simples (será hasheada)
-
-
-class Condutor(CondutorBase):
-    num_carta_cond: str
-    empresa: Optional[Empresa]
-
-    model_config = {"from_attributes": True}
-
-
-# ==========================
-# VEÍCULO PESADO
-# ==========================
-
-class VeiculoBase(BaseModel):
-    marca: Optional[str] = None
-
-
-class VeiculoCreate(VeiculoBase):
-    matricula: str
-
-
-class Veiculo(VeiculoBase):
-    matricula: str
-
-    model_config = {"from_attributes": True}
-
-
-# ==========================
-# CONDUZ (Ligação condutor-veículo)
-# ==========================
-
-class ConduzBase(BaseModel):
-    matricula_veiculo: str
-    num_carta_cond: str
-    inicio: datetime
-    fim: Optional[datetime] = None
-
-
-class Conduz(ConduzBase):
-    veiculo: Optional[Veiculo]
-    condutor: Optional[Condutor]
-
-    model_config = {"from_attributes": True}
-
-
-
-# ==========================
-# CARGA
-# ==========================
-
-class CargaBase(BaseModel):
-    peso: Decimal
-    descricao: Optional[str] = None
-    adr: bool = False
-    tipo_carga: TipoCargaEnum
-    estado_fisico: EstadoFisicoEnum
-    unidade_medida: str = "Kg"
-
-
-class CargaCreate(CargaBase):
+class DockCreate(DockBase):
     pass
 
 
-class Carga(CargaBase):
-    id_carga: int
-
-    model_config = {"from_attributes": True}
-
-
-# ==========================
-# CAIS
-# ==========================
-
-class CaisBase(BaseModel):
-    estado: EstadoEnum = EstadoEnum.operational
-    capacidade_max: Optional[int] = None
-    localizacao_gps: Optional[str] = None
-
-
-class CaisCreate(CaisBase):
-    pass
-
-
-class Cais(CaisBase):
-    id_cais: int
+class Dock(DockBase):
+    id: int
+    terminal: Optional[Terminal] = None
 
     model_config = {"from_attributes": True}
 
@@ -182,10 +88,9 @@ class Cais(CaisBase):
 # ==========================
 
 class GateBase(BaseModel):
-    nome: str
-    estado: EstadoEnum = EstadoEnum.operational
-    localizacao_gps: Optional[str] = None
-    descricao: Optional[str] = None
+    label: str
+    latitude: Optional[Decimal] = None
+    longitude: Optional[Decimal] = None
 
 
 class GateCreate(GateBase):
@@ -193,310 +98,385 @@ class GateCreate(GateBase):
 
 
 class Gate(GateBase):
-    id_gate: int
-
-    model_config = {"from_attributes": True}
-
-# ==========================
-# HISTÓRICO OCORRÊNCIAS
-# ==========================
-
-class HistoricoBase(BaseModel):
-    id_turno: int
-    hora_inicio: datetime
-    hora_fim: Optional[datetime] = None
-    descricao: Optional[str] = None
-
-
-class HistoricoCreate(HistoricoBase):
-    pass
-
-
-class Historico(HistoricoBase):
-    id_historico: int
-
-    model_config = {"from_attributes": True}
-
-
-
-# ==========================
-# ALERTA
-# ==========================
-
-class AlertaBase(BaseModel):
-    id_historico_ocorrencia: int
-    id_carga: int
-    tipo: Optional[str] = None
-    severidade: Optional[int] = None
-    descricao: Optional[str] = None
-
-
-class AlertaCreate(AlertaBase):
-    pass
-
-
-class Alerta(AlertaBase):
-    id_alerta: int
-    data_hora: datetime
-
-    class Config:
-        from_attributes = True
-
-
-# ==========================
-# TURNO
-# ==========================
-
-class TurnoBase(BaseModel):
-    """Base para turno"""
-    num_operador_cancela: Optional[int] = None
-    num_gestor_responsavel: Optional[int] = None
-    id_gate: Optional[int] = None
-    hora_inicio: Optional[time] = None
-    hora_fim: Optional[time] = None
-    descricao: Optional[str] = None
-
-
-class TurnoCreate(TurnoBase):
-    """Request para criar turno"""
-    pass
-
-
-class Turno(TurnoBase):
-    """Modelo de turno"""
-    id_turno: int
-
-    model_config = {"from_attributes": True}
-
-# ==========================
-# CHEGADAS DIÁRIAS
-# ==========================
-
-class ChegadaBase(BaseModel):
-    id_gate_entrada: int
-    id_gate_saida: Optional[int] = None
-    id_cais: int
-    id_turno: int
-    matricula_pesado: str
-    id_carga: int
-    data_prevista: Optional[date] = None
-    hora_prevista: Optional[time] = None
-    data_hora_chegada: Optional[datetime] = None
-    observacoes: Optional[str] = None
-    estado_entrega: EstadoEntregaEnum = EstadoEntregaEnum.in_transit
-
-
-class ChegadaCreate(ChegadaBase):
-    pass
-
-
-class Chegada(ChegadaBase):
-    id_chegada: int
-    pin_acesso: Optional[str] = None  # PIN gerado automaticamente
-    cais: Optional[Cais]
-    carga: Optional[Carga]
-    veiculo: Optional[Veiculo]
-    gate_entrada: Optional[Gate]
-    gate_saida: Optional[Gate]
-    turno: Optional[Turno]
+    id: int
 
     model_config = {"from_attributes": True}
 
 
 # ==========================
-# TRABALHADORES
+# COMPANY
 # ==========================
 
-class TrabalhadorBase(BaseModel):
-    """Base para trabalhador"""
-    nome: str
-    email: str
-    role: str  # "operador" ou "gestor"
+class CompanyBase(BaseModel):
+    name: str
+    contact: Optional[str] = None
 
 
-class TrabalhadorCreate(TrabalhadorBase):
-    """Request para criar trabalhador"""
+class CompanyCreate(CompanyBase):
+    nif: str
+
+
+class Company(CompanyBase):
+    nif: str
+
+    model_config = {"from_attributes": True}
+
+
+# ==========================
+# DRIVER
+# ==========================
+
+class DriverBase(BaseModel):
+    name: str
+    company_nif: Optional[str] = None
+
+
+class DriverCreate(DriverBase):
+    drivers_license: str
     password: str
 
 
-class Trabalhador(TrabalhadorBase):
-    """Modelo de trabalhador para leitura"""
-    num_trabalhador: int
-    ativo: bool
-    criado_em: Optional[datetime] = None
+class Driver(DriverBase):
+    drivers_license: str
+    active: bool = True
+    company: Optional[Company] = None
 
     model_config = {"from_attributes": True}
 
 
-class GestorInfo(BaseModel):
-    """Informação de gestor"""
-    num_trabalhador: int
-    nome: str
-    email: str
-    role: str
-    nivel_acesso: str
-    ativo: bool
+# ==========================
+# TRUCK
+# ==========================
+
+class TruckBase(BaseModel):
+    company_nif: Optional[str] = None
+    brand: Optional[str] = None
 
 
-class OperadorInfo(BaseModel):
-    """Informação de operador"""
-    num_trabalhador: int
-    nome: str
-    email: str
-    role: str
-    ativo: bool
+class TruckCreate(TruckBase):
+    license_plate: str
+
+
+class Truck(TruckBase):
+    license_plate: str
+    company: Optional[Company] = None
+
+    model_config = {"from_attributes": True}
 
 
 # ==========================
-# WORKER AUTH
+# WORKER
+# ==========================
+
+class WorkerBase(BaseModel):
+    name: str
+    email: str
+    phone: Optional[str] = None
+
+
+class WorkerCreate(WorkerBase):
+    nif: str
+    password: str
+
+
+class Worker(WorkerBase):
+    nif: str
+    active: bool = True
+    created_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+# ==========================
+# MANAGER
+# ==========================
+
+class Manager(BaseModel):
+    nif: str
+    access_level: AccessLevelEnum = AccessLevelEnum.basic
+    worker: Optional[Worker] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ManagerInfo(BaseModel):
+    nif: str
+    name: str
+    email: str
+    access_level: str
+    active: bool
+
+
+# ==========================
+# OPERATOR
+# ==========================
+
+class Operator(BaseModel):
+    nif: str
+    worker: Optional[Worker] = None
+
+    model_config = {"from_attributes": True}
+
+
+class OperatorInfo(BaseModel):
+    nif: str
+    name: str
+    email: str
+    active: bool
+
+
+# ==========================
+# SHIFT
+# ==========================
+
+class ShiftBase(BaseModel):
+    operator_nif: Optional[str] = None
+    manager_nif: Optional[str] = None
+    gate_id: int
+    date: date
+
+
+class ShiftCreate(ShiftBase):
+    shift_type: str  # "MORNING", "AFTERNOON", "NIGHT"
+
+
+class Shift(ShiftBase):
+    id: int
+    shift_type: str
+    gate: Optional[Gate] = None
+
+    model_config = {"from_attributes": True}
+
+
+# ==========================
+# BOOKING
+# ==========================
+
+class BookingBase(BaseModel):
+    reference: Optional[str] = None
+    direction: Optional[str] = None  # 'inbound' or 'outbound'
+
+
+class BookingCreate(BookingBase):
+    pass
+
+
+class Booking(BookingBase):
+    id: int
+    created_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+# ==========================
+# CARGO
+# ==========================
+
+class CargoBase(BaseModel):
+    booking_id: int
+    quantity: Decimal
+    state: PhysicalStateEnum
+    description: Optional[str] = None
+
+
+class CargoCreate(CargoBase):
+    pass
+
+
+class Cargo(CargoBase):
+    id: int
+    booking: Optional[Booking] = None
+
+    model_config = {"from_attributes": True}
+
+
+# ==========================
+# APPOINTMENT
+# ==========================
+
+class AppointmentBase(BaseModel):
+    booking_id: int
+    driver_license: str
+    truck_license_plate: str
+    terminal_id: int
+    gate_in_id: Optional[int] = None
+    gate_out_id: Optional[int] = None
+    scheduled_start_time: Optional[datetime] = None
+    expected_duration: Optional[int] = None  # Duration in minutes
+    status: AppointmentStatusEnum = AppointmentStatusEnum.pending
+    notes: Optional[str] = None
+
+
+class AppointmentCreate(AppointmentBase):
+    arrival_id: Optional[str] = None
+
+
+class Appointment(AppointmentBase):
+    id: int
+    arrival_id: str
+    booking: Optional[Booking] = None
+    driver: Optional[Driver] = None
+    truck: Optional[Truck] = None
+    terminal: Optional[Terminal] = None
+    gate_in: Optional[Gate] = None
+    gate_out: Optional[Gate] = None
+
+    model_config = {"from_attributes": True}
+
+
+# ==========================
+# VISIT
+# ==========================
+
+class VisitBase(BaseModel):
+    appointment_id: int
+    shift_id: int
+    entry_time: Optional[datetime] = None
+    out_time: Optional[datetime] = None
+    state: DeliveryStatusEnum = DeliveryStatusEnum.in_transit
+
+
+class VisitCreate(VisitBase):
+    pass
+
+
+class Visit(VisitBase):
+    appointment: Optional[Appointment] = None
+    shift: Optional[Shift] = None
+
+    model_config = {"from_attributes": True}
+
+
+# ==========================
+# ALERT
+# ==========================
+
+class AlertBase(BaseModel):
+    cargo_id: Optional[int] = None
+    type: str = "generic"
+    severity: Optional[int] = None
+    description: Optional[str] = None
+    image_url: Optional[str] = None
+
+
+class AlertCreate(AlertBase):
+    pass
+
+
+class Alert(AlertBase):
+    id: int
+    timestamp: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ==========================
+# AUTH MODELS
 # ==========================
 
 class WorkerLoginRequest(BaseModel):
-    """Request de login para trabalhador"""
     email: str
     password: str
 
 
 class WorkerLoginResponse(BaseModel):
-    """Response de login com token"""
     token: str
-    num_trabalhador: int
-    nome: str
+    nif: str
+    name: str
     email: str
-    role: str
-    ativo: bool
+    active: bool
 
-# ==========================
-# GESTOR
-# ==========================
-
-class Gestor(BaseModel):
-    num_trabalhador: int
-    nivel_acesso: NivelAcessoEnum = NivelAcessoEnum.basic
-
-    model_config = {"from_attributes": True}
-
-
-# ==========================
-# OPERADOR
-# ==========================
-
-class Operador(BaseModel):
-    num_trabalhador: int
-
-    model_config = {"from_attributes": True}
-
-
-# ==========================
-# DRIVER APP (Mobile)
-# ==========================
 
 class DriverLoginRequest(BaseModel):
-    """Request para login do motorista na app mobile"""
-    num_carta_cond: str
+    drivers_license: str
     password: str
 
 
 class DriverLoginResponse(BaseModel):
-    """Response do login com JWT token"""
     token: str
-    num_carta_cond: str
-    nome: str
-    id_empresa: int
-    empresa_nome: str
-
-
-class ClaimChegadaRequest(BaseModel):
-    """Request para motorista usar PIN e associar-se à chegada"""
-    pin_acesso: str
-
-
-class ClaimChegadaResponse(BaseModel):
-    """Response com detalhes da entrega após claim"""
-    id_chegada: int
-    id_cais: int
-    cais_localizacao: str
-    matricula_veiculo: str
-    carga_descricao: str
-    carga_adr: bool
-    navegacao_url: Optional[str] = None
+    drivers_license: str
+    name: str
+    company_nif: Optional[str] = None
+    company_name: Optional[str] = None
 
 
 # ==========================
-# ARRIVAL UPDATE MODELS (Decision Engine)
+# VISIT/APPOINTMENT OPERATIONS
+# ==========================
+
+class ClaimAppointmentRequest(BaseModel):
+    arrival_id: str
+
+
+class ClaimAppointmentResponse(BaseModel):
+    appointment_id: int
+    dock_bay_number: Optional[str] = None
+    dock_location: Optional[str] = None
+    license_plate: str
+    cargo_description: Optional[str] = None
+    navigation_url: Optional[str] = None
+
+
+class AppointmentStatusUpdate(BaseModel):
+    status: AppointmentStatusEnum
+    notes: Optional[str] = None
+
+
+class VisitStatusUpdate(BaseModel):
+    state: DeliveryStatusEnum
+    entry_time: Optional[datetime] = None
+    out_time: Optional[datetime] = None
+    notes: Optional[str] = None
+
+
+# ==========================
+# DECISION ENGINE MODELS
 # ==========================
 
 class AlertPayload(BaseModel):
-    """Payload para criação de alerta via Decision Engine"""
-    tipo: str  # "ADR", "delay", "security", etc.
-    severidade: int  # 1-5
-    descricao: str
+    type: str
+    severity: int
+    description: str
 
-
-class ArrivalStatusUpdate(BaseModel):
-    """Request para atualização manual de estado de chegada"""
-    estado_entrega: str  # "in_transit", "delayed", "unloading", "completed"
-    data_hora_chegada: Optional[datetime] = None
-    id_gate_saida: Optional[int] = None
-    observacoes: Optional[str] = None
-
-
-class ArrivalDecisionUpdate(BaseModel):
-    """
-    Request do Decision Engine para atualizar chegada.
-    Inclui decisão, estado e alertas opcionais (ADR, etc.)
-    """
-    decision: str  # "approved", "rejected", "manual_review"
-    estado_entrega: str  # "unloading", "delayed", etc.
-    data_hora_chegada: Optional[datetime] = None
-    observacoes: Optional[str] = None
-    alertas: Optional[List[AlertPayload]] = None
-
-
-# ==========================
-# DECISION ENGINE QUERY/RESPONSE
-# ==========================
 
 class DecisionCandidate(BaseModel):
-    """Candidato retornado ao Decision Engine"""
-    id_chegada: int
-    matricula_pesado: str
-    id_gate_entrada: int
-    id_cais: int
-    id_turno: int
-    hora_prevista: Optional[str] = None
-    estado_entrega: str
-    carga_adr: bool
-    carga_descricao: Optional[str] = None
-    cais_localizacao: Optional[str] = None
+    appointment_id: int
+    license_plate: str
+    gate_in_id: Optional[int] = None
+    terminal_id: Optional[int] = None
+    shift_id: Optional[int] = None
+    scheduled_time: Optional[str] = None
+    status: str
+    cargo_description: Optional[str] = None
 
 
 class DecisionRequest(BaseModel):
-    """
-    Request do Decision Engine a perguntar sobre chegadas.
-    Enviado após detecção de matrícula pelo Agent B.
-    """
-    matricula: str
-    id_gate: int
+    license_plate: str
+    gate_id: int
     timestamp: datetime
-    confidence: Optional[float] = None  # Confiança da detecção OCR
+    confidence: Optional[float] = None
 
 
 class DecisionResponse(BaseModel):
-    """
-    Response ao Decision Engine com chegadas candidatas.
-    """
     found: bool
     candidates: List[DecisionCandidate]
     message: Optional[str] = None
 
-from typing import Dict, Any
+
+class DecisionProcessRequest(BaseModel):
+    license_plate: str
+    gate_id: int
+    appointment_id: int
+    decision: str
+    state: DeliveryStatusEnum
+    notes: Optional[str] = None
+    alerts: Optional[List[AlertPayload]] = None
+
 
 class EventResponse(BaseModel):
-    """Response genérico para eventos."""
     id: Optional[str] = None
     type: str
     timestamp: Optional[datetime] = None
     gate_id: Optional[int] = None
-    matricula: Optional[str] = None
+    license_plate: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
