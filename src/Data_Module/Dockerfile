@@ -10,10 +10,12 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
-
-# Tornar entrypoint executável
+# Copy entrypoint first
+COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
+
+# Copy rest of app
+COPY . .
 
 # Usar entrypoint para executar data_init antes do servidor
 ENTRYPOINT ["/app/entrypoint.sh"]
