@@ -39,7 +39,7 @@ def publish_lp_result(timestamp, truck_id, plate_text, plate_conf):
 def main():
     timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     truck_id = "truck123"
-    plate_text = "ABC1234"
+    plate_text = "AA-11-BB"
     plate_conf = 0.95
     publish_lp_result(timestamp, truck_id, plate_text, plate_conf)
     

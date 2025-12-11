@@ -12,8 +12,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Tornar entrypoint executável
-RUN chmod +x /app/entrypoint.sh
+# Convert line endings to Unix format (in case of CRLF issues) and make executable
+RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 # Usar entrypoint para executar data_init antes do servidor
 ENTRYPOINT ["/app/entrypoint.sh"]

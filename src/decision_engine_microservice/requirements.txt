@@ -1,17 +1,2 @@
-fastapi
-uvicorn[standard]
-pydantic
-pydantic-settings
-
-# MongoDB
-pymongo
-dnspython
-
-# Redis (para caching)
-redis[hiredis]
-
-# Utils
-loguru
+confluent_kafka==2.12.0
 requests
-python-dotenv
-confluent_kafka
