@@ -76,8 +76,6 @@ services:
       PYTHONUNBUFFERED: 1
     ports:
       - "8080:8000" # default port for Data Module API
-    volumes:
-      - ./:/app
     healthcheck: # Verifica se o servidor está a responder
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
