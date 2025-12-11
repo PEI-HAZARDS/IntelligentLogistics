@@ -4,7 +4,6 @@ Usado por: App mobile do motorista.
 """
 
 from typing import List, Optional
-from datetime import datetime
 from sqlalchemy.orm import Session
 from utils.hashing_pass import hash_password, verify_password
 
@@ -19,8 +18,7 @@ def authenticate_driver(db: Session, num_carta_cond: str, password: str) -> Opti
     Retorna condutor se credenciais válidas, None caso contrário.
     """
     condutor = db.query(Condutor).filter(
-        Condutor.num_carta_cond == num_carta_cond,
-        Condutor.ativo == True
+        Condutor.num_carta_cond == num_carta_cond
     ).first()
     
     if not condutor:
@@ -110,10 +108,6 @@ def get_drivers(db: Session, skip: int = 0, limit: int = 100, only_active: bool 
     Retorna condutores com paginação.
     """
     query = db.query(Condutor)
-    
-    if only_active:
-        query = query.filter(Condutor.ativo == True)
-    
     return query.offset(skip).limit(limit).all()
 
 
@@ -177,8 +171,7 @@ def create_driver(
         nome=nome,
         password_hash=hash_password(password),
         contacto=contacto,
-        id_empresa=id_empresa,
-        ativo=True
+        id_empresa=id_empresa
     )
     db.add(condutor)
     db.commit()
@@ -199,12 +192,11 @@ def update_driver_password(db: Session, num_carta_cond: str, new_password: str) 
 
 
 def deactivate_driver(db: Session, num_carta_cond: str) -> Optional[Condutor]:
-    """Desativa um condutor (soft delete)."""
+    """Remove um condutor (hard delete por não existir mais flag ativo)."""
     condutor = db.query(Condutor).filter(Condutor.num_carta_cond == num_carta_cond).first()
     if not condutor:
         return None
-    
-    condutor.ativo = False
+
+    db.delete(condutor)
     db.commit()
-    db.refresh(condutor)
     return condutor

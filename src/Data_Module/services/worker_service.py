@@ -4,7 +4,7 @@ Usado por: Frontend backoffice, autenticação.
 """
 
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy.orm import Session
 from utils.hashing_pass import hash_password, verify_password
 
@@ -18,10 +18,7 @@ def authenticate_worker(db: Session, email: str, password: str) -> Optional[Trab
     Autentica trabalhador (operador ou gestor).
     Retorna trabalhador se credenciais válidas, None caso contrário.
     """
-    trabalhador = db.query(Trabalhador).filter(
-        Trabalhador.email == email,
-        Trabalhador.ativo == True
-    ).first()
+    trabalhador = db.query(Trabalhador).filter(Trabalhador.email == email).first()
     
     if not trabalhador:
         return None
@@ -45,12 +42,8 @@ def get_worker_by_id(db: Session, num_trabalhador: int) -> Optional[Trabalhador]
 # ==================== TRABALHADOR QUERIES ====================
 
 def get_all_workers(db: Session, skip: int = 0, limit: int = 100, only_active: bool = True) -> List[Trabalhador]:
-    """Obtém lista de trabalhadores."""
+    """Obtém lista de trabalhadores (ativo não é mais rastreado)."""
     query = db.query(Trabalhador)
-    
-    if only_active:
-        query = query.filter(Trabalhador.ativo == True)
-    
     return query.offset(skip).limit(limit).all()
 
 
@@ -78,10 +71,7 @@ def get_operator_info(db: Session, num_trabalhador: int) -> Optional[Dict[str, A
     return {
         "num_trabalhador": trabalhador.num_trabalhador,
         "nome": trabalhador.nome,
-        "email": trabalhador.email,
-        "role": trabalhador.role,
-        "ativo": trabalhador.ativo,
-        "criado_em": trabalhador.criado_em
+        "email": trabalhador.email
     }
 
 
@@ -186,10 +176,7 @@ def get_manager_info(db: Session, num_trabalhador: int) -> Optional[Dict[str, An
         "num_trabalhador": trabalhador.num_trabalhador,
         "nome": trabalhador.nome,
         "email": trabalhador.email,
-        "role": trabalhador.role,
-        "nivel_acesso": gestor.nivel_acesso,
-        "ativo": trabalhador.ativo,
-        "criado_em": trabalhador.criado_em
+        "nivel_acesso": gestor.nivel_acesso
     }
 
 
@@ -263,10 +250,7 @@ def create_worker(
     trabalhador = Trabalhador(
         nome=nome,
         email=email,
-        password_hash=hash_password(password),
-        role=role,
-        ativo=True,
-        criado_em=datetime.now(timezone.utc)
+        password_hash=hash_password(password)
     )
     db.add(trabalhador)
     db.commit()
@@ -324,25 +308,21 @@ def update_worker_email(db: Session, num_trabalhador: int, new_email: str) -> Op
 
 
 def deactivate_worker(db: Session, num_trabalhador: int) -> Optional[Trabalhador]:
-    """Desativa um trabalhador (soft delete)."""
+    """Remove um trabalhador (hard delete por não existir mais flag ativo)."""
     trabalhador = get_worker_by_id(db, num_trabalhador)
     if not trabalhador:
         return None
-    
-    trabalhador.ativo = False
+
+    db.delete(trabalhador)
     db.commit()
-    db.refresh(trabalhador)
     return trabalhador
 
 
 def promote_to_manager(db: Session, num_trabalhador: int, nivel_acesso: str = "basic") -> Optional[Gestor]:
     """Promove um operador a gestor."""
     trabalhador = get_worker_by_id(db, num_trabalhador)
-    if not trabalhador or trabalhador.role != "operador":
+    if not trabalhador:
         return None
-    
-    # Atualizar role
-    trabalhador.role = "gestor"
     
     # Remover de Operador se existir
     db.query(Operador).filter(Operador.num_trabalhador == num_trabalhador).delete()
