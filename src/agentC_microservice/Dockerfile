@@ -11,7 +11,7 @@ ENV PYTHONPATH=/app \
     MINOP_PORT=9000 \
     ACCESS_KEY=admin \    
     SECRET_KEY=adminadmin \
-    BUCKET_NAME=lp-crops \
+    BUCKET_NAME=hz-crops \
     NGINX_RTMP_PORT=1935
 
 WORKDIR /app
