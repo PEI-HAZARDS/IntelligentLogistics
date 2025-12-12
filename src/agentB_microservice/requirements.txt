@@ -9,3 +9,5 @@ gdown==5.2.0
 pillow==12.0.0
 numpy
 minio
+paddlepaddle==3.0.0  # Required by paddleocr
+paddleocr==3.3.2

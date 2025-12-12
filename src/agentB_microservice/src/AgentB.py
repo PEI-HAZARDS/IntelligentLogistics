@@ -1,6 +1,6 @@
 from agentB_microservice.src.RTSPstream import RTSPStream
 from agentB_microservice.src.YOLO_License_Plate import *
-from agentB_microservice.src.OCR import *
+from agentB_microservice.src.PaddleOCR import *
 from agentB_microservice.src.CropStorage import CropStorage
 from agentB_microservice.src.PlateClassifier import PlateClassifier
 
