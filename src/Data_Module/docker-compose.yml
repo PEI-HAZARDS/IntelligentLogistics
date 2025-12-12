@@ -14,7 +14,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U porto"]
+      test: ["CMD-SHELL", "pg_isready -U porto -d porto_logistica"]
       interval: 10s
       timeout: 5s
       retries: 5
