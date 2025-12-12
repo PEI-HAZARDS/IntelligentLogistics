@@ -284,7 +284,7 @@ def process_incoming_decision(
         db.close()
 
 
-def query_appointments_for_decision(license_plate: str, gate_id: int) -> Dict[str, Any]:
+def query_appointments_for_decision(time_frame: int, gate_id: int) -> Dict[str, Any]:
     """
     Queries candidate appointments for Decision Engine.
     Used when Decision Engine needs to know which appointments exist
@@ -302,7 +302,7 @@ def query_appointments_for_decision(license_plate: str, gate_id: int) -> Dict[st
     
     db = SessionLocal()
     try:
-        candidates = get_appointments_for_decision(db, license_plate=license_plate, gate_id=gate_id)
+        candidates = get_appointments_for_decision(db, time_frame=time_frame, gate_id=gate_id)
         
         return {
             "found": len(candidates) > 0,

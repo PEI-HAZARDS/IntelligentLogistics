@@ -127,9 +127,9 @@ def init_data(db: Session):
 
         brands = ["Volvo", "Scania", "Mercedes", "MAN", "Iveco", "DAF"]
         trucks = []
-        license_plates = ["AA-11-BB", "CC-22-DD", "EE-33-FF", "GG-44-HH", "II-55-JJ",
-                          "KK-66-LL", "MM-77-NN", "OO-88-PP", "QQ-99-RR", "SS-00-TT",
-                          "UU-12-VV", "WW-34-XX", "YY-56-ZZ", "AB-78-CD", "EF-90-GH"]
+        license_plates = ["VKTH76", "SL06173", "KHTS141", "SLS06408", "WNDSU600",
+                          "MZGOH112", "MZGOH89", "BC8003", "BC8004", "BC8005",
+                          "BC8006", "BC8007", "BC8008", "BC8009", "BC8010"]
 
         for i, plate in enumerate(license_plates):
             trucks.append(Truck(

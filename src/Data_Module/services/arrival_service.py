@@ -4,7 +4,7 @@ Used by: Operator frontend, Decision Engine, Driver app.
 """
 
 from typing import List, Optional, Dict, Any
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
 
@@ -89,9 +89,8 @@ def get_appointments_by_license_plate(
 
 def get_appointments_for_decision(
     db: Session,
-    license_plate: str,
     gate_id: int,
-    current_time: Optional[time] = None
+    time_frame: int = 1,
 ) -> List[Dict[str, Any]]:
     """
     Gets candidate appointments for Decision Engine.
@@ -101,7 +100,7 @@ def get_appointments_for_decision(
     Includes extra info: cargo, booking, gate.
     """
     today = date.today()
-    now = current_time or datetime.now().time()
+    now = datetime.now().time()
     
     # Find current shift based on time and gate
     current_shift = db.query(Shift).filter(
@@ -110,8 +109,11 @@ def get_appointments_for_decision(
     ).first()
     
     query = db.query(Appointment).filter(
-        Appointment.truck_license_plate == license_plate,
-        func.date(Appointment.scheduled_start_time) == today,
+        # retirn the appointments with in the time frame
+        Appointment.scheduled_start_time.between(
+            datetime.combine(today, (datetime.min + timedelta(hours=now.hour - time_frame)).time()),
+            datetime.combine(today, (datetime.min + timedelta(hours=now.hour + time_frame)).time())
+        ),
         Appointment.gate_in_id == gate_id,
         Appointment.status.in_(['in_transit', 'delayed'])
     )

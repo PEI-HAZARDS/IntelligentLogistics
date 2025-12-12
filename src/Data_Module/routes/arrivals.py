@@ -17,7 +17,6 @@ from services.arrival_service import (
     get_appointment_by_id,
     get_appointment_by_arrival_id,
     get_appointments_by_license_plate,
-    get_appointments_for_decision,
     get_appointments_count_by_status,
     update_appointment_status,
     update_appointment_from_decision,
@@ -150,20 +149,6 @@ def query_arrivals_by_license_plate(
     )
     return [Appointment.model_validate(a) for a in appointments]
 
-
-@router.get("/decision/candidates/{gate_id}/{license_plate}")
-def get_decision_candidates(
-    gate_id: int = Path(..., description="Gate ID"),
-    license_plate: str = Path(..., description="Detected license plate"),
-    db: Session = Depends(get_db)
-) -> List[Dict[str, Any]]:
-    """
-    Gets candidate appointments for decision.
-    Returns enriched data (cargo, booking, status).
-    
-    Used by Decision Engine after license plate detection.
-    """
-    return get_appointments_for_decision(db, license_plate=license_plate, gate_id=gate_id)
 
 
 # ==================== UPDATE ENDPOINTS ====================

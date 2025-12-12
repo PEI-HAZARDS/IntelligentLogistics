@@ -47,7 +47,7 @@ class DetectionEventRequest(BaseModel):
 
 class QueryAppointmentsRequest(BaseModel):
     """Request from Decision Engine to query appointments."""
-    license_plate: str
+    time_frame: int = 1  # hours
     gate_id: int
 
 
@@ -103,14 +103,14 @@ def process_decision(request: DecisionIncomingRequest):
 @router.post("/query-appointments")
 def query_appointments(request: QueryAppointmentsRequest):
     """
-    Decision Engine queries candidate appointments for a license plate.
-    Used after license plate detection by Agent B.
+    Decision Engine queries candidate appointments within a time window.
+    Used after license plate detection by Agent B to find potential matches.
     
-    Returns appointments with status 'pending' or 'approved' that
-    match the license plate and gate.
+    Returns appointments with status 'in_transit' or 'delayed' within
+    the specified time_frame (hours) around current time for the given gate.
     """
     result = query_appointments_for_decision(
-        license_plate=request.license_plate,
+        time_frame=request.time_frame,
         gate_id=request.gate_id
     )
     return result
