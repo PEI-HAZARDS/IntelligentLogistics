@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Data initializer for MVP.
-Run with PYTHONPATH=src python src/Data_Module/scripts/data_initializer.py
+Run with PYTHONPATH=src python src/Data_Module/scripts/data_init.py
 """
 
 from datetime import datetime, date, time, timedelta
@@ -12,446 +12,378 @@ from passlib.context import CryptContext
 import os
 import random
 import sys
-import os
 
 # Add parent directory to path so we can import models
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-# Tentar importar os modelos pelo caminho do pacote (assumindo PYTHONPATH inclui `src`)
+# Try to import models from package path (assuming PYTHONPATH includes `src`)
 try:
     from Data_Module.models.sql_models import (
-        Base, TrabalhadorPorto, Gestor, Operador, Empresa, Condutor,
-        VeiculoPesado, Conduz, Carga, Cais, Turno, ChegadaDiaria,
-        HistoricoOcorrencias, Alerta, Gate, TipoTurno
+        Base, Worker, Manager, Operator, Company, Driver,
+        Truck, Terminal, Dock, Gate, Shift, ShiftType,
+        Booking, Cargo, Appointment, Visit, Alert, ShiftAlertHistory
     )
 except Exception:
-    # Fallback para execução direta
+    # Fallback for direct execution
     try:
         from models.sql_models import (
-            Base, TrabalhadorPorto, Gestor, Operador, Empresa, Condutor,
-            VeiculoPesado, Conduz, Carga, Cais, Turno, ChegadaDiaria,
-            HistoricoOcorrencias, Alerta, Gate, TipoTurno
+            Base, Worker, Manager, Operator, Company, Driver,
+            Truck, Terminal, Dock, Gate, Shift, ShiftType,
+            Booking, Cargo, Appointment, Visit, Alert, ShiftAlertHistory
         )
     except Exception as e:
-        print("Erro ao importar modelos:", e)
-        print("Certifique-se que o PYTHONPATH inclui a pasta `src` ou execute a partir da raiz do repositório.")
+        print("Error importing models:", e)
+        print("Make sure PYTHONPATH includes the `src` folder or run from repository root.")
         sys.exit(1)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def init_data(db: Session):
     """
-    Inicializar a base de dados com dados fictícios para MVP.
-    Função idempotente para uso em desenvolvimento/demo.
+    Initialize database with mock data for MVP.
+    Idempotent function for development/demo use.
     """
     print("Populating database with initial data...")
 
     # Check if data already exists
-    if db.query(TrabalhadorPorto).first():
+    if db.query(Worker).first():
         print("Data already exists. Skipping initialization.")
         return
 
     try:
-        # ===== TRABALHADORES =====
+        # ===== WORKERS =====
         print("Creating workers...")
 
-        # Gestor
-        gestor1 = TrabalhadorPorto(
-            nome="João Silva",
+        # Manager
+        manager1 = Worker(
+            num_worker="MGR001",
+            name="João Silva",
             email="joao.silva@porto.pt",
-            password_hash=pwd_context.hash("password123")
+            phone="910000001",
+            password_hash=pwd_context.hash("password123"),
+            active=True
         )
 
-        # Operador
-        operador1 = TrabalhadorPorto(
-            nome="Carlos Oliveira",
+        # Operator
+        operator1 = Worker(
+            num_worker="OPR001",
+            name="Carlos Oliveira",
             email="carlos.oliveira@porto.pt",
-            password_hash=pwd_context.hash("password123")
+            phone="910000002",
+            password_hash=pwd_context.hash("password123"),
+            active=True
         )
 
-        db.add_all([gestor1, operador1])
+        db.add_all([manager1, operator1])
         db.flush()
 
-        # Criar registos de gestor e operador
-        gestor_obj1 = Gestor(num_trabalhador=gestor1.num_trabalhador, nivel_acesso="admin")
-        operador_obj1 = Operador(num_trabalhador=operador1.num_trabalhador)
+        # Create manager and operator records
+        manager_obj1 = Manager(num_worker=manager1.num_worker, access_level="admin")
+        operator_obj1 = Operator(num_worker=operator1.num_worker)
 
-        db.add_all([gestor_obj1, operador_obj1])
+        db.add_all([manager_obj1, operator_obj1])
         db.flush()
 
-        # ===== EMPRESAS =====
+        # ===== COMPANIES =====
         print("Creating companies...")
 
-        empresas = [
-            Empresa(nome="TransPortugal Lda", nif="500123456", contacto="220123456", descricao="Transportes nacionais"),
-            Empresa(nome="EuroCargas SA", nif="500234567", contacto="220234567", descricao="Transportes internacionais"),
-            Empresa(nome="LogísticaPro", nif="500345678", contacto="220345678", descricao="Logística e distribuição"),
-            Empresa(nome="CargoExpress", nif="500456789", contacto="220456789", descricao="Entregas expressas"),
-            Empresa(nome="MegaTrans", nif="500567890", contacto="220567890", descricao="Transportes pesados"),
+        companies = [
+            Company(nif="500123456", name="TransPortugal Lda", contact="220123456"),
+            Company(nif="500234567", name="EuroCargas SA", contact="220234567"),
+            Company(nif="500345678", name="LogísticaPro", contact="220345678"),
+            Company(nif="500456789", name="CargoExpress", contact="220456789"),
+            Company(nif="500567890", name="MegaTrans", contact="220567890"),
         ]
-        db.add_all(empresas)
+        db.add_all(companies)
         db.flush()
 
-        # ===== CONDUTORES =====
+        # ===== DRIVERS =====
         print("Creating drivers...")
 
-        condutores = [
-            Condutor(num_carta_cond="PT12345678", nome="Rui Almeida", contacto="912345678", id_empresa=empresas[0].id_empresa),
-            Condutor(num_carta_cond="PT23456789", nome="Sofia Rodrigues", contacto="913456789", id_empresa=empresas[0].id_empresa),
-            Condutor(num_carta_cond="PT34567890", nome="Miguel Teixeira", contacto="914567890", id_empresa=empresas[1].id_empresa),
-            Condutor(num_carta_cond="PT45678901", nome="Rita Pereira", contacto="915678901", id_empresa=empresas[1].id_empresa),
-            Condutor(num_carta_cond="PT56789012", nome="Bruno Sousa", contacto="916789012", id_empresa=empresas[2].id_empresa),
-            Condutor(num_carta_cond="PT67890123", nome="Carla Mendes", contacto="917890123", id_empresa=empresas[2].id_empresa),
-            Condutor(num_carta_cond="PT78901234", nome="Nuno Dias", contacto="918901234", id_empresa=empresas[3].id_empresa),
-            Condutor(num_carta_cond="PT89012345", nome="Patrícia Lima", contacto="919012345", id_empresa=empresas[3].id_empresa),
-            Condutor(num_carta_cond="PT90123456", nome="Tiago Martins", contacto="920123456", id_empresa=empresas[4].id_empresa),
-            Condutor(num_carta_cond="PT01234567", nome="Vera Castro", contacto="921234567", id_empresa=empresas[4].id_empresa),
-            Condutor(num_carta_cond="PT11223344", nome="André Soares", contacto="922345678", id_empresa=empresas[0].id_empresa),
-            Condutor(num_carta_cond="PT22334455", nome="Beatriz Gomes", contacto="923456789", id_empresa=empresas[1].id_empresa),
+        drivers = [
+            Driver(drivers_license="PT12345678", name="Rui Almeida", company_nif=companies[0].nif),
+            Driver(drivers_license="PT23456789", name="Sofia Rodrigues", company_nif=companies[0].nif),
+            Driver(drivers_license="PT34567890", name="Miguel Teixeira", company_nif=companies[1].nif),
+            Driver(drivers_license="PT45678901", name="Rita Pereira", company_nif=companies[1].nif),
+            Driver(drivers_license="PT56789012", name="Bruno Sousa", company_nif=companies[2].nif),
+            Driver(drivers_license="PT67890123", name="Carla Mendes", company_nif=companies[2].nif),
+            Driver(drivers_license="PT78901234", name="Nuno Dias", company_nif=companies[3].nif),
+            Driver(drivers_license="PT89012345", name="Patrícia Lima", company_nif=companies[3].nif),
+            Driver(drivers_license="PT90123456", name="Tiago Martins", company_nif=companies[4].nif),
+            Driver(drivers_license="PT01234567", name="Vera Castro", company_nif=companies[4].nif),
         ]
         
-        # Adicionar passwords de teste para app mobile
+        # Add test passwords for mobile app
         print("Adding test passwords for drivers...")
-        for condutor in condutores:
-            condutor.password_hash = pwd_context.hash("driver123")
+        for driver in drivers:
+            driver.password_hash = pwd_context.hash("driver123")
+            driver.active = True
         
-        db.add_all(condutores)
+        db.add_all(drivers)
         db.flush()
 
-        # ===== VEÍCULOS =====
-        print("Creating vehicles...")
+        # ===== TRUCKS =====
+        print("Creating trucks...")
 
-        marcas = ["Volvo", "Scania", "Mercedes", "MAN", "Iveco", "DAF"]
-        veiculos = []
-        matriculas = ["AA-11-BB", "CC-22-DD", "EE-33-FF", "GG-44-HH", "II-55-JJ",
-                      "KK-66-LL", "MM-77-NN", "OO-88-PP", "QQ-99-RR", "SS-00-TT",
-                      "UU-12-VV", "WW-34-XX", "YY-56-ZZ", "AB-78-CD", "EF-90-GH",
-                      "IJ-12-KL", "MN-34-OP", "QR-56-ST"]
+        brands = ["Volvo", "Scania", "Mercedes", "MAN", "Iveco", "DAF"]
+        trucks = []
+        license_plates = ["VKTH76", "SL06173", "KHTS141", "SLS06408", "WNDSU600",
+                          "MZGOH112", "MZGOH89", "BC8003", "BC8004", "BC8005",
+                          "BC8006", "BC8007", "BC8008", "BC8009", "BC8010"]
 
-        for mat in matriculas:
-            veiculos.append(VeiculoPesado(matricula=mat, marca=random.choice(marcas)))
-
-        db.add_all(veiculos)
-        db.flush()
-
-        # ===== CONDUZ (Associações condutor-veículo) =====
-        print("Creating driver-vehicle associations...")
-
-        hoje_dt = datetime.now()
-        conducoes = []
-        for i, condutor in enumerate(condutores):
-            veiculo_idx = i % len(veiculos)
-            conducoes.append(Conduz(
-                matricula_veiculo=veiculos[veiculo_idx].matricula,
-                num_carta_cond=condutor.num_carta_cond,
-                inicio=hoje_dt - timedelta(days=random.randint(30, 365)),
-                fim=None
+        for i, plate in enumerate(license_plates):
+            trucks.append(Truck(
+                license_plate=plate, 
+                brand=random.choice(brands),
+                company_nif=companies[i % len(companies)].nif
             ))
 
-        db.add_all(conducoes)
+        db.add_all(trucks)
         db.flush()
 
-        # ===== CARGAS =====
+        # ===== TERMINALS =====
+        print("Creating terminals...")
+
+        terminals = [
+            Terminal(name="Terminal Norte", latitude=Decimal("41.1523"), longitude=Decimal("-8.6145"), hazmat_approved=True),
+            Terminal(name="Terminal Sul", latitude=Decimal("41.1524"), longitude=Decimal("-8.6146"), hazmat_approved=False),
+        ]
+
+        db.add_all(terminals)
+        db.flush()
+
+        # ===== DOCKS =====
+        print("Creating docks...")
+
+        docks = []
+        for i in range(1, 6):
+            docks.append(Dock(
+                terminal_id=terminals[0].id,
+                bay_number=f"BAY-{i:02d}",
+                latitude=Decimal(f"41.{1520 + i}"),
+                longitude=Decimal(f"-8.{6140 + i}"),
+                current_usage="operational"
+            ))
+
+        db.add_all(docks)
+        db.flush()
+
+        # ===== GATES =====
+        print("Creating gates...")
+
+        gates = [
+            Gate(label="Gate A - Main Entrance", latitude=Decimal("41.1510"), longitude=Decimal("-8.6210")),
+            Gate(label="Gate B - North Exit", latitude=Decimal("41.1520"), longitude=Decimal("-8.6200")),
+        ]
+
+        db.add_all(gates)
+        db.flush()
+
+        # ===== SHIFTS (composite PK: gate_id + shift_type + date) =====
+        print("Creating shifts...")
+
+        # Use tomorrow for future appointments, today for current ones
+        today = date.today()
+        tomorrow = today + timedelta(days=1)
+        
+        # Create shifts for today and tomorrow
+        shifts = []
+        for shift_date in [today, tomorrow]:
+            shifts.extend([
+                Shift(
+                    gate_id=gates[0].id,
+                    shift_type=ShiftType.MORNING,
+                    date=shift_date,
+                    operator_num_worker=operator1.num_worker,
+                    manager_num_worker=manager1.num_worker
+                ),
+                Shift(
+                    gate_id=gates[0].id,
+                    shift_type=ShiftType.AFTERNOON,
+                    date=shift_date,
+                    operator_num_worker=operator1.num_worker,
+                    manager_num_worker=manager1.num_worker
+                ),
+            ])
+
+        db.add_all(shifts)
+        db.flush()
+
+        # ===== BOOKINGS (PK: reference) =====
+        print("Creating bookings...")
+
+        # Create bookings for today
+        bookings = []
+        for i in range(40):
+            bookings.append(Booking(
+                reference=f"BK-{today.strftime('%Y%m%d')}-{i+1:04d}",
+                direction="inbound" if i % 2 == 0 else "outbound"
+            ))
+
+        db.add_all(bookings)
+        db.flush()
+
+        # ===== CARGOS =====
         print("Creating cargos...")
 
-        cargas = []
-
-        cargas_perigosas = [
-            {"desc": "Ácido sulfúrico (H2SO4)", "peso": 15000, "tipo": "hazardous", "estado": "liquid", "adr": True},
-            {"desc": "Gás propano comprimido", "peso": 8000, "tipo": "hazardous", "estado": "gaseous", "adr": True},
-            {"desc": "Produtos químicos inflamáveis", "peso": 12000, "tipo": "hazardous", "estado": "liquid", "adr": True},
-            {"desc": "Refrigerado - Carne congelada", "peso": 18000, "tipo": "refrigerated", "estado": "solid", "adr": False},
-            {"desc": "Refrigerado - Produtos farmacêuticos", "peso": 5000, "tipo": "refrigerated", "estado": "solid", "adr": False},
-            {"desc": "Carga viva - Gado bovino", "peso": 6000, "tipo": "live", "estado": "solid", "adr": False},
-            {"desc": "Carga viva - Aves de capoeira", "peso": 3000, "tipo": "live", "estado": "solid", "adr": False},
-            {"desc": "A granel - Cereais (trigo)", "peso": 22000, "tipo": "bulk", "estado": "solid", "adr": False},
-            {"desc": "A granel - Areia industrial", "peso": 25000, "tipo": "bulk", "estado": "solid", "adr": False},
-            {"desc": "Geral - Peças automóveis", "peso": 8000, "tipo": "general", "estado": "solid", "adr": False},
-            {"desc": "Geral - Material eletrónico", "peso": 5500, "tipo": "general", "estado": "solid", "adr": False},
-            {"desc": "Mistura de fertilizantes (orgânicos + minerais)", "peso": 7000, "tipo": "bulk", "estado": "hybrid", "adr": False},
+        cargo_descriptions = [
+            ("Sulfuric acid (H2SO4)", "liquid", Decimal("15000")),
+            ("Compressed propane gas", "gaseous", Decimal("8000")),
+            ("Flammable chemicals", "liquid", Decimal("12000")),
+            ("Frozen meat", "solid", Decimal("18000")),
+            ("Pharmaceutical products", "solid", Decimal("5000")),
+            ("Cattle", "solid", Decimal("6000")),
+            ("Poultry", "solid", Decimal("3000")),
+            ("Wheat cereals", "solid", Decimal("22000")),
+            ("Industrial sand", "solid", Decimal("25000")),
+            ("Auto parts", "solid", Decimal("8000")),
+            ("Electronic equipment", "solid", Decimal("5500")),
+            ("Furniture", "solid", Decimal("9000")),
+            ("Construction materials", "solid", Decimal("16000")),
+            ("Textile products", "solid", Decimal("6000")),
+            ("Industrial machinery", "solid", Decimal("19000")),
         ]
 
-        for cp in cargas_perigosas:
-            cargas.append(Carga(
-                peso=Decimal(cp["peso"]),
-                descricao=cp["desc"],
-                adr=True,
-                tipo_carga="hazardous",
-                estado_fisico=cp["estado"],
-                unidade_medida="Kg"
+        cargos = []
+        for i, booking in enumerate(bookings):
+            desc, state, qty = cargo_descriptions[i % len(cargo_descriptions)]
+            cargos.append(Cargo(
+                booking_reference=booking.reference,
+                quantity=qty,
+                state=state,
+                description=desc
             ))
 
-        cargas_refrigeradas = [
-            {"desc": "Carne congelada", "peso": 18000},
-            {"desc": "Produtos farmacêuticos", "peso": 5000},
-            {"desc": "Peixe fresco", "peso": 12000},
-            {"desc": "Frutas e vegetais", "peso": 15000},
-            {"desc": "Produtos lácteos", "peso": 8000},
-        ]
-
-        for cr in cargas_refrigeradas:
-            cargas.append(Carga(
-                peso=Decimal(cr["peso"]),
-                descricao=cr["desc"],
-                adr=False,
-                tipo_carga="refrigerated",
-                estado_fisico="solid",
-                unidade_medida="Kg"
-            ))
-
-        cargas.append(Carga(
-            peso=Decimal(6000),
-            descricao="Gado bovino",
-            adr=False,
-            tipo_carga="live",
-            estado_fisico="solid",
-            unidade_medida="Kg"
-        ))
-        cargas.append(Carga(
-            peso=Decimal(3000),
-            descricao="Aves de capoeira",
-            adr=False,
-            tipo_carga="live",
-            estado_fisico="solid",
-            unidade_medida="Kg"
-        ))
-
-        cargas_granel = [
-            {"desc": "Cereais (trigo)", "peso": 22000},
-            {"desc": "Areia industrial", "peso": 25000},
-            {"desc": "Sal grosso", "peso": 20000},
-            {"desc": "Farinha de milho", "peso": 18000},
-            {"desc": "Açúcar a granel", "peso": 21000},
-        ]
-
-        for cg in cargas_granel:
-            cargas.append(Carga(
-                peso=Decimal(cg["peso"]),
-                descricao=cg["desc"],
-                adr=False,
-                tipo_carga="bulk",
-                estado_fisico="solid",
-                unidade_medida="Kg"
-            ))
-
-        cargas_gerais = [
-            {"desc": "Peças automóveis", "peso": 8000},
-            {"desc": "Electrodomésticos", "peso": 12000},
-            {"desc": "Mobiliário", "peso": 9000},
-            {"desc": "Material de construção", "peso": 16000},
-            {"desc": "Produtos têxteis", "peso": 6000},
-            {"desc": "Maquinaria industrial", "peso": 19000},
-            {"desc": "Papel e cartão", "peso": 11000},
-            {"desc": "Produtos de plástico", "peso": 7500},
-            {"desc": "Material eletrónico", "peso": 5500},
-            {"desc": "Ferramentas industriais", "peso": 13000},
-        ]
-
-        for cg in cargas_gerais:
-            cargas.append(Carga(
-                peso=Decimal(cg["peso"]),
-                descricao=cg["desc"],
-                adr=False,
-                tipo_carga="general",
-                estado_fisico="solid",
-                unidade_medida="Kg"
-            ))
-
-        db.add_all(cargas)
+        db.add_all(cargos)
         db.flush()
 
-        # ===== CAIS =====
-        print("Creating Docks...")
+        # ===== APPOINTMENTS =====
+        print("Creating appointments...")
 
-        cais_list = []
-        for i in range(1, 6):
-            cais_list.append(Cais(
-                estado="operational",
-                capacidade_max=random.randint(8, 12),
-                localizacao_gps=f"41.{140 + i}23N, 8.{610 + i}45W"
-            ))
+        def generate_schedule_times(base_date: date, count: int) -> list:
+            """
+            Generate realistic appointment times spread across operational hours.
+            Operational hours: 06:00 - 22:00 (16 hours)
+            """
+            schedules = []
+            # Define operational hours
+            start_hour = 6
+            end_hour = 22
+            total_minutes = (end_hour - start_hour) * 60  # 960 minutes
+            interval = total_minutes // count  # Spread appointments evenly
+            
+            for i in range(count):
+                minutes_offset = i * interval + random.randint(-10, 10)  # Add slight randomness
+                minutes_offset = max(0, min(minutes_offset, total_minutes - 1))  # Clamp
+                hour = start_hour + (minutes_offset // 60)
+                minute = minutes_offset % 60
+                # Round to nearest 5 minutes for realism
+                minute = (minute // 5) * 5
+                schedules.append(datetime.combine(base_date, time(hour, minute)))
+            
+            return schedules
 
-        db.add_all(cais_list)
-        db.flush()
+        # Generate schedule times for today
+        schedule_times = generate_schedule_times(today, 40)
 
-        # ===== GATE =====
-        print("Creating 1 gate...")
-
-        gate = Gate(
-            nome="Gate Principal",
-            estado="operational",
-            localizacao_gps="41.1510N, 8.6210W",
-            descricao="Portão principal de entrada e saída"
+        # Updated status values to match AppointmentStatusEnum
+        # For today's appointments, distribute statuses realistically
+        status_distribution = (
+            ["in_transit"] * 30 +  # Most appointments are pending/in transit
+            ["delayed"] * 6 +      # Some delayed
+            ["completed"] * 3 +    # Few completed
+            ["canceled"] * 1       # Rarely canceled
         )
+        random.shuffle(status_distribution)
 
-        db.add(gate)
-        db.flush()
-
-        # ===== TURNO =====
-        print("Creating 1 shift...")
-
-        hoje = date.today()
-
-        turno = Turno(
-            tipo_turno=TipoTurno.MANHA,
-            data=hoje,
-            num_operador_cancela=operador1.num_trabalhador,
-            num_gestor_responsavel=gestor1.num_trabalhador,
-            id_gate=gate.id_gate,
-            hora_inicio=time(6, 0),
-            hora_fim=time(14, 0)
-        )
-
-        db.add(turno)
-        db.flush()
-
-        # ===== CHEGADAS DIÁRIAS =====
-        print("📅 Creating 33 daily arrivals with varied states...")
-
-        horarios = [
-            time(6, 30), time(7, 0), time(7, 45), time(8, 20), time(9, 0),
-            time(9, 40), time(10, 15), time(11, 0), time(11, 30), time(12, 15),
-            time(13, 0), time(13, 45), time(14, 30), time(15, 0), time(15, 45),
-            time(16, 20), time(17, 0), time(17, 40), time(18, 15), time(19, 0),
-            time(19, 45), time(20, 30), time(21, 0), time(21, 45), time(22, 30),
-            time(23, 0), time(23, 30), time(0, 15), time(1, 0), time(2, 0),
-            time(3, 0), time(4, 0), time(5, 0)
-        ]
-
-        distribuicao_estados = (
-            ["in_transit"] * 13 +
-            ["delayed"] * 3 +
-            ["unloading"] * 10 +
-            ["completed"] * 7
-        )
-        random.shuffle(distribuicao_estados)
-
-        chegadas = []
-        for i in range(33):
-            hora_prevista = horarios[i]
-            minutos_variacao = random.randint(-20, 90)
-            hora_chegada = datetime.combine(hoje, hora_prevista) + timedelta(minutes=minutos_variacao)
-
-            estado = distribuicao_estados[i]
-
-            gate_saida = None
-            data_hora_chegada = None
-
-            if estado == "completed":
-                gate_saida = gate.id_gate
-                data_hora_chegada = hora_chegada
-            elif estado in ["unloading", "delayed"]:
-                data_hora_chegada = hora_chegada
-
-            observacoes_opcoes = [
-                "Entrega normal",
-                "Carga frágil - manusear com cuidado",
-                "Documentação completa verificada",
-                "Requer inspeção adicional",
-                "Cliente prioritário",
-                "Verificar temperatura da carga",
-                "Documentação ADR em ordem",
-                "Entrega urgente",
-                "Primeira entrega da empresa",
-                "Carga de alto valor",
-            ]
-
-            chegadas.append(ChegadaDiaria(
-                id_gate_entrada=gate.id_gate,
-                id_gate_saida=gate_saida,
-                id_cais=random.choice(cais_list).id_cais,
-                id_turno=turno.id_turno,
-                matricula_pesado=random.choice(veiculos).matricula,
-                id_carga=cargas[i % len(cargas)].id_carga,
-                data_prevista=hoje,
-                hora_prevista=hora_prevista,
-                data_hora_chegada=data_hora_chegada,
-                observacoes=random.choice(observacoes_opcoes),
-                estado_entrega=estado
+        appointments = []
+        for i in range(40):
+            scheduled_time = schedule_times[i]
+            appointments.append(Appointment(
+                # arrival_id auto-generated by trigger (PRT-XXXX format)
+                booking_reference=bookings[i].reference,
+                driver_license=drivers[i % len(drivers)].drivers_license,
+                truck_license_plate=trucks[i % len(trucks)].license_plate,
+                terminal_id=terminals[0].id,
+                gate_in_id=gates[0].id,
+                gate_out_id=gates[1].id if status_distribution[i] == "completed" else None,
+                scheduled_start_time=scheduled_time,
+                expected_duration=random.randint(30, 120),
+                status=status_distribution[i],
+                notes="Normal delivery"
             ))
 
-        db.add_all(chegadas)
-        db.flush()
-        
-        # ===== GERAR PINs DE ACESSO =====
-        print("Generating access PINs for arrivals...")
-        for i, chegada in enumerate(chegadas):
-            # Gera PIN simples: PRT-XXXX (4 dígitos)
-            pin = f"PRT-{str(i+1).zfill(4)}"
-            chegada.pin_acesso = pin
-        
+        db.add_all(appointments)
         db.flush()
 
-        # ===== HISTÓRICO OCORRÊNCIAS =====
-        print("Creating occurrence history...")
+        # ===== VISITS (composite FK to Shift) =====
+        print("Creating visits for in_transit/delayed/completed appointments...")
 
-        ocorrencias = [
-            HistoricoOcorrencias(
-                id_turno=turno.id_turno,
-                hora_inicio=datetime.combine(hoje, time(8, 30)),
-                hora_fim=datetime.combine(hoje, time(9, 15)),
-                descricao="Congestionamento na entrada"
-            ),
-            HistoricoOcorrencias(
-                id_turno=turno.id_turno,
-                hora_inicio=datetime.combine(hoje, time(11, 0)),
-                hora_fim=datetime.combine(hoje, time(11, 45)),
-                descricao="Inspeção de carga perigosa - ADR"
-            ),
-            HistoricoOcorrencias(
-                id_turno=turno.id_turno,
-                hora_inicio=datetime.combine(hoje, time(12, 30)),
-                hora_fim=datetime.combine(hoje, time(13, 15)),
-                descricao="Verificação de documentação aduaneira"
-            ),
-        ]
+        # Get tomorrow's morning shift (shifts[2] is tomorrow morning, shifts[3] is tomorrow afternoon)
+        tomorrow_morning_shift = shifts[2]  # Index 2 = tomorrow morning
 
-        db.add_all(ocorrencias)
+        visits = []
+        for appt in appointments:
+            if appt.status in ["in_transit", "delayed", "completed"]:
+                entry_time = appt.scheduled_start_time + timedelta(minutes=random.randint(-15, 30))
+                out_time = None
+                state = "unloading"  # Updated to match DeliveryStatusEnum
+                
+                if appt.status == "completed":
+                    out_time = entry_time + timedelta(minutes=random.randint(30, 90))
+                    state = "completed"
+                
+                # Determine which shift to use based on entry time
+                if entry_time.hour < 14:
+                    shift_to_use = tomorrow_morning_shift  # Morning shift
+                else:
+                    shift_to_use = shifts[3]  # Afternoon shift
+                
+                visits.append(Visit(
+                    appointment_id=appt.id,
+                    shift_gate_id=shift_to_use.gate_id,
+                    shift_type=shift_to_use.shift_type,
+                    shift_date=shift_to_use.date,
+                    entry_time=entry_time,
+                    out_time=out_time,
+                    state=state
+                ))
+
+        db.add_all(visits)
         db.flush()
 
-        # ===== ALERTAS =====
+        # ===== ALERTS (using visit_id instead of cargo_id) =====
         print("Creating alerts...")
 
-        alertas = [
-            Alerta(
-                id_historico_ocorrencia=ocorrencias[0].id_historico,
-                id_carga=cargas[0].id_carga,
-                severidade=3,
-                descricao="Carga perigosa (ácido) - verificar contenção",
-                data_hora=datetime.now() - timedelta(hours=4)
-            ),
-            Alerta(
-                id_historico_ocorrencia=ocorrencias[1].id_historico,
-                id_carga=cargas[1].id_carga,
-                severidade=4,
-                descricao="Gás comprimido - inspeção obrigatória ADR",
-                data_hora=datetime.now() - timedelta(hours=3)
-            ),
-            Alerta(
-                id_historico_ocorrencia=ocorrencias[1].id_historico,
-                id_carga=cargas[8].id_carga,
-                severidade=3,
-                descricao="Temperatura fora dos parâmetros - carga refrigerada",
-                data_hora=datetime.now() - timedelta(hours=2)
-            ),
-            Alerta(
-                id_historico_ocorrencia=ocorrencias[2].id_historico,
-                id_carga=cargas[3].id_carga,
-                severidade=2,
-                descricao="Documentação ADR incompleta - aguardando correção",
-                data_hora=datetime.now() - timedelta(hours=1)
-            ),
-            Alerta(
-                id_historico_ocorrencia=ocorrencias[1].id_historico,
-                id_carga=cargas[5].id_carga,
-                severidade=4,
-                descricao="Combustível diesel - verificar licenças de transporte",
-                data_hora=datetime.now() - timedelta(minutes=45)
-            ),
-        ]
+        # Find visits with hazardous cargo to attach alerts
+        hazmat_visits = [v for v in visits if v.appointment_id <= 3]  # First 3 visits
 
-        db.add_all(alertas)
+        alerts = []
+        if len(hazmat_visits) >= 1:
+            alerts.append(Alert(
+                visit_id=hazmat_visits[0].appointment_id,
+                type="safety",
+                description="Hazardous cargo (acid) - check containment | UN 1830 - Sulfuric acid | Class: 8 | Hazard: Corrosive"
+            ))
+        if len(hazmat_visits) >= 2:
+            alerts.append(Alert(
+                visit_id=hazmat_visits[1].appointment_id,
+                type="safety",
+                description="Compressed gas - mandatory ADR inspection | UN 1978 - Propane | Class: 2.1 | Hazard: Flammable gas"
+            ))
+        # Generic operational alert
+        alerts.append(Alert(
+            visit_id=None,
+            type="operational",
+            description="Temperature out of range - refrigerated cargo"
+        ))
+
+        db.add_all(alerts)
         db.flush()
+
+        # ===== SHIFT ALERT HISTORY =====
+        # Auto-created by trigger (trg_create_shift_alert_history)
+        # when alert has visit_id, it's automatically linked to shift
 
         # ===== COMMIT =====
         print("[Saving data to the database...]")
@@ -459,34 +391,91 @@ def init_data(db: Session):
 
         print("Database initialized successfully!")
         print(f"""
-Summary:
+================================================================================
+                           DATABASE INITIALIZATION SUMMARY
+================================================================================
+
+ENTITIES CREATED:
 - Workers: 2 (1 manager, 1 operator)
-- Companies: {len(empresas)}
-- Drivers: {len(condutores)} (all with password: driver123)
-- Vehicles: {len(veiculos)}
-- Loads: {len(cargas)} (8 hazardous, 5 refrigerated, 2 live, 5 bulk, 10 general)
-- Docks: 5
-- Gates: 1
-- Shifts: 1 (morning 06:00-14:00)
-- Arrivals (today): {len(chegadas)} (all with PIN: PRT-0001 to PRT-0033)
-  · In transit: {distribuicao_estados.count('in_transit')}
-  · Delayed: {distribuicao_estados.count('delayed')}
-  · Unloading: {distribuicao_estados.count('unloading')}
-  · Completed: {distribuicao_estados.count('completed')}
-- Occurrences: {len(ocorrencias)}
-- Alerts: {len(alertas)} (focus on hazardous loads)
+- Companies: {len(companies)}
+- Drivers: {len(drivers)}
+- Trucks: {len(trucks)}
+- Terminals: {len(terminals)} (1 hazmat approved)
+- Docks: {len(docks)}
+- Gates: {len(gates)}
+- Shifts: {len(shifts)} (today + tomorrow)
+- Bookings: {len(bookings)}
+- Cargos: {len(cargos)}
+- Appointments: {len(appointments)}
+  · In Transit: {status_distribution.count('in_transit')}
+  · Delayed: {status_distribution.count('delayed')}
+  · Completed: {status_distribution.count('completed')}
+  · Canceled: {status_distribution.count('canceled')}
+- Visits: {len(visits)}
+- Alerts: {len(alerts)}
 
-Test credentials:
+================================================================================
+                              MVP TEST CREDENTIALS
+================================================================================
 
-Web Portal:
-Email: joao.silva@porto.pt | Password: password123 (Manager)
-Email: carlos.oliveira@porto.pt | Password: password123 (Operator)
+WEB PORTAL (Operator/Manager):
+┌─────────────────────────────────┬─────────────┬────────────┐
+│ Email                           │ Password    │ Role       │
+├─────────────────────────────────┼─────────────┼────────────┤
+│ joao.silva@porto.pt             │ password123 │ Manager    │
+│ carlos.oliveira@porto.pt        │ password123 │ Operator   │
+└─────────────────────────────────┴─────────────┴────────────┘
 
-Mobile App (Drivers):
-Any driver license: PT12345678, PT23456789, etc.
-Password: driver123
-Test PIN: PRT-0001 (First delivery)
+MOBILE APP (Drivers):
+┌──────────────────┬─────────────────────┬─────────────┐
+│ Driver License   │ Name                │ Password    │
+├──────────────────┼─────────────────────┼─────────────┤""")
+        
+        for driver in drivers[:5]:  # Show first 5 drivers
+            print(f"│ {driver.drivers_license:<16} │ {driver.name:<19} │ driver123   │")
+        
+        print(f"""│ ...              │ (more drivers)      │ driver123   │
+└──────────────────┴─────────────────────┴─────────────┘
+
+================================================================================
+                          APPOINTMENT PINs FOR TESTING
+================================================================================
+
+Date: {today.strftime('%Y-%m-%d')} (Today)
 """)
+        
+        print("Sample PINs to test in mobile app:")
+        print("┌────────────┬────────────────┬───────────────────────┬────────────┐")
+        print("│ PIN        │ Driver         │ Scheduled Time        │ Status     │")
+        print("├────────────┼────────────────┼───────────────────────┼────────────┤")
+        
+        for i, appt in enumerate(appointments[:10]):  # Show first 10 appointments
+            driver = drivers[i % len(drivers)]
+            time_str = appt.scheduled_start_time.strftime('%H:%M')
+            print(f"│ {appt.arrival_id:<10} │ {driver.drivers_license:<14} │ {today.strftime('%Y-%m-%d')} {time_str:<7} │ {appt.status:<10} │")
+        
+        print("│ ...        │ ...            │ ...                   │ ...        │")
+        print("└────────────┴────────────────┴───────────────────────┴────────────┘")
+        
+        print("""
+================================================================================
+                               QUICK TEST GUIDE
+================================================================================
+
+NOTE: Arrival IDs (PINs) are auto-generated by database trigger in PRT-XXXX format.
+
+1. Login as driver:
+   POST /drivers/login
+   {"drivers_license": "PT12345678", "password": "driver123"}
+
+2. Claim appointment with PIN (use actual PIN from table above):
+   POST /drivers/claim?drivers_license=PT12345678
+   {"arrival_id": "PRT-0001"}
+
+3. Get active arrival:
+   GET /drivers/me/active?drivers_license=PT12345678
+
+================================================================================""")
     except Exception as e:
         print("!!! Error during initialization:", e)
         db.rollback()
@@ -494,7 +483,7 @@ Test PIN: PRT-0001 (First delivery)
 
 def create_and_seed(database_url: str):
     engine = create_engine(database_url)
-    # Cria tabelas caso não existam
+    # Create tables if they don't exist
     Base.metadata.create_all(engine)
 
     SessionLocal = sessionmaker(bind=engine)
@@ -506,5 +495,5 @@ def create_and_seed(database_url: str):
 
 if __name__ == "__main__":
     DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://user:password@localhost/porto_db"
-    print("Usando DATABASE_URL =", DATABASE_URL)
+    print("Using DATABASE_URL =", DATABASE_URL)
     create_and_seed(DATABASE_URL)

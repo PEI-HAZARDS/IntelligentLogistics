@@ -10,17 +10,11 @@ services:
       - RTSP_PORT=554
       - STREAM_LOW_PATH=stream2
       - STREAM_HIGH_PATH=stream1
-      - GATE_ID=gate01
+      - GATE_ID=gate1
     restart: unless-stopped
-    networks:
-      - host  # Usar rede host para acesso externo simplificado
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
-
-networks:
-  host:
-    external: true

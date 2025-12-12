@@ -1,6 +1,6 @@
 from agentC_microservice.src.RTSPstream import RTSPStream
 from agentC_microservice.src.YOLO_Hazard_Plate import *
-from agentC_microservice.src.OCR import *
+from agentC_microservice.src.PaddleOCR import *
 from agentC_microservice.src.CropStorage import CropStorage
 from agentC_microservice.src.PlateClassifier import PlateClassifier
 
@@ -19,8 +19,8 @@ from typing import Optional, Tuple
 NGINX_RTMP_HOST = os.getenv("NGINX_RTMP_HOST", "10.255.32.35")
 NGINX_RTMP_PORT = os.getenv("NGINX_RTMP_PORT", "1935")
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
-GATE_ID = os.getenv("GATE_ID", "gate01")
-RTSP_STREAM_HIGH = os.getenv("RTSP_STREAM_HIGH", f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_high/{GATE_ID}")
+GATE_ID = os.getenv("GATE_ID", "1")
+RTSP_STREAM_HIGH = os.getenv("RTSP_STREAM_HIGH", f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_high/gate{GATE_ID}")
 
 # MinIO Configuration
 MINIO_HOST = os.getenv("MINIO_HOST", "10.255.32.132")
@@ -46,7 +46,7 @@ logger = logging.getLogger("AgentC")
 
 class AgentC:
     """
-    Agent B:
+    Agent C:
     - Consumes 'truck-detected' events from Kafka.
     - Upon receipt, connects to/reads from the High-Quality RTSP stream.
     - Detects hazard plates using YOLO and extracts text using OCR.
@@ -169,7 +169,7 @@ class AgentC:
                 logger.exception(f"[AgentC] Error when capturing frame {e}")
                 time.sleep(0.2)
 
-    def process_hazard_plate_detection(self):
+    def process_hazard_plate_detection(self, truck_id: str):
         """
         Main pipeline to detect and extract hazard plate text.
         
@@ -208,7 +208,7 @@ class AgentC:
             logger.debug(f"[AgentC] Processing frame {self.frames_processed}/{self.max_frames}")
 
             # Process single frame
-            result = self._process_single_frame(frame)
+            result = self._process_single_frame(frame, truck_id)
 
             # If full consensus reached, return immediately
             if result:
@@ -235,14 +235,14 @@ class AgentC:
         # If full consensus not reached, return best partial result
         return self._get_best_partial_result()
 
-    def _process_single_frame(self, frame):
+    def _process_single_frame(self, frame, truck_id: str):
         """
         Processes a single video frame.
         Returns (text, conf, crop) if consensus is reached, else None.
         """
-        
+
         try:
-            logger.info("[AgentC] YOLO (LP) running…")
+            logger.info("[AgentC] YOLO (HZ) running…")
             results = self.yolo.detect(frame)
 
             if not results:
@@ -269,38 +269,9 @@ class AgentC:
                 # Extract Crop
                 crop = frame[int(y1):int(y2), int(x1):int(x2)]
 
-                # Classify the crop (hazard plate vs hazard plate)
-                #classification = self.classifier.classify(crop)
 
-                """ if classification != PlateClassifier.HAZARD_PLATE:
-                    # Save rejected crop for debugging
-                    #rejected_path = f"{REJECTED_CROPS_PATH}/{classification}_{int(time.time())}_{i}.jpg"
-                    #try:
-                    #    self.classifier.visualize_classification(
-                    #        crop, classification, rejected_path)
-                    #except Exception as e:
-                    #    logger.warning(
-                    #        f"[AgentC] Failed saving rejected crop: {e}")
-
-                    logger.warning(
-                        f"[AgentC] Crop {i} rejected: classified as {classification.upper()}"
-                    )
-                    continue """
-
-                logger.info(f"[AgentC] Crop {i} accepted HAZARD_PLATE")
+                logger.info(f"[AgentC] Crop {i} accepted as HAZARD_PLATE")
                 # ============================================================
-
-                # Save accepted crop
-                #crop_path = f"{CROPS_PATH}/lp_crop_{int(time.time())}_{i}.jpg"
-                #logger.info(f"[AgentC] Saving crop {i} to {crop_path}…")
-
-                #try:
-                #    # Save with visualization
-                #    self.classifier.visualize_classification(
-                #        crop, classification, crop_path)
-                #except Exception as e:
-                #    logger.warning(f"[AgentC] Failed saving crop: {e}")
-
                 # Run OCR
                 logger.info("[AgentC] OCR extracting text…")
                 try:
@@ -344,7 +315,7 @@ class AgentC:
         """
 
         # Ignore low confidences
-        if confidence < 0.5:
+        if confidence < 0.80:
             logger.debug(
                 f"[AgentC] Confidence too low ({confidence:.2f}), skipping")
             return
@@ -388,7 +359,7 @@ class AgentC:
                 self.counter[pos][char] = 0
 
             # Confidence-weighted votes
-            if confidence >= 0.8:
+            if confidence >= 0.95:
                 self.counter[pos][char] += 2
             else:
                 self.counter[pos][char] += 1
@@ -404,6 +375,7 @@ class AgentC:
                     self.decided_chars[pos] = char
                     logger.debug(
                         f"[AgentC] Position {pos} changed: '{old_char}' -> '{char}'")
+
 
     def _check_full_consensus(self) -> bool:
         """
@@ -431,6 +403,7 @@ class AgentC:
             f"[AgentC] Consensus check: {decided_count}/{total_positions} positions decided (need {required_positions})")
         return False
 
+
     def _build_final_text(self) -> str:
         """Builds final text from decided characters."""
         if not self.decided_chars:
@@ -445,6 +418,7 @@ class AgentC:
         logger.debug(f"[AgentC] Built final text: '{final_text}'")
 
         return final_text
+
 
     def _get_best_partial_result(self):
         """
@@ -506,7 +480,7 @@ class AgentC:
                 f"{msg.topic()}[{msg.partition()}] at offset {msg.offset()}"
             )
     
-    def _publish_lp_detected(self, truck_id, plate_text, plate_conf, crop_url):
+    def _publish_hz_detected(self, truck_id, un, kemler, plate_conf, crop_url):
         """
         Publishes the 'hazard-plate-detected' event to Kafka.
         Propagates the correlation ID and includes MinIO crop URL.
@@ -516,13 +490,14 @@ class AgentC:
         # Construct JSON payload
         payload = {
             "timestamp": timestamp,
-            "hazardPlate": plate_text,
+            "un": un,
+            "kemler" : kemler,
             "confidence": float(plate_conf if plate_conf is not None else 0.0),
             "cropUrl": crop_url
         }
         
         logger.info(
-            f"[AgentC] Publishing '{TOPIC_PRODUCE}' (truckId={truck_id}, plate={plate_text}) …")
+            f"[AgentC] Publishing '{TOPIC_PRODUCE}' (truckId={truck_id}, un={un}), kemler={kemler} …")
 
         # Send to Kafka
         self.producer.produce(
@@ -536,7 +511,7 @@ class AgentC:
         self.producer.poll(0)
 
     def _loop(self):
-        """Main loop for Agent B."""
+        """Main loop for Agent C."""
         logger.info(
             f"[AgentC] Main loop starting… (topic in='{TOPIC_CONSUME}')")
 
@@ -588,14 +563,14 @@ class AgentC:
                     truck_id = str(uuid.uuid4())
 
                 logger.info(
-                    f"[AgentC] Received 'truck-detected' (truckId={truck_id}). Starting LP pipeline…")
+                    f"[AgentC] Received 'truck-detected' (truckId={truck_id}). Starting HZ pipeline…")
 
                 # Process hazard plate detection
-                plate_text, plate_conf, _lp_img = self.process_hazard_plate_detection()
+                plate_text, plate_conf, _hz_img = self.process_hazard_plate_detection(truck_id)
 
                 if not plate_text:
-                    logger.warning(
-                        "[AgentC] No final text results — not publishing.")
+                    logger.warning("[AgentC] No final text results — publishing empty message.")
+                    self._publish_hz_detected(truck_id, "N/A", "N/A", -1, None)
                     continue
                 
                 # Upload best crop to MinIO
@@ -603,20 +578,30 @@ class AgentC:
                 if self.best_crop is not None:
                     try:
                         # Generate unique object name
-                        object_name = f"lp_{truck_id}_{plate_text}.jpg"
+                        object_name = f"hz_{truck_id}_{plate_text}.jpg"
                         crop_url = self.crop_storage.upload_memory_image(self.best_crop, object_name)
                         
                         if crop_url:
-                            logger.info(f"[AgentC] Crop uploaded to MinIO: {crop_url}")
+                            logger.info(f"[AgentC] Crop Final Consensus: {crop_url}")
                         else:
                             logger.warning("[AgentC] Failed to upload crop to MinIO")
                     except Exception as e:
                         logger.exception(f"[AgentC] Error uploading crop to MinIO: {e}")
                 
+                parts = plate_text.split(" ")
+                logger.info(f"Parts: {parts}")
+                if len(parts) == 2:
+                    un = parts[0]
+                    kemler = parts[1]
+                else:
+                    un = "N/A"
+                    kemler = "N/A"
+
                 # Publish the hazard plate detected message
-                self._publish_lp_detected(
+                self._publish_hz_detected(
                     truck_id=truck_id,
-                    plate_text=plate_text,
+                    un=un,
+                    kemler=kemler,
                     plate_conf=plate_conf,
                     crop_url=crop_url
                 )
@@ -649,6 +634,6 @@ class AgentC:
                 pass
 
     def stop(self):
-        """Gracefully stop Agent B."""
+        """Gracefully stop Agent C."""
         logger.info("[AgentC] Stopping agent…")
         self.running = False

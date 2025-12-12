@@ -1,6 +1,6 @@
 from agentB_microservice.src.RTSPstream import RTSPStream
 from agentB_microservice.src.YOLO_License_Plate import *
-from agentB_microservice.src.OCR import *
+from agentB_microservice.src.PaddleOCR import *
 from agentB_microservice.src.CropStorage import CropStorage
 from agentB_microservice.src.PlateClassifier import PlateClassifier
 
@@ -19,8 +19,8 @@ from typing import Optional, Tuple
 NGINX_RTMP_HOST = os.getenv("NGINX_RTMP_HOST", "10.255.32.35")
 NGINX_RTMP_PORT = os.getenv("NGINX_RTMP_PORT", "1935")
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
-GATE_ID = os.getenv("GATE_ID", "gate01")
-RTSP_STREAM_HIGH = os.getenv("RTSP_STREAM_HIGH", f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_high/{GATE_ID}")
+GATE_ID = os.getenv("GATE_ID", "1")
+RTSP_STREAM_HIGH = os.getenv("RTSP_STREAM_HIGH", f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_high/gate{GATE_ID}")
 
 # MinIO Configuration
 MINIO_HOST = os.getenv("MINIO_HOST", "10.255.32.132")
@@ -100,6 +100,7 @@ class AgentB:
         self.best_confidence = 0.0
 
         self.crop_storage = CropStorage(MINIO_CONF, BUCKET_NAME)
+        self.crop_fails = CropStorage(MINIO_CONF, "failed-crops")
 
         # Initialize Kafka
         logger.info(f"[AgentB/Kafka] Connecting to kafka via '{KAFKA_BOOTSTRAP}' …")
@@ -169,7 +170,7 @@ class AgentB:
                 logger.exception(f"[AgentB] Error when capturing frame {e}")
                 time.sleep(0.2)
 
-    def process_license_plate_detection(self):
+    def process_license_plate_detection(self, truck_id: str):
         """
         Main pipeline to detect and extract license plate text.
         
@@ -208,7 +209,7 @@ class AgentB:
             logger.debug(f"[AgentB] Processing frame {self.frames_processed}/{self.max_frames}")
 
             # Process single frame
-            result = self._process_single_frame(frame)
+            result = self._process_single_frame(frame, truck_id)
 
             # If full consensus reached, return immediately
             if result:
@@ -235,12 +236,12 @@ class AgentB:
         # If full consensus not reached, return best partial result
         return self._get_best_partial_result()
 
-    def _process_single_frame(self, frame):
+    def _process_single_frame(self, frame, truck_id: str):
         """
         Processes a single video frame.
         Returns (text, conf, crop) if consensus is reached, else None.
         """
-        
+        counter = 0
         try:
             logger.info("[AgentB] YOLO (LP) running…")
             results = self.yolo.detect(frame)
@@ -274,33 +275,25 @@ class AgentB:
 
                 if classification != PlateClassifier.LICENSE_PLATE:
                     # Save rejected crop for debugging
-                    #rejected_path = f"{REJECTED_CROPS_PATH}/{classification}_{int(time.time())}_{i}.jpg"
-                    #try:
-                    #    self.classifier.visualize_classification(
-                    #        crop, classification, rejected_path)
-                    #except Exception as e:
-                    #    logger.warning(
-                    #        f"[AgentB] Failed saving rejected crop: {e}")
+                    try:
+                        logger.info(f"[AgentB] Crop {i} rejected as {classification}, uploading to MinIO for analysis.")
+                        
+                        # Uncoment for debug
+                        # counter += 1
+                        #object_name = f"crop_{classification}_{truck_id}_{counter}.jpg"
+                        #crop_url = self.crop_fails.upload_memory_image(crop, object_name)
+                        
+                        #if crop_url:
+                        #    logger.info(f"[AgentB] Crop Failed Classification: {crop_url}")
+                        #else:
+                        #    logger.warning("[AgentB] Failed to upload crop to MinIO")
 
-                    logger.warning(
-                        f"[AgentB] Crop {i} rejected: classified as {classification.upper()}"
-                    )
+                    except Exception as e:
+                        logger.exception(f"[AgentB] Error uploading crop to MinIO: {e}")
                     continue
 
                 logger.info(f"[AgentB] Crop {i} accepted as LICENSE_PLATE")
                 # ============================================================
-
-                # Save accepted crop
-                #crop_path = f"{CROPS_PATH}/lp_crop_{int(time.time())}_{i}.jpg"
-                #logger.info(f"[AgentB] Saving crop {i} to {crop_path}…")
-
-                #try:
-                #    # Save with visualization
-                #    self.classifier.visualize_classification(
-                #        crop, classification, crop_path)
-                #except Exception as e:
-                #    logger.warning(f"[AgentB] Failed saving crop: {e}")
-
                 # Run OCR
                 logger.info("[AgentB] OCR extracting text…")
                 try:
@@ -344,7 +337,7 @@ class AgentB:
         """
 
         # Ignore low confidences
-        if confidence < 0.5:
+        if confidence < 0.80:
             logger.debug(
                 f"[AgentB] Confidence too low ({confidence:.2f}), skipping")
             return
@@ -388,7 +381,7 @@ class AgentB:
                 self.counter[pos][char] = 0
 
             # Confidence-weighted votes
-            if confidence >= 0.8:
+            if confidence >= 0.95:
                 self.counter[pos][char] += 2
             else:
                 self.counter[pos][char] += 1
@@ -404,6 +397,7 @@ class AgentB:
                     self.decided_chars[pos] = char
                     logger.debug(
                         f"[AgentB] Position {pos} changed: '{old_char}' -> '{char}'")
+
 
     def _check_full_consensus(self) -> bool:
         """
@@ -431,6 +425,7 @@ class AgentB:
             f"[AgentB] Consensus check: {decided_count}/{total_positions} positions decided (need {required_positions})")
         return False
 
+
     def _build_final_text(self) -> str:
         """Builds final text from decided characters."""
         if not self.decided_chars:
@@ -445,6 +440,7 @@ class AgentB:
         logger.debug(f"[AgentB] Built final text: '{final_text}'")
 
         return final_text
+
 
     def _get_best_partial_result(self):
         """
@@ -591,11 +587,11 @@ class AgentB:
                     f"[AgentB] Received 'truck-detected' (truckId={truck_id}). Starting LP pipeline…")
 
                 # Process license plate detection
-                plate_text, plate_conf, _lp_img = self.process_license_plate_detection()
+                plate_text, plate_conf, _lp_img = self.process_license_plate_detection(truck_id)
 
                 if not plate_text:
-                    logger.warning(
-                        "[AgentB] No final text results — not publishing.")
+                    logger.warning("[AgentB] No final text results — publishing empty message.")
+                    self._publish_lp_detected(truck_id, "N/A", -1, None)
                     continue
                 
                 # Upload best crop to MinIO
@@ -607,7 +603,7 @@ class AgentB:
                         crop_url = self.crop_storage.upload_memory_image(self.best_crop, object_name)
                         
                         if crop_url:
-                            logger.info(f"[AgentB] Crop uploaded to MinIO: {crop_url}")
+                            logger.info(f"[AgentB] Crop Final Consensus: {crop_url}")
                         else:
                             logger.warning("[AgentB] Failed to upload crop to MinIO")
                     except Exception as e:

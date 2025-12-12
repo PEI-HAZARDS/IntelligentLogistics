@@ -1,0 +1,1791 @@
+openapi: 3.1.0
+info:
+  title: Data Module API
+  description: Intelligent Logistics - Data Module (Source of Truth)
+  version: 1.0.0
+
+servers:
+  - url: http://10.255.32.82:8080/api/v1
+    description: Production server
+
+paths:
+  # ==================== ARRIVALS ====================
+  /arrivals:
+    get:
+      tags: [Arrivals]
+      summary: List Arrivals
+      description: Lists appointments with optional filters. Used by operator frontend to list daily arrivals.
+      operationId: list_arrivals
+      parameters:
+        - name: skip
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+        - name: gate_id
+          in: query
+          schema:
+            type: integer
+            nullable: true
+        - name: shift_gate_id
+          in: query
+          schema:
+            type: integer
+            nullable: true
+        - name: shift_type
+          in: query
+          schema:
+            type: string
+            nullable: true
+        - name: shift_date
+          in: query
+          schema:
+            type: string
+            format: date
+            nullable: true
+        - name: status
+          in: query
+          schema:
+            type: string
+            nullable: true
+        - name: scheduled_date
+          in: query
+          schema:
+            type: string
+            format: date
+            nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Appointment'
+
+  /arrivals/stats:
+    get:
+      tags: [Arrivals]
+      summary: Get Arrivals Stats
+      description: Arrival statistics by status. Used in operator dashboard.
+      operationId: get_arrivals_stats
+      parameters:
+        - name: gate_id
+          in: query
+          schema:
+            type: integer
+            nullable: true
+        - name: target_date
+          in: query
+          schema:
+            type: string
+            format: date
+            nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: integer
+
+  /arrivals/next/{gate_id}:
+    get:
+      tags: [Arrivals]
+      summary: Get Upcoming Arrivals
+      description: Next scheduled arrivals for a gate. Used in operator's sidebar panel.
+      operationId: get_upcoming_arrivals
+      parameters:
+        - name: gate_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 5
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Appointment'
+
+  /arrivals/{appointment_id}:
+    get:
+      tags: [Arrivals]
+      summary: Get Arrival
+      description: Gets details of a specific appointment.
+      operationId: get_arrival
+      parameters:
+        - name: appointment_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+
+  /arrivals/pin/{arrival_id}:
+    get:
+      tags: [Arrivals]
+      summary: Get Arrival By Pin Code
+      description: Gets appointment by arrival_id/PIN. Used by driver to check their appointment.
+      operationId: get_arrival_by_pin
+      parameters:
+        - name: arrival_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+
+  /arrivals/query/license-plate/{license_plate}:
+    get:
+      tags: [Arrivals]
+      summary: Query Arrivals By License Plate
+      description: Query appointments by license plate. Used by Decision Engine to find candidate arrivals.
+      operationId: query_arrivals_by_license_plate
+      parameters:
+        - name: license_plate
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: shift_gate_id
+          in: query
+          schema:
+            type: integer
+            nullable: true
+        - name: shift_type
+          in: query
+          schema:
+            type: string
+            nullable: true
+        - name: shift_date
+          in: query
+          schema:
+            type: string
+            format: date
+            nullable: true
+        - name: status
+          in: query
+          schema:
+            type: string
+            nullable: true
+        - name: scheduled_date
+          in: query
+          schema:
+            type: string
+            format: date
+            nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Appointment'
+
+  /arrivals/{appointment_id}/status:
+    patch:
+      tags: [Arrivals]
+      summary: Update Status
+      description: Updates appointment status. Used by operator or system for manual updates.
+      operationId: update_status
+      parameters:
+        - name: appointment_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppointmentStatusUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+
+  /arrivals/{appointment_id}/decision:
+    post:
+      tags: [Arrivals]
+      summary: Process Decision
+      description: Processes Decision Engine decision. Updates status and creates alerts if needed.
+      operationId: process_decision
+      parameters:
+        - name: appointment_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                decision:
+                  type: string
+                status:
+                  type: string
+                notes:
+                  type: string
+                alerts:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+
+  /arrivals/{appointment_id}/visit:
+    post:
+      tags: [Arrivals]
+      summary: Create Visit
+      description: Creates a visit when truck arrives. Uses composite FK to Shift.
+      operationId: create_visit
+      parameters:
+        - name: appointment_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVisitRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Visit'
+    patch:
+      tags: [Arrivals]
+      summary: Update Visit
+      description: Updates visit status (e.g., to 'completed' when truck leaves).
+      operationId: update_visit
+      parameters:
+        - name: appointment_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VisitStatusUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Visit'
+
+  # ==================== DECISIONS ====================
+  /decisions/process:
+    post:
+      tags: [Decisions]
+      summary: Process Decision
+      description: Main endpoint for Decision Engine to send decisions.
+      operationId: process_decision_incoming
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecisionIncomingRequest'
+      responses:
+        '200':
+          description: Successful Response
+
+  /decisions/query-appointments:
+    post:
+      tags: [Decisions]
+      summary: Query Appointments
+      description: Decision Engine queries candidate appointments within a time window.
+      operationId: query_appointments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryAppointmentsRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  found:
+                    type: boolean
+                  candidates:
+                    type: array
+                    items:
+                      type: object
+                  message:
+                    type: string
+
+  /decisions/detection-event:
+    post:
+      tags: [Decisions]
+      summary: Register Detection Event
+      description: Registers detection event from Agents (A/B/C).
+      operationId: register_detection_event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DetectionEventRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  event_id:
+                    type: string
+
+  /decisions/events/detections:
+    get:
+      tags: [Decisions]
+      summary: List Detection Events
+      description: Lists detection events from MongoDB.
+      operationId: list_detection_events
+      parameters:
+        - name: license_plate
+          in: query
+          schema:
+            type: string
+            nullable: true
+        - name: gate_id
+          in: query
+          schema:
+            type: integer
+            nullable: true
+        - name: event_type
+          in: query
+          schema:
+            type: string
+            nullable: true
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /decisions/events/decisions:
+    get:
+      tags: [Decisions]
+      summary: List Decision Events
+      description: Lists decision events from MongoDB.
+      operationId: list_decision_events
+      parameters:
+        - name: license_plate
+          in: query
+          schema:
+            type: string
+            nullable: true
+        - name: gate_id
+          in: query
+          schema:
+            type: integer
+            nullable: true
+        - name: decision
+          in: query
+          schema:
+            type: string
+            nullable: true
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /decisions/events/{event_id}:
+    get:
+      tags: [Decisions]
+      summary: Get Event
+      description: Gets a specific event by ID (MongoDB ObjectId).
+      operationId: get_event
+      parameters:
+        - name: event_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful Response
+
+  /decisions/manual-review/{appointment_id}:
+    post:
+      tags: [Decisions]
+      summary: Manual Review
+      description: Endpoint for operator manual review.
+      operationId: manual_review
+      parameters:
+        - name: appointment_id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: decision
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [approved, rejected]
+        - name: notes
+          in: query
+          schema:
+            type: string
+            nullable: true
+      responses:
+        '200':
+          description: Successful Response
+
+  # ==================== DRIVERS ====================
+  /drivers/login:
+    post:
+      tags: [Drivers]
+      summary: Login
+      description: Driver login for mobile app. Returns JWT token.
+      operationId: driver_login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriverLoginRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverLoginResponse'
+
+  /drivers/claim:
+    post:
+      tags: [Drivers]
+      summary: Claim Arrival
+      description: Driver uses PIN to claim an appointment.
+      operationId: claim_arrival
+      parameters:
+        - name: drivers_license
+          in: query
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaimAppointmentRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaimAppointmentResponse'
+
+  /drivers/me/active:
+    get:
+      tags: [Drivers]
+      summary: Get My Active Arrival
+      description: Gets the driver's active appointment.
+      operationId: get_my_active_arrival
+      parameters:
+        - name: drivers_license
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+                nullable: true
+
+  /drivers/me/today:
+    get:
+      tags: [Drivers]
+      summary: Get My Today Arrivals
+      description: Gets today's appointments for the driver.
+      operationId: get_my_today_arrivals
+      parameters:
+        - name: drivers_license
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Appointment'
+
+  /drivers:
+    get:
+      tags: [Drivers]
+      summary: List All Drivers
+      description: Lists all drivers (backoffice).
+      operationId: list_all_drivers
+      parameters:
+        - name: skip
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: only_active
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Driver'
+
+  /drivers/{drivers_license}:
+    get:
+      tags: [Drivers]
+      summary: Get Driver
+      description: Gets details of a specific driver.
+      operationId: get_driver
+      parameters:
+        - name: drivers_license
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Driver'
+
+  /drivers/{drivers_license}/arrivals:
+    get:
+      tags: [Drivers]
+      summary: Get Arrivals For Driver
+      description: Gets appointment history for a driver.
+      operationId: get_arrivals_for_driver
+      parameters:
+        - name: drivers_license
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Appointment'
+
+  # ==================== ALERTS ====================
+  /alerts:
+    get:
+      tags: [Alerts]
+      summary: List Alerts
+      description: Lists alerts with optional filters.
+      operationId: list_alerts
+      parameters:
+        - name: skip
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: alert_type
+          in: query
+          schema:
+            type: string
+            nullable: true
+        - name: visit_id
+          in: query
+          schema:
+            type: integer
+            nullable: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Alert'
+    post:
+      tags: [Alerts]
+      summary: Create Manual Alert
+      description: Creates an alert manually.
+      operationId: create_manual_alert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAlertRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alert'
+
+  /alerts/active:
+    get:
+      tags: [Alerts]
+      summary: List Active Alerts
+      description: Lists active alerts (last 24h).
+      operationId: list_active_alerts
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Alert'
+
+  /alerts/stats:
+    get:
+      tags: [Alerts]
+      summary: Get Alerts Stats
+      description: Alert statistics by type (last 24h).
+      operationId: get_alerts_stats
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: integer
+
+  /alerts/visit/{visit_id}:
+    get:
+      tags: [Alerts]
+      summary: Get Visit Alerts
+      description: Gets all alerts for a specific visit.
+      operationId: get_visit_alerts
+      parameters:
+        - name: visit_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Alert'
+
+  /alerts/{alert_id}:
+    get:
+      tags: [Alerts]
+      summary: Get Single Alert
+      description: Gets details of a specific alert.
+      operationId: get_single_alert
+      parameters:
+        - name: alert_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alert'
+
+  /alerts/reference/adr-codes:
+    get:
+      tags: [Alerts]
+      summary: Get ADR Codes
+      description: Lists available ADR/UN codes.
+      operationId: get_adr_codes
+      responses:
+        '200':
+          description: Successful Response
+
+  /alerts/reference/kemler-codes:
+    get:
+      tags: [Alerts]
+      summary: Get Kemler Codes
+      description: Lists available Kemler codes.
+      operationId: get_kemler_codes
+      responses:
+        '200':
+          description: Successful Response
+
+  /alerts/hazmat:
+    post:
+      tags: [Alerts]
+      summary: Create Hazmat ADR Alert
+      description: Creates hazmat/ADR specific alert.
+      operationId: create_hazmat_alert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateHazmatAlertRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alert'
+
+  # ==================== WORKERS ====================
+  /workers/login:
+    post:
+      tags: [Workers]
+      summary: Login
+      description: Worker login (operator or manager). Returns token.
+      operationId: worker_login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkerLoginRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkerLoginResponse'
+
+  /workers/operators:
+    get:
+      tags: [Workers]
+      summary: List Operators
+      description: Lists operators.
+      operationId: list_operators
+      parameters:
+        - name: skip
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkerInfo'
+
+  /workers/operators/me:
+    get:
+      tags: [Workers]
+      summary: Get My Operator Info
+      description: Gets authenticated operator information.
+      operationId: get_my_operator_info
+      parameters:
+        - name: num_worker
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful Response
+
+  /workers/operators/{num_worker}:
+    get:
+      tags: [Workers]
+      summary: Get Operator
+      description: Gets information of a specific operator.
+      operationId: get_operator
+      parameters:
+        - name: num_worker
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful Response
+
+  /workers/operators/{num_worker}/current-shift/{gate_id}:
+    get:
+      tags: [Workers]
+      summary: Get Operator Shift
+      description: Gets operator's current shift for a gate.
+      operationId: get_operator_shift
+      parameters:
+        - name: num_worker
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: gate_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Successful Response
+
+  /workers/operators/{num_worker}/shifts:
+    get:
+      tags: [Workers]
+      summary: List Operator Shifts
+      description: Lists shifts for an operator.
+      operationId: list_operator_shifts
+      parameters:
+        - name: num_worker
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: gate_id
+          in: query
+          schema:
+            type: integer
+            nullable: true
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Successful Response
+
+  /workers/operators/{num_worker}/dashboard/{gate_id}:
+    get:
+      tags: [Workers]
+      summary: Get Operator Dashboard
+      description: Operator dashboard for a gate.
+      operationId: get_operator_dashboard
+      parameters:
+        - name: num_worker
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: gate_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OperatorDashboard'
+
+  /workers/managers:
+    get:
+      tags: [Workers]
+      summary: List Managers
+      description: Lists managers.
+      operationId: list_managers
+      parameters:
+        - name: skip
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkerInfo'
+
+  /workers/managers/me:
+    get:
+      tags: [Workers]
+      summary: Get My Manager Info
+      description: Gets authenticated manager information.
+      operationId: get_my_manager_info
+      parameters:
+        - name: num_worker
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful Response
+
+  /workers/managers/{num_worker}:
+    get:
+      tags: [Workers]
+      summary: Get Manager
+      description: Gets information of a specific manager.
+      operationId: get_manager
+      parameters:
+        - name: num_worker
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful Response
+
+  /workers/managers/{num_worker}/shifts:
+    get:
+      tags: [Workers]
+      summary: List Manager Shifts
+      description: Lists shifts supervised by a manager.
+      operationId: list_manager_shifts
+      parameters:
+        - name: num_worker
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Successful Response
+
+  /workers/managers/{num_worker}/overview:
+    get:
+      tags: [Workers]
+      summary: Get Manager Dashboard
+      description: Manager dashboard/overview.
+      operationId: get_manager_dashboard
+      parameters:
+        - name: num_worker
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagerOverview'
+
+  /workers:
+    get:
+      tags: [Workers]
+      summary: List All Workers
+      description: Lists all workers (backoffice).
+      operationId: list_all_workers
+      parameters:
+        - name: skip
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: only_active
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkerInfo'
+    post:
+      tags: [Workers]
+      summary: Create New Worker
+      description: Creates new worker (operator or manager).
+      operationId: create_new_worker
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkerRequest'
+      responses:
+        '201':
+          description: Created
+
+  /workers/{num_worker}:
+    get:
+      tags: [Workers]
+      summary: Get Worker
+      description: Gets worker data.
+      operationId: get_worker
+      parameters:
+        - name: num_worker
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful Response
+    delete:
+      tags: [Workers]
+      summary: Deactivate Worker
+      description: Deactivates a worker.
+      operationId: deactivate_worker
+      parameters:
+        - name: num_worker
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful Response
+
+  /workers/password:
+    post:
+      tags: [Workers]
+      summary: Change Password
+      description: Updates worker's password.
+      operationId: change_password
+      parameters:
+        - name: num_worker
+          in: query
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePasswordRequest'
+      responses:
+        '200':
+          description: Successful Response
+
+  /workers/email:
+    post:
+      tags: [Workers]
+      summary: Change Email
+      description: Updates worker's email.
+      operationId: change_email
+      parameters:
+        - name: num_worker
+          in: query
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEmailRequest'
+      responses:
+        '200':
+          description: Successful Response
+
+  /workers/{num_worker}/promote:
+    post:
+      tags: [Workers]
+      summary: Promote Operator To Manager
+      description: Promotes an operator to manager.
+      operationId: promote_operator_to_manager
+      parameters:
+        - name: num_worker
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: access_level
+          in: query
+          schema:
+            type: string
+            default: basic
+      responses:
+        '200':
+          description: Successful Response
+
+  # ==================== HEALTH ====================
+  /health:
+    get:
+      summary: Health
+      description: Health endpoint - returns overall status.
+      operationId: health
+      responses:
+        '200':
+          description: Successful Response
+
+# ==================== COMPONENTS ====================
+components:
+  schemas:
+    Appointment:
+      type: object
+      required: [booking_reference, driver_license, truck_license_plate, terminal_id, id, arrival_id]
+      properties:
+        id:
+          type: integer
+        arrival_id:
+          type: string
+        booking_reference:
+          type: string
+        driver_license:
+          type: string
+        truck_license_plate:
+          type: string
+        terminal_id:
+          type: integer
+        gate_in_id:
+          type: integer
+          nullable: true
+        gate_out_id:
+          type: integer
+          nullable: true
+        scheduled_start_time:
+          type: string
+          format: date-time
+          nullable: true
+        expected_duration:
+          type: integer
+          nullable: true
+        status:
+          $ref: '#/components/schemas/AppointmentStatusEnum'
+        notes:
+          type: string
+          nullable: true
+        booking:
+          $ref: '#/components/schemas/Booking'
+          nullable: true
+        driver:
+          $ref: '#/components/schemas/Driver'
+          nullable: true
+        truck:
+          $ref: '#/components/schemas/Truck'
+          nullable: true
+        terminal:
+          $ref: '#/components/schemas/Terminal'
+          nullable: true
+        gate_in:
+          $ref: '#/components/schemas/Gate'
+          nullable: true
+        gate_out:
+          $ref: '#/components/schemas/Gate'
+          nullable: true
+
+    AppointmentStatusEnum:
+      type: string
+      enum: [in_transit, canceled, delayed, completed]
+
+    AppointmentStatusUpdate:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/AppointmentStatusEnum'
+        notes:
+          type: string
+          nullable: true
+
+    Visit:
+      type: object
+      required: [appointment_id, shift_gate_id, shift_type, shift_date]
+      properties:
+        appointment_id:
+          type: integer
+        shift_gate_id:
+          type: integer
+        shift_type:
+          $ref: '#/components/schemas/ShiftTypeEnum'
+        shift_date:
+          type: string
+          format: date
+        entry_time:
+          type: string
+          format: date-time
+          nullable: true
+        out_time:
+          type: string
+          format: date-time
+          nullable: true
+        state:
+          $ref: '#/components/schemas/DeliveryStatusEnum'
+
+    VisitStatusUpdate:
+      type: object
+      required: [state]
+      properties:
+        state:
+          $ref: '#/components/schemas/DeliveryStatusEnum'
+        entry_time:
+          type: string
+          format: date-time
+          nullable: true
+        out_time:
+          type: string
+          format: date-time
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+
+    CreateVisitRequest:
+      type: object
+      required: [shift_gate_id, shift_type, shift_date]
+      properties:
+        shift_gate_id:
+          type: integer
+        shift_type:
+          type: string
+          enum: [MORNING, AFTERNOON, NIGHT]
+        shift_date:
+          type: string
+          format: date
+
+    DeliveryStatusEnum:
+      type: string
+      enum: [unloading, completed]
+
+    ShiftTypeEnum:
+      type: string
+      enum: ['06:00-14:00', '14:00-22:00', '22:00-06:00']
+
+    Booking:
+      type: object
+      required: [reference]
+      properties:
+        reference:
+          type: string
+        direction:
+          $ref: '#/components/schemas/DirectionEnum'
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    DirectionEnum:
+      type: string
+      enum: [inbound, outbound]
+
+    Driver:
+      type: object
+      required: [name, drivers_license]
+      properties:
+        drivers_license:
+          type: string
+        name:
+          type: string
+        company_nif:
+          type: string
+          nullable: true
+        mobile_device_token:
+          type: string
+          nullable: true
+        active:
+          type: boolean
+          default: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        company:
+          $ref: '#/components/schemas/Company'
+          nullable: true
+
+    DriverLoginRequest:
+      type: object
+      required: [drivers_license, password]
+      properties:
+        drivers_license:
+          type: string
+        password:
+          type: string
+
+    DriverLoginResponse:
+      type: object
+      required: [token, drivers_license, name]
+      properties:
+        token:
+          type: string
+        drivers_license:
+          type: string
+        name:
+          type: string
+        company_nif:
+          type: string
+          nullable: true
+        company_name:
+          type: string
+          nullable: true
+
+    ClaimAppointmentRequest:
+      type: object
+      required: [arrival_id]
+      properties:
+        arrival_id:
+          type: string
+
+    ClaimAppointmentResponse:
+      type: object
+      required: [appointment_id, license_plate]
+      properties:
+        appointment_id:
+          type: integer
+        dock_bay_number:
+          type: string
+          nullable: true
+        dock_location:
+          type: string
+          nullable: true
+        license_plate:
+          type: string
+        cargo_description:
+          type: string
+          nullable: true
+        navigation_url:
+          type: string
+          nullable: true
+
+    Truck:
+      type: object
+      required: [license_plate]
+      properties:
+        license_plate:
+          type: string
+        company_nif:
+          type: string
+          nullable: true
+        brand:
+          type: string
+          nullable: true
+        company:
+          $ref: '#/components/schemas/Company'
+          nullable: true
+
+    Company:
+      type: object
+      required: [name, nif]
+      properties:
+        nif:
+          type: string
+        name:
+          type: string
+        contact:
+          type: string
+          nullable: true
+
+    Terminal:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          nullable: true
+        latitude:
+          type: number
+          nullable: true
+        longitude:
+          type: number
+          nullable: true
+        hazmat_approved:
+          type: boolean
+          default: false
+
+    Gate:
+      type: object
+      required: [label, id]
+      properties:
+        id:
+          type: integer
+        label:
+          type: string
+        latitude:
+          type: number
+          nullable: true
+        longitude:
+          type: number
+          nullable: true
+
+    Alert:
+      type: object
+      required: [id, timestamp]
+      properties:
+        id:
+          type: integer
+        visit_id:
+          type: integer
+          nullable: true
+        type:
+          $ref: '#/components/schemas/TypeAlertEnum'
+        description:
+          type: string
+          nullable: true
+        image_url:
+          type: string
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+
+    TypeAlertEnum:
+      type: string
+      enum: [generic, safety, problem, operational]
+
+    CreateAlertRequest:
+      type: object
+      required: [type, description]
+      properties:
+        visit_id:
+          type: integer
+          nullable: true
+        type:
+          type: string
+        description:
+          type: string
+        image_url:
+          type: string
+          nullable: true
+
+    CreateHazmatAlertRequest:
+      type: object
+      required: [appointment_id]
+      properties:
+        appointment_id:
+          type: integer
+        un_code:
+          type: string
+          nullable: true
+        kemler_code:
+          type: string
+          nullable: true
+        detected_hazmat:
+          type: string
+          nullable: true
+
+    DecisionIncomingRequest:
+      type: object
+      required: [license_plate, gate_id, appointment_id, decision, status]
+      properties:
+        license_plate:
+          type: string
+        gate_id:
+          type: integer
+        appointment_id:
+          type: integer
+        decision:
+          type: string
+        status:
+          type: string
+        notes:
+          type: string
+          nullable: true
+        alerts:
+          type: array
+          items:
+            type: object
+          nullable: true
+        extra_data:
+          type: object
+          nullable: true
+
+    QueryAppointmentsRequest:
+      type: object
+      required: [gate_id]
+      properties:
+        time_frame:
+          type: integer
+          default: 1
+          description: Time window in hours
+        gate_id:
+          type: integer
+
+    DetectionEventRequest:
+      type: object
+      required: [type, gate_id, agent]
+      properties:
+        type:
+          type: string
+        license_plate:
+          type: string
+          nullable: true
+        gate_id:
+          type: integer
+        confidence:
+          type: number
+          nullable: true
+        agent:
+          type: string
+        raw_data:
+          type: object
+          nullable: true
+
+    WorkerLoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+
+    WorkerLoginResponse:
+      type: object
+      required: [token, num_worker, name, email, active]
+      properties:
+        token:
+          type: string
+        num_worker:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        active:
+          type: boolean
+
+    WorkerInfo:
+      type: object
+      required: [num_worker, name, email, role, active]
+      properties:
+        num_worker:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        active:
+          type: boolean
+
+    CreateWorkerRequest:
+      type: object
+      required: [num_worker, name, email, password, role]
+      properties:
+        num_worker:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        password:
+          type: string
+        role:
+          type: string
+        access_level:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+
+    UpdatePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password:
+          type: string
+        new_password:
+          type: string
+
+    UpdateEmailRequest:
+      type: object
+      required: [new_email]
+      properties:
+        new_email:
+          type: string
+
+    OperatorDashboard:
+      type: object
+      required: [operator_num_worker, gate_id, date, upcoming_arrivals, stats]
+      properties:
+        operator_num_worker:
+          type: string
+        gate_id:
+          type: integer
+        date:
+          type: string
+        upcoming_arrivals:
+          type: array
+          items:
+            type: object
+        stats:
+          type: object
+          additionalProperties:
+            type: integer
+
+    ManagerOverview:
+      type: object
+      required: [manager_num_worker, date, active_gates, shifts_today, recent_alerts, statistics]
+      properties:
+        manager_num_worker:
+          type: string
+        date:
+          type: string
+        active_gates:
+          type: integer
+        shifts_today:
+          type: integer
+        recent_alerts:
+          type: integer
+        statistics:
+          type: object
+          additionalProperties:
+            type: integer

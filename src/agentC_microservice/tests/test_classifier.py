@@ -2,7 +2,7 @@
 Script de teste para PlateClassifier.
 Testa a classificação de crops em matrículas vs placas de perigo.
 """
-from agentB_microservice.src.PlateClassifier import PlateClassifier
+from agentC_microservice.src.PlateClassifier import PlateClassifier
 import cv2
 import sys
 import os
