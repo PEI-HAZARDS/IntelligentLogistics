@@ -171,13 +171,13 @@ class AgentC:
 
     def process_hazard_plate_detection(self, truck_id: str):
         """
-        Main pipeline to detect and extract license plate text.
+        Main pipeline to detect and extract hazard plate text.
         
         Returns:
             tuple: (plate_text, confidence, crop_image) or (None, None, None)
         """
         logger.info(
-            "[AgentC] Starting license plate pipeline detection process…")
+            "[AgentC] Starting hazard plate pipeline detection process…")
 
         # Reset consensus state before starting new detection
         self._reset_consensus_state()
@@ -252,11 +252,11 @@ class AgentC:
 
             if not self.yolo.found_hazard_plate(results):
                 logger.info(
-                    "[AgentC] No license plate detected for this frame.")
+                    "[AgentC] No hazard plate detected for this frame.")
                 return None
 
             boxes = self.yolo.get_boxes(results)
-            logger.info(f"[AgentC] {len(boxes)} license plates detected.")
+            logger.info(f"[AgentC] {len(boxes)} hazard plates detected.")
 
             for i, box in enumerate(boxes, start=1):
                 x1, y1, x2, y2, conf = map(float, box)
@@ -270,7 +270,7 @@ class AgentC:
                 crop = frame[int(y1):int(y2), int(x1):int(x2)]
 
 
-                logger.info(f"[AgentC] Crop {i} accepted as LICENSE_PLATE")
+                logger.info(f"[AgentC] Crop {i} accepted as HAZARD_PLATE")
                 # ============================================================
                 # Run OCR
                 logger.info("[AgentC] OCR extracting text…")
@@ -395,7 +395,7 @@ class AgentC:
 
         if decided_count >= required_positions:
             logger.info(
-                f"[AgentC] Consensus reached! {decided_count}/{total_positions} positions decided (need {required_positions})")
+                f"[AgentC] Consensus reached! {decided_count}/{total_positions} positions decided (need {required_positions}) ✓")
             self.consensus_reached = True
             return True
 
@@ -427,7 +427,7 @@ class AgentC:
         """
         if not self.counter:
             logger.warning(
-                "[AgentC] No valid license plates detected in any frame.")
+                "[AgentC] No valid hazard plates detected in any frame.")
             return None, None, None
 
         # Build text with decided positions + best candidates
@@ -482,7 +482,7 @@ class AgentC:
     
     def _publish_hz_detected(self, truck_id, un, kemler, plate_conf, crop_url):
         """
-        Publishes the 'license-plate-detected' event to Kafka.
+        Publishes the 'hazard-plate-detected' event to Kafka.
         Propagates the correlation ID and includes MinIO crop URL.
         """
         timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -511,7 +511,7 @@ class AgentC:
         self.producer.poll(0)
 
     def _loop(self):
-        """Main loop for Agent B."""
+        """Main loop for Agent C."""
         logger.info(
             f"[AgentC] Main loop starting… (topic in='{TOPIC_CONSUME}')")
 
@@ -565,7 +565,7 @@ class AgentC:
                 logger.info(
                     f"[AgentC] Received 'truck-detected' (truckId={truck_id}). Starting HZ pipeline…")
 
-                # Process license plate detection
+                # Process hazard plate detection
                 plate_text, plate_conf, _hz_img = self.process_hazard_plate_detection(truck_id)
 
                 if not plate_text:
@@ -597,7 +597,7 @@ class AgentC:
                     un = "N/A"
                     kemler = "N/A"
 
-                # Publish the license plate detected message
+                # Publish the hazard plate detected message
                 self._publish_hz_detected(
                     truck_id=truck_id,
                     un=un,
