@@ -10,10 +10,12 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+# Copy entrypoint first
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
-# Convert line endings to Unix format (in case of CRLF issues) and make executable
-RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+# Copy rest of app
+COPY . .
 
 # Usar entrypoint para executar data_init antes do servidor
 ENTRYPOINT ["/app/entrypoint.sh"]

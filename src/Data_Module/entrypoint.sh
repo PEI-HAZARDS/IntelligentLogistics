@@ -4,9 +4,9 @@ set -e
 
 echo "Data Module entrypoint starting..."
 
-# Aguardar PostgreSQL estar pronto
+# Wait for PostgreSQL to be ready
 echo "Waiting for PostgreSQL..."
-while ! pg_isready -h $POSTGRES_HOST -U porto; do
+until pg_isready -h ${POSTGRES_HOST:-postgres} -p ${POSTGRES_PORT:-5432}; do
   sleep 1
 done
 echo "PostgreSQL is ready"

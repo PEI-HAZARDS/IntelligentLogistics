@@ -1,202 +1,165 @@
 """
-Driver Service - Gestão de condutores e autenticação mobile.
-Usado por: App mobile do motorista.
+Driver Service - Driver management and mobile authentication.
+Used by: Driver mobile app.
 """
 
 from typing import List, Optional
+from datetime import datetime, date
 from sqlalchemy.orm import Session
 from utils.hashing_pass import hash_password, verify_password
 
-from models.sql_models import Condutor, Conduz, ChegadaDiaria
+from models.sql_models import Driver, Appointment, Visit, Company
 
 
 # ==================== AUTH FUNCTIONS ====================
 
-def authenticate_driver(db: Session, num_carta_cond: str, password: str) -> Optional[Condutor]:
+def authenticate_driver(db: Session, drivers_license: str, password: str) -> Optional[Driver]:
     """
-    Autentica condutor para login na app mobile.
-    Retorna condutor se credenciais válidas, None caso contrário.
+    Authenticates driver for mobile app login.
+    Returns driver if credentials valid, None otherwise.
     """
-    condutor = db.query(Condutor).filter(
-        Condutor.num_carta_cond == num_carta_cond
+    driver = db.query(Driver).filter(
+        Driver.drivers_license == drivers_license,
+        Driver.active == True
     ).first()
     
-    if not condutor:
+    if not driver:
         return None
     
-    if not verify_password(password, condutor.password_hash):
+    if not verify_password(password, driver.password_hash):
         return None
     
-    return condutor
+    return driver
 
 
-def get_driver_by_num_carta(db: Session, num_carta_cond: str) -> Optional[Condutor]:
-    """Obtém condutor pelo número da carta de condução."""
-    return db.query(Condutor).filter(Condutor.num_carta_cond == num_carta_cond).first()
+def get_driver_by_license(db: Session, drivers_license: str) -> Optional[Driver]:
+    """Gets driver by license number."""
+    return db.query(Driver).filter(Driver.drivers_license == drivers_license).first()
 
 
 # ==================== PIN/CLAIM FUNCTIONS ====================
 
-def claim_chegada_by_pin(db: Session, num_carta_cond: str, pin_acesso: str) -> Optional[ChegadaDiaria]:
+def claim_appointment_by_pin(db: Session, drivers_license: str, arrival_id: str) -> Optional[Appointment]:
     """
-    Motorista usa PIN para reclamar uma chegada.
-    Valida que o condutor está associado ao veículo da chegada.
+    Driver uses PIN/arrival_id to claim an appointment.
+    Validates that the driver is associated with the appointment.
     
-    Retorna a chegada se válido, None caso contrário.
+    Returns the appointment if valid, None otherwise.
     """
-    # Buscar chegada pelo PIN
-    chegada = db.query(ChegadaDiaria).filter(
-        ChegadaDiaria.pin_acesso == pin_acesso
+    # Find appointment by arrival_id (PIN)
+    appointment = db.query(Appointment).filter(
+        Appointment.arrival_id == arrival_id
     ).first()
     
-    if not chegada:
+    if not appointment:
         return None
     
-    # Verificar se estado permite claim (não pode reclamar chegada já concluída)
-    if chegada.estado_entrega in ['completed']:
+    # Check if status allows claiming (can't claim completed appointment)
+    if appointment.status in ['completed', 'canceled']:
         return None
     
-    # Verificar se o condutor está autorizado a conduzir este veículo
-    # Busca na tabela Conduz se existe relação ativa
-    conduz_record = db.query(Conduz).filter(
-        Conduz.num_carta_cond == num_carta_cond,
-        Conduz.matricula_veiculo == chegada.matricula_pesado
-    ).first()
+    # Verify driver is authorized for this appointment
+    if appointment.driver_license != drivers_license:
+        return None
     
-    # Para MVP, podemos ser menos restritivos e permitir qualquer condutor
-    # mas em produção validar via conduz_record
-    # if not conduz_record:
-    #     return None
-    
-    return chegada
+    return appointment
 
 
-def get_driver_active_chegada(db: Session, num_carta_cond: str) -> Optional[ChegadaDiaria]:
+def get_driver_active_appointment(db: Session, drivers_license: str) -> Optional[Appointment]:
     """
-    Obtém a chegada ativa do motorista.
-    Uma chegada ativa é aquela que:
-    - Tem veículo associado ao condutor
-    - Estado não é 'completed'
-    - Data é hoje
+    Gets the active appointment for a driver.
+    An active appointment is one that:
+    - Has the driver assigned
+    - Status is 'pending' or 'approved'
+    - Scheduled for today
     """
-    from datetime import date
+    # Find appointment assigned to this driver
+    appointment = db.query(Appointment).filter(
+        Appointment.driver_license == drivers_license,
+        Appointment.status.in_(['in_transit', 'delayed']),
+    ).order_by(Appointment.scheduled_start_time.asc()).first()
     
-    # Buscar matrículas que o condutor conduz
-    conduz_records = db.query(Conduz.matricula_veiculo).filter(
-        Conduz.num_carta_cond == num_carta_cond
-    ).distinct().all()
-    
-    if not conduz_records:
-        return None
-    
-    matriculas = [r[0] for r in conduz_records if r[0]]
-    
-    # Buscar chegada ativa
-    chegada = db.query(ChegadaDiaria).filter(
-        ChegadaDiaria.matricula_pesado.in_(matriculas),
-        ChegadaDiaria.data_prevista == date.today(),
-        ChegadaDiaria.estado_entrega.in_(['in_transit', 'delayed', 'unloading'])
-    ).order_by(ChegadaDiaria.hora_prevista.asc()).first()
-    
-    return chegada
+    return appointment
 
 
 # ==================== QUERY FUNCTIONS ====================
 
-def get_drivers(db: Session, skip: int = 0, limit: int = 100, only_active: bool = True) -> List[Condutor]:
+def get_drivers(db: Session, skip: int = 0, limit: int = 100, only_active: bool = True) -> List[Driver]:
     """
-    Retorna condutores com paginação.
+    Returns drivers with pagination.
     """
-    query = db.query(Condutor)
+    query = db.query(Driver)
+    
+    if only_active:
+        query = query.filter(Driver.active == True)
+    
     return query.offset(skip).limit(limit).all()
 
 
-def get_driver_arrivals(db: Session, num_carta_cond: str, limit: int = 50) -> List[ChegadaDiaria]:
+def get_driver_appointments(db: Session, drivers_license: str, limit: int = 50) -> List[Appointment]:
     """
-    Retorna chegadas associadas a um condutor.
-    Busca veículos que o condutor conduz via tabela Conduz.
+    Returns appointments for a driver.
     """
-    # Obter matrículas associadas ao condutor
-    rows = db.query(Conduz.matricula_veiculo).filter(
-        Conduz.num_carta_cond == num_carta_cond
-    ).distinct().all()
-    
-    vehicles = [r[0] for r in rows if r and r[0] is not None]
-    
-    if not vehicles:
-        return []
-    
-    # Buscar chegadas correspondentes
-    return db.query(ChegadaDiaria).filter(
-        ChegadaDiaria.matricula_pesado.in_(vehicles)
-    ).order_by(ChegadaDiaria.data_hora_chegada.desc()).limit(limit).all()
+    return db.query(Appointment).filter(
+        Appointment.driver_license == drivers_license
+    ).order_by(Appointment.scheduled_start_time.desc()).limit(limit).all()
 
 
-def get_driver_today_arrivals(db: Session, num_carta_cond: str) -> List[ChegadaDiaria]:
+def get_driver_today_appointments(db: Session, drivers_license: str) -> List[Appointment]:
     """
-    Retorna chegadas de hoje para um condutor.
-    Usado na app mobile para mostrar entregas do dia.
+    Returns today's appointments for a driver.
+    Used in mobile app to show daily deliveries.
     """
-    from datetime import date
+    from sqlalchemy import func
     
-    # Obter matrículas associadas ao condutor
-    rows = db.query(Conduz.matricula_veiculo).filter(
-        Conduz.num_carta_cond == num_carta_cond
-    ).distinct().all()
-    
-    vehicles = [r[0] for r in rows if r and r[0] is not None]
-    
-    if not vehicles:
-        return []
-    
-    return db.query(ChegadaDiaria).filter(
-        ChegadaDiaria.matricula_pesado.in_(vehicles),
-        ChegadaDiaria.data_prevista == date.today()
-    ).order_by(ChegadaDiaria.hora_prevista.asc()).all()
+    return db.query(Appointment).filter(
+        Appointment.driver_license == drivers_license,
+        func.date(Appointment.scheduled_start_time) == date.today()
+    ).order_by(Appointment.scheduled_start_time.asc()).all()
 
 
 # ==================== ADMIN FUNCTIONS ====================
 
 def create_driver(
     db: Session,
-    num_carta_cond: str,
-    nome: str,
+    drivers_license: str,
+    name: str,
     password: str,
-    contacto: Optional[str] = None,
-    id_empresa: Optional[int] = None
-) -> Condutor:
-    """Cria um novo condutor."""
-    condutor = Condutor(
-        num_carta_cond=num_carta_cond,
-        nome=nome,
+    company_nif: Optional[str] = None
+) -> Driver:
+    """Creates a new driver."""
+    driver = Driver(
+        drivers_license=drivers_license,
+        name=name,
         password_hash=hash_password(password),
-        contacto=contacto,
-        id_empresa=id_empresa
+        company_nif=company_nif,
+        active=True
     )
-    db.add(condutor)
+    db.add(driver)
     db.commit()
-    db.refresh(condutor)
-    return condutor
+    db.refresh(driver)
+    return driver
 
 
-def update_driver_password(db: Session, num_carta_cond: str, new_password: str) -> Optional[Condutor]:
-    """Atualiza password de um condutor."""
-    condutor = db.query(Condutor).filter(Condutor.num_carta_cond == num_carta_cond).first()
-    if not condutor:
+def update_driver_password(db: Session, drivers_license: str, new_password: str) -> Optional[Driver]:
+    """Updates a driver's password."""
+    driver = db.query(Driver).filter(Driver.drivers_license == drivers_license).first()
+    if not driver:
         return None
     
-    condutor.password_hash = hash_password(new_password)
+    driver.password_hash = hash_password(new_password)
     db.commit()
-    db.refresh(condutor)
-    return condutor
+    db.refresh(driver)
+    return driver
 
 
-def deactivate_driver(db: Session, num_carta_cond: str) -> Optional[Condutor]:
-    """Remove um condutor (hard delete por não existir mais flag ativo)."""
-    condutor = db.query(Condutor).filter(Condutor.num_carta_cond == num_carta_cond).first()
-    if not condutor:
+def deactivate_driver(db: Session, drivers_license: str) -> Optional[Driver]:
+    """Deactivates a driver (soft delete)."""
+    driver = db.query(Driver).filter(Driver.drivers_license == drivers_license).first()
+    if not driver:
         return None
-
-    db.delete(condutor)
+    
+    driver.active = False
     db.commit()
-    return condutor
+    db.refresh(driver)
+    return driver

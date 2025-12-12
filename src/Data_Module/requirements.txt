@@ -4,9 +4,6 @@ uvicorn[standard]
 pydantic
 pydantic-settings
 
-# Kafka
-confluent-kafka
-
 # MongoDB
 pymongo
 dnspython
