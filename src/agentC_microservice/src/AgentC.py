@@ -41,7 +41,7 @@ RETRY_DELAY = 5  # seconds
 TOPIC_CONSUME = f"truck-detected-{GATE_ID}"
 TOPIC_PRODUCE = f"hz-results-{GATE_ID}"
 
-logger = logging.getLogger("AgentB")
+logger = logging.getLogger("AgentC")
 
 
 class AgentC:
@@ -102,12 +102,12 @@ class AgentC:
         self.crop_storage = CropStorage(MINIO_CONF, BUCKET_NAME)
 
         # Initialize Kafka
-        logger.info(f"[AgentB/Kafka] Connecting to kafka via '{KAFKA_BOOTSTRAP}' …")
+        logger.info(f"[AgentC/Kafka] Connecting to kafka via '{KAFKA_BOOTSTRAP}' …")
 
         # Kafka Consumer configuration
         self.consumer = Consumer({
             "bootstrap.servers": KAFKA_BOOTSTRAP,
-            "group.id": "agentB-group",
+            "group.id": "agentC-group",
             "auto.offset.reset": "latest",  # "latest" to fetch the latest available message
             "enable.auto.commit": True,  # to read in real-time
             "session.timeout.ms": 10000,
@@ -130,7 +130,7 @@ class AgentC:
         self.best_confidence = 0.0
         self.frames_processed = 0
         self.length_counter = {}
-        logger.debug("[AgentB] Consensus state reset.")
+        logger.debug("[AgentC] Consensus state reset.")
 
     def _get_frames(self, num_frames=30):
         """
@@ -142,15 +142,15 @@ class AgentC:
         # Connect to stream if not already
         if self.stream is None:
             logger.info(
-                f"[AgentB] Connecting to RTMP stream (via Nginx): {RTSP_STREAM_HIGH}")
+                f"[AgentC] Connecting to RTMP stream (via Nginx): {RTSP_STREAM_HIGH}")
             try:
                 self.stream = RTSPStream(RTSP_STREAM_HIGH)
             
             except Exception as e:
-                logger.exception(f"[AgentB] Failed to connect to stream: {e}")
+                logger.exception(f"[AgentC] Failed to connect to stream: {e}")
                 return
 
-        logger.info(f"[AgentB] Reading {num_frames} frame(s) from RTMP…")
+        logger.info(f"[AgentC] Reading {num_frames} frame(s) from RTMP…")
 
         captured = 0
         while captured < num_frames and self.running:
@@ -159,14 +159,14 @@ class AgentC:
                 if frame is not None:
                     self.frames_queue.put(frame)
                     captured += 1
-                    logger.debug(f"[AgentB] Captured {captured}/{num_frames}.")
+                    logger.debug(f"[AgentC] Captured {captured}/{num_frames}.")
                 
                 else:
-                    logger.debug("[AgentB] No frame yet, trying again…")
+                    logger.debug("[AgentC] No frame yet, trying again…")
                     time.sleep(0.1)
             
             except Exception as e:
-                logger.exception(f"[AgentB] Error when capturing frame {e}")
+                logger.exception(f"[AgentC] Error when capturing frame {e}")
                 time.sleep(0.2)
 
     def process_hazard_plate_detection(self, truck_id: str):
@@ -186,26 +186,26 @@ class AgentC:
         while self.running and not self.consensus_reached and self.frames_processed < self.max_frames:
             # Ensure there are frames to process
             if self.frames_queue.empty():
-                logger.debug("[AgentB] Frames queue is empty, capturing more frames.")
+                logger.debug("[AgentC] Frames queue is empty, capturing more frames.")
                 self._get_frames(5)
 
             # return None if no frames were returned
             if self.frames_queue.empty():
-                logger.warning("[AgentB] No frame captured from RTSP.")
+                logger.warning("[AgentC] No frame captured from RTSP.")
                 return None, None, None
             
             try:
                 frame = self.frames_queue.get_nowait()
-                logger.debug("[AgentB] Frame obtained from queue.")
+                logger.debug("[AgentC] Frame obtained from queue.")
 
             except Empty:
-                logger.warning("[AgentB] Frames queue is empty.")
+                logger.warning("[AgentC] Frames queue is empty.")
                 time.sleep(0.05)
                 continue
 
             # Increment frame counter
             self.frames_processed += 1
-            logger.debug(f"[AgentB] Processing frame {self.frames_processed}/{self.max_frames}")
+            logger.debug(f"[AgentC] Processing frame {self.frames_processed}/{self.max_frames}")
 
             # Process single frame
             result = self._process_single_frame(frame, truck_id)
@@ -214,12 +214,12 @@ class AgentC:
             if result:
                 text, conf, crop = result
                 logger.info(
-                    f"[AgentB] Consensus reached: '{text}' (conf={conf:.2f})")
+                    f"[AgentC] Consensus reached: '{text}' (conf={conf:.2f})")
 
                 # Clear remaining frames from queue
                 remaining = self.frames_queue.qsize()
                 if remaining > 0:
-                    logger.debug(f"[AgentB] Clearing {remaining} remaining frames from queue")
+                    logger.debug(f"[AgentC] Clearing {remaining} remaining frames from queue")
                     while not self.frames_queue.empty():
                         try:
                             self.frames_queue.get_nowait()
@@ -230,7 +230,7 @@ class AgentC:
 
         # Check if frame limit reached
         if self.frames_processed >= self.max_frames:
-            logger.info(f"[AgentB] Frame limit reached ({self.max_frames}), returning best partial result")
+            logger.info(f"[AgentC] Frame limit reached ({self.max_frames}), returning best partial result")
 
         # If full consensus not reached, return best partial result
         return self._get_best_partial_result()
@@ -242,48 +242,48 @@ class AgentC:
         """
 
         try:
-            logger.info("[AgentB] YOLO (LP) running…")
+            logger.info("[AgentC] YOLO (LP) running…")
             results = self.yolo.detect(frame)
 
             if not results:
                 logger.debug(
-                    "[AgentB] YOLO did not return a result for this frame.")
+                    "[AgentC] YOLO did not return a result for this frame.")
                 return None
 
             if not self.yolo.found_hazard_plate(results):
                 logger.info(
-                    "[AgentB] No license plate detected for this frame.")
+                    "[AgentC] No license plate detected for this frame.")
                 return None
 
             boxes = self.yolo.get_boxes(results)
-            logger.info(f"[AgentB] {len(boxes)} license plates detected.")
+            logger.info(f"[AgentC] {len(boxes)} license plates detected.")
 
             for i, box in enumerate(boxes, start=1):
                 x1, y1, x2, y2, conf = map(float, box)
 
                 if conf < 0.4:
                     logger.info(
-                        f"[AgentB] Ignored low confidence box (conf={conf:.2f}).")
+                        f"[AgentC] Ignored low confidence box (conf={conf:.2f}).")
                     continue
 
                 # Extract Crop
                 crop = frame[int(y1):int(y2), int(x1):int(x2)]
 
 
-                logger.info(f"[AgentB] Crop {i} accepted as LICENSE_PLATE")
+                logger.info(f"[AgentC] Crop {i} accepted as LICENSE_PLATE")
                 # ============================================================
                 # Run OCR
-                logger.info("[AgentB] OCR extracting text…")
+                logger.info("[AgentC] OCR extracting text…")
                 try:
                     text, ocr_conf = self.ocr._extract_text(crop)
 
                     if not text or ocr_conf <= 0.0:
                         logger.debug(
-                            f"[AgentB] OCR returned no valid text for crop {i}")
+                            f"[AgentC] OCR returned no valid text for crop {i}")
                         continue
 
                     logger.info(
-                        f"[AgentB] OCR: '{text}' (conf={ocr_conf:.2f})")
+                        f"[AgentC] OCR: '{text}' (conf={ocr_conf:.2f})")
 
                     # Update best crop
                     if ocr_conf > self.best_confidence:
@@ -297,14 +297,14 @@ class AgentC:
                     if self._check_full_consensus():
                         final_text = self._build_final_text()
                         logger.info(
-                            f"[AgentB] Full consensus achieved: '{final_text}'")
+                            f"[AgentC] Full consensus achieved: '{final_text}'")
                         return final_text, 1.0, crop
 
                 except Exception as e:
-                    logger.exception(f"[AgentB] OCR failure: {e}")
+                    logger.exception(f"[AgentC] OCR failure: {e}")
 
         except Exception as e:
-            logger.exception(f"[AgentB] Error processing frame: {e}")
+            logger.exception(f"[AgentC] Error processing frame: {e}")
 
         return None
 
@@ -317,7 +317,7 @@ class AgentC:
         # Ignore low confidences
         if confidence < 0.80:
             logger.debug(
-                f"[AgentB] Confidence too low ({confidence:.2f}), skipping")
+                f"[AgentC] Confidence too low ({confidence:.2f}), skipping")
             return
 
         # Normalize text (uppercase, remove only dashes, keep spaces for position tracking)
@@ -326,7 +326,7 @@ class AgentC:
         # Ignore if too short
         if len(text_normalized) < 4:
             logger.debug(
-                f"[AgentB] Text too short ('{text_normalized}'), skipping")
+                f"[AgentC] Text too short ('{text_normalized}'), skipping")
             return
         
         # Track the length of this text
@@ -341,12 +341,12 @@ class AgentC:
             most_common_length = max(self.length_counter.items(), key=lambda x: x[1])[0]
             if text_len != most_common_length:
                 logger.debug(
-                    f"[AgentB] Text length mismatch: '{text_normalized}' has {text_len} chars, "
+                    f"[AgentC] Text length mismatch: '{text_normalized}' has {text_len} chars, "
                     f"expected {most_common_length} (most common). Skipping to avoid misalignment.")
                 return
 
         logger.debug(
-            f"[AgentB] Adding to consensus: '{text_normalized}' (conf={confidence:.2f}, len={text_len})")
+            f"[AgentC] Adding to consensus: '{text_normalized}' (conf={confidence:.2f}, len={text_len})")
 
         # Dynamically expand dictionary for new positions
         for pos in range(len(text_normalized)):
@@ -368,13 +368,13 @@ class AgentC:
             if self.counter[pos][char] >= self.decision_threshold:
                 if pos not in self.decided_chars:
                     self.decided_chars[pos] = char
-                    logger.debug(f"[AgentB] Position {pos} decided: '{char}'")
+                    logger.debug(f"[AgentC] Position {pos} decided: '{char}'")
                 elif self.decided_chars[pos] != char:
                     # If changed, update
                     old_char = self.decided_chars[pos]
                     self.decided_chars[pos] = char
                     logger.debug(
-                        f"[AgentB] Position {pos} changed: '{old_char}' -> '{char}'")
+                        f"[AgentC] Position {pos} changed: '{old_char}' -> '{char}'")
 
 
     def _check_full_consensus(self) -> bool:
@@ -395,12 +395,12 @@ class AgentC:
 
         if decided_count >= required_positions:
             logger.info(
-                f"[AgentB] Consensus reached! {decided_count}/{total_positions} positions decided (need {required_positions})")
+                f"[AgentC] Consensus reached! {decided_count}/{total_positions} positions decided (need {required_positions})")
             self.consensus_reached = True
             return True
 
         logger.debug(
-            f"[AgentB] Consensus check: {decided_count}/{total_positions} positions decided (need {required_positions})")
+            f"[AgentC] Consensus check: {decided_count}/{total_positions} positions decided (need {required_positions})")
         return False
 
 
@@ -415,7 +415,7 @@ class AgentC:
             text_chars.append(self.decided_chars[pos])
 
         final_text = "".join(text_chars)
-        logger.debug(f"[AgentB] Built final text: '{final_text}'")
+        logger.debug(f"[AgentC] Built final text: '{final_text}'")
 
         return final_text
 
@@ -427,7 +427,7 @@ class AgentC:
         """
         if not self.counter:
             logger.warning(
-                "[AgentB] No valid license plates detected in any frame.")
+                "[AgentC] No valid license plates detected in any frame.")
             return None, None, None
 
         # Build text with decided positions + best candidates
@@ -456,7 +456,7 @@ class AgentC:
         confidence = min(confidence, 0.95)
 
         logger.info(
-            f"[AgentB] Partial result: '{partial_text}' ({decided_count}/{total_positions} decided, conf={confidence:.2f})")
+            f"[AgentC] Partial result: '{partial_text}' ({decided_count}/{total_positions} decided, conf={confidence:.2f})")
 
         return partial_text, confidence, self.best_crop
 
@@ -471,12 +471,12 @@ class AgentC:
 
         if err is not None:
             logger.error(
-                f"[AgentB/Kafka] Message delivery failed: {err} "
+                f"[AgentC/Kafka] Message delivery failed: {err} "
                 f"(topic={msg.topic()}, partition={msg.partition()})"
             )
         else:
             logger.debug(
-                f"[AgentB/Kafka] Message delivered successfully to "
+                f"[AgentC/Kafka] Message delivered successfully to "
                 f"{msg.topic()}[{msg.partition()}] at offset {msg.offset()}"
             )
     
@@ -496,7 +496,7 @@ class AgentC:
         }
         
         logger.info(
-            f"[AgentB] Publishing '{TOPIC_PRODUCE}' (truckId={truck_id}, plate={plate_text}) …")
+            f"[AgentC] Publishing '{TOPIC_PRODUCE}' (truckId={truck_id}, plate={plate_text}) …")
 
         # Send to Kafka
         self.producer.produce(
@@ -512,7 +512,7 @@ class AgentC:
     def _loop(self):
         """Main loop for Agent B."""
         logger.info(
-            f"[AgentB] Main loop starting… (topic in='{TOPIC_CONSUME}')")
+            f"[AgentC] Main loop starting… (topic in='{TOPIC_CONSUME}')")
 
         try:
             while self.running:
@@ -535,7 +535,7 @@ class AgentC:
                     skipped = len(msgs_buffer) - 1
                     if skipped > 0:
                         logger.info(
-                            f"[AgentB] Skipped {skipped} old messages, processing latest only")
+                            f"[AgentC] Skipped {skipped} old messages, processing latest only")
                 else:
                     # Wait for new message
                     msg = self.consumer.poll(timeout=1.0)
@@ -549,7 +549,7 @@ class AgentC:
                 try:
                     data = json.loads(msg.value())
                 except json.JSONDecodeError:
-                    logger.warning("[AgentB] Invalid message (JSON). Ignored.")
+                    logger.warning("[AgentC] Invalid message (JSON). Ignored.")
                     continue
 
                 # Extract truckId (Propagate if exists)
@@ -562,13 +562,13 @@ class AgentC:
                     truck_id = str(uuid.uuid4())
 
                 logger.info(
-                    f"[AgentB] Received 'truck-detected' (truckId={truck_id}). Starting LP pipeline…")
+                    f"[AgentC] Received 'truck-detected' (truckId={truck_id}). Starting LP pipeline…")
 
                 # Process license plate detection
                 plate_text, plate_conf, _lp_img = self.process_hazard_plate_detection(truck_id)
 
                 if not plate_text:
-                    logger.warning("[AgentB] No final text results — publishing empty message.")
+                    logger.warning("[AgentC] No final text results — publishing empty message.")
                     self._publish_hz_detected(truck_id, "N/A", -1, None)
                     continue
                 
@@ -581,11 +581,11 @@ class AgentC:
                         crop_url = self.crop_storage.upload_memory_image(self.best_crop, object_name)
                         
                         if crop_url:
-                            logger.info(f"[AgentB] Crop Final Consensus: {crop_url}")
+                            logger.info(f"[AgentC] Crop Final Consensus: {crop_url}")
                         else:
-                            logger.warning("[AgentB] Failed to upload crop to MinIO")
+                            logger.warning("[AgentC] Failed to upload crop to MinIO")
                     except Exception as e:
-                        logger.exception(f"[AgentB] Error uploading crop to MinIO: {e}")
+                        logger.exception(f"[AgentC] Error uploading crop to MinIO: {e}")
                 
                 # Publish the license plate detected message
                 self._publish_hz_detected(
@@ -600,19 +600,19 @@ class AgentC:
                     self.frames_queue.queue.clear()
                 
         except KeyboardInterrupt:
-            logger.info("[AgentB] Interrupted by user.")
+            logger.info("[AgentC] Interrupted by user.")
         except KafkaException as e:
-            logger.exception(f"[AgentB/Kafka] Kafka error: {e}")
+            logger.exception(f"[AgentC/Kafka] Kafka error: {e}")
         except Exception as e:
-            logger.exception(f"[AgentB] Unexpected error: {e}")
+            logger.exception(f"[AgentC] Unexpected error: {e}")
         finally:
-            logger.info("[AgentB] Freeing resources…")
+            logger.info("[AgentC] Freeing resources…")
             try:
                 if self.stream is not None:
                     self.stream.release()
-                    logger.debug("[AgentB] RTMP stream released.")
+                    logger.debug("[AgentC] RTMP stream released.")
             except Exception as e:
-                logger.exception(f"[AgentB] Error releasing RTMP stream: {e}")
+                logger.exception(f"[AgentC] Error releasing RTMP stream: {e}")
             try:
                 self.producer.flush(5)
             except Exception:
@@ -623,6 +623,6 @@ class AgentC:
                 pass
 
     def stop(self):
-        """Gracefully stop Agent B."""
-        logger.info("[AgentB] Stopping agent…")
+        """Gracefully stop Agent C."""
+        logger.info("[AgentC] Stopping agent…")
         self.running = False

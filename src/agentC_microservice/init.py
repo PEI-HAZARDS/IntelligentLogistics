@@ -55,7 +55,7 @@ def main():
     agent = AgentC()
     
 
-    # Reset logging level AFTER AgentB is created
+    # Reset logging level AFTER AgentC is created
     # PaddleOCR overrides it during OCR() initialization
     logging.getLogger().setLevel(logging.INFO)
     
