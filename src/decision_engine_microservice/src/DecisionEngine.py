@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import itertools
 
 
-KAFKA_PRODUCE_TOPIC = "decision_results"
+KAFKA_PRODUCE_TOPIC = "decision-results"
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
 GATE_ID = os.getenv("GATE_ID", 1)
 KAFKA_CONSUME_TOPIC_LP = f"lp-results-{GATE_ID}"
