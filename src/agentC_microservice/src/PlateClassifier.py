@@ -77,26 +77,18 @@ class PlateClassifier:
         # Matrículas: Largas E cores branco/amarelo
         if aspect_ratio >= self.min_aspect_ratio_license:
             if color_score['license'] > color_score['hazard']:
-                #logger.info(
-                #    "[Classifier] ✅ Classified as LICENSE_PLATE (shape + color)")
                 return self.LICENSE_PLATE
 
         # Placas de perigo: Quadradas/Verticais E cores laranja/vermelho
         if aspect_ratio <= self.max_aspect_ratio_hazard:
             if color_score['hazard'] > color_score['license']:
-                #logger.info(
-                #    "[Classifier] ⚠️ Classified as HAZARD_PLATE (shape + color)")
                 return self.HAZARD_PLATE
 
         # Desempate apenas por cor se forma não for conclusiva
         if color_score['license'] > color_score['hazard'] * 1.5:
-            #logger.info(
-            #    "[Classifier] ✅ Classified as LICENSE_PLATE (color dominant)")
             return self.LICENSE_PLATE
 
         if color_score['hazard'] > color_score['license'] * 1.5:
-            #logger.info(
-            #    "[Classifier] ⚠️ Classified as HAZARD_PLATE (color dominant)")
             return self.HAZARD_PLATE
 
         #logger.warning(

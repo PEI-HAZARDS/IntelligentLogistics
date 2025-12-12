@@ -53,6 +53,12 @@ def main():
     
     logger.info("[init] Creating AgentC instance...")
     agent = AgentC()
+    
+
+    # Reset logging level AFTER AgentB is created
+    # PaddleOCR overrides it during OCR() initialization
+    logging.getLogger().setLevel(logging.INFO)
+    
     logger.info("[init] AgentC instance created!")
     
     # Register signal handler for graceful shutdown
