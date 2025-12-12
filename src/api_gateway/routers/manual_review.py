@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional
 
 from fastapi import APIRouter, Body, Query, Path
 
-from ..clients import internal_api_client as internal_client
+from clients import internal_api_client as internal_client
 
 router = APIRouter(tags=["manual_review"])
 

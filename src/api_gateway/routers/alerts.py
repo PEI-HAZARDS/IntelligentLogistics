@@ -2,7 +2,7 @@ from fastapi import APIRouter, Query, Path
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
 
-from ..clients import internal_api_client as internal_client
+from clients import internal_api_client as internal_client
 
 router = APIRouter(tags=["alerts"])
 
@@ -65,3 +65,74 @@ async def get_alerts_stats():
     Proxy to GET /api/v1/alerts/stats
     """
     return await internal_client.get("/alerts/stats")
+
+
+# ---------------------------------
+# GET: /api/alerts/visit/{visit_id}
+# ---------------------------------
+@router.get("/alerts/visit/{visit_id}")
+async def get_visit_alerts(
+    visit_id: int = Path(..., description="Visit ID"),
+):
+    """
+    Get all alerts for a specific visit.
+    Proxy to GET /api/v1/alerts/visit/{visit_id}
+    """
+    return await internal_client.get(f"/alerts/visit/{visit_id}")
+
+
+# ---------------------------------
+# REFERENCE DATA
+# ---------------------------------
+@router.get("/alerts/reference/adr-codes")
+async def get_adr_codes():
+    """
+    List ADR/UN codes reference.
+    Proxy to GET /api/v1/alerts/reference/adr-codes
+    """
+    return await internal_client.get("/alerts/reference/adr-codes")
+
+
+@router.get("/alerts/reference/kemler-codes")
+async def get_kemler_codes():
+    """
+    List Kemler codes reference.
+    Proxy to GET /api/v1/alerts/reference/kemler-codes
+    """
+    return await internal_client.get("/alerts/reference/kemler-codes")
+
+
+# ---------------------------------
+# CREATE ENDPOINTS
+# ---------------------------------
+class CreateAlertRequest(BaseModel):
+    visit_id: Optional[int] = None
+    type: str  # generic, safety, problem, operational
+    description: str
+    image_url: Optional[str] = None
+
+
+@router.post("/alerts")
+async def create_alert(request: CreateAlertRequest):
+    """
+    Create an alert.
+    Proxy to POST /api/v1/alerts
+    """
+    return await internal_client.post("/alerts", json=request.model_dump(exclude_none=True))
+
+
+class CreateHazmatAlertRequest(BaseModel):
+    appointment_id: int
+    un_code: Optional[str] = None
+    kemler_code: Optional[str] = None
+    detected_hazmat: Optional[str] = None
+
+
+@router.post("/alerts/hazmat")
+async def create_hazmat_alert(request: CreateHazmatAlertRequest):
+    """
+    Create hazmat/ADR specific alert.
+    Proxy to POST /api/v1/alerts/hazmat
+    """
+    return await internal_client.post("/alerts/hazmat", json=request.model_dump(exclude_none=True))
+

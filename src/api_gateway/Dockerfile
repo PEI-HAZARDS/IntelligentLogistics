@@ -31,5 +31,5 @@ EXPOSE 8000
 #   - ou de variáveis de ambiente passadas pelo docker compose / orquestrador.
 
 # Comando para arrancar o FastAPI com Uvicorn
-# Nota: "api_gateway.main:app" corresponde ao módulo/pacote + objeto FastAPI
-CMD ["uvicorn", "api_gateway.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Nota: "main:app" corresponde ao ficheiro main.py e objeto FastAPI (ficheiros estão em /app)
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

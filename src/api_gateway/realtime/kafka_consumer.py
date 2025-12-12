@@ -5,7 +5,7 @@ from typing import Optional
 from aiokafka import AIOKafkaConsumer
 from loguru import logger
 
-from ..config import settings
+from config import settings
 from .hub import decisions_hub
 
 # Task global para podermos arrancar o consumer no startup
@@ -42,6 +42,7 @@ async def _run_consumer() -> None:
     try:
         async for msg in consumer:
             raw_value = msg.value
+            logger.info("Received Kafka message: {}", raw_value)
             try:
                 payload = json.loads(raw_value)
             except json.JSONDecodeError:

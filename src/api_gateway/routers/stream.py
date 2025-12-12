@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from ..config import settings
+from config import settings
 
 router = APIRouter(tags=["stream"])
 

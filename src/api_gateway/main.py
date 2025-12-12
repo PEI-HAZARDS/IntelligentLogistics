@@ -2,20 +2,21 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .config import settings
+from config import settings
 
 # Routers (apenas os que são realmente usados)
-from .routers import (
+from routers import (
     arrivals,
     manual_review,
     alerts,
     drivers,
     stream,
     realtime,   # WebSockets para decisões em tempo real
+    workers,    # Operators and Managers
 )
 
 # Kafka consumer para decisões
-from .realtime.kafka_consumer import start_consumer
+from realtime.kafka_consumer import start_consumer
 
 
 def create_app() -> FastAPI:
@@ -46,6 +47,7 @@ def create_app() -> FastAPI:
     app.include_router(alerts.router, prefix=settings.API_PREFIX)
     app.include_router(drivers.router, prefix=settings.API_PREFIX)
     app.include_router(stream.router, prefix=settings.API_PREFIX)
+    app.include_router(workers.router, prefix=settings.API_PREFIX)
 
     # ----------------------
     # Router WebSocket

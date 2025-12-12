@@ -1,6 +1,6 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from ..realtime.hub import decisions_hub
+from realtime.hub import decisions_hub
 
 router = APIRouter(tags=["realtime"])
 

@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import HTTPException, status
 
-from ..config import settings
+from config import settings
 
 API_V1_PREFIX = "/api/v1"
 
@@ -105,3 +105,16 @@ async def put(
     Faz um PUT ao Data Module.
     """
     return await _request("PUT", path, params=params, json=json, timeout=timeout)
+
+
+async def patch(
+    path: str,
+    json: Optional[Any] = None,
+    params: Optional[Dict[str, Any]] = None,
+    timeout: float = 10.0,
+) -> Any:
+    """
+    Faz um PATCH ao Data Module.
+    """
+    return await _request("PATCH", path, params=params, json=json, timeout=timeout)
+
