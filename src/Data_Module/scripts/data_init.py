@@ -21,7 +21,7 @@ try:
     from Data_Module.models.sql_models import (
         Base, Worker, Manager, Operator, Company, Driver,
         Truck, Terminal, Dock, Gate, Shift, ShiftType,
-        Booking, Cargo, Appointment, Visit, Alert
+        Booking, Cargo, Appointment, Visit, Alert, ShiftAlertHistory
     )
 except Exception:
     # Fallback for direct execution
@@ -29,7 +29,7 @@ except Exception:
         from models.sql_models import (
             Base, Worker, Manager, Operator, Company, Driver,
             Truck, Terminal, Dock, Gate, Shift, ShiftType,
-            Booking, Cargo, Appointment, Visit, Alert
+            Booking, Cargo, Appointment, Visit, Alert, ShiftAlertHistory
         )
     except Exception as e:
         print("Error importing models:", e)
@@ -56,7 +56,7 @@ def init_data(db: Session):
 
         # Manager
         manager1 = Worker(
-            nif="123456789",
+            num_worker="MGR001",
             name="João Silva",
             email="joao.silva@porto.pt",
             phone="910000001",
@@ -66,7 +66,7 @@ def init_data(db: Session):
 
         # Operator
         operator1 = Worker(
-            nif="234567890",
+            num_worker="OPR001",
             name="Carlos Oliveira",
             email="carlos.oliveira@porto.pt",
             phone="910000002",
@@ -78,8 +78,8 @@ def init_data(db: Session):
         db.flush()
 
         # Create manager and operator records
-        manager_obj1 = Manager(nif=manager1.nif, access_level="admin")
-        operator_obj1 = Operator(nif=operator1.nif)
+        manager_obj1 = Manager(num_worker=manager1.num_worker, access_level="admin")
+        operator_obj1 = Operator(num_worker=operator1.num_worker)
 
         db.add_all([manager_obj1, operator_obj1])
         db.flush()
@@ -145,8 +145,8 @@ def init_data(db: Session):
         print("Creating terminals...")
 
         terminals = [
-            Terminal(latitude=Decimal("41.1523"), longitude=Decimal("-8.6145")),
-            Terminal(latitude=Decimal("41.1524"), longitude=Decimal("-8.6146")),
+            Terminal(name="Terminal Norte", latitude=Decimal("41.1523"), longitude=Decimal("-8.6145"), hazmat_approved=True),
+            Terminal(name="Terminal Sul", latitude=Decimal("41.1524"), longitude=Decimal("-8.6146"), hazmat_approved=False),
         ]
 
         db.add_all(terminals)
@@ -179,32 +179,32 @@ def init_data(db: Session):
         db.add_all(gates)
         db.flush()
 
-        # ===== SHIFTS =====
+        # ===== SHIFTS (composite PK: gate_id + shift_type + date) =====
         print("Creating shifts...")
 
         today = date.today()
 
         shifts = [
             Shift(
+                gate_id=gates[0].id,
                 shift_type=ShiftType.MORNING,
                 date=today,
-                operator_nif=operator1.nif,
-                manager_nif=manager1.nif,
-                gate_id=gates[0].id
+                operator_num_worker=operator1.num_worker,
+                manager_num_worker=manager1.num_worker
             ),
             Shift(
+                gate_id=gates[0].id,
                 shift_type=ShiftType.AFTERNOON,
                 date=today,
-                operator_nif=operator1.nif,
-                manager_nif=manager1.nif,
-                gate_id=gates[0].id
+                operator_num_worker=operator1.num_worker,
+                manager_num_worker=manager1.num_worker
             ),
         ]
 
         db.add_all(shifts)
         db.flush()
 
-        # ===== BOOKINGS =====
+        # ===== BOOKINGS (PK: reference) =====
         print("Creating bookings...")
 
         bookings = []
@@ -242,7 +242,7 @@ def init_data(db: Session):
         for i, booking in enumerate(bookings):
             desc, state, qty = cargo_descriptions[i % len(cargo_descriptions)]
             cargos.append(Cargo(
-                booking_id=booking.id,
+                booking_reference=booking.reference,
                 quantity=qty,
                 state=state,
                 description=desc
@@ -264,9 +264,10 @@ def init_data(db: Session):
             time(3, 0), time(4, 0), time(5, 0)
         ]
 
+        # Updated status values to match AppointmentStatusEnum
         status_distribution = (
-            ["pending"] * 13 +
-            ["approved"] * 10 +
+            ["in_transit"] * 13 +
+            ["delayed"] * 10 +
             ["completed"] * 7 +
             ["canceled"] * 3
         )
@@ -277,7 +278,7 @@ def init_data(db: Session):
             scheduled_time = datetime.combine(today, schedules[i])
             appointments.append(Appointment(
                 arrival_id=f"PRT-{i+1:04d}",
-                booking_id=bookings[i].id,
+                booking_reference=bookings[i].reference,
                 driver_license=drivers[i % len(drivers)].drivers_license,
                 truck_license_plate=trucks[i % len(trucks)].license_plate,
                 terminal_id=terminals[0].id,
@@ -292,15 +293,15 @@ def init_data(db: Session):
         db.add_all(appointments)
         db.flush()
 
-        # ===== VISITS =====
-        print("Creating visits for completed/approved appointments...")
+        # ===== VISITS (composite FK to Shift) =====
+        print("Creating visits for in_transit/delayed/completed appointments...")
 
         visits = []
         for appt in appointments:
-            if appt.status in ["approved", "completed"]:
+            if appt.status in ["in_transit", "delayed", "completed"]:
                 entry_time = appt.scheduled_start_time + timedelta(minutes=random.randint(-15, 30))
                 out_time = None
-                state = "in_transit"
+                state = "unloading"  # Updated to match DeliveryStatusEnum
                 
                 if appt.status == "completed":
                     out_time = entry_time + timedelta(minutes=random.randint(30, 90))
@@ -308,7 +309,9 @@ def init_data(db: Session):
                 
                 visits.append(Visit(
                     appointment_id=appt.id,
-                    shift_id=shifts[0].id,
+                    shift_gate_id=shifts[0].gate_id,
+                    shift_type=shifts[0].shift_type,
+                    shift_date=shifts[0].date,
                     entry_time=entry_time,
                     out_time=out_time,
                     state=state
@@ -317,31 +320,48 @@ def init_data(db: Session):
         db.add_all(visits)
         db.flush()
 
-        # ===== ALERTS =====
+        # ===== ALERTS (using visit_id instead of cargo_id) =====
         print("Creating alerts...")
 
-        alerts = [
-            Alert(
-                cargo_id=cargos[0].id,
-                type="hazmat",
-                severity=4,
-                description="Hazardous cargo (acid) - check containment"
-            ),
-            Alert(
-                cargo_id=cargos[1].id,
-                type="hazmat",
-                severity=5,
-                description="Compressed gas - mandatory ADR inspection"
-            ),
-            Alert(
-                cargo_id=cargos[3].id,
-                type="temperature",
-                severity=3,
-                description="Temperature out of range - refrigerated cargo"
-            ),
-        ]
+        # Find visits with hazardous cargo to attach alerts
+        hazmat_visits = [v for v in visits if v.appointment_id <= 3]  # First 3 visits
+
+        alerts = []
+        if len(hazmat_visits) >= 1:
+            alerts.append(Alert(
+                visit_id=hazmat_visits[0].appointment_id,
+                type="safety",
+                description="Hazardous cargo (acid) - check containment | UN 1830 - Sulfuric acid | Class: 8 | Hazard: Corrosive"
+            ))
+        if len(hazmat_visits) >= 2:
+            alerts.append(Alert(
+                visit_id=hazmat_visits[1].appointment_id,
+                type="safety",
+                description="Compressed gas - mandatory ADR inspection | UN 1978 - Propane | Class: 2.1 | Hazard: Flammable gas"
+            ))
+        # Generic operational alert
+        alerts.append(Alert(
+            visit_id=None,
+            type="operational",
+            description="Temperature out of range - refrigerated cargo"
+        ))
 
         db.add_all(alerts)
+        db.flush()
+
+        # ===== SHIFT ALERT HISTORY =====
+        print("Creating shift alert history...")
+
+        shift_alert_histories = []
+        for alert in alerts:
+            shift_alert_histories.append(ShiftAlertHistory(
+                shift_gate_id=shifts[0].gate_id,
+                shift_type=shifts[0].shift_type,
+                shift_date=shifts[0].date,
+                alert_id=alert.id
+            ))
+
+        db.add_all(shift_alert_histories)
         db.flush()
 
         # ===== COMMIT =====
@@ -355,25 +375,26 @@ Summary:
 - Companies: {len(companies)}
 - Drivers: {len(drivers)} (all with password: driver123)
 - Trucks: {len(trucks)}
-- Terminals: {len(terminals)}
+- Terminals: {len(terminals)} (1 hazmat approved)
 - Docks: {len(docks)}
 - Gates: {len(gates)}
 - Shifts: {len(shifts)}
 - Bookings: {len(bookings)}
 - Cargos: {len(cargos)}
 - Appointments: {len(appointments)} (with arrival_id PRT-0001 to PRT-0033)
-  · Pending: {status_distribution.count('pending')}
-  · Approved: {status_distribution.count('approved')}
+  · In Transit: {status_distribution.count('in_transit')}
+  · Delayed: {status_distribution.count('delayed')}
   · Completed: {status_distribution.count('completed')}
   · Canceled: {status_distribution.count('canceled')}
 - Visits: {len(visits)}
 - Alerts: {len(alerts)}
+- Shift Alert History: {len(shift_alert_histories)}
 
 Test credentials:
 
 Web Portal:
-Email: joao.silva@porto.pt | Password: password123 (Manager)
-Email: carlos.oliveira@porto.pt | Password: password123 (Operator)
+Email: joao.silva@porto.pt | Password: password123 (Manager, num_worker: MGR001)
+Email: carlos.oliveira@porto.pt | Password: password123 (Operator, num_worker: OPR001)
 
 Mobile App (Drivers):
 Driver license: PT12345678, PT23456789, etc.

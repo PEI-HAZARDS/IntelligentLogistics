@@ -9,12 +9,13 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
 from db.postgres import get_db
-from models.pydantic_models import Alert as AlertPydantic, AlertCreate
+from models.pydantic_models import Alert as AlertPydantic, AlertCreate, TypeAlertEnum
 from services.alert_service import (
     get_alerts,
     get_alert_by_id,
     get_active_alerts,
     get_alerts_count_by_type,
+    get_alerts_for_visit,
     create_alert,
     create_hazmat_alert,
     ADR_CODES,
@@ -28,9 +29,8 @@ router = APIRouter(prefix="/alerts", tags=["Alerts"])
 
 class CreateAlertRequest(BaseModel):
     """Request to create alert manually."""
-    cargo_id: Optional[int] = None
-    type: str
-    severity: int  # 1-5
+    visit_id: Optional[int] = None
+    type: str  # generic, safety, problem, operational
     description: str
     image_url: Optional[str] = None
 
@@ -49,15 +49,14 @@ class CreateHazmatAlertRequest(BaseModel):
 def list_alerts(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    alert_type: Optional[str] = Query(None, description="Filter by type (hazmat, delay, etc.)"),
-    severity_min: Optional[int] = Query(None, ge=1, le=5, description="Minimum severity"),
-    cargo_id: Optional[int] = Query(None, description="Filter by cargo"),
+    alert_type: Optional[str] = Query(None, description="Filter by type (safety, problem, etc.)"),
+    visit_id: Optional[int] = Query(None, description="Filter by visit"),
     db: Session = Depends(get_db)
 ):
     """Lists alerts with optional filters."""
     alerts = get_alerts(
         db, skip=skip, limit=limit,
-        alert_type=alert_type, severity_min=severity_min, cargo_id=cargo_id
+        alert_type=alert_type, visit_id=visit_id
     )
     return [AlertPydantic.model_validate(a) for a in alerts]
 
@@ -68,7 +67,7 @@ def list_active_alerts(
     db: Session = Depends(get_db)
 ):
     """
-    Lists active alerts (last 24h) ordered by severity.
+    Lists active alerts (last 24h) ordered by timestamp.
     Used in operator dashboard.
     """
     alerts = get_active_alerts(db, limit=limit)
@@ -79,6 +78,16 @@ def list_active_alerts(
 def get_alerts_stats(db: Session = Depends(get_db)):
     """Alert statistics by type (last 24h)."""
     return get_alerts_count_by_type(db)
+
+
+@router.get("/visit/{visit_id}", response_model=List[AlertPydantic])
+def get_visit_alerts(
+    visit_id: int = Path(..., description="Visit ID (same as appointment_id)"),
+    db: Session = Depends(get_db)
+):
+    """Gets all alerts for a specific visit."""
+    alerts = get_alerts_for_visit(db, visit_id)
+    return [AlertPydantic.model_validate(a) for a in alerts]
 
 
 @router.get("/{alert_id}", response_model=AlertPydantic)
@@ -126,9 +135,8 @@ def create_manual_alert(
     """
     alert = create_alert(
         db,
-        cargo_id=request.cargo_id,
+        visit_id=request.visit_id,
         alert_type=request.type,
-        severity=request.severity,
         description=request.description,
         image_url=request.image_url
     )

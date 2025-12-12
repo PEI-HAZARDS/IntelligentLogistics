@@ -8,7 +8,7 @@ from datetime import datetime, date, time
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
 
-from models.sql_models import Appointment, Visit, Shift, Cargo, Booking, Gate
+from models.sql_models import Appointment, Visit, Shift, Cargo, Booking, Gate, ShiftType
 
 
 def get_all_appointments(
@@ -16,7 +16,9 @@ def get_all_appointments(
     skip: int = 0,
     limit: int = 100,
     gate_id: Optional[int] = None,
-    shift_id: Optional[int] = None,
+    shift_gate_id: Optional[int] = None,
+    shift_type: Optional[str] = None,
+    shift_date: Optional[date] = None,
     status: Optional[str] = None,
     scheduled_date: Optional[date] = None
 ) -> List[Appointment]:
@@ -28,9 +30,13 @@ def get_all_appointments(
     
     if gate_id:
         query = query.filter(Appointment.gate_in_id == gate_id)
-    if shift_id:
-        # Filter by visits that have this shift
-        query = query.join(Visit).filter(Visit.shift_id == shift_id)
+    if shift_gate_id and shift_type and shift_date:
+        # Filter by visits that have this shift (composite FK)
+        query = query.join(Visit).filter(
+            Visit.shift_gate_id == shift_gate_id,
+            Visit.shift_type == shift_type,
+            Visit.shift_date == shift_date
+        )
     if status:
         query = query.filter(Appointment.status == status)
     if scheduled_date:
@@ -52,7 +58,9 @@ def get_appointment_by_arrival_id(db: Session, arrival_id: str) -> Optional[Appo
 def get_appointments_by_license_plate(
     db: Session,
     license_plate: str,
-    shift_id: Optional[int] = None,
+    shift_gate_id: Optional[int] = None,
+    shift_type: Optional[str] = None,
+    shift_date: Optional[date] = None,
     status: Optional[str] = None,
     scheduled_date: Optional[date] = None
 ) -> List[Appointment]:
@@ -62,8 +70,12 @@ def get_appointments_by_license_plate(
     """
     query = db.query(Appointment).filter(Appointment.truck_license_plate == license_plate)
     
-    if shift_id:
-        query = query.join(Visit).filter(Visit.shift_id == shift_id)
+    if shift_gate_id and shift_type and shift_date:
+        query = query.join(Visit).filter(
+            Visit.shift_gate_id == shift_gate_id,
+            Visit.shift_type == shift_type,
+            Visit.shift_date == shift_date
+        )
     if status:
         query = query.filter(Appointment.status == status)
     if scheduled_date:
@@ -84,14 +96,14 @@ def get_appointments_for_decision(
     """
     Gets candidate appointments for Decision Engine.
     Returns appointments with specific license plate, in current shift,
-    with status 'pending' or 'approved'.
+    with status 'in_transit' or 'delayed'.
     
     Includes extra info: cargo, booking, gate.
     """
     today = date.today()
     now = current_time or datetime.now().time()
     
-    # Find current shift based on time
+    # Find current shift based on time and gate
     current_shift = db.query(Shift).filter(
         Shift.date == today,
         Shift.gate_id == gate_id
@@ -101,7 +113,7 @@ def get_appointments_for_decision(
         Appointment.truck_license_plate == license_plate,
         func.date(Appointment.scheduled_start_time) == today,
         Appointment.gate_in_id == gate_id,
-        Appointment.status.in_(['pending', 'approved'])
+        Appointment.status.in_(['in_transit', 'delayed'])
     )
     
     appointments = query.order_by(Appointment.scheduled_start_time.asc()).all()
@@ -125,12 +137,13 @@ def get_appointments_for_decision(
             "license_plate": a.truck_license_plate,
             "gate_in_id": a.gate_in_id,
             "terminal_id": a.terminal_id,
-            "shift_id": current_shift.id if current_shift else None,
+            "shift_gate_id": current_shift.gate_id if current_shift else None,
+            "shift_type": current_shift.shift_type.name if current_shift and current_shift.shift_type else None,
+            "shift_date": current_shift.date.isoformat() if current_shift else None,
             "scheduled_time": a.scheduled_start_time.isoformat() if a.scheduled_start_time else None,
             "status": a.status,
             "cargo": cargo,
             "booking": {
-                "id": a.booking.id,
                 "reference": a.booking.reference,
                 "direction": a.booking.direction
             } if a.booking else None
@@ -161,8 +174,8 @@ def get_appointments_count_by_status(
     results = query.group_by(Appointment.status).all()
     
     counts = {
-        "pending": 0,
-        "approved": 0,
+        "in_transit": 0,
+        "delayed": 0,
         "canceled": 0,
         "completed": 0,
         "total": 0
@@ -205,12 +218,15 @@ def update_appointment_status(
 def create_visit_for_appointment(
     db: Session,
     appointment_id: int,
-    shift_id: int,
+    shift_gate_id: int,
+    shift_type: ShiftType,
+    shift_date: date,
     entry_time: Optional[datetime] = None
 ) -> Optional[Visit]:
     """
     Creates a Visit when an appointment is being executed.
     Called when truck arrives at gate.
+    Uses composite FK to Shift.
     """
     appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     
@@ -224,9 +240,11 @@ def create_visit_for_appointment(
     
     visit = Visit(
         appointment_id=appointment_id,
-        shift_id=shift_id,
+        shift_gate_id=shift_gate_id,
+        shift_type=shift_type,
+        shift_date=shift_date,
         entry_time=entry_time or datetime.now(),
-        state='in_transit'
+        state='unloading'  # Updated to match DeliveryStatusEnum
     )
     
     db.add(visit)
@@ -275,10 +293,10 @@ def update_appointment_from_decision(
     decision_payload expected:
     {
         "decision": "approved" | "rejected" | "manual_review",
-        "status": "approved" | "canceled" | etc,
+        "status": "in_transit" | "delayed" | "canceled" | "completed",
         "notes": "...",
         "alerts": [
-            {"type": "hazmat", "severity": 3, "description": "Flammable cargo - UN 1203"}
+            {"type": "safety", "description": "Flammable cargo - UN 1203"}
         ]
     }
     """
@@ -313,7 +331,7 @@ def get_next_appointments(
 ) -> List[Appointment]:
     """
     Gets next scheduled appointments (used in operator's sidebar).
-    Filters by status 'pending' or 'approved'.
+    Filters by status 'in_transit' or 'delayed'.
     """
     today = date.today()
     now = datetime.now()
@@ -321,6 +339,6 @@ def get_next_appointments(
     return db.query(Appointment).filter(
         Appointment.gate_in_id == gate_id,
         func.date(Appointment.scheduled_start_time) == today,
-        Appointment.status.in_(['pending', 'approved']),
+        Appointment.status.in_(['in_transit', 'delayed']),
         Appointment.scheduled_start_time >= now
     ).order_by(Appointment.scheduled_start_time.asc()).limit(limit).all()

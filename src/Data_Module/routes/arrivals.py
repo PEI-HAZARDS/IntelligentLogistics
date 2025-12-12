@@ -7,9 +7,10 @@ from typing import List, Optional, Dict, Any
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from models.pydantic_models import (
-    Appointment, AppointmentStatusUpdate, Visit, VisitStatusUpdate
+    Appointment, AppointmentStatusUpdate, Visit, VisitStatusUpdate, ShiftTypeEnum
 )
 from services.arrival_service import (
     get_all_appointments,
@@ -24,9 +25,19 @@ from services.arrival_service import (
     create_visit_for_appointment,
     update_visit_status
 )
+from models.sql_models import ShiftType
 from db.postgres import get_db
 
 router = APIRouter(prefix="/arrivals", tags=["Arrivals"])
+
+
+# ==================== LOCAL MODELS ====================
+
+class CreateVisitRequest(BaseModel):
+    """Request to create a visit with composite shift FK."""
+    shift_gate_id: int
+    shift_type: str  # "MORNING", "AFTERNOON", "NIGHT"
+    shift_date: date
 
 
 # ==================== GET ENDPOINTS ====================
@@ -36,7 +47,9 @@ def list_arrivals(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(100, ge=1, le=500, description="Maximum records"),
     gate_id: Optional[int] = Query(None, description="Filter by entry gate"),
-    shift_id: Optional[int] = Query(None, description="Filter by shift"),
+    shift_gate_id: Optional[int] = Query(None, description="Filter by shift gate"),
+    shift_type: Optional[str] = Query(None, description="Filter by shift type"),
+    shift_date: Optional[date] = Query(None, description="Filter by shift date"),
     status: Optional[str] = Query(None, description="Filter by status"),
     scheduled_date: Optional[date] = Query(None, description="Filter by scheduled date"),
     db: Session = Depends(get_db)
@@ -47,8 +60,12 @@ def list_arrivals(
     """
     appointments = get_all_appointments(
         db, skip=skip, limit=limit,
-        gate_id=gate_id, shift_id=shift_id,
-        status=status, scheduled_date=scheduled_date
+        gate_id=gate_id,
+        shift_gate_id=shift_gate_id,
+        shift_type=shift_type,
+        shift_date=shift_date,
+        status=status,
+        scheduled_date=scheduled_date
     )
     return [Appointment.model_validate(a) for a in appointments]
 
@@ -112,7 +129,9 @@ def get_arrival_by_pin_code(
 @router.get("/query/license-plate/{license_plate}", response_model=List[Appointment])
 def query_arrivals_by_license_plate(
     license_plate: str = Path(..., description="Truck license plate"),
-    shift_id: Optional[int] = Query(None, description="Filter by shift"),
+    shift_gate_id: Optional[int] = Query(None, description="Filter by shift gate"),
+    shift_type: Optional[str] = Query(None, description="Filter by shift type"),
+    shift_date: Optional[date] = Query(None, description="Filter by shift date"),
     status: Optional[str] = Query(None, description="Filter by status"),
     scheduled_date: Optional[date] = Query(None, description="Date (default: today)"),
     db: Session = Depends(get_db)
@@ -123,7 +142,10 @@ def query_arrivals_by_license_plate(
     """
     appointments = get_appointments_by_license_plate(
         db, license_plate=license_plate,
-        shift_id=shift_id, status=status,
+        shift_gate_id=shift_gate_id,
+        shift_type=shift_type,
+        shift_date=shift_date,
+        status=status,
         scheduled_date=scheduled_date
     )
     return [Appointment.model_validate(a) for a in appointments]
@@ -179,10 +201,10 @@ def process_decision(
     Expected payload:
     {
         "decision": "approved",
-        "status": "approved",
+        "status": "in_transit",
         "notes": "Approved automatically",
         "alerts": [
-            {"type": "hazmat", "severity": 3, "description": "UN 1203 - Gasoline"}
+            {"type": "safety", "description": "UN 1203 - Gasoline"}
         ]
     }
     """
@@ -200,14 +222,30 @@ def process_decision(
 @router.post("/{appointment_id}/visit", response_model=Visit)
 def create_visit(
     appointment_id: int = Path(..., description="Appointment ID"),
-    shift_id: int = Query(..., description="Current shift ID"),
+    request: CreateVisitRequest = ...,
     db: Session = Depends(get_db)
 ):
     """
     Creates a visit when truck arrives.
     Called when appointment starts execution.
+    Uses composite FK to Shift.
     """
-    visit = create_visit_for_appointment(db, appointment_id, shift_id)
+    # Convert shift_type string to enum
+    try:
+        shift_type_enum = ShiftType[request.shift_type]
+    except KeyError:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid shift_type. Must be one of: MORNING, AFTERNOON, NIGHT"
+        )
+    
+    visit = create_visit_for_appointment(
+        db, 
+        appointment_id,
+        shift_gate_id=request.shift_gate_id,
+        shift_type=shift_type_enum,
+        shift_date=request.shift_date
+    )
     if not visit:
         raise HTTPException(status_code=404, detail="Appointment not found or visit already exists")
     return Visit.model_validate(visit)

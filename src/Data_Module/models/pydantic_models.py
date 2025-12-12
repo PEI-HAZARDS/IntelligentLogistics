@@ -6,12 +6,10 @@ from enum import Enum
 
 
 # ==========================
-# ENUMS
+# ENUMS (aligned with sql_models.py)
 # ==========================
 
 class DeliveryStatusEnum(str, Enum):
-    in_transit = "in_transit"
-    delayed = "delayed"
     unloading = "unloading"
     completed = "completed"
 
@@ -35,10 +33,28 @@ class OperationalStatusEnum(str, Enum):
 
 
 class AppointmentStatusEnum(str, Enum):
-    pending = "pending"
-    approved = "approved"
+    in_transit = "in_transit"
     canceled = "canceled"
+    delayed = "delayed"
     completed = "completed"
+
+
+class TypeAlertEnum(str, Enum):
+    generic = "generic"
+    safety = "safety"
+    problem = "problem"
+    operational = "operational"
+
+
+class DirectionEnum(str, Enum):
+    inbound = "inbound"
+    outbound = "outbound"
+
+
+class ShiftTypeEnum(str, Enum):
+    MORNING = "06:00-14:00"
+    AFTERNOON = "14:00-22:00"
+    NIGHT = "22:00-06:00"
 
 
 # ==========================
@@ -46,8 +62,10 @@ class AppointmentStatusEnum(str, Enum):
 # ==========================
 
 class TerminalBase(BaseModel):
+    name: Optional[str] = None
     latitude: Optional[Decimal] = None
     longitude: Optional[Decimal] = None
+    hazmat_approved: bool = False
 
 
 class TerminalCreate(TerminalBase):
@@ -61,12 +79,12 @@ class Terminal(TerminalBase):
 
 
 # ==========================
-# DOCK
+# DOCK (Composite PK: terminal_id + bay_number)
 # ==========================
 
 class DockBase(BaseModel):
     terminal_id: int
-    bay_number: Optional[str] = None
+    bay_number: str
     latitude: Optional[Decimal] = None
     longitude: Optional[Decimal] = None
     current_usage: OperationalStatusEnum = OperationalStatusEnum.operational
@@ -77,7 +95,6 @@ class DockCreate(DockBase):
 
 
 class Dock(DockBase):
-    id: int
     terminal: Optional[Terminal] = None
 
     model_config = {"from_attributes": True}
@@ -129,6 +146,7 @@ class Company(CompanyBase):
 class DriverBase(BaseModel):
     name: str
     company_nif: Optional[str] = None
+    mobile_device_token: Optional[str] = None
 
 
 class DriverCreate(DriverBase):
@@ -139,6 +157,7 @@ class DriverCreate(DriverBase):
 class Driver(DriverBase):
     drivers_license: str
     active: bool = True
+    created_at: Optional[datetime] = None
     company: Optional[Company] = None
 
     model_config = {"from_attributes": True}
@@ -175,12 +194,12 @@ class WorkerBase(BaseModel):
 
 
 class WorkerCreate(WorkerBase):
-    nif: str
+    num_worker: str
     password: str
 
 
 class Worker(WorkerBase):
-    nif: str
+    num_worker: str
     active: bool = True
     created_at: Optional[datetime] = None
 
@@ -192,7 +211,7 @@ class Worker(WorkerBase):
 # ==========================
 
 class Manager(BaseModel):
-    nif: str
+    num_worker: str
     access_level: AccessLevelEnum = AccessLevelEnum.basic
     worker: Optional[Worker] = None
 
@@ -200,7 +219,7 @@ class Manager(BaseModel):
 
 
 class ManagerInfo(BaseModel):
-    nif: str
+    num_worker: str
     name: str
     email: str
     access_level: str
@@ -212,57 +231,57 @@ class ManagerInfo(BaseModel):
 # ==========================
 
 class Operator(BaseModel):
-    nif: str
+    num_worker: str
     worker: Optional[Worker] = None
 
     model_config = {"from_attributes": True}
 
 
 class OperatorInfo(BaseModel):
-    nif: str
+    num_worker: str
     name: str
     email: str
     active: bool
 
 
 # ==========================
-# SHIFT
+# SHIFT (Composite PK: gate_id + shift_type + date)
 # ==========================
 
 class ShiftBase(BaseModel):
-    operator_nif: Optional[str] = None
-    manager_nif: Optional[str] = None
     gate_id: int
+    shift_type: ShiftTypeEnum
     date: date
+    operator_num_worker: Optional[str] = None
+    manager_num_worker: Optional[str] = None
 
 
 class ShiftCreate(ShiftBase):
-    shift_type: str  # "MORNING", "AFTERNOON", "NIGHT"
+    pass
 
 
 class Shift(ShiftBase):
-    id: int
-    shift_type: str
     gate: Optional[Gate] = None
+    operator: Optional[Operator] = None
+    manager: Optional[Manager] = None
 
     model_config = {"from_attributes": True}
 
 
 # ==========================
-# BOOKING
+# BOOKING (PK: reference)
 # ==========================
 
 class BookingBase(BaseModel):
-    reference: Optional[str] = None
-    direction: Optional[str] = None  # 'inbound' or 'outbound'
+    direction: Optional[DirectionEnum] = None
 
 
 class BookingCreate(BookingBase):
-    pass
+    reference: str
 
 
 class Booking(BookingBase):
-    id: int
+    reference: str
     created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
@@ -273,7 +292,7 @@ class Booking(BookingBase):
 # ==========================
 
 class CargoBase(BaseModel):
-    booking_id: int
+    booking_reference: str
     quantity: Decimal
     state: PhysicalStateEnum
     description: Optional[str] = None
@@ -295,7 +314,7 @@ class Cargo(CargoBase):
 # ==========================
 
 class AppointmentBase(BaseModel):
-    booking_id: int
+    booking_reference: str
     driver_license: str
     truck_license_plate: str
     terminal_id: int
@@ -303,7 +322,7 @@ class AppointmentBase(BaseModel):
     gate_out_id: Optional[int] = None
     scheduled_start_time: Optional[datetime] = None
     expected_duration: Optional[int] = None  # Duration in minutes
-    status: AppointmentStatusEnum = AppointmentStatusEnum.pending
+    status: AppointmentStatusEnum = AppointmentStatusEnum.in_transit
     notes: Optional[str] = None
 
 
@@ -325,15 +344,17 @@ class Appointment(AppointmentBase):
 
 
 # ==========================
-# VISIT
+# VISIT (PK: appointment_id, FK to Shift via composite key)
 # ==========================
 
 class VisitBase(BaseModel):
     appointment_id: int
-    shift_id: int
+    shift_gate_id: int
+    shift_type: ShiftTypeEnum
+    shift_date: date
     entry_time: Optional[datetime] = None
     out_time: Optional[datetime] = None
-    state: DeliveryStatusEnum = DeliveryStatusEnum.in_transit
+    state: DeliveryStatusEnum = DeliveryStatusEnum.unloading
 
 
 class VisitCreate(VisitBase):
@@ -352,9 +373,8 @@ class Visit(VisitBase):
 # ==========================
 
 class AlertBase(BaseModel):
-    cargo_id: Optional[int] = None
-    type: str = "generic"
-    severity: Optional[int] = None
+    visit_id: Optional[int] = None
+    type: TypeAlertEnum = TypeAlertEnum.generic
     description: Optional[str] = None
     image_url: Optional[str] = None
 
@@ -371,6 +391,30 @@ class Alert(AlertBase):
 
 
 # ==========================
+# SHIFT ALERT HISTORY
+# ==========================
+
+class ShiftAlertHistoryBase(BaseModel):
+    shift_gate_id: int
+    shift_type: ShiftTypeEnum
+    shift_date: date
+    alert_id: int
+
+
+class ShiftAlertHistoryCreate(ShiftAlertHistoryBase):
+    pass
+
+
+class ShiftAlertHistory(ShiftAlertHistoryBase):
+    id: int
+    last_update: Optional[datetime] = None
+    shift: Optional[Shift] = None
+    alert: Optional[Alert] = None
+
+    model_config = {"from_attributes": True}
+
+
+# ==========================
 # AUTH MODELS
 # ==========================
 
@@ -381,7 +425,7 @@ class WorkerLoginRequest(BaseModel):
 
 class WorkerLoginResponse(BaseModel):
     token: str
-    nif: str
+    num_worker: str
     name: str
     email: str
     active: bool
@@ -444,7 +488,9 @@ class DecisionCandidate(BaseModel):
     license_plate: str
     gate_in_id: Optional[int] = None
     terminal_id: Optional[int] = None
-    shift_id: Optional[int] = None
+    shift_gate_id: Optional[int] = None
+    shift_type: Optional[ShiftTypeEnum] = None
+    shift_date: Optional[date] = None
     scheduled_time: Optional[str] = None
     status: str
     cargo_description: Optional[str] = None

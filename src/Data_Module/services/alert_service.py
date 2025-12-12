@@ -2,7 +2,7 @@
 Alert Service - Alert management (PostgreSQL).
 Responsibilities:
 - Create alerts (hazmat, delays, security)
-- Associate alerts to cargo
+- Associate alerts to visits
 - List and filter alerts
 """
 
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from db.postgres import SessionLocal
-from models.sql_models import Alert, Cargo, Appointment, Booking
+from models.sql_models import Alert, Visit, Appointment, Booking
 
 
 # ==================== HAZMAT/ADR CODES ====================
@@ -48,19 +48,17 @@ KEMLER_CODES = {
 
 def create_alert(
     db: Session,
-    cargo_id: Optional[int],
+    visit_id: Optional[int],
     alert_type: str,
-    severity: int,
     description: str,
     image_url: Optional[str] = None
 ) -> Alert:
     """
-    Creates an alert associated to cargo.
+    Creates an alert associated to a visit.
     """
     alert = Alert(
-        cargo_id=cargo_id,
+        visit_id=visit_id,
         type=alert_type,
-        severity=severity,
         description=description,
         image_url=image_url,
         timestamp=datetime.now(timezone.utc)
@@ -71,6 +69,45 @@ def create_alert(
     return alert
 
 
+def create_alerts_for_visit(
+    db: Session,
+    visit: Visit,
+    alerts_payload: List[Dict[str, Any]]
+) -> List[Alert]:
+    """
+    Creates alerts for a visit.
+    
+    alerts_payload expected:
+    [
+        {"type": "safety", "description": "UN 1203 - Gasoline"},
+        {"type": "operational", "description": "30 min delay"}
+    ]
+    """
+    if not alerts_payload:
+        return []
+    
+    # Create alerts
+    created_alerts = []
+    for alert_data in alerts_payload:
+        alert = Alert(
+            visit_id=visit.appointment_id,
+            type=alert_data.get("type", "generic"),
+            description=alert_data.get("description", "Alert without description"),
+            image_url=alert_data.get("image_url"),
+            timestamp=datetime.now(timezone.utc)
+        )
+        db.add(alert)
+        created_alerts.append(alert)
+    
+    db.commit()
+    
+    # Refresh all alerts
+    for a in created_alerts:
+        db.refresh(a)
+    
+    return created_alerts
+
+
 def create_alerts_for_appointment(
     db: Session,
     appointment: Appointment,
@@ -78,29 +115,28 @@ def create_alerts_for_appointment(
 ) -> List[Alert]:
     """
     Creates alerts for an appointment.
-    Associates alerts to cargo from booking.
+    Associates alerts to the visit if it exists.
     
     alerts_payload expected:
     [
-        {"type": "hazmat", "severity": 3, "description": "UN 1203 - Gasoline"},
-        {"type": "delay", "severity": 1, "description": "30 min delay"}
+        {"type": "safety", "description": "UN 1203 - Gasoline"},
+        {"type": "problem", "description": "Delay detected"}
     ]
     """
     if not alerts_payload:
         return []
     
-    # Get cargo ID from booking
-    cargo_id = None
-    if appointment.booking and appointment.booking.cargos:
-        cargo_id = appointment.booking.cargos[0].id
+    # Get visit_id from appointment
+    visit_id = None
+    if appointment.visit:
+        visit_id = appointment.visit.appointment_id
     
     # Create alerts
     created_alerts = []
     for alert_data in alerts_payload:
         alert = Alert(
-            cargo_id=cargo_id,
+            visit_id=visit_id,
             type=alert_data.get("type", "generic"),
-            severity=alert_data.get("severity", 2),
             description=alert_data.get("description", "Alert without description"),
             image_url=alert_data.get("image_url"),
             timestamp=datetime.now(timezone.utc)
@@ -130,33 +166,33 @@ def create_hazmat_alert(
     """
     # Build description
     description_parts = ["Hazardous cargo detected"]
-    severity = 3  # Default: high
     
     if un_code and un_code in ADR_CODES:
         info = ADR_CODES[un_code]
         description_parts.append(f"UN {un_code} - {info['description']}")
         description_parts.append(f"Class: {info['class']}")
         description_parts.append(f"Hazard: {info['hazard']}")
-        severity = 4 if info['class'] in ['2.3', '6.1'] else 3  # Toxic = critical
     
     if kemler_code and kemler_code in KEMLER_CODES:
         description_parts.append(f"Kemler {kemler_code}: {KEMLER_CODES[kemler_code]}")
-        if kemler_code.startswith('X'):
-            severity = 5  # Reacts with water = maximum
     
     if detected_hazmat:
         description_parts.append(f"Detection: {detected_hazmat}")
     
-    # Get cargo ID
-    cargo_id = None
-    if appointment.booking and appointment.booking.cargos:
-        cargo_id = appointment.booking.cargos[0].id
+    # Get visit_id
+    visit_id = None
+    if appointment.visit:
+        visit_id = appointment.visit.appointment_id
+    
+    # Determine alert type based on severity
+    alert_type = "safety"
+    if kemler_code and kemler_code.startswith('X'):
+        alert_type = "safety"  # Critical safety alert
     
     # Create alert
     alert = Alert(
-        cargo_id=cargo_id,
-        type="hazmat",
-        severity=severity,
+        visit_id=visit_id,
+        type=alert_type,
         description=" | ".join(description_parts),
         timestamp=datetime.now(timezone.utc)
     )
@@ -174,18 +210,15 @@ def get_alerts(
     skip: int = 0,
     limit: int = 100,
     alert_type: Optional[str] = None,
-    severity_min: Optional[int] = None,
-    cargo_id: Optional[int] = None
+    visit_id: Optional[int] = None
 ) -> List[Alert]:
     """Gets alerts with filters."""
     query = db.query(Alert)
     
     if alert_type:
         query = query.filter(Alert.type == alert_type)
-    if severity_min:
-        query = query.filter(Alert.severity >= severity_min)
-    if cargo_id:
-        query = query.filter(Alert.cargo_id == cargo_id)
+    if visit_id:
+        query = query.filter(Alert.visit_id == visit_id)
     
     return query.order_by(Alert.timestamp.desc()).offset(skip).limit(limit).all()
 
@@ -197,14 +230,14 @@ def get_alert_by_id(db: Session, alert_id: int) -> Optional[Alert]:
 
 def get_active_alerts(db: Session, limit: int = 50) -> List[Alert]:
     """
-    Gets recent alerts (last 24h) by severity.
+    Gets recent alerts (last 24h).
     Used in operator panel.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     
     return db.query(Alert).filter(
         Alert.timestamp >= cutoff
-    ).order_by(Alert.severity.desc(), Alert.timestamp.desc()).limit(limit).all()
+    ).order_by(Alert.timestamp.desc()).limit(limit).all()
 
 
 def get_alerts_count_by_type(db: Session) -> Dict[str, int]:
@@ -219,3 +252,10 @@ def get_alerts_count_by_type(db: Session) -> Dict[str, int]:
     ).group_by(Alert.type).all()
     
     return {alert_type: count for alert_type, count in results}
+
+
+def get_alerts_for_visit(db: Session, visit_id: int) -> List[Alert]:
+    """Gets all alerts for a specific visit."""
+    return db.query(Alert).filter(
+        Alert.visit_id == visit_id
+    ).order_by(Alert.timestamp.desc()).all()

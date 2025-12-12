@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from utils.hashing_pass import hash_password, verify_password
 
-from models.sql_models import Worker, Manager, Operator, Shift, Gate, Appointment, Visit, Alert
+from models.sql_models import Worker, Manager, Operator, Shift, Gate, Appointment, Visit, Alert, ShiftType
 
 
 # ==================== AUTHENTICATION ====================
@@ -38,16 +38,16 @@ def get_worker_by_email(db: Session, email: str) -> Optional[Worker]:
     return db.query(Worker).filter(Worker.email == email).first()
 
 
-def get_worker_by_nif(db: Session, nif: str) -> Optional[Worker]:
-    """Gets worker by NIF."""
-    return db.query(Worker).filter(Worker.nif == nif).first()
+def get_worker_by_num_worker(db: Session, num_worker: str) -> Optional[Worker]:
+    """Gets worker by num_worker."""
+    return db.query(Worker).filter(Worker.num_worker == num_worker).first()
 
 
-def get_worker_role(db: Session, nif: str) -> Optional[str]:
+def get_worker_role(db: Session, num_worker: str) -> Optional[str]:
     """Gets worker role (manager or operator)."""
-    if db.query(Manager).filter(Manager.nif == nif).first():
+    if db.query(Manager).filter(Manager.num_worker == num_worker).first():
         return "manager"
-    if db.query(Operator).filter(Operator.nif == nif).first():
+    if db.query(Operator).filter(Operator.num_worker == num_worker).first():
         return "operator"
     return None
 
@@ -76,9 +76,9 @@ def get_managers(db: Session, skip: int = 0, limit: int = 100) -> List[Manager]:
 
 # ==================== OPERATOR FUNCTIONS ====================
 
-def get_operator_info(db: Session, nif: str) -> Optional[Dict[str, Any]]:
+def get_operator_info(db: Session, num_worker: str) -> Optional[Dict[str, Any]]:
     """Gets complete operator information."""
-    operator = db.query(Operator).filter(Operator.nif == nif).first()
+    operator = db.query(Operator).filter(Operator.num_worker == num_worker).first()
     
     if not operator:
         return None
@@ -86,7 +86,7 @@ def get_operator_info(db: Session, nif: str) -> Optional[Dict[str, Any]]:
     worker = operator.worker
     
     return {
-        "nif": worker.nif,
+        "num_worker": worker.num_worker,
         "name": worker.name,
         "email": worker.email,
         "phone": worker.phone,
@@ -96,7 +96,7 @@ def get_operator_info(db: Session, nif: str) -> Optional[Dict[str, Any]]:
     }
 
 
-def get_operator_current_shift(db: Session, nif: str, gate_id: int) -> Optional[Shift]:
+def get_operator_current_shift(db: Session, num_worker: str, gate_id: int) -> Optional[Shift]:
     """
     Gets operator's current shift.
     Filters by today's date and gate.
@@ -104,7 +104,7 @@ def get_operator_current_shift(db: Session, nif: str, gate_id: int) -> Optional[
     today = date.today()
     
     shift = db.query(Shift).filter(
-        Shift.operator_nif == nif,
+        Shift.operator_num_worker == num_worker,
         Shift.gate_id == gate_id,
         Shift.date == today
     ).first()
@@ -112,12 +112,12 @@ def get_operator_current_shift(db: Session, nif: str, gate_id: int) -> Optional[
     return shift
 
 
-def get_operator_shifts(db: Session, nif: str, gate_id: Optional[int] = None) -> List[Shift]:
+def get_operator_shifts(db: Session, num_worker: str, gate_id: Optional[int] = None) -> List[Shift]:
     """
     Gets operator's shifts.
     Filters by gate if provided.
     """
-    query = db.query(Shift).filter(Shift.operator_nif == nif)
+    query = db.query(Shift).filter(Shift.operator_num_worker == num_worker)
     
     if gate_id:
         query = query.filter(Shift.gate_id == gate_id)
@@ -125,18 +125,18 @@ def get_operator_shifts(db: Session, nif: str, gate_id: Optional[int] = None) ->
     return query.order_by(Shift.date.desc()).all()
 
 
-def get_operator_gate_dashboard(db: Session, nif: str, gate_id: int) -> Dict[str, Any]:
+def get_operator_gate_dashboard(db: Session, num_worker: str, gate_id: int) -> Dict[str, Any]:
     """
     Gets operator dashboard data for a gate.
     Includes: upcoming arrivals, statistics.
     """
     today = date.today()
     
-    # Upcoming appointments
+    # Upcoming appointments (using new status values)
     upcoming = db.query(Appointment).filter(
         Appointment.gate_in_id == gate_id,
         func.date(Appointment.scheduled_start_time) == today,
-        Appointment.status.in_(['pending', 'approved'])
+        Appointment.status.in_(['in_transit', 'delayed'])
     ).order_by(Appointment.scheduled_start_time.asc()).limit(10).all()
     
     # Statistics by status
@@ -151,7 +151,7 @@ def get_operator_gate_dashboard(db: Session, nif: str, gate_id: int) -> Dict[str
     stats_dict = {status: count for status, count in stats}
     
     return {
-        "operator_nif": nif,
+        "operator_num_worker": num_worker,
         "gate_id": gate_id,
         "date": today.isoformat(),
         "upcoming_arrivals": [
@@ -165,8 +165,8 @@ def get_operator_gate_dashboard(db: Session, nif: str, gate_id: int) -> Dict[str
             for a in upcoming
         ],
         "stats": {
-            "pending": stats_dict.get("pending", 0),
-            "approved": stats_dict.get("approved", 0),
+            "in_transit": stats_dict.get("in_transit", 0),
+            "delayed": stats_dict.get("delayed", 0),
             "completed": stats_dict.get("completed", 0),
             "canceled": stats_dict.get("canceled", 0)
         }
@@ -175,9 +175,9 @@ def get_operator_gate_dashboard(db: Session, nif: str, gate_id: int) -> Dict[str
 
 # ==================== MANAGER FUNCTIONS ====================
 
-def get_manager_info(db: Session, nif: str) -> Optional[Dict[str, Any]]:
+def get_manager_info(db: Session, num_worker: str) -> Optional[Dict[str, Any]]:
     """Gets complete manager information."""
-    manager = db.query(Manager).filter(Manager.nif == nif).first()
+    manager = db.query(Manager).filter(Manager.num_worker == num_worker).first()
     
     if not manager:
         return None
@@ -185,7 +185,7 @@ def get_manager_info(db: Session, nif: str) -> Optional[Dict[str, Any]]:
     worker = manager.worker
     
     return {
-        "nif": worker.nif,
+        "num_worker": worker.num_worker,
         "name": worker.name,
         "email": worker.email,
         "phone": worker.phone,
@@ -196,14 +196,14 @@ def get_manager_info(db: Session, nif: str) -> Optional[Dict[str, Any]]:
     }
 
 
-def get_manager_shifts(db: Session, nif: str) -> List[Shift]:
+def get_manager_shifts(db: Session, num_worker: str) -> List[Shift]:
     """Gets shifts managed by a manager."""
     return db.query(Shift).filter(
-        Shift.manager_nif == nif
+        Shift.manager_num_worker == num_worker
     ).order_by(Shift.date.desc()).all()
 
 
-def get_manager_overview(db: Session, nif: str) -> Dict[str, Any]:
+def get_manager_overview(db: Session, num_worker: str) -> Dict[str, Any]:
     """
     Gets manager overview: gates, shifts, alerts, performance.
     """
@@ -214,7 +214,7 @@ def get_manager_overview(db: Session, nif: str) -> Dict[str, Any]:
     
     # Today's shifts
     today_shifts = db.query(Shift).filter(
-        Shift.manager_nif == nif,
+        Shift.manager_num_worker == num_worker,
         Shift.date == today
     ).all()
     
@@ -230,7 +230,7 @@ def get_manager_overview(db: Session, nif: str) -> Dict[str, Any]:
     ).group_by(Appointment.status).all()
     
     return {
-        "manager_nif": nif,
+        "manager_num_worker": num_worker,
         "date": today.isoformat(),
         "active_gates": len(all_gates),
         "shifts_today": len(today_shifts),
@@ -246,7 +246,7 @@ def get_manager_overview(db: Session, nif: str) -> Dict[str, Any]:
 
 def create_worker(
     db: Session,
-    nif: str,
+    num_worker: str,
     name: str,
     email: str,
     password: str,
@@ -261,12 +261,12 @@ def create_worker(
     if db.query(Worker).filter(Worker.email == email).first():
         return None
     
-    # Check if NIF already exists
-    if db.query(Worker).filter(Worker.nif == nif).first():
+    # Check if num_worker already exists
+    if db.query(Worker).filter(Worker.num_worker == num_worker).first():
         return None
     
     worker = Worker(
-        nif=nif,
+        num_worker=num_worker,
         name=name,
         email=email,
         phone=phone,
@@ -281,7 +281,7 @@ def create_worker(
     # If manager, create Manager record
     if role == "manager":
         manager = Manager(
-            nif=nif,
+            num_worker=num_worker,
             access_level=access_level or "basic"
         )
         db.add(manager)
@@ -289,16 +289,16 @@ def create_worker(
     
     # If operator, create Operator record
     elif role == "operator":
-        operator = Operator(nif=nif)
+        operator = Operator(num_worker=num_worker)
         db.add(operator)
         db.commit()
     
     return worker
 
 
-def update_worker_password(db: Session, nif: str, new_password: str) -> Optional[Worker]:
+def update_worker_password(db: Session, num_worker: str, new_password: str) -> Optional[Worker]:
     """Updates a worker's password."""
-    worker = get_worker_by_nif(db, nif)
+    worker = get_worker_by_num_worker(db, num_worker)
     if not worker:
         return None
     
@@ -308,16 +308,16 @@ def update_worker_password(db: Session, nif: str, new_password: str) -> Optional
     return worker
 
 
-def update_worker_email(db: Session, nif: str, new_email: str) -> Optional[Worker]:
+def update_worker_email(db: Session, num_worker: str, new_email: str) -> Optional[Worker]:
     """Updates a worker's email."""
-    worker = get_worker_by_nif(db, nif)
+    worker = get_worker_by_num_worker(db, num_worker)
     if not worker:
         return None
     
     # Check if new email already exists
     if db.query(Worker).filter(
         Worker.email == new_email,
-        Worker.nif != nif
+        Worker.num_worker != num_worker
     ).first():
         return None
     
@@ -327,9 +327,9 @@ def update_worker_email(db: Session, nif: str, new_email: str) -> Optional[Worke
     return worker
 
 
-def deactivate_worker(db: Session, nif: str) -> Optional[Worker]:
+def deactivate_worker(db: Session, num_worker: str) -> Optional[Worker]:
     """Deactivates a worker (soft delete)."""
-    worker = get_worker_by_nif(db, nif)
+    worker = get_worker_by_num_worker(db, num_worker)
     if not worker:
         return None
     
@@ -339,24 +339,24 @@ def deactivate_worker(db: Session, nif: str) -> Optional[Worker]:
     return worker
 
 
-def promote_to_manager(db: Session, nif: str, access_level: str = "basic") -> Optional[Manager]:
+def promote_to_manager(db: Session, num_worker: str, access_level: str = "basic") -> Optional[Manager]:
     """Promotes an operator to manager."""
-    worker = get_worker_by_nif(db, nif)
+    worker = get_worker_by_num_worker(db, num_worker)
     if not worker:
         return None
     
     # Check if already a manager
-    if db.query(Manager).filter(Manager.nif == nif).first():
+    if db.query(Manager).filter(Manager.num_worker == num_worker).first():
         return None
     
     # Check if is an operator
-    operator = db.query(Operator).filter(Operator.nif == nif).first()
+    operator = db.query(Operator).filter(Operator.num_worker == num_worker).first()
     if operator:
         db.delete(operator)
     
     # Create manager record
     manager = Manager(
-        nif=nif,
+        num_worker=num_worker,
         access_level=access_level
     )
     db.add(manager)

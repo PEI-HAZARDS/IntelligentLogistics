@@ -76,7 +76,7 @@ def get_driver_active_appointment(db: Session, drivers_license: str) -> Optional
     # Find appointment assigned to this driver
     appointment = db.query(Appointment).filter(
         Appointment.driver_license == drivers_license,
-        Appointment.status.in_(['pending', 'approved']),
+        Appointment.status.in_(['in_transit', 'delayed']),
     ).order_by(Appointment.scheduled_start_time.asc()).first()
     
     return appointment

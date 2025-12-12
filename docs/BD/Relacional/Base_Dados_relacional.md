@@ -41,15 +41,16 @@ O modelo foi estruturado até à **3ª Forma Normal (3FN)**:
 | num_carta | VARCHAR(20) | PK | Nº da carta de condução |
 | nome | VARCHAR |  | Nome completo |
 | contacto | VARCHAR |  | Telefone  |
+| password | VARCHAR |  | Password de autenticação |
 | id_empresa | INT | FK → Empresa.id_empresa | Empresa empregadora |
 
 **Relações:**
-- 1:N com **Camião**  
-- N:M com **Camião** via tabela `Condutor_Camiao`
+- 1:N com **Veiculo_Pesado**  
+- N:M com **Veiculo_Pesado** via tabela `Condutor_Veiculo`
 
 ---
 
-### **CAMIÃO**
+### **VEICULO_PESADO**
 | Campo | Tipo | PK/FK | Descrição |
 |--------|------|--------|------------|
 | matricula | VARCHAR(15) | PK | Matrícula única |
@@ -57,20 +58,20 @@ O modelo foi estruturado até à **3ª Forma Normal (3FN)**:
 | tipo_carrocaria | VARCHAR |  | Tipo (cisterna, contentor, etc.) |
 
 **Relações:**
-- N:M com **Condutor** via `Condutor_Camiao`
+- N:M com **Condutor** via `Condutor_Veiculo`
 - 1:N com **Chegadas_Diarias**
 
 ---
 
-### **CONDUTOR_CAMIAO**
+### **CONDUTOR_VEICULO**
 | Campo | Tipo | PK/FK | Descrição |
 |--------|------|--------|------------|
 | id_condutor | VARCHAR(20) | FK → Condutor.num_carta | Condutor |
-| matricula | VARCHAR(15) | FK → Camiao.matricula | Camião |
+| matricula | VARCHAR(15) | FK → Veiculo_Pesado.matricula | Veículo Pesado |
 | data_inicio | DATE |  | Início da afetação |
 | data_fim | DATE |  | Fim da afetação |
 
-Tabela de associação M:N entre Condutor e Camião, com histórico.
+Tabela de associação M:N entre Condutor e Veiculo_Pesado, com histórico.
 
 ---
 
@@ -82,6 +83,7 @@ Tabela de associação M:N entre Condutor e Camião, com histórico.
 | descricao | TEXT |  | Detalhes da carga |
 | adr | BOOLEAN |  | É perigosa (ADR)? |
 | peso | DECIMAL(10,2) |  | Peso total (kg) |
+| estado_fisico | VARCHAR |  | Estado físico da carga |
 
 **Relações:**
 - 1:N com **Alerta**
@@ -150,13 +152,17 @@ Superclasse de **Gestor** e **Operador**
 | id_chegada | SERIAL | PK | Identificador |
 | data_prevista | DATE |  | Data planeada |
 | hora_prevista | TIME |  | Hora prevista |
+| data_hora_chegada | TIMESTAMP |  | Timestamp real de chegada |
 | estado_entrega | VARCHAR |  | Concluída / Atrasada / Em curso |
 | estado_descarga | VARCHAR |  | Em espera / Em descarga / Concluída |
 | observacoes | TEXT |  | Notas e alertas |
-| matricula | VARCHAR(15) | FK → Camiao.matricula | Camião |
+| token_acesso | VARCHAR |  | Token para acesso/autenticação |
+| matricula | VARCHAR(15) | FK → Veiculo_Pesado.matricula | Veículo Pesado |
 | id_carga | INT | FK → Carga.id_carga | Carga |
 | id_cais | INT | FK → Cais.id_cais | Cais |
 | id_turno | INT | FK → turno.id_turno | Turno associado |
+| id_gate_entrada | INT | FK → Gate.id_gate | Gate de entrada |
+| id_gate_saida | INT | FK → Gate.id_gate | Gate de saída |
 
 ---
 
@@ -185,9 +191,27 @@ Superclasse de **Gestor** e **Operador**
 | hora | TIME |  | Hora do alerta |
 | severidade | INT |  | Escala 1–5 |
 | comentario | TEXT |  | Observações |
+| url_image | VARCHAR |  | URL da imagem associada ao alerta |
 | id_detecao | INT | FK → detecao.id_detecao | |
 | id_carga | INT | FK → Carga.id_carga | |
 | id_historico_ocorrencias | INT | FK → historico.id_historico | |
+
+---
+
+### **GATE**
+| Campo | Tipo | PK/FK | Descrição |
+|--------|------|--------|------------|
+| id_gate | SERIAL | PK | Identificador |
+| nome | VARCHAR |  | Nome do gate |
+| estado | VARCHAR |  | Ativo / Inativo |
+| localizacao_gps | VARCHAR |  | Coordenadas GPS (latitude, longitude) |
+| descricao | TEXT |  | Descrição do gate |
+| id_turno | INT | FK → Turno.id_turno | Turno associado |
+
+**Relações:**
+- 1:N com **Chegadas_Diarias** (entrada)
+- 1:N com **Chegadas_Diarias** (saída)
+- 1:N com **Operador**
 
 ---
 
@@ -207,18 +231,21 @@ Superclasse de **Gestor** e **Operador**
 | Entidade A | Relação | Entidade B | Cardinalidade |
 |-------------|----------|-------------|----------------|
 | Operador |  is a | Trabalhador_Porto | 1:1 |
-| Getsor |  is a | Trabalhador_Porto | 1:1 |
+| Gestor |  is a | Trabalhador_Porto | 1:1 |
 | Gestor | supervisiona | Turno | 1:N |
 | Empresa | emprega | Condutor | 1:N |
-| Condutor | conduz | Camião | M:N (descontruido)|
-| Condutor | associado | Condutor_Camiao | 1:N |
-| Camião | associado | Condutor_Camiao | 1:N |
-| Camião | realiza | Chegadas_Diarias | 1:N |
+| Condutor | conduz | Veiculo_Pesado | M:N (desconstruído)|
+| Condutor | associado | Condutor_Veiculo | 1:N |
+| Veiculo_Pesado | associado | Condutor_Veiculo | 1:N |
+| Veiculo_Pesado | realiza | Chegadas_Diarias | 1:N |
 | Chegadas_Diarias | refere | Cais | N:1 |
 | Chegadas_Diarias | referencia | Carga | N:1 |
+| Chegadas_Diarias | entra | Gate | N:1 |
+| Chegadas_Diarias | sai | Gate | N:0..1 |
 | Carga | gera | Alerta | 1:N |
 | Operador | valida | Deteção | 1:N |
 | Operador | responsavel | Turno | 1:N |
+| Gate | associado | Operador | 1:N |
 | Deteção | associada | Chegada_Diaria | 1:1 |
 | Turno | agrupa | Chegadas_Diarias | 1:N |
 | Histórico_Ocorrências | refere | Alerta | 1:N |
