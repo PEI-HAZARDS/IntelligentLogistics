@@ -79,7 +79,7 @@ class OCR:
         )
         return padded
 
-    def _preprocess_plate(self, cv_img, mode='standard'):
+    def _preprocess_plate(self, cv_img):
         if cv_img is None:
             raise ValueError("Could not convert input to CV image")
         
@@ -98,39 +98,6 @@ class OCR:
         else:
             gray = processed.copy()
 
-        # --- STEP 3: Mode-Specific Enhancements ---
-        if mode == 'minimal':
-            # Minimal: Just resizing and grayscale often beats complex processing
-            pass 
-            
-        elif mode == 'standard':
-            # CLAHE is excellent for plates (handles shadows well)
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-            gray = clahe.apply(gray)
-            
-            # Mild sharpening to help with "blurry" focus
-            kernel = np.array([[0, -1, 0], 
-                               [-1, 5,-1], 
-                               [0, -1, 0]])
-            gray = cv2.filter2D(gray, -1, kernel)
-
-        elif mode == 'aggressive':
-            # CLAHE
-            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-            gray = clahe.apply(gray)
-            
-            # Thresholding (Binarization)
-            # CAUTION: CNNs often prefer grayscale over binary. 
-            # Use binary only as a fallback for very low contrast plates.
-            _, gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            
-            # Morphological operations to fix broken text
-            # If text is white on black background:
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-            # Closing fills small holes inside the foreground
-            gray = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
-
-        # Convert back to 3-channel (Paddle expects 3 channels even for gray)
         return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR) 
     
     def _filter_text(self, text):
@@ -141,7 +108,7 @@ class OCR:
             return ""
         
         # Allowed characters for license plates
-        allowed_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789- ')
+        allowed_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-')
         
         text = text.upper()
         
@@ -207,12 +174,12 @@ class OCR:
         
         return full_text, avg_confidence
 
-    def _extract_text_with_mode(self, cv_img, mode='standard'):
+    def _extract_text_with_mode(self, cv_img):
         """
         Single extraction attempt with specified preprocessing mode.
         """
         try:
-            processed = self._preprocess_plate(cv_img, mode=mode)
+            processed = self._preprocess_plate(cv_img)
             
             # Use predict() method for PaddleOCR 3.x
             result = self.ocr.predict(processed)
@@ -223,14 +190,14 @@ class OCR:
             text = self._filter_text(text)
             
             if text:
-                logger.info(f"[PaddleOCR] Mode '{mode}': '{text}' (conf={conf:.2f})")
+                logger.info(f"[PaddleOCR]: '{text}' (conf={conf:.2f})")
             else:
-                logger.info(f"[PaddleOCR] Mode '{mode}': No text extracted")
+                logger.info(f"[PaddleOCR]: No text extracted")
             
             return text, conf
             
         except Exception as e:
-            logger.warning(f"[PaddleOCR] Mode '{mode}' failed: {e}")
+            logger.warning(f"[PaddleOCR] failed: {e}")
             return "", 0.0
 
     def _extract_text(self, cv_img):
@@ -257,19 +224,11 @@ class OCR:
         best_text = ""
         best_conf = 0.0
         
-        # Try different preprocessing modes
-        modes = ['minimal', 'standard', 'aggressive']
-        
-        for mode in modes:
-            text, conf = self._extract_text_with_mode(cv_img, mode=mode)
+        text, conf = self._extract_text_with_mode(cv_img)
             
-            if conf > best_conf and text:
-                best_text, best_conf = text, conf
+        if conf > best_conf and text:
+            best_text, best_conf = text, conf
             
-            # If confidence is very high, stop trying other modes
-            if best_conf >= 0.90:
-                break
-        
         if best_text:
             logger.info(f"[PaddleOCR] Best result: '{best_text}' ({best_conf:.2f})")
         else:

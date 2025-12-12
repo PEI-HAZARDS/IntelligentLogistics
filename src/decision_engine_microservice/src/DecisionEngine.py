@@ -15,6 +15,8 @@ KAFKA_CONSUME_TOPIC_LP = f"lp-results-{GATE_ID}"
 KAFKA_CONSUME_TOPIC_HZ = f"hz-results-{GATE_ID}"
 API_URL = os.getenv("API_URL", "http://localhost:8080/api/v1")
 TIME_TOLERANCE_MINUTES = int(os.getenv("TIME_TOLERANCE_MINUTES", 30))
+MAX_LEVENSHTEIN_DISTANCE = int(os.getenv("MAX_LEVENSHTEIN_DISTANCE", 2))
+TIME_FRAME_HOURS = int(os.getenv("TIME_FRAME_HOURS", 1))
 
 logger = logging.getLogger("Decision")
 
@@ -169,24 +171,62 @@ class DecisionEngine:
                 pass
 
 
-    def _query_arrivals(self, license_plate: str) -> dict:
-        """Query Arrivals API to validate incoming vehicle."""
-        url = f"{API_URL}/decisions/query-arrivals"
+    def _query_appointments_in_timeframe(self) -> dict:
+        """Query Appointments API to get all candidates in time frame."""
+        url = f"{API_URL}/decisions/query-appointments"
         payload = {
-            "matricula": license_plate,
+            "time_frame": TIME_FRAME_HOURS,
             "gate_id": GATE_ID
         }
         try:
-            response = requests.post(url, json=payload, timeout=2)
+            response = requests.post(url, json=payload, timeout=5)
             if response.status_code == 200:
                 return response.json()
             else:
                 logger.error(f"[DecisionEngine] API Error {response.status_code}: {response.text}")
-                return {"found": False, "message": "API Error"}
+                return {"found": False, "candidates": [], "message": "API Error"}
             
         except Exception as e:
             logger.error(f"[DecisionEngine] API Request failed: {e}")
-            return {"found": False, "message": str(e)}
+            return {"found": False, "candidates": [], "message": str(e)}
+    
+    def _find_matching_appointment(self, ocr_plate: str, candidates: list) -> tuple:
+        """
+        Find the best matching appointment using Levenshtein distance.
+        Returns (matched_candidate, distance) or (None, -1) if no match found.
+        """
+        if not ocr_plate or not candidates:
+            return None, -1
+        
+        # Normalize OCR plate (uppercase, remove spaces/dashes for comparison)
+        normalized_ocr = ocr_plate.upper().replace(" ", "").replace("-", "")
+        
+        best_match = None
+        best_distance = float('inf')
+        
+        for candidate in candidates:
+            db_plate = candidate.get("license_plate", "")
+            if not db_plate:
+                continue
+            
+            # Normalize DB plate
+            normalized_db = db_plate.upper().replace(" ", "").replace("-", "")
+            
+            distance = self._levenshtein_distance(normalized_ocr, normalized_db)
+            
+            logger.debug(f"[DecisionEngine] Comparing '{normalized_ocr}' with '{normalized_db}' -> distance: {distance}")
+            
+            if distance < best_distance:
+                best_distance = distance
+                best_match = candidate
+        
+        # Only return match if within threshold
+        if best_distance <= MAX_LEVENSHTEIN_DISTANCE:
+            logger.info(f"[DecisionEngine] Found match: '{best_match.get('license_plate')}' with distance {best_distance}")
+            return best_match, best_distance
+        
+        logger.info(f"[DecisionEngine] No match found within threshold {MAX_LEVENSHTEIN_DISTANCE} (best was {best_distance})")
+        return None, best_distance
         
     def _generate_plate_candidates(self, ocr_text: str):
         """
@@ -204,8 +244,6 @@ class DecisionEngine:
             possibilities.append(set(options)) # Use set to remove duplicates
 
         # 2. Generate Cartesian product of all possibilities
-        # Warning: This can get large if the string is long. 
-        # For plates (6-8 chars), it's manageable.
         candidates = [''.join(p) for p in itertools.product(*possibilities)]
         
         return candidates
@@ -271,139 +309,61 @@ class DecisionEngine:
             self._publish_decision(truck_id, returned_data)
             return
         
-        # 1. Query Database
-        arrivals_result = self._query_arrivals(license_plate)
-
-        logger.info(f"[DecisionEngine] Arrivals query result: {arrivals_result}")
+        # 1. Query Database for all appointments in time frame
+        appointments_result = self._query_appointments_in_timeframe()
+        logger.info(f"[DecisionEngine] Appointments query result: {appointments_result}")
+        
+        # 2. Find matching appointment using Levenshtein distance
+        candidates = appointments_result.get("candidates", [])
+        matched_appointment, distance = self._find_matching_appointment(license_plate, candidates)
         
         
         # Check if API query was successful
-        if not arrivals_result.get("found"):
-            # If API failed or vehicle not found in system
-            api_message = arrivals_result.get("message", "Unknown error")
-            if "Connection refused" in api_message or "Max retries" in api_message:
-                decision = "MANUAL_REVIEW"
-                alerts.append(f"API unavailable - Manual review required")
-                logger.warning(f"[DecisionEngine] API unavailable for truck_id='{truck_id}'. Sending to manual review.")
+        api_message = appointments_result.get("message", "")
+        if "Connection refused" in api_message or "Max retries" in api_message:
+            decision = "MANUAL_REVIEW"
+            alerts.append(f"API unavailable - Manual review required")
+            logger.warning(f"[DecisionEngine] API unavailable for truck_id='{truck_id}'. Sending to manual review.")
+        elif matched_appointment is None:
+            # No matching license plate found within Levenshtein threshold
+            decision = "REJECTED"
+            if distance >= 0:
+                alerts.append(f"License plate '{license_plate}' not matched (closest distance: {distance}, threshold: {MAX_LEVENSHTEIN_DISTANCE})")
             else:
-                decision = "REJECTED"
-                alerts.append(f"Vehicle not registered in arrivals system")
-                logger.warning(f"[DecisionEngine] Vehicle '{license_plate}' not found in arrivals. Rejecting.")
-        
-        if arrivals_result.get("found"):
-            candidates = arrivals_result.get("candidates", [])
-            # Pick first candidate (earliest scheduled)
-            candidate = candidates[0] if candidates else None
-            
-            if candidate:
-                route = {
-                    "gate_id": candidate.get("id_gate_entrada"),
-                    "cais_id": candidate.get("id_cais"),
-                    "gps": candidate.get("cais", {}).get("localizacao_gps")
-                }
-                
-                # 2. Time Window Validation
-                hora_prevista_str = candidate.get("hora_prevista") # ISO format expected
-                logger.info(f"[DecisionEngine] Hora prevista: {hora_prevista_str}")
-                if hora_prevista_str:
-                    try:
-                        try:
-                            scheduled_dt = datetime.fromisoformat(hora_prevista_str)
-                        except ValueError:
-                             # Fallback for Time only string
-                             t = datetime.strptime(hora_prevista_str, "%H:%M:%S").time()
-                             scheduled_dt = datetime.combine(datetime.now().date(), t)
-
-                        current_dt = datetime.now()
-                        tolerance = timedelta(minutes=TIME_TOLERANCE_MINUTES)
-                        
-                        if not (scheduled_dt - tolerance <= current_dt <= scheduled_dt + tolerance):
-                            decision = "REJECTED"
-                            diff = (current_dt - scheduled_dt).total_seconds() / 60
-                            status_time = "Early" if diff < 0 else "Late"
-                            alerts.append(f"Outside time window ({status_time} by {abs(int(diff))} mins). Scheduled: {hora_prevista_str}")
-                    
-                    except Exception as e:
-                         logger.warning(f"[DecisionEngine] Error parsing time: {e}")
-                         pass           
-            else:
-                decision = "REJECTED"
-                alerts.append("No valid candidate details found.")
-            
-        # Validate confidence
-        hz_confidence = hz_data.get("confidence", 0.0)
-        lp_confidence = lp_data.get("confidence", 0.0)
-        
-        if lp_confidence < 0.7:
-            decision = "MANUAL_REVIEW"
-            alerts.append(f"License plate detection confidence too low ({lp_confidence:.2f})")    
-        
-        if hz_confidence < 0.7:
-            decision = "MANUAL_REVIEW"
-            alerts.append(f"Hazardous material detection confidence too low ({hz_confidence:.2f})")    
-
-        # Prepare Decision Data
-        returned_data = {
-            "timestamp": int(time.time()),
-            "licensePlate": license_plate,
-            "UN": int(un_number) if un_number and un_number.isdigit() else None,
-            "kemler": int(kemler_code) if kemler_code and kemler_code.isdigit() else None,
-            "alerts": alerts,
-            "lp_cropUrl": lp_data.get("crop_url"),
-            "hz_cropUrl": hz_data.get("crop_url"),
-            "route": route,
-            "decision": decision
-        }
-
-        self._publish_decision(truck_id, returned_data)
-    
-    def _make_decision_2(self, truck_id: str, lp_data: dict, hz_data: dict):
-        logger.info(f"[DecisionEngine] Making decision for truck_id='{truck_id}'")
-        
-        # Return variables
-        decision = "MANUAL_REVIEW"
-        alerts = []
-        route = None
-
-        license_plate = lp_data.get("licensePlate", "N/A")
-        un_number = hz_data.get("un_number", "N/A")
-        kemler_code = hz_data.get("kemler_code", "N/A")
-
-        if license_plate == "N/A" or un_number == "N/A" or kemler_code == "N/A":
-            logger.info(f"[DecisionEngine] Incomplete data detected for truck_id='{truck_id}'")
-            
-            decision = "MANUAL_REVIEW"
-            if license_plate == "N/A":
-                alerts.append("License plate not detected")
-            if un_number == "N/A":
-                alerts.append("UN number not detected")
-            if kemler_code == "N/A":
-                alerts.append("Kemler code not detected")
-            logger.warning(f"[DecisionEngine] Incomplete data for truck_id='{truck_id}'. Sending to manual review.")
-            
-            returned_data = {
-                "timestamp": int(time.time()),
-                "licensePlate": license_plate,
-                "UN": int(un_number) if un_number and un_number.isdigit() else None,
-                "kemler": int(kemler_code) if kemler_code and kemler_code.isdigit() else None,
-                "alerts": alerts,
-                "lp_cropUrl": lp_data.get("crop_url"),
-                "hz_cropUrl": hz_data.get("crop_url"),
-                "route": route,
-                "decision": decision
+                alerts.append(f"No appointments found in time frame for gate {GATE_ID}")
+            logger.warning(f"[DecisionEngine] No matching license plate for '{license_plate}'. Rejecting.")
+        else:
+            # Match found! Extract route info and validate time window
+            decision = "ACCEPTED"
+            route = {
+                "gate_id": matched_appointment.get("gate_in_id"),
+                "terminal_id": matched_appointment.get("terminal_id"),
+                "appointment_id": matched_appointment.get("appointment_id")
             }
-            self._publish_decision(truck_id, returned_data)
-            return
-        
-        permutations = self._generate_plate_candidates(license_plate)
-        permutations = list(filter(
-            lambda p: self._levenshtein_distance(license_plate, p) <= 2, 
-            permutations
-        ))
-        
-
-        logger.info(f"[DecisionEngine] Generated {len(permutations)} plate permutations for '{license_plate}'")
-        logger.info(f"[DecisionEngine] Permutations: {permutations}")
+            
+            # Add match info to alerts if distance > 0 (fuzzy match)
+            if distance > 0:
+                alerts.append(f"Fuzzy match: detected '{license_plate}' matched to '{matched_appointment.get('license_plate')}' (distance: {distance})")
+            
+            # Time Window Validation
+            scheduled_time_str = matched_appointment.get("scheduled_time")  # ISO format expected
+            logger.info(f"[DecisionEngine] Scheduled time: {scheduled_time_str}")
+            if scheduled_time_str:
+                try:
+                    scheduled_dt = datetime.fromisoformat(scheduled_time_str)
+                    current_dt = datetime.now()
+                    tolerance = timedelta(minutes=TIME_TOLERANCE_MINUTES)
+                    
+                    if not (scheduled_dt - tolerance <= current_dt <= scheduled_dt + tolerance):
+                        decision = "REJECTED"
+                        diff = (current_dt - scheduled_dt).total_seconds() / 60
+                        status_time = "early" if diff < 0 else "late"
+                        alerts.append(f"Outside time window ({status_time} by {abs(int(diff))} mins). Scheduled: {scheduled_time_str}")
+                
+                except Exception as e:
+                    logger.warning(f"[DecisionEngine] Error parsing time: {e}")
+            
+            logger.info(f"[DecisionEngine] Matched appointment ID: {matched_appointment.get('appointment_id')}, decision: {decision}")
             
         # Validate confidence
         hz_confidence = hz_data.get("confidence", 0.0)
@@ -431,7 +391,6 @@ class DecisionEngine:
         }
 
         self._publish_decision(truck_id, returned_data)
-    
 
     def _publish_decision(self, truck_id: str, decision_data: dict):
         """Publishes decision result to Kafka gate topic."""
