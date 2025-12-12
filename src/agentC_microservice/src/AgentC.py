@@ -490,7 +490,7 @@ class AgentC:
         # Construct JSON payload
         payload = {
             "timestamp": timestamp,
-            "UN": un,
+            "un": un,
             "kemler" : kemler,
             "confidence": float(plate_conf if plate_conf is not None else 0.0),
             "cropUrl": crop_url
@@ -589,8 +589,8 @@ class AgentC:
                         logger.exception(f"[AgentC] Error uploading crop to MinIO: {e}")
                 
                 parts = plate_text.split(" ")
-
-                if len(parts) >= 2:
+                logger.info(f"Parts: {parts}")
+                if len(parts) == 2:
                     un = parts[0]
                     kemler = parts[1]
                 else:

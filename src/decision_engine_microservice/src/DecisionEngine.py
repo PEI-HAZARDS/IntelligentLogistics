@@ -144,7 +144,7 @@ class DecisionEngine:
                     lp_data = self.lp_buffer[truck_id]
                     hz_data = self.hz_buffer[truck_id]
                     
-                    self._make_decision_2(truck_id, lp_data, hz_data)
+                    self._make_decision(truck_id, lp_data, hz_data)
                     
                     # Clean up buffers after processing
                     del self.lp_buffer[truck_id]
@@ -280,12 +280,12 @@ class DecisionEngine:
         route = None
 
         license_plate = lp_data.get("licensePlate", "N/A")
-        un_number = hz_data.get("un_number", "N/A")
-        kemler_code = hz_data.get("kemler_code", "N/A")
+        un_number = hz_data.get("un", "N/A")
+        kemler_code = hz_data.get("kemler", "N/A")
+
+        logger.info(f"[DecisionEngine] Extracted data - License Plate: '{license_plate}', UN Number: '{un_number}', Kemler Code: '{kemler_code}'")
 
         if license_plate == "N/A" or un_number == "N/A" or kemler_code == "N/A":
-            logger.info(f"[DecisionEngine] Incomplete data detected for truck_id='{truck_id}'")
-            
             decision = "MANUAL_REVIEW"
             if license_plate == "N/A":
                 alerts.append("License plate not detected")
