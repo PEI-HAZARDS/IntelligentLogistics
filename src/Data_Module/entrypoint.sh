@@ -35,6 +35,20 @@ else
   exit 1
 fi
 
+# Run database triggers migration
+echo "Running database triggers migration..."
+if [ -f "scripts/triggers.sql" ]; then
+  PGPASSWORD=${POSTGRES_PASSWORD} psql -h ${POSTGRES_HOST:-postgres} -p ${POSTGRES_PORT:-5432} -U ${POSTGRES_USER} -d ${POSTGRES_DB} -f scripts/triggers.sql
+  if [ $? -eq 0 ]; then
+    echo "Triggers migration completed successfully"
+  else
+    echo "Triggers migration failed (may already exist, continuing...)"
+  fi
+else
+  echo "No triggers.sql found, skipping..."
+fi
+
 # Iniciar o servidor FastAPI
 echo "Starting FastAPI server..."
 exec uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+

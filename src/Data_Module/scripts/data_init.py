@@ -182,24 +182,29 @@ def init_data(db: Session):
         # ===== SHIFTS (composite PK: gate_id + shift_type + date) =====
         print("Creating shifts...")
 
+        # Use tomorrow for future appointments, today for current ones
         today = date.today()
-
-        shifts = [
-            Shift(
-                gate_id=gates[0].id,
-                shift_type=ShiftType.MORNING,
-                date=today,
-                operator_num_worker=operator1.num_worker,
-                manager_num_worker=manager1.num_worker
-            ),
-            Shift(
-                gate_id=gates[0].id,
-                shift_type=ShiftType.AFTERNOON,
-                date=today,
-                operator_num_worker=operator1.num_worker,
-                manager_num_worker=manager1.num_worker
-            ),
-        ]
+        tomorrow = today + timedelta(days=1)
+        
+        # Create shifts for today and tomorrow
+        shifts = []
+        for shift_date in [today, tomorrow]:
+            shifts.extend([
+                Shift(
+                    gate_id=gates[0].id,
+                    shift_type=ShiftType.MORNING,
+                    date=shift_date,
+                    operator_num_worker=operator1.num_worker,
+                    manager_num_worker=manager1.num_worker
+                ),
+                Shift(
+                    gate_id=gates[0].id,
+                    shift_type=ShiftType.AFTERNOON,
+                    date=shift_date,
+                    operator_num_worker=operator1.num_worker,
+                    manager_num_worker=manager1.num_worker
+                ),
+            ])
 
         db.add_all(shifts)
         db.flush()
@@ -207,8 +212,9 @@ def init_data(db: Session):
         # ===== BOOKINGS (PK: reference) =====
         print("Creating bookings...")
 
+        # Create bookings for today
         bookings = []
-        for i in range(33):
+        for i in range(40):
             bookings.append(Booking(
                 reference=f"BK-{today.strftime('%Y%m%d')}-{i+1:04d}",
                 direction="inbound" if i % 2 == 0 else "outbound"
@@ -254,28 +260,45 @@ def init_data(db: Session):
         # ===== APPOINTMENTS =====
         print("Creating appointments...")
 
-        schedules = [
-            time(6, 30), time(7, 0), time(7, 45), time(8, 20), time(9, 0),
-            time(9, 40), time(10, 15), time(11, 0), time(11, 30), time(12, 15),
-            time(13, 0), time(13, 45), time(14, 30), time(15, 0), time(15, 45),
-            time(16, 20), time(17, 0), time(17, 40), time(18, 15), time(19, 0),
-            time(19, 45), time(20, 30), time(21, 0), time(21, 45), time(22, 30),
-            time(23, 0), time(23, 30), time(0, 15), time(1, 0), time(2, 0),
-            time(3, 0), time(4, 0), time(5, 0)
-        ]
+        def generate_schedule_times(base_date: date, count: int) -> list:
+            """
+            Generate realistic appointment times spread across operational hours.
+            Operational hours: 06:00 - 22:00 (16 hours)
+            """
+            schedules = []
+            # Define operational hours
+            start_hour = 6
+            end_hour = 22
+            total_minutes = (end_hour - start_hour) * 60  # 960 minutes
+            interval = total_minutes // count  # Spread appointments evenly
+            
+            for i in range(count):
+                minutes_offset = i * interval + random.randint(-10, 10)  # Add slight randomness
+                minutes_offset = max(0, min(minutes_offset, total_minutes - 1))  # Clamp
+                hour = start_hour + (minutes_offset // 60)
+                minute = minutes_offset % 60
+                # Round to nearest 5 minutes for realism
+                minute = (minute // 5) * 5
+                schedules.append(datetime.combine(base_date, time(hour, minute)))
+            
+            return schedules
+
+        # Generate schedule times for today
+        schedule_times = generate_schedule_times(today, 40)
 
         # Updated status values to match AppointmentStatusEnum
+        # For today's appointments, distribute statuses realistically
         status_distribution = (
-            ["in_transit"] * 13 +
-            ["delayed"] * 10 +
-            ["completed"] * 7 +
-            ["canceled"] * 3
+            ["in_transit"] * 30 +  # Most appointments are pending/in transit
+            ["delayed"] * 6 +      # Some delayed
+            ["completed"] * 3 +    # Few completed
+            ["canceled"] * 1       # Rarely canceled
         )
         random.shuffle(status_distribution)
 
         appointments = []
-        for i in range(33):
-            scheduled_time = datetime.combine(today, schedules[i])
+        for i in range(40):
+            scheduled_time = schedule_times[i]
             appointments.append(Appointment(
                 arrival_id=f"PRT-{i+1:04d}",
                 booking_reference=bookings[i].reference,
@@ -296,6 +319,9 @@ def init_data(db: Session):
         # ===== VISITS (composite FK to Shift) =====
         print("Creating visits for in_transit/delayed/completed appointments...")
 
+        # Get tomorrow's morning shift (shifts[2] is tomorrow morning, shifts[3] is tomorrow afternoon)
+        tomorrow_morning_shift = shifts[2]  # Index 2 = tomorrow morning
+
         visits = []
         for appt in appointments:
             if appt.status in ["in_transit", "delayed", "completed"]:
@@ -307,11 +333,17 @@ def init_data(db: Session):
                     out_time = entry_time + timedelta(minutes=random.randint(30, 90))
                     state = "completed"
                 
+                # Determine which shift to use based on entry time
+                if entry_time.hour < 14:
+                    shift_to_use = tomorrow_morning_shift  # Morning shift
+                else:
+                    shift_to_use = shifts[3]  # Afternoon shift
+                
                 visits.append(Visit(
                     appointment_id=appt.id,
-                    shift_gate_id=shifts[0].gate_id,
-                    shift_type=shifts[0].shift_type,
-                    shift_date=shifts[0].date,
+                    shift_gate_id=shift_to_use.gate_id,
+                    shift_type=shift_to_use.shift_type,
+                    shift_date=shift_to_use.date,
                     entry_time=entry_time,
                     out_time=out_time,
                     state=state
@@ -370,36 +402,89 @@ def init_data(db: Session):
 
         print("Database initialized successfully!")
         print(f"""
-Summary:
+================================================================================
+                           DATABASE INITIALIZATION SUMMARY
+================================================================================
+
+ENTITIES CREATED:
 - Workers: 2 (1 manager, 1 operator)
 - Companies: {len(companies)}
-- Drivers: {len(drivers)} (all with password: driver123)
+- Drivers: {len(drivers)}
 - Trucks: {len(trucks)}
 - Terminals: {len(terminals)} (1 hazmat approved)
 - Docks: {len(docks)}
 - Gates: {len(gates)}
-- Shifts: {len(shifts)}
+- Shifts: {len(shifts)} (today + tomorrow)
 - Bookings: {len(bookings)}
 - Cargos: {len(cargos)}
-- Appointments: {len(appointments)} (with arrival_id PRT-0001 to PRT-0033)
+- Appointments: {len(appointments)}
   · In Transit: {status_distribution.count('in_transit')}
   · Delayed: {status_distribution.count('delayed')}
   · Completed: {status_distribution.count('completed')}
   · Canceled: {status_distribution.count('canceled')}
 - Visits: {len(visits)}
 - Alerts: {len(alerts)}
-- Shift Alert History: {len(shift_alert_histories)}
 
-Test credentials:
+================================================================================
+                              MVP TEST CREDENTIALS
+================================================================================
 
-Web Portal:
-Email: joao.silva@porto.pt | Password: password123 (Manager, num_worker: MGR001)
-Email: carlos.oliveira@porto.pt | Password: password123 (Operator, num_worker: OPR001)
+WEB PORTAL (Operator/Manager):
+┌─────────────────────────────────┬─────────────┬────────────┐
+│ Email                           │ Password    │ Role       │
+├─────────────────────────────────┼─────────────┼────────────┤
+│ joao.silva@porto.pt             │ password123 │ Manager    │
+│ carlos.oliveira@porto.pt        │ password123 │ Operator   │
+└─────────────────────────────────┴─────────────┴────────────┘
 
-Mobile App (Drivers):
-Driver license: PT12345678, PT23456789, etc.
-Password: driver123
-Test PIN: PRT-0001 (First appointment)
+MOBILE APP (Drivers):
+┌──────────────────┬─────────────────────┬─────────────┐
+│ Driver License   │ Name                │ Password    │
+├──────────────────┼─────────────────────┼─────────────┤""")
+        
+        for driver in drivers[:5]:  # Show first 5 drivers
+            print(f"│ {driver.drivers_license:<16} │ {driver.name:<19} │ driver123   │")
+        
+        print(f"""│ ...              │ (more drivers)      │ driver123   │
+└──────────────────┴─────────────────────┴─────────────┘
+
+================================================================================
+                          APPOINTMENT PINs FOR TESTING
+================================================================================
+
+Date: {today.strftime('%Y-%m-%d')} (Today)
+""")
+        
+        print("Sample PINs to test in mobile app:")
+        print("┌────────────┬────────────────┬───────────────────────┬────────────┐")
+        print("│ PIN        │ Driver         │ Scheduled Time        │ Status     │")
+        print("├────────────┼────────────────┼───────────────────────┼────────────┤")
+        
+        for i, appt in enumerate(appointments[:10]):  # Show first 10 appointments
+            driver = drivers[i % len(drivers)]
+            time_str = appt.scheduled_start_time.strftime('%H:%M')
+            print(f"│ {appt.arrival_id:<10} │ {driver.drivers_license:<14} │ {today.strftime('%Y-%m-%d')} {time_str:<7} │ {appt.status:<10} │")
+        
+        print("│ ...        │ ...            │ ...                   │ ...        │")
+        print("└────────────┴────────────────┴───────────────────────┴────────────┘")
+        
+        print("""
+================================================================================
+                               QUICK TEST GUIDE
+================================================================================
+
+1. Login as driver:
+   POST /drivers/login
+   {"drivers_license": "PT12345678", "password": "driver123"}
+
+2. Claim appointment with PIN:
+   POST /drivers/claim?drivers_license=PT12345678
+   {"arrival_id": "PRT-0001"}
+
+3. Get active arrival:
+   GET /drivers/me/active?drivers_license=PT12345678
+
+================================================================================
 """)
     except Exception as e:
         print("!!! Error during initialization:", e)
