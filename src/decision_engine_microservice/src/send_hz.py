@@ -39,7 +39,7 @@ def publish_hz_results(timestamp, truck_id, un_number, kemler_code, conf):
 
 def main():
     timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    truck_id = "TRKbe3f70c7"
+    truck_id = "truck123"
     un_number = "1203"
     kemler_code = "33"
     conf = 0.95

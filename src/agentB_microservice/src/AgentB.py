@@ -594,8 +594,8 @@ class AgentB:
                 plate_text, plate_conf, _lp_img = self.process_license_plate_detection()
 
                 if not plate_text:
-                    logger.warning(
-                        "[AgentB] No final text results — not publishing.")
+                    logger.warning("[AgentB] No final text results — publishing empty message.")
+                    self._publish_lp_detected(truck_id, "N/A", -1, None)
                     continue
                 
                 # Upload best crop to MinIO

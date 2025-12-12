@@ -6,7 +6,7 @@ import time
 import uuid
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
-TOPIC_PRODUCE = "lp_result"
+TOPIC_PRODUCE = "lp-results-gate01"
 logger = logging.getLogger("TEST_LP")
 
 producer = Producer({
@@ -31,7 +31,7 @@ def publish_lp_result(timestamp, truck_id, plate_text, plate_conf):
             topic=TOPIC_PRODUCE,
             key=None,
             value=json.dumps(payload).encode("utf-8"),
-            headers={"truck_id": truck_id or str(uuid.uuid4())}
+            headers={"truckId": truck_id or str(uuid.uuid4())}
         )
         producer.poll(0)
 
@@ -39,7 +39,7 @@ def publish_lp_result(timestamp, truck_id, plate_text, plate_conf):
 def main():
     timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     truck_id = "truck123"
-    plate_text = "AA-11-BB"
+    plate_text = "MZ60H89"
     plate_conf = 0.95
     publish_lp_result(timestamp, truck_id, plate_text, plate_conf)
     

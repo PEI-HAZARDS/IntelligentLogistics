@@ -5,6 +5,7 @@ import os
 import requests
 import time
 from datetime import datetime, timedelta
+import itertools
 
 
 KAFKA_PRODUCE_TOPIC = "decision_results"
@@ -47,6 +48,47 @@ class DecisionEngine:
             "log_level": 1
             })
 
+        self.confusion_matrix = {
+            # --- NUMBERS ---
+            '0': ['O', 'D', 'Q', 'U'],
+            '1': ['I', 'L', 'T', 'J'],
+            '2': ['Z', '7'],
+            '3': ['B', 'E', '8'],
+            '4': ['A'],
+            '5': ['S'],
+            '6': ['G', 'b'],
+            '7': ['T', 'Y', 'Z'],
+            '8': ['B', 'S'],
+            '9': ['g', 'q', 'P'],
+
+            # --- LETTERS ---
+            'A': ['4'],
+            'B': ['8', '3'],
+            'C': ['G', '0'],
+            'D': ['0', 'O', 'Q'],
+            'E': ['3', 'F'],
+            'F': ['P', 'E'],
+            'G': ['6', 'C'],
+            'H': ['A', 'N', 'M'],
+            'I': ['1', 'L', 'T', 'J'],
+            'J': ['1', 'I'],
+            'K': ['X', 'R'],
+            'L': ['1', 'I'],
+            'M': ['W', 'N'],
+            'N': ['M', 'H'],
+            'O': ['0', 'D', 'Q', 'U'],
+            'P': ['R', 'F', '9'],
+            'Q': ['0', 'O', 'D', '9'],
+            'R': ['P', 'K'],
+            'S': ['5', '8'],
+            'T': ['7', '1', 'I', 'Y'],
+            'U': ['0', 'O', 'V'],
+            'V': ['U', 'Y'],
+            'W': ['M'],
+            'X': ['K', 'Y'],
+            'Y': ['V', 'T', '7'],
+            'Z': ['2', '7']
+        }
 
     def _loop(self):
         logger.info("[DecisionEngine] Starting main loop …")
@@ -100,7 +142,7 @@ class DecisionEngine:
                     lp_data = self.lp_buffer[truck_id]
                     hz_data = self.hz_buffer[truck_id]
                     
-                    self._make_decision(truck_id, lp_data, hz_data)
+                    self._make_decision_2(truck_id, lp_data, hz_data)
                     
                     # Clean up buffers after processing
                     del self.lp_buffer[truck_id]
@@ -145,22 +187,95 @@ class DecisionEngine:
         except Exception as e:
             logger.error(f"[DecisionEngine] API Request failed: {e}")
             return {"found": False, "message": str(e)}
+        
+    def _generate_plate_candidates(self, ocr_text: str):
+        """
+        Generates all likely license plate variations based on visual similarities.
+        Use this to "fuzzy match" against a database.
+        """
+        # 1. Build a list of possibilities for each character position
+        possibilities = []
+        for char in ocr_text:
+            # Start with the character itself
+            options = [char]
+            # Add its visual twins if they exist
+            if char in self.confusion_matrix:
+                options.extend(self.confusion_matrix[char])
+            possibilities.append(set(options)) # Use set to remove duplicates
+
+        # 2. Generate Cartesian product of all possibilities
+        # Warning: This can get large if the string is long. 
+        # For plates (6-8 chars), it's manageable.
+        candidates = [''.join(p) for p in itertools.product(*possibilities)]
+        
+        return candidates
+    
+    def _levenshtein_distance(self, s1, s2):
+        # Ensure s1 is the shorter string for memory efficiency
+        if len(s1) < len(s2):
+            return self._levenshtein_distance(s2, s1)
+
+        # Use a single row to save memory (we only need the previous row)
+        previous_row = range(len(s2) + 1)
+        
+        for i, c1 in enumerate(s1):
+            current_row = [i + 1]
+            for j, c2 in enumerate(s2):
+                # Calculate costs
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + (c1 != c2)
+                
+                # append the minimum cost to the current row
+                current_row.append(min(insertions, deletions, substitutions))
+                
+            previous_row = current_row
+        
+        return previous_row[-1]
 
     def _make_decision(self, truck_id: str, lp_data: dict, hz_data: dict):
         logger.info(f"[DecisionEngine] Making decision for truck_id='{truck_id}'")
         
-        license_plate = lp_data.get("licensePlate", "UNKNOWN")
-        un_number = hz_data.get("un_number")
-        kemler_code = hz_data.get("kemler_code")
+        # Return variables
+        decision = "MANUAL_REVIEW"
+        alerts = []
+        route = None
+
+        license_plate = lp_data.get("licensePlate", "N/A")
+        un_number = hz_data.get("un_number", "N/A")
+        kemler_code = hz_data.get("kemler_code", "N/A")
+
+        if license_plate == "N/A" or un_number == "N/A" or kemler_code == "N/A":
+            logger.info(f"[DecisionEngine] Incomplete data detected for truck_id='{truck_id}'")
+            
+            decision = "MANUAL_REVIEW"
+            if license_plate == "N/A":
+                alerts.append("License plate not detected")
+            if un_number == "N/A":
+                alerts.append("UN number not detected")
+            if kemler_code == "N/A":
+                alerts.append("Kemler code not detected")
+            logger.warning(f"[DecisionEngine] Incomplete data for truck_id='{truck_id}'. Sending to manual review.")
+            
+            returned_data = {
+                "timestamp": int(time.time()),
+                "licensePlate": license_plate,
+                "UN": int(un_number) if un_number and un_number.isdigit() else None,
+                "kemler": int(kemler_code) if kemler_code and kemler_code.isdigit() else None,
+                "alerts": alerts,
+                "lp_cropUrl": lp_data.get("crop_url"),
+                "hz_cropUrl": hz_data.get("crop_url"),
+                "route": route,
+                "decision": decision
+            }
+            self._publish_decision(truck_id, returned_data)
+            return
         
         # 1. Query Database
         arrivals_result = self._query_arrivals(license_plate)
 
         logger.info(f"[DecisionEngine] Arrivals query result: {arrivals_result}")
         
-        decision = "MANUAL_REVIEW"
-        alerts = []
-        route = None
         
         # Check if API query was successful
         if not arrivals_result.get("found"):
@@ -214,6 +329,81 @@ class DecisionEngine:
             else:
                 decision = "REJECTED"
                 alerts.append("No valid candidate details found.")
+            
+        # Validate confidence
+        hz_confidence = hz_data.get("confidence", 0.0)
+        lp_confidence = lp_data.get("confidence", 0.0)
+        
+        if lp_confidence < 0.7:
+            decision = "MANUAL_REVIEW"
+            alerts.append(f"License plate detection confidence too low ({lp_confidence:.2f})")    
+        
+        if hz_confidence < 0.7:
+            decision = "MANUAL_REVIEW"
+            alerts.append(f"Hazardous material detection confidence too low ({hz_confidence:.2f})")    
+
+        # Prepare Decision Data
+        returned_data = {
+            "timestamp": int(time.time()),
+            "licensePlate": license_plate,
+            "UN": int(un_number) if un_number and un_number.isdigit() else None,
+            "kemler": int(kemler_code) if kemler_code and kemler_code.isdigit() else None,
+            "alerts": alerts,
+            "lp_cropUrl": lp_data.get("crop_url"),
+            "hz_cropUrl": hz_data.get("crop_url"),
+            "route": route,
+            "decision": decision
+        }
+
+        self._publish_decision(truck_id, returned_data)
+    
+    def _make_decision_2(self, truck_id: str, lp_data: dict, hz_data: dict):
+        logger.info(f"[DecisionEngine] Making decision for truck_id='{truck_id}'")
+        
+        # Return variables
+        decision = "MANUAL_REVIEW"
+        alerts = []
+        route = None
+
+        license_plate = lp_data.get("licensePlate", "N/A")
+        un_number = hz_data.get("un_number", "N/A")
+        kemler_code = hz_data.get("kemler_code", "N/A")
+
+        if license_plate == "N/A" or un_number == "N/A" or kemler_code == "N/A":
+            logger.info(f"[DecisionEngine] Incomplete data detected for truck_id='{truck_id}'")
+            
+            decision = "MANUAL_REVIEW"
+            if license_plate == "N/A":
+                alerts.append("License plate not detected")
+            if un_number == "N/A":
+                alerts.append("UN number not detected")
+            if kemler_code == "N/A":
+                alerts.append("Kemler code not detected")
+            logger.warning(f"[DecisionEngine] Incomplete data for truck_id='{truck_id}'. Sending to manual review.")
+            
+            returned_data = {
+                "timestamp": int(time.time()),
+                "licensePlate": license_plate,
+                "UN": int(un_number) if un_number and un_number.isdigit() else None,
+                "kemler": int(kemler_code) if kemler_code and kemler_code.isdigit() else None,
+                "alerts": alerts,
+                "lp_cropUrl": lp_data.get("crop_url"),
+                "hz_cropUrl": hz_data.get("crop_url"),
+                "route": route,
+                "decision": decision
+            }
+            self._publish_decision(truck_id, returned_data)
+            return
+        
+        permutations = self._generate_plate_candidates(license_plate)
+        permutations = list(filter(
+            lambda p: self._levenshtein_distance(license_plate, p) <= 2, 
+            permutations
+        ))
+        
+
+        logger.info(f"[DecisionEngine] Generated {len(permutations)} plate permutations for '{license_plate}'")
+        logger.info(f"[DecisionEngine] Permutations: {permutations}")
             
         # Validate confidence
         hz_confidence = hz_data.get("confidence", 0.0)

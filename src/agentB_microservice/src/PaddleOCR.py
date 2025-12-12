@@ -54,51 +54,84 @@ class OCR:
             return image
         return None
 
-    def _preprocess_plate(self, cv_img, mode='standard'):
+    def _resize_and_pad(self, img, target_height=48):
         """
-        Preprocessing pipeline for license plate images.
+        Resizes image to a target height while maintaining aspect ratio,
+        and adds padding to assist OCR detection near edges.
+        """
+        h, w = img.shape[:2]
         
-        Args:
-            cv_img: OpenCV image (BGR)
-            mode: 'standard', 'aggressive', or 'minimal'
-            
-        Returns:
-            Preprocessed image ready for OCR
-        """
+        # 1. Scale aspect ratio
+        scale = target_height / h
+        new_w = int(w * scale)
+        
+        # Use Lanczos resampling for better quality upscaling of small images
+        resized = cv2.resize(img, (new_w, target_height), interpolation=cv2.INTER_LANCZOS4)
+        
+        # 2. Add Border (Padding)
+        # Deep Learning OCR works better when text doesn't touch edges
+        # We use borderReplicate to extend the background color naturally
+        padding = 10
+        padded = cv2.copyMakeBorder(
+            resized, 
+            top=padding, bottom=padding, left=padding, right=padding, 
+            borderType=cv2.BORDER_REPLICATE
+        )
+        return padded
+
+    def _preprocess_plate(self, cv_img, mode='standard'):
         if cv_img is None:
             raise ValueError("Could not convert input to CV image")
         
         h, w = cv_img.shape[:2]
-        
-        # Validate minimum dimensions
         if h < self.MIN_HEIGHT or w < self.MIN_WIDTH:
             logger.warning(f"[PaddleOCR] Image too small: {w}x{h}")
             raise ValueError(f"Image too small: {w}x{h}")
-        
-        if mode == 'minimal':
-            # Just return the original image - let PaddleOCR handle it
-            return cv_img
-        
-        # Convert to grayscale
-        if len(cv_img.shape) == 3:
-            gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
+
+        # --- STEP 1: Resize & Pad (Crucial for "Far" plates) ---
+        # We process the resized image from here on
+        processed = self._resize_and_pad(cv_img, target_height=64)
+
+        # --- STEP 2: Grayscale ---
+        if len(processed.shape) == 3:
+            gray = cv2.cvtColor(processed, cv2.COLOR_BGR2GRAY)
         else:
-            gray = cv_img.copy()
-        
-        if mode == 'standard':
-            # Apply CLAHE for contrast enhancement
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
+            gray = processed.copy()
+
+        # --- STEP 3: Mode-Specific Enhancements ---
+        if mode == 'minimal':
+            # Minimal: Just resizing and grayscale often beats complex processing
+            pass 
+            
+        elif mode == 'standard':
+            # CLAHE is excellent for plates (handles shadows well)
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
             gray = clahe.apply(gray)
             
+            # Mild sharpening to help with "blurry" focus
+            kernel = np.array([[0, -1, 0], 
+                               [-1, 5,-1], 
+                               [0, -1, 0]])
+            gray = cv2.filter2D(gray, -1, kernel)
+
         elif mode == 'aggressive':
-            # Apply CLAHE
+            # CLAHE
             clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
             gray = clahe.apply(gray)
-            # Apply Otsu's thresholding
+            
+            # Thresholding (Binarization)
+            # CAUTION: CNNs often prefer grayscale over binary. 
+            # Use binary only as a fallback for very low contrast plates.
             _, gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        
-        # Convert back to 3-channel for PaddleOCR
-        return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+            
+            # Morphological operations to fix broken text
+            # If text is white on black background:
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+            # Closing fills small holes inside the foreground
+            gray = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
+
+        # Convert back to 3-channel (Paddle expects 3 channels even for gray)
+        return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR) 
     
     def _filter_text(self, text):
         """
