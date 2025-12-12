@@ -8,9 +8,9 @@ from datetime import datetime, timedelta
 import itertools
 
 
-KAFKA_PRODUCE_TOPIC = "decision-results"
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
 GATE_ID = os.getenv("GATE_ID", 1)
+KAFKA_PRODUCE_TOPIC = f"decision-results-{GATE_ID}"
 KAFKA_CONSUME_TOPIC_LP = f"lp-results-{GATE_ID}"
 KAFKA_CONSUME_TOPIC_HZ = f"hz-results-{GATE_ID}"
 API_URL = os.getenv("API_URL", "http://localhost:8080/api/v1")
@@ -285,14 +285,10 @@ class DecisionEngine:
 
         logger.info(f"[DecisionEngine] Extracted data - License Plate: '{license_plate}', UN Number: '{un_number}', Kemler Code: '{kemler_code}'")
 
-        if license_plate == "N/A" or un_number == "N/A" or kemler_code == "N/A":
+        if license_plate == "N/A":
             decision = "MANUAL_REVIEW"
-            if license_plate == "N/A":
-                alerts.append("License plate not detected")
-            if un_number == "N/A":
-                alerts.append("UN number not detected")
-            if kemler_code == "N/A":
-                alerts.append("Kemler code not detected")
+            alerts.append("License plate not detected")
+            
             logger.warning(f"[DecisionEngine] Incomplete data for truck_id='{truck_id}'. Sending to manual review.")
             
             returned_data = {
@@ -324,6 +320,7 @@ class DecisionEngine:
             decision = "MANUAL_REVIEW"
             alerts.append(f"API unavailable - Manual review required")
             logger.warning(f"[DecisionEngine] API unavailable for truck_id='{truck_id}'. Sending to manual review.")
+        
         elif matched_appointment is None:
             # No matching license plate found within Levenshtein threshold
             decision = "REJECTED"
@@ -331,7 +328,9 @@ class DecisionEngine:
                 alerts.append(f"License plate '{license_plate}' not matched (closest distance: {distance}, threshold: {MAX_LEVENSHTEIN_DISTANCE})")
             else:
                 alerts.append(f"No appointments found in time frame for gate {GATE_ID}")
+
             logger.warning(f"[DecisionEngine] No matching license plate for '{license_plate}'. Rejecting.")
+        
         else:
             # Match found! Extract route info and validate time window
             decision = "ACCEPTED"
@@ -344,38 +343,16 @@ class DecisionEngine:
             # Add match info to alerts if distance > 0 (fuzzy match)
             if distance > 0:
                 alerts.append(f"Fuzzy match: detected '{license_plate}' matched to '{matched_appointment.get('license_plate')}' (distance: {distance})")
-            
-            # Time Window Validation
-            scheduled_time_str = matched_appointment.get("scheduled_time")  # ISO format expected
-            logger.info(f"[DecisionEngine] Scheduled time: {scheduled_time_str}")
-            if scheduled_time_str:
-                try:
-                    scheduled_dt = datetime.fromisoformat(scheduled_time_str)
-                    current_dt = datetime.now()
-                    tolerance = timedelta(minutes=TIME_TOLERANCE_MINUTES)
-                    
-                    if not (scheduled_dt - tolerance <= current_dt <= scheduled_dt + tolerance):
-                        decision = "REJECTED"
-                        diff = (current_dt - scheduled_dt).total_seconds() / 60
-                        status_time = "early" if diff < 0 else "late"
-                        alerts.append(f"Outside time window ({status_time} by {abs(int(diff))} mins). Scheduled: {scheduled_time_str}")
-                
-                except Exception as e:
-                    logger.warning(f"[DecisionEngine] Error parsing time: {e}")
-            
+
             logger.info(f"[DecisionEngine] Matched appointment ID: {matched_appointment.get('appointment_id')}, decision: {decision}")
             
-        # Validate confidence
-        hz_confidence = hz_data.get("confidence", 0.0)
-        lp_confidence = lp_data.get("confidence", 0.0)
-        
-        if lp_confidence < 0.7:
-            decision = "MANUAL_REVIEW"
-            alerts.append(f"License plate detection confidence too low ({lp_confidence:.2f})")    
-        
-        if hz_confidence < 0.7:
-            decision = "MANUAL_REVIEW"
-            alerts.append(f"Hazardous material detection confidence too low ({hz_confidence:.2f})")    
+            # Validate confidence only for accepted matches
+            hz_confidence = hz_data.get("confidence", 0.0)
+            lp_confidence = lp_data.get("confidence", 0.0)
+            
+            if lp_confidence < 0.7 and decision == "ACCEPTED":
+                decision = "MANUAL_REVIEW"
+                alerts.append(f"License plate detection confidence too low ({lp_confidence:.2f})") 
 
         # Prepare Decision Data
         returned_data = {
@@ -394,15 +371,14 @@ class DecisionEngine:
 
     def _publish_decision(self, truck_id: str, decision_data: dict):
         """Publishes decision result to Kafka gate topic."""
-        topic_name = f"decision-{GATE_ID}"
         
-        logger.info(f"[DecisionEngine] Publishing to '{topic_name}' for truck_id='{truck_id}': {decision_data['decision']}")
+        logger.info(f"[DecisionEngine] Publishing to '{KAFKA_PRODUCE_TOPIC}' for truck_id='{truck_id}': {decision_data['decision']}")
         
         # Ensure json serializable
         payload = json.dumps(decision_data).encode("utf-8")
 
         self.producer.produce(
-            topic=topic_name,
+            topic=KAFKA_PRODUCE_TOPIC,
             key=truck_id.encode("utf-8"),
             value=payload,
             headers={"truck_id": truck_id}
