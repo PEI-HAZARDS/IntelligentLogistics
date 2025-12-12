@@ -242,7 +242,7 @@ class AgentC:
         """
 
         try:
-            logger.info("[AgentC] YOLO (LP) running…")
+            logger.info("[AgentC] YOLO (HZ) running…")
             results = self.yolo.detect(frame)
 
             if not results:
@@ -480,7 +480,7 @@ class AgentC:
                 f"{msg.topic()}[{msg.partition()}] at offset {msg.offset()}"
             )
     
-    def _publish_hz_detected(self, truck_id, plate_text, plate_conf, crop_url):
+    def _publish_hz_detected(self, truck_id, un, kemler, plate_conf, crop_url):
         """
         Publishes the 'license-plate-detected' event to Kafka.
         Propagates the correlation ID and includes MinIO crop URL.
@@ -490,13 +490,14 @@ class AgentC:
         # Construct JSON payload
         payload = {
             "timestamp": timestamp,
-            "hazardPlate": plate_text,
+            "UN": un,
+            "kemler" : kemler,
             "confidence": float(plate_conf if plate_conf is not None else 0.0),
             "cropUrl": crop_url
         }
         
         logger.info(
-            f"[AgentC] Publishing '{TOPIC_PRODUCE}' (truckId={truck_id}, plate={plate_text}) …")
+            f"[AgentC] Publishing '{TOPIC_PRODUCE}' (truckId={truck_id}, un={un}), kemler={kemler} …")
 
         # Send to Kafka
         self.producer.produce(
@@ -562,14 +563,14 @@ class AgentC:
                     truck_id = str(uuid.uuid4())
 
                 logger.info(
-                    f"[AgentC] Received 'truck-detected' (truckId={truck_id}). Starting LP pipeline…")
+                    f"[AgentC] Received 'truck-detected' (truckId={truck_id}). Starting HZ pipeline…")
 
                 # Process license plate detection
-                plate_text, plate_conf, _lp_img = self.process_hazard_plate_detection(truck_id)
+                plate_text, plate_conf, _hz_img = self.process_hazard_plate_detection(truck_id)
 
                 if not plate_text:
                     logger.warning("[AgentC] No final text results — publishing empty message.")
-                    self._publish_hz_detected(truck_id, "N/A", -1, None)
+                    self._publish_hz_detected(truck_id, "N/A", "N/A", -1, None)
                     continue
                 
                 # Upload best crop to MinIO
@@ -577,7 +578,7 @@ class AgentC:
                 if self.best_crop is not None:
                     try:
                         # Generate unique object name
-                        object_name = f"lp_{truck_id}_{plate_text}.jpg"
+                        object_name = f"hz_{truck_id}_{plate_text}.jpg"
                         crop_url = self.crop_storage.upload_memory_image(self.best_crop, object_name)
                         
                         if crop_url:
@@ -587,10 +588,20 @@ class AgentC:
                     except Exception as e:
                         logger.exception(f"[AgentC] Error uploading crop to MinIO: {e}")
                 
+                parts = plate_text.split(" ")
+
+                if len(parts) >= 2:
+                    un = parts[0]
+                    kemler = parts[1]
+                else:
+                    un = "N/A"
+                    kemler = "N/A"
+
                 # Publish the license plate detected message
                 self._publish_hz_detected(
                     truck_id=truck_id,
-                    plate_text=plate_text,
+                    un=un,
+                    kemler=kemler,
                     plate_conf=plate_conf,
                     crop_url=crop_url
                 )

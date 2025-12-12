@@ -108,7 +108,7 @@ class OCR:
             return ""
         
         # Allowed characters for license plates
-        allowed_chars = set('0123456789X')
+        allowed_chars = set('0123456789X ')
         
         text = text.upper()
         
