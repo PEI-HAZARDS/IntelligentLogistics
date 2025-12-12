@@ -1,10 +1,10 @@
-version: "3.9"
 services:
 
-  # Serviço de base de dados PostgreSQL (Simulação de dados do Porto)
+  # PostgreSQL database
   postgres:
     image: postgres:15
     container_name: dm_postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: porto
       POSTGRES_PASSWORD: porto_password
@@ -19,10 +19,11 @@ services:
       timeout: 5s
       retries: 5
 
-  # Serviço de base de dados MongoDB (Guarda internamente dados de eventos kafka e mais tarde logs gerais de atividades)
+  # MongoDB for events and logs
   mongo:
     image: mongo:6
     container_name: dm_mongo
+    restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD: admin123
@@ -36,10 +37,11 @@ services:
       timeout: 5s
       retries: 5
 
-  # Serviço de cache Redis (para otimização de performance) -> complementa o Data Module
+  # Redis cache
   redis:
     image: redis:7
     container_name: dm_redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
     healthcheck:
@@ -48,10 +50,11 @@ services:
       timeout: 5s
       retries: 5
 
-  # Serviço do Data Module
+  # Data Module API
   data-module:
     build: .
     container_name: dm_data_module
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,27 +63,33 @@ services:
       redis:
         condition: service_healthy
     environment:
+      # PostgreSQL
       POSTGRES_USER: porto
       POSTGRES_PASSWORD: porto_password
       POSTGRES_DB: porto_logistica
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       DATABASE_URL: postgresql://porto:porto_password@postgres:5432/porto_logistica
+      # MongoDB
       MONGO_URL: mongodb://admin:admin123@mongo:27017
       MONGO_HOST: mongo
       MONGO_PORT: 27017
+      # Redis
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      # Decision Engine URL (roda noutro container noutra virtual machine)
-      DECISION_ENGINE_URL: http://decision-engine:8001
+      # External services
+      DECISION_ENGINE_URL: ${DECISION_ENGINE_URL:-http://decision-engine:8001}
+      # Runtime
       PYTHONUNBUFFERED: 1
+      ENVIRONMENT: production
     ports:
-      - "8080:8000" # default port for Data Module API
-    healthcheck: # Verifica se o servidor está a responder
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      - "8080:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
 
 volumes:
   pgdata:

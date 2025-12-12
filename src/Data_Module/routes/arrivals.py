@@ -1,195 +1,255 @@
 """
-Arrivals Routes - Endpoints para gestão de chegadas diárias.
-Consumido por: Frontend operador, Decision Engine, App motorista.
+Arrivals Routes - Endpoints for appointment and visit management.
+Consumed by: Operator frontend, Decision Engine, Driver app.
 """
 
 from typing import List, Optional, Dict, Any
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from models.pydantic_models import (
-    Chegada, ArrivalStatusUpdate, ArrivalDecisionUpdate
+    Appointment, AppointmentStatusUpdate, Visit, VisitStatusUpdate, ShiftTypeEnum
 )
 from services.arrival_service import (
-    get_all_arrivals,
-    get_arrival_by_id,
-    get_arrival_by_pin,
-    get_arrivals_by_matricula,
-    get_arrivals_for_decision,
-    get_arrivals_count_by_status,
-    update_arrival_status,
-    update_arrival_from_decision,
-    get_next_arrivals
+    get_all_appointments,
+    get_appointment_by_id,
+    get_appointment_by_arrival_id,
+    get_appointments_by_license_plate,
+    get_appointments_count_by_status,
+    update_appointment_status,
+    update_appointment_from_decision,
+    get_next_appointments,
+    create_visit_for_appointment,
+    update_visit_status
 )
+from models.sql_models import ShiftType
 from db.postgres import get_db
 
 router = APIRouter(prefix="/arrivals", tags=["Arrivals"])
 
 
+# ==================== LOCAL MODELS ====================
+
+class CreateVisitRequest(BaseModel):
+    """Request to create a visit with composite shift FK."""
+    shift_gate_id: int
+    shift_type: str  # "MORNING", "AFTERNOON", "NIGHT"
+    shift_date: date
+
+
 # ==================== GET ENDPOINTS ====================
 
-@router.get("", response_model=List[Chegada])
+@router.get("", response_model=List[Appointment])
 def list_arrivals(
-    skip: int = Query(0, ge=0, description="Número de registos a saltar"),
-    limit: int = Query(100, ge=1, le=500, description="Máximo de registos"),
-    id_gate: Optional[int] = Query(None, description="Filtrar por gate de entrada"),
-    id_turno: Optional[int] = Query(None, description="Filtrar por turno"),
-    estado_entrega: Optional[str] = Query(None, description="Filtrar por estado"),
-    data_prevista: Optional[date] = Query(None, description="Filtrar por data prevista"),
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(100, ge=1, le=500, description="Maximum records"),
+    gate_id: Optional[int] = Query(None, description="Filter by entry gate"),
+    shift_gate_id: Optional[int] = Query(None, description="Filter by shift gate"),
+    shift_type: Optional[str] = Query(None, description="Filter by shift type"),
+    shift_date: Optional[date] = Query(None, description="Filter by shift date"),
+    status: Optional[str] = Query(None, description="Filter by status"),
+    scheduled_date: Optional[date] = Query(None, description="Filter by scheduled date"),
     db: Session = Depends(get_db)
 ):
     """
-    Lista chegadas com filtros opcionais.
-    Usado pelo frontend do operador para listar chegadas do dia/turno.
+    Lists appointments with optional filters.
+    Used by operator frontend to list daily arrivals.
     """
-    chegadas = get_all_arrivals(
+    appointments = get_all_appointments(
         db, skip=skip, limit=limit,
-        id_gate=id_gate, id_turno=id_turno,
-        estado_entrega=estado_entrega, data_prevista=data_prevista
+        gate_id=gate_id,
+        shift_gate_id=shift_gate_id,
+        shift_type=shift_type,
+        shift_date=shift_date,
+        status=status,
+        scheduled_date=scheduled_date
     )
-    return [Chegada.model_validate(c) for c in chegadas]
+    return [Appointment.model_validate(a) for a in appointments]
 
 
 @router.get("/stats", response_model=Dict[str, int])
 def get_arrivals_stats(
-    id_gate: Optional[int] = Query(None, description="Filtrar por gate"),
-    data: Optional[date] = Query(None, description="Data a consultar (default: hoje)"),
+    gate_id: Optional[int] = Query(None, description="Filter by gate"),
+    target_date: Optional[date] = Query(None, description="Date to query (default: today)"),
     db: Session = Depends(get_db)
 ):
     """
-    Estatísticas de chegadas por estado.
-    Usado no dashboard do operador.
+    Arrival statistics by status.
+    Used in operator dashboard.
     """
-    return get_arrivals_count_by_status(db, id_gate=id_gate, data=data)
+    return get_appointments_count_by_status(db, gate_id=gate_id, target_date=target_date)
 
 
-@router.get("/next/{id_gate}", response_model=List[Chegada])
+@router.get("/next/{gate_id}", response_model=List[Appointment])
 def get_upcoming_arrivals(
-    id_gate: int = Path(..., description="ID do gate"),
-    limit: int = Query(5, ge=1, le=20, description="Número de chegadas"),
+    gate_id: int = Path(..., description="Gate ID"),
+    limit: int = Query(5, ge=1, le=20, description="Number of arrivals"),
     db: Session = Depends(get_db)
 ):
     """
-    Próximas chegadas previstas para um gate.
-    Usado no painel lateral do operador.
+    Next scheduled arrivals for a gate.
+    Used in operator's sidebar panel.
     """
-    chegadas = get_next_arrivals(db, id_gate=id_gate, limit=limit)
-    return [Chegada.model_validate(c) for c in chegadas]
+    appointments = get_next_appointments(db, gate_id=gate_id, limit=limit)
+    return [Appointment.model_validate(a) for a in appointments]
 
 
-@router.get("/{id_chegada}", response_model=Chegada)
+@router.get("/{appointment_id}", response_model=Appointment)
 def get_arrival(
-    id_chegada: int = Path(..., description="ID da chegada"),
+    appointment_id: int = Path(..., description="Appointment ID"),
     db: Session = Depends(get_db)
 ):
-    """Obtém detalhes de uma chegada específica."""
-    chegada = get_arrival_by_id(db, id_chegada)
-    if not chegada:
-        raise HTTPException(status_code=404, detail="Chegada não encontrada")
-    return Chegada.model_validate(chegada)
+    """Gets details of a specific appointment."""
+    appointment = get_appointment_by_id(db, appointment_id)
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    return Appointment.model_validate(appointment)
 
 
-@router.get("/pin/{pin_acesso}", response_model=Chegada)
+@router.get("/pin/{arrival_id}", response_model=Appointment)
 def get_arrival_by_pin_code(
-    pin_acesso: str = Path(..., description="PIN de acesso"),
+    arrival_id: str = Path(..., description="Arrival ID / PIN"),
     db: Session = Depends(get_db)
 ):
     """
-    Obtém chegada pelo PIN de acesso.
-    Usado pelo motorista para consultar sua chegada.
+    Gets appointment by arrival_id/PIN.
+    Used by driver to check their appointment.
     """
-    chegada = get_arrival_by_pin(db, pin_acesso)
-    if not chegada:
-        raise HTTPException(status_code=404, detail="PIN inválido ou chegada não encontrada")
-    return Chegada.model_validate(chegada)
+    appointment = get_appointment_by_arrival_id(db, arrival_id)
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Invalid PIN or appointment not found")
+    return Appointment.model_validate(appointment)
 
 
 # ==================== DECISION ENGINE ENDPOINTS ====================
 
-@router.get("/query/matricula/{matricula}", response_model=List[Chegada])
-def query_arrivals_by_matricula(
-    matricula: str = Path(..., description="Matrícula do veículo"),
-    id_turno: Optional[int] = Query(None, description="Filtrar por turno"),
-    estado_entrega: Optional[str] = Query(None, description="Filtrar por estado"),
-    data_prevista: Optional[date] = Query(None, description="Data (default: hoje)"),
+@router.get("/query/license-plate/{license_plate}", response_model=List[Appointment])
+def query_arrivals_by_license_plate(
+    license_plate: str = Path(..., description="Truck license plate"),
+    shift_gate_id: Optional[int] = Query(None, description="Filter by shift gate"),
+    shift_type: Optional[str] = Query(None, description="Filter by shift type"),
+    shift_date: Optional[date] = Query(None, description="Filter by shift date"),
+    status: Optional[str] = Query(None, description="Filter by status"),
+    scheduled_date: Optional[date] = Query(None, description="Date (default: today)"),
     db: Session = Depends(get_db)
 ):
     """
-    Consulta chegadas por matrícula.
-    Usado pelo Decision Engine para encontrar chegadas candidatas.
+    Query appointments by license plate.
+    Used by Decision Engine to find candidate arrivals.
     """
-    chegadas = get_arrivals_by_matricula(
-        db, matricula=matricula,
-        id_turno=id_turno, estado_entrega=estado_entrega,
-        data_prevista=data_prevista
+    appointments = get_appointments_by_license_plate(
+        db, license_plate=license_plate,
+        shift_gate_id=shift_gate_id,
+        shift_type=shift_type,
+        shift_date=shift_date,
+        status=status,
+        scheduled_date=scheduled_date
     )
-    return [Chegada.model_validate(c) for c in chegadas]
+    return [Appointment.model_validate(a) for a in appointments]
 
-
-@router.get("/decision/candidates/{id_gate}/{matricula}")
-def get_decision_candidates(
-    id_gate: int = Path(..., description="ID do gate"),
-    matricula: str = Path(..., description="Matrícula detectada"),
-    db: Session = Depends(get_db)
-) -> List[Dict[str, Any]]:
-    """
-    Obtém chegadas candidatas para decisão.
-    Retorna dados enriquecidos (carga, cais, ADR status).
-    
-    Usado pelo Decision Engine após detecção de matrícula.
-    """
-    return get_arrivals_for_decision(db, matricula=matricula, id_gate=id_gate)
 
 
 # ==================== UPDATE ENDPOINTS ====================
 
-@router.patch("/{id_chegada}/status", response_model=Chegada)
+@router.patch("/{appointment_id}/status", response_model=Appointment)
 def update_status(
-    id_chegada: int = Path(..., description="ID da chegada"),
-    update_data: ArrivalStatusUpdate = ...,
+    appointment_id: int = Path(..., description="Appointment ID"),
+    update_data: AppointmentStatusUpdate = ...,
     db: Session = Depends(get_db)
 ):
     """
-    Atualiza estado de uma chegada.
-    Usado pelo operador ou sistema para atualizar manualmente.
+    Updates appointment status.
+    Used by operator or system for manual updates.
     """
-    chegada = update_arrival_status(
-        db, id_chegada=id_chegada,
-        novo_estado=update_data.estado_entrega,
-        data_hora_chegada=update_data.data_hora_chegada,
-        id_gate_saida=update_data.id_gate_saida,
-        observacoes=update_data.observacoes
+    appointment = update_appointment_status(
+        db, appointment_id=appointment_id,
+        new_status=update_data.status,
+        notes=update_data.notes
     )
-    if not chegada:
-        raise HTTPException(status_code=404, detail="Chegada não encontrada")
-    return Chegada.model_validate(chegada)
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    return Appointment.model_validate(appointment)
 
 
-@router.post("/{id_chegada}/decision", response_model=Chegada)
+@router.post("/{appointment_id}/decision", response_model=Appointment)
 def process_decision(
-    id_chegada: int = Path(..., description="ID da chegada"),
-    decision: ArrivalDecisionUpdate = ...,
+    appointment_id: int = Path(..., description="Appointment ID"),
+    decision: Dict[str, Any] = ...,
     db: Session = Depends(get_db)
 ):
     """
-    Processa decisão do Decision Engine.
-    Atualiza estado e cria alertas se necessário.
+    Processes Decision Engine decision.
+    Updates status and creates alerts if needed.
     
-    Payload esperado:
+    Expected payload:
     {
         "decision": "approved",
-        "estado_entrega": "unloading",
-        "observacoes": "Aprovado automaticamente",
-        "alertas": [
-            {"tipo": "ADR", "severidade": 3, "descricao": "UN 1203 - Gasolina"}
+        "status": "in_transit",
+        "notes": "Approved automatically",
+        "alerts": [
+            {"type": "safety", "description": "UN 1203 - Gasoline"}
         ]
     }
     """
-    chegada = update_arrival_from_decision(
-        db, id_chegada=id_chegada,
-        decision_payload=decision.model_dump()
+    appointment = update_appointment_from_decision(
+        db, appointment_id=appointment_id,
+        decision_payload=decision
     )
-    if not chegada:
-        raise HTTPException(status_code=404, detail="Chegada não encontrada")
-    return Chegada.model_validate(chegada)
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    return Appointment.model_validate(appointment)
+
+
+# ==================== VISIT ENDPOINTS ====================
+
+@router.post("/{appointment_id}/visit", response_model=Visit)
+def create_visit(
+    appointment_id: int = Path(..., description="Appointment ID"),
+    request: CreateVisitRequest = ...,
+    db: Session = Depends(get_db)
+):
+    """
+    Creates a visit when truck arrives.
+    Called when appointment starts execution.
+    Uses composite FK to Shift.
+    """
+    # Convert shift_type string to enum
+    try:
+        shift_type_enum = ShiftType[request.shift_type]
+    except KeyError:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid shift_type. Must be one of: MORNING, AFTERNOON, NIGHT"
+        )
+    
+    visit = create_visit_for_appointment(
+        db, 
+        appointment_id,
+        shift_gate_id=request.shift_gate_id,
+        shift_type=shift_type_enum,
+        shift_date=request.shift_date
+    )
+    if not visit:
+        raise HTTPException(status_code=404, detail="Appointment not found or visit already exists")
+    return Visit.model_validate(visit)
+
+
+@router.patch("/{appointment_id}/visit", response_model=Visit)
+def update_visit(
+    appointment_id: int = Path(..., description="Appointment ID"),
+    update_data: VisitStatusUpdate = ...,
+    db: Session = Depends(get_db)
+):
+    """
+    Updates visit status (e.g., to 'completed' when truck leaves).
+    """
+    visit = update_visit_status(
+        db, appointment_id=appointment_id,
+        new_state=update_data.state,
+        out_time=update_data.out_time
+    )
+    if not visit:
+        raise HTTPException(status_code=404, detail="Visit not found")
+    return Visit.model_validate(visit)
