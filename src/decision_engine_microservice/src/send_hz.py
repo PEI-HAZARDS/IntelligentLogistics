@@ -6,7 +6,7 @@ import time
 import uuid
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
-TOPIC_PRODUCE = "hz_result"
+TOPIC_PRODUCE = "hz-results-gate01"
 logger = logging.getLogger("TEST_HZ")
 
 producer = Producer({
@@ -32,7 +32,7 @@ def publish_hz_results(timestamp, truck_id, un_number, kemler_code, conf):
             topic=TOPIC_PRODUCE,
             key=None,
             value=json.dumps(payload).encode("utf-8"),
-            headers={"truck_id": truck_id or str(uuid.uuid4())}
+            headers={"truckId": truck_id or str(uuid.uuid4())}
         )
         producer.poll(0)
 

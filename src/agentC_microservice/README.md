@@ -1,14 +1,14 @@
-# Running the AgentA Microservice Docker Container
+# Running the AgentB Microservice Docker Container
 
-This Dockerfile builds a Docker image AgentA microservice. It uses Python 3.11 as the base, installs necessary dependencies, downloads a YOLO model, and runs the service via `init.py`.
+This Dockerfile builds a Docker image AgentB microservice. It uses Python 3.11 as the base, installs necessary dependencies, downloads a YOLO model, and runs the service via `init.py`.
 
 ## Building the Docker Image
 1. Navigate to the directory containing the Dockerfile.
 2. Run the following command to build the image:
    ```
-   docker build --rm  -t agenta:latest . 
+   docker build --rm  -t agentb:latest . 
    ```
-   - `-t agenta:latest`: Tags the image with a name (you can change this).
+   - `-t agentb:latest`: Tags the image with a name (you can change this).
    - The build process will:
      - Install system dependencies (e.g., for OpenCV).
      - Install Python packages from `requirements.txt`.
@@ -41,6 +41,7 @@ If the build fails (e.g., due to network issues or missing files), check the err
    ```
    docker stop {container_name}
    docker rm {container_name}
+   ```
 
 ## Environment Variables
 These are set in the Dockerfile but can be overridden at runtime using `-e` flags (as shown above). They configure the application's behavior, such as paths, servers, and IDs. Change them based on your environment (e.g., production vs. development).

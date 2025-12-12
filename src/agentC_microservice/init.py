@@ -19,14 +19,14 @@ logging.basicConfig(
 import gdown  # type: ignore
 import signal
 
-from agentB_microservice.src.AgentB import AgentB
+from agentC_microservice.src.AgentC import AgentC
 
 # Files to download (name, Google Drive ID, destination folder)
-FILE_NAME = "license_plate_model.pt"
-FILE_ID = "1h3AXDLcFj17kXo7L20jQeId-upQovGQu"
+FILE_NAME = "hazard_plate_model.pt"
+FILE_ID = "1Dx1XS4pALjzP6AN5ryAJXA7sJ4KgH4JD"
 NEW_DIR = "data"
 
-logger = logging.getLogger("init-AgentB")
+logger = logging.getLogger("init-AgentC")
 
 
 def setup():
@@ -51,14 +51,9 @@ def setup():
 def main():
     setup()
     
-    logger.info("[init] Creating AgentB instance...")
-    agent = AgentB()
-    
-    # Reset logging level AFTER AgentB is created
-    # PaddleOCR overrides it during OCR() initialization
-    logging.getLogger().setLevel(logging.INFO)
-    
-    logger.info("[init] AgentB instance created!")
+    logger.info("[init] Creating AgentC instance...")
+    agent = AgentC()
+    logger.info("[init] AgentC instance created!")
     
     # Register signal handler for graceful shutdown
     def signal_handler(sig, frame):
@@ -70,7 +65,7 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
     
     try:
-        logger.info("[init] Starting AgentB main loop...")
+        logger.info("[init] Starting AgentC main loop...")
         agent._loop()
     except KeyboardInterrupt:
         logger.info("\n[init] Keyboard interrupt received, stopping agent...")

@@ -27,8 +27,7 @@ from services.worker_service import (
     update_worker_password,
     update_worker_email,
     deactivate_worker,
-    promote_to_manager,
-    hash_password
+    promote_to_manager
 )
 from db.postgres import get_db
 
@@ -312,7 +311,6 @@ def get_manager_dashboard(
 def list_all_workers(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    only_active: bool = Query(True),
     db: Session = Depends(get_db)
 ):
     """Lists all workers (backoffice)."""
