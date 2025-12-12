@@ -297,8 +297,8 @@ class DecisionEngine:
                 "UN": int(un_number) if un_number and un_number.isdigit() else None,
                 "kemler": int(kemler_code) if kemler_code and kemler_code.isdigit() else None,
                 "alerts": alerts,
-                "lp_cropUrl": lp_data.get("crop_url"),
-                "hz_cropUrl": hz_data.get("crop_url"),
+                "lp_cropUrl": lp_data.get("cropUrl"),
+                "hz_cropUrl": hz_data.get("cropUrl"),
                 "route": route,
                 "decision": decision
             }
@@ -361,8 +361,8 @@ class DecisionEngine:
             "UN": int(un_number) if un_number and un_number.isdigit() else None,
             "kemler": int(kemler_code) if kemler_code and kemler_code.isdigit() else None,
             "alerts": alerts,
-            "lp_cropUrl": lp_data.get("crop_url"),
-            "hz_cropUrl": hz_data.get("crop_url"),
+            "lp_cropUrl": lp_data.get("cropUrl"),
+            "hz_cropUrl": hz_data.get("cropUrl"),
             "route": route,
             "decision": decision
         }
