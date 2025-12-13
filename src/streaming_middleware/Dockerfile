@@ -21,12 +21,13 @@ RUN nginx -t || (echo "=== nginx.conf has errors ==="; cat /etc/nginx/nginx.conf
 # Copiar scripts
 COPY entrypoint.sh /entrypoint.sh
 COPY ingest_streams.sh /usr/local/bin/ingest_streams.sh
+COPY ingest_test_video.sh /usr/local/bin/ingest_test_video.sh
 
 # Copiar HTML player para Nginx
 COPY test_nginx_hls.html /usr/local/nginx/html/player.html
 
 # Dar permissões
-RUN chmod +x /entrypoint.sh /usr/local/bin/ingest_streams.sh
+RUN chmod +x /entrypoint.sh /usr/local/bin/ingest_streams.sh /usr/local/bin/ingest_test_video.sh
 
 # Expor portas
 EXPOSE 1935 8080
