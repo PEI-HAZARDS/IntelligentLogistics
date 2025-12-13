@@ -293,6 +293,7 @@ class DecisionEngine:
             
             returned_data = {
                 "timestamp": int(time.time()),
+                "gate_id": GATE_ID,
                 "licensePlate": license_plate,
                 "UN": int(un_number) if un_number and un_number.isdigit() else None,
                 "kemler": int(kemler_code) if kemler_code and kemler_code.isdigit() else None,
@@ -347,19 +348,22 @@ class DecisionEngine:
             logger.info(f"[DecisionEngine] Matched appointment ID: {matched_appointment.get('appointment_id')}, decision: {decision}")
             
             # Validate confidence only for accepted matches
-            hz_confidence = hz_data.get("confidence", 0.0)
             lp_confidence = lp_data.get("confidence", 0.0)
             
             if lp_confidence < 0.7 and decision == "ACCEPTED":
                 decision = "MANUAL_REVIEW"
                 alerts.append(f"License plate detection confidence too low ({lp_confidence:.2f})") 
 
+        un_data = f"{un_number}: {self._get_un_description(un_number)}" if un_number and un_number != "N/A" else "No UN number detected"
+        kemler_data = f"{kemler_code}: {self._get_kemler_description(kemler_code)}" if kemler_code and kemler_code != "N/A" else "No Kemler code detected"
+        
         # Prepare Decision Data
         returned_data = {
             "timestamp": int(time.time()),
+            "gate_id": GATE_ID,
             "licensePlate": license_plate,
-            "UN": int(un_number) if un_number and un_number.isdigit() else None,
-            "kemler": int(kemler_code) if kemler_code and kemler_code.isdigit() else None,
+            "UN": un_data,
+            "kemler": kemler_data,
             "alerts": alerts,
             "lp_cropUrl": lp_data.get("cropUrl"),
             "hz_cropUrl": hz_data.get("cropUrl"),
@@ -388,7 +392,7 @@ class DecisionEngine:
     def _get_un_description(self, un_number: str) -> str | None:
         return self.un_numbers.get(str(un_number), "Unknown UN Number")
     
-    def _get_un_kemler_description(self, kemler_code: str) -> str | None:
+    def _get_kemler_description(self, kemler_code: str) -> str | None:
         return self.kemler_codes.get(str(kemler_code), "Unknown Kemler Code")
     
     def stop(self):

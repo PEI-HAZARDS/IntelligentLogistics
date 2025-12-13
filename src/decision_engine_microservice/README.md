@@ -86,12 +86,12 @@ The final decision is published to a gate-specific topic.
 ```json
 {
   "timestamp": 123451589,
+  "gate_id": 1,
   "licensePlate": "AA-00-BB",
-  "UN": 1203,
-  "kemler": 33,
+  "UN": "1203: Flammable liquid, toxic, corrosive, n.o.s.",
+  "kemler": "33 : Flammable gas, which can spontaneously lead to violent reaction",
   "alerts": [
-    "Flammable liquid, toxic, corrosive, n.o.s.",
-    "Flammable gas, which can spontaneously lead to violent reaction"
+    "Something"
   ],
   "lp_cropUrl": "http://image68719",
   "hz_cropUrl": "http://image61948",
