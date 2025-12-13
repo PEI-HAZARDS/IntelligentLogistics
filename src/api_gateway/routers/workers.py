@@ -32,28 +32,8 @@ async def worker_login(credentials: WorkerLoginRequest):
     return await internal_client.post("/workers/login", json=credentials.model_dump())
 
 
-<<<<<<< HEAD
-# ==================== STATIC ROUTES FIRST ====================
-
-@router.get("/workers")
-async def list_workers(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
-):
-    """
-    List all workers.
-    Proxy to GET /api/v1/workers
-    """
-    params = {"skip": skip, "limit": limit}
-    return await internal_client.get("/workers", params=params)
-
-
-# ==================== OPERATOR ENDPOINTS ====================
-# NOTE: Must be BEFORE /workers/{num_worker}
-=======
 # ==================== OPERATOR ENDPOINTS ====================
 # NOTE: These must come BEFORE /workers/{num_worker} to avoid path conflicts
->>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
 
 @router.get("/workers/operators")
 async def list_operators(
@@ -120,11 +100,7 @@ async def get_operator_dashboard(
 
 
 # ==================== MANAGER ENDPOINTS ====================
-<<<<<<< HEAD
-# NOTE: Must be BEFORE /workers/{num_worker}
-=======
 # NOTE: These must come BEFORE /workers/{num_worker} to avoid path conflicts
->>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
 
 @router.get("/workers/managers")
 async def list_managers(
@@ -174,10 +150,6 @@ async def get_manager_overview(
     return await internal_client.get(f"/workers/managers/{num_worker}/overview")
 
 
-<<<<<<< HEAD
-# ==================== CATCH-ALL DYNAMIC ROUTE - LAST! ====================
-# NOTE: Must be LAST to avoid capturing 'operators', 'managers', 'login'
-=======
 # ==================== GENERAL WORKER ENDPOINTS ====================
 # NOTE: Dynamic routes /{num_worker} must come LAST to avoid capturing 'operators'/'managers'
 
@@ -193,7 +165,6 @@ async def list_workers(
     params = {"skip": skip, "limit": limit}
     return await internal_client.get("/workers", params=params)
 
->>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
 
 @router.get("/workers/{num_worker}")
 async def get_worker(

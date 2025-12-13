@@ -13,19 +13,6 @@ from .hub import decisions_hub
 _consumer_task: Optional[asyncio.Task] = None
 
 
-<<<<<<< HEAD
-def _extract_gate_id_from_topic(topic: str) -> Optional[str]:
-    """
-    Extrai o gate_id do nome do tópico Kafka.
-    
-    Exemplo: 'decision-results-1' -> '1'
-             'decision-results-42' -> '42'
-    """
-    match = re.search(r'-(\d+)$', topic)
-    if match:
-        return match.group(1)
-    return None
-=======
 def _normalize_payload(raw_payload: dict) -> dict:
     """
     Normaliza o payload do Kafka para o formato esperado pelo frontend.
@@ -77,7 +64,6 @@ def _normalize_payload(raw_payload: dict) -> dict:
         normalized["hz_result"] = " / ".join(parts)
     
     return normalized
->>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
 
 
 async def _run_consumer() -> None:
@@ -87,12 +73,8 @@ async def _run_consumer() -> None:
     - Subscreve o tópico de decisões (settings.KAFKA_DECISION_TOPIC)
     - Para cada mensagem:
         * faz parse do JSON
-<<<<<<< HEAD
-        * extrai gate_id do nome do tópico
-=======
         * normaliza para formato do frontend
         * extrai gate_id se existir (senão manda para "global")
->>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
         * faz broadcast via DecisionsHub
     """
     topic = settings.KAFKA_DECISION_TOPIC
@@ -133,8 +115,6 @@ async def _run_consumer() -> None:
                 logger.warning("Mensagem Kafka inválida (não é JSON): {}", raw_value)
                 continue
 
-<<<<<<< HEAD
-=======
             # Normalize payload for frontend consumption
             payload = _normalize_payload(raw_payload)
             
@@ -152,7 +132,6 @@ async def _run_consumer() -> None:
             # Se não houver gate_id, manda para canal "global"
             gate_key = str(gate_id) if gate_id is not None else "global"
 
->>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
             message = {
                 "type": "decision_update",
                 "payload": payload,
