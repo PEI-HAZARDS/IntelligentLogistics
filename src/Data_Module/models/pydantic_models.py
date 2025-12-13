@@ -332,7 +332,7 @@ class AppointmentCreate(AppointmentBase):
 
 class Appointment(AppointmentBase):
     id: int
-    arrival_id: str
+    arrival_id: Optional[str] = None  # May be NULL if trigger hasn't run
     booking: Optional[Booking] = None
     driver: Optional[Driver] = None
     truck: Optional[Truck] = None

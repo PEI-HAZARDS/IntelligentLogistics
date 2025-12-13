@@ -7,6 +7,11 @@ from clients import internal_api_client as internal_client
 router = APIRouter(tags=["alerts"])
 
 
+# ===============================
+# STATIC/SPECIFIC PATH ROUTES FIRST
+# (Must come before /alerts/{alert_id})
+# ===============================
+
 # ---------------------------------
 # GET: /api/alerts
 # ---------------------------------
@@ -18,7 +23,6 @@ async def list_alerts(
 ):
     """
     Proxy to GET /api/v1/alerts.
-    Maps 'severidade' query param to 'severity_min'.
     """
     params = {
         "skip": skip,
@@ -31,19 +35,8 @@ async def list_alerts(
 
 
 # ---------------------------------
-# GET: /api/alerts/{alert_id}
-# ---------------------------------
-@router.get("/alerts/{alert_id}")
-async def get_alert(alert_id: int):
-    """
-    Proxy to GET /api/v1/alerts/{alert_id}
-    """
-    path = f"/alerts/{alert_id}"
-    return await internal_client.get(path)
-
-
-# ---------------------------------
 # GET: /api/alerts/active
+# NOTE: Must be before /alerts/{alert_id}
 # ---------------------------------
 @router.get("/alerts/active")
 async def list_active_alerts(
@@ -58,6 +51,7 @@ async def list_active_alerts(
 
 # ---------------------------------
 # GET: /api/alerts/stats
+# NOTE: Must be before /alerts/{alert_id}
 # ---------------------------------
 @router.get("/alerts/stats")
 async def get_alerts_stats():
@@ -69,6 +63,7 @@ async def get_alerts_stats():
 
 # ---------------------------------
 # GET: /api/alerts/visit/{visit_id}
+# NOTE: Must be before /alerts/{alert_id}
 # ---------------------------------
 @router.get("/alerts/visit/{visit_id}")
 async def get_visit_alerts(
@@ -83,12 +78,12 @@ async def get_visit_alerts(
 
 # ---------------------------------
 # REFERENCE DATA
+# NOTE: Must be before /alerts/{alert_id}
 # ---------------------------------
 @router.get("/alerts/reference/adr-codes")
 async def get_adr_codes():
     """
     List ADR/UN codes reference.
-    Proxy to GET /api/v1/alerts/reference/adr-codes
     """
     return await internal_client.get("/alerts/reference/adr-codes")
 
@@ -97,13 +92,32 @@ async def get_adr_codes():
 async def get_kemler_codes():
     """
     List Kemler codes reference.
-    Proxy to GET /api/v1/alerts/reference/kemler-codes
     """
     return await internal_client.get("/alerts/reference/kemler-codes")
 
 
 # ---------------------------------
-# CREATE ENDPOINTS
+# POST: /api/alerts/hazmat
+# NOTE: Must be before /alerts/{alert_id} (POST but path is /alerts/hazmat)
+# ---------------------------------
+class CreateHazmatAlertRequest(BaseModel):
+    appointment_id: int
+    un_code: Optional[str] = None
+    kemler_code: Optional[str] = None
+    detected_hazmat: Optional[str] = None
+
+
+@router.post("/alerts/hazmat")
+async def create_hazmat_alert(request: CreateHazmatAlertRequest):
+    """
+    Create hazmat/ADR specific alert.
+    Proxy to POST /api/v1/alerts/hazmat
+    """
+    return await internal_client.post("/alerts/hazmat", json=request.model_dump(exclude_none=True))
+
+
+# ---------------------------------
+# POST: /api/alerts
 # ---------------------------------
 class CreateAlertRequest(BaseModel):
     visit_id: Optional[int] = None
@@ -121,18 +135,17 @@ async def create_alert(request: CreateAlertRequest):
     return await internal_client.post("/alerts", json=request.model_dump(exclude_none=True))
 
 
-class CreateHazmatAlertRequest(BaseModel):
-    appointment_id: int
-    un_code: Optional[str] = None
-    kemler_code: Optional[str] = None
-    detected_hazmat: Optional[str] = None
+# ===============================
+# DYNAMIC PATH ROUTES LAST
+# ===============================
 
-
-@router.post("/alerts/hazmat")
-async def create_hazmat_alert(request: CreateHazmatAlertRequest):
+# ---------------------------------
+# GET: /api/alerts/{alert_id}
+# NOTE: This catch-all route MUST BE LAST
+# ---------------------------------
+@router.get("/alerts/{alert_id}")
+async def get_alert(alert_id: int):
     """
-    Create hazmat/ADR specific alert.
-    Proxy to POST /api/v1/alerts/hazmat
+    Proxy to GET /api/v1/alerts/{alert_id}
     """
-    return await internal_client.post("/alerts/hazmat", json=request.model_dump(exclude_none=True))
-
+    return await internal_client.get(f"/alerts/{alert_id}")

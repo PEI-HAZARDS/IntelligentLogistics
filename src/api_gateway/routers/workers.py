@@ -32,33 +32,8 @@ async def worker_login(credentials: WorkerLoginRequest):
     return await internal_client.post("/workers/login", json=credentials.model_dump())
 
 
-# ==================== GENERAL WORKER ENDPOINTS ====================
-
-@router.get("/workers")
-async def list_workers(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
-):
-    """
-    List all workers.
-    Proxy to GET /api/v1/workers
-    """
-    params = {"skip": skip, "limit": limit}
-    return await internal_client.get("/workers", params=params)
-
-
-@router.get("/workers/{num_worker}")
-async def get_worker(
-    num_worker: str = Path(..., description="Worker ID"),
-):
-    """
-    Get specific worker details.
-    Proxy to GET /api/v1/workers/{num_worker}
-    """
-    return await internal_client.get(f"/workers/{num_worker}")
-
-
 # ==================== OPERATOR ENDPOINTS ====================
+# NOTE: These must come BEFORE /workers/{num_worker} to avoid path conflicts
 
 @router.get("/workers/operators")
 async def list_operators(
@@ -125,6 +100,7 @@ async def get_operator_dashboard(
 
 
 # ==================== MANAGER ENDPOINTS ====================
+# NOTE: These must come BEFORE /workers/{num_worker} to avoid path conflicts
 
 @router.get("/workers/managers")
 async def list_managers(
@@ -172,3 +148,30 @@ async def get_manager_overview(
     Proxy to GET /api/v1/workers/managers/{num_worker}/overview
     """
     return await internal_client.get(f"/workers/managers/{num_worker}/overview")
+
+
+# ==================== GENERAL WORKER ENDPOINTS ====================
+# NOTE: Dynamic routes /{num_worker} must come LAST to avoid capturing 'operators'/'managers'
+
+@router.get("/workers")
+async def list_workers(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500),
+):
+    """
+    List all workers.
+    Proxy to GET /api/v1/workers
+    """
+    params = {"skip": skip, "limit": limit}
+    return await internal_client.get("/workers", params=params)
+
+
+@router.get("/workers/{num_worker}")
+async def get_worker(
+    num_worker: str = Path(..., description="Worker ID"),
+):
+    """
+    Get specific worker details.
+    Proxy to GET /api/v1/workers/{num_worker}
+    """
+    return await internal_client.get(f"/workers/{num_worker}")
