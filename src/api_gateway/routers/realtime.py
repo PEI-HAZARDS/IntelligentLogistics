@@ -1,4 +1,5 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from loguru import logger
 
 from realtime.hub import decisions_hub
 
@@ -24,18 +25,26 @@ async def ws_decisions(websocket: WebSocket, gate_id: str):
           "payload": { ...mensagem original do Kafka... }
         }
     """
+    # Log connection attempt with origin
+    origin = websocket.headers.get("origin", "unknown")
+    logger.info(f"WebSocket connection attempt from origin: {origin}, gate_id: {gate_id}")
 
-    # Registar ligação no hub
+    # Registar ligação no hub (this calls websocket.accept())
     await decisions_hub.connect(gate_id, websocket)
+    logger.info(f"WebSocket connected for gate {gate_id}")
 
     try:
         # Mantém a ligação aberta.
         # Se quiseres, podes tratar mensagens vindas do cliente aqui (pings, etc.).
         while True:
-            await websocket.receive_text()
+            # Wait for messages from client (ping/pong, etc.)
+            data = await websocket.receive_text()
+            logger.debug(f"Received from client (gate {gate_id}): {data}")
     except WebSocketDisconnect:
         # Remover do hub quando o cliente se desconecta
+        logger.info(f"WebSocket disconnected for gate {gate_id}")
         decisions_hub.disconnect(gate_id, websocket)
-    except Exception:
+    except Exception as e:
         # Qualquer outro erro também encerra a ligação
+        logger.error(f"WebSocket error for gate {gate_id}: {e}")
         decisions_hub.disconnect(gate_id, websocket)
