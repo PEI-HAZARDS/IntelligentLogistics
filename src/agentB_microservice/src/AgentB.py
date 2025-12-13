@@ -273,7 +273,7 @@ class AgentB:
                 # Classify the crop (license plate vs hazard plate)
                 classification = self.classifier.classify(crop)
 
-                if classification != PlateClassifier.LICENSE_PLATE:
+                if classification == PlateClassifier.HAZARD_PLATE:
                     # Save rejected crop for debugging
                     try:
                         logger.info(f"[AgentB] Crop {i} rejected as {classification}, uploading to MinIO for analysis.")
