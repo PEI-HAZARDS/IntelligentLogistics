@@ -100,7 +100,18 @@ def get_appointments_for_decision(
     Includes extra info: cargo, booking, gate.
     """
     today = date.today()
-    now = datetime.now().time()
+    now = datetime.now()
+    
+    # Calculate time window safely, clamping to start/end of day
+    window_start = now - timedelta(hours=time_frame)
+    window_end = now + timedelta(hours=time_frame)
+    
+    # Clamp to today's boundaries if needed
+    day_start = datetime.combine(today, datetime.min.time())
+    day_end = datetime.combine(today, datetime.max.time())
+    
+    window_start = max(window_start, day_start)
+    window_end = min(window_end, day_end)
     
     # Find current shift based on time and gate
     current_shift = db.query(Shift).filter(
@@ -109,11 +120,7 @@ def get_appointments_for_decision(
     ).first()
     
     query = db.query(Appointment).filter(
-        # retirn the appointments with in the time frame
-        Appointment.scheduled_start_time.between(
-            datetime.combine(today, (datetime.min + timedelta(hours=now.hour - time_frame)).time()),
-            datetime.combine(today, (datetime.min + timedelta(hours=now.hour + time_frame)).time())
-        ),
+        Appointment.scheduled_start_time.between(window_start, window_end),
         Appointment.gate_in_id == gate_id,
         Appointment.status.in_(['in_transit', 'delayed'])
     )
@@ -334,13 +341,24 @@ def get_next_appointments(
     """
     Gets next scheduled appointments (used in operator's sidebar).
     Filters by status 'in_transit' or 'delayed'.
+    
+    Sorting: delayed appointments first, then by scheduled_start_time.
     """
     today = date.today()
-    now = datetime.now()
+    
+    # Use case() to prioritize delayed status
+    from sqlalchemy import case
+    
+    status_priority = case(
+        (Appointment.status == 'delayed', 0),  # delayed first
+        else_=1
+    )
     
     return db.query(Appointment).filter(
         Appointment.gate_in_id == gate_id,
         func.date(Appointment.scheduled_start_time) == today,
-        Appointment.status.in_(['in_transit', 'delayed']),
-        Appointment.scheduled_start_time >= now
-    ).order_by(Appointment.scheduled_start_time.asc()).limit(limit).all()
+        Appointment.status.in_(['in_transit', 'delayed'])
+    ).order_by(
+        status_priority,  # delayed first
+        Appointment.scheduled_start_time.asc()  # then by scheduled time
+    ).limit(limit).all()

@@ -10,8 +10,13 @@ router = APIRouter(tags=["arrivals"])
 
 
 # ===============================
+<<<<<<< HEAD
 # STATIC PATH ROUTES FIRST
 # (Must come BEFORE /arrivals/{gate_id})
+=======
+# STATIC/SPECIFIC PATH ROUTES FIRST
+# (Must come before dynamic routes like /arrivals/{gate_id})
+>>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
 # ===============================
 
 # -------------------------------
@@ -39,7 +44,11 @@ async def list_all_arrivals(
 
 # -------------------------------
 # GET: /api/arrivals/stats
+<<<<<<< HEAD
 # NOTE: MUST be before /arrivals/{gate_id}
+=======
+# NOTE: Must be before /arrivals/{gate_id}
+>>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
 # -------------------------------
 @router.get("/arrivals/stats")
 async def get_arrivals_stats(
@@ -55,6 +64,7 @@ async def get_arrivals_stats(
         params["gate_id"] = gate_id
     if target_date is not None:
         params["target_date"] = target_date.isoformat()
+<<<<<<< HEAD
     return await internal_client.get("/arrivals/stats", params=params)
 
 
@@ -120,6 +130,178 @@ async def count_arrivals_by_gate_shift(
 ):
     """Total arrivals for gate and shift."""
     params = {"gate_id": gate_id}
+=======
+>>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
+    return await internal_client.get("/arrivals/stats", params=params)
+
+
+# -------------------------------
+<<<<<<< HEAD
+# GET: /api/arrivals/{gate_id}/{shift}/pending
+# -------------------------------
+@router.get("/arrivals/{gate_id}/{shift}/pending")
+async def list_arrivals_pending_shift(
+    gate_id: int,
+    shift: int,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+):
+=======
+# GET: /api/arrivals/next/{gate_id}
+# NOTE: Must be before /arrivals/{gate_id}
+# -------------------------------
+@router.get("/arrivals/next/{gate_id}")
+async def get_upcoming_arrivals(
+    gate_id: int = Path(..., description="Gate ID"),
+    limit: int = Query(5, ge=1, le=20),
+):
+    """
+    Next scheduled arrivals for a gate.
+    Proxy to GET /api/v1/arrivals/next/{gate_id}
+    """
+    params = {"limit": limit}
+    return await internal_client.get(f"/arrivals/next/{gate_id}", params=params)
+
+
+# -------------------------------
+# GET: /api/arrivals/pin/{arrival_id}
+# NOTE: Must be before /arrivals/{gate_id}
+# -------------------------------
+@router.get("/arrivals/pin/{arrival_id}")
+async def get_arrival_by_pin(
+    arrival_id: str = Path(..., description="Arrival ID / PIN"),
+):
+    """
+    Get appointment by arrival_id/PIN.
+    Proxy to GET /api/v1/arrivals/pin/{arrival_id}
+    """
+    return await internal_client.get(f"/arrivals/pin/{arrival_id}")
+
+
+# -------------------------------
+# GET: /api/arrivals/detail/{appointment_id}
+# NOTE: Must be before /arrivals/{gate_id}
+# -------------------------------
+@router.get("/arrivals/detail/{appointment_id}")
+async def get_arrival_detail(
+    appointment_id: int = Path(..., description="Appointment ID"),
+):
+    """
+    Get appointment details by ID.
+    Proxy to GET /api/v1/arrivals/{appointment_id}
+    """
+    return await internal_client.get(f"/arrivals/{appointment_id}")
+
+
+# ===============================
+# DYNAMIC PATH ROUTES
+# (These catch-all routes must come LAST)
+# ===============================
+
+# -------------------------------
+# GET: /api/arrivals/{gate_id}/pending
+# NOTE: More specific path, must be before /arrivals/{gate_id}
+# -------------------------------
+@router.get("/arrivals/{gate_id}/pending")
+async def list_arrivals_pending(
+    gate_id: int,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """
+    Lists pending arrivals (status='pending') by gate.
+    """
+>>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
+    skip = (page - 1) * limit
+    params = {
+        "skip": skip,
+        "limit": limit,
+        "gate_id": gate_id,
+<<<<<<< HEAD
+        "shift_id": shift,
+=======
+>>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
+        "status": "pending"
+    }
+    return await internal_client.get("/arrivals", params=params)
+
+
+# -------------------------------
+<<<<<<< HEAD
+# GET: /api/arrivals/{gate_id}/{shift}/in_progress
+# -------------------------------
+@router.get("/arrivals/{gate_id}/{shift}/in_progress")
+async def list_arrivals_in_progress_shift(
+    gate_id: int,
+    shift: int,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+):
+=======
+# GET: /api/arrivals/{gate_id}/in_progress
+# -------------------------------
+@router.get("/arrivals/{gate_id}/in_progress")
+async def list_arrivals_in_progress(
+    gate_id: int,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """
+    Lists in-progress arrivals (status='approved' or 'in_transit').
+    """
+>>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
+    skip = (page - 1) * limit
+    params = {
+        "skip": skip,
+        "limit": limit,
+        "gate_id": gate_id,
+<<<<<<< HEAD
+        "shift_id": shift,
+        "status": "approved"
+=======
+        "status": "in_transit"
+>>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
+    }
+    return await internal_client.get("/arrivals", params=params)
+
+
+# -------------------------------
+<<<<<<< HEAD
+=======
+# GET: /api/arrivals/{gate_id}/finished
+# -------------------------------
+@router.get("/arrivals/{gate_id}/finished")
+async def list_arrivals_finished(
+    gate_id: int,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """
+    Lists finished arrivals (status='completed').
+    """
+    skip = (page - 1) * limit
+    params = {
+        "skip": skip,
+        "limit": limit,
+        "gate_id": gate_id,
+        "status": "completed"
+    }
+    return await internal_client.get("/arrivals", params=params)
+
+
+# -------------------------------
+# GET: /api/arrivals/{gate_id}/{shift}/total
+# -------------------------------
+@router.get("/arrivals/{gate_id}/{shift}/total")
+async def count_arrivals_by_gate_shift(
+    gate_id: int,
+    shift: int,
+):
+    """
+    Total arrivals for gate and shift.
+    Returns stats for the gate.
+    """
+    params = {"gate_id": gate_id}
     return await internal_client.get("/arrivals/stats", params=params)
 
 
@@ -160,12 +342,13 @@ async def list_arrivals_in_progress_shift(
         "limit": limit,
         "gate_id": gate_id,
         "shift_id": shift,
-        "status": "approved"
+        "status": "in_transit"
     }
     return await internal_client.get("/arrivals", params=params)
 
 
 # -------------------------------
+>>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
 # GET: /api/arrivals/{gate_id}/{shift}/finished
 # -------------------------------
 @router.get("/arrivals/{gate_id}/{shift}/finished")
@@ -188,6 +371,10 @@ async def list_arrivals_finished_shift(
 
 # -------------------------------
 # GET: /api/arrivals/{gate_id}/{shift}
+<<<<<<< HEAD
+=======
+# NOTE: Two path params, order doesn't matter vs single param
+>>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
 # -------------------------------
 @router.get("/arrivals/{gate_id}/{shift}")
 async def list_arrivals_by_gate_shift(
@@ -196,7 +383,13 @@ async def list_arrivals_by_gate_shift(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
 ):
+<<<<<<< HEAD
     """Lists arrivals by gate and shift."""
+=======
+    """
+    Lists arrivals by gate and shift.
+    """
+>>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
     skip = (page - 1) * limit
     params = {
         "skip": skip,
@@ -208,6 +401,7 @@ async def list_arrivals_by_gate_shift(
 
 
 # -------------------------------
+<<<<<<< HEAD
 # GET: /api/arrivals/{gate_id}/pending
 # -------------------------------
 @router.get("/arrivals/{gate_id}/pending")
@@ -265,6 +459,27 @@ async def list_arrivals_finished(
         "status": "completed"
     }
     return await internal_client.get("/arrivals", params=params)
+=======
+# PATCH: /api/arrivals/{appointment_id}/status
+# -------------------------------
+class AppointmentStatusUpdate(BaseModel):
+    status: str
+    notes: Optional[str] = None
+
+
+@router.patch("/arrivals/{appointment_id}/status")
+async def update_arrival_status(
+    appointment_id: int = Path(..., description="Appointment ID"),
+    update_data: AppointmentStatusUpdate = Body(...),
+):
+    """
+    Update appointment status.
+    """
+    return await internal_client.patch(
+        f"/arrivals/{appointment_id}/status",
+        json=update_data.model_dump(exclude_none=True)
+    )
+>>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
 
 
 # -------------------------------
@@ -281,7 +496,13 @@ async def create_visit(
     appointment_id: int = Path(..., description="Appointment ID"),
     request: CreateVisitRequest = Body(...),
 ):
+<<<<<<< HEAD
     """Create a visit when truck arrives."""
+=======
+    """
+    Create a visit when truck arrives.
+    """
+>>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
     payload = request.model_dump()
     payload["shift_date"] = payload["shift_date"].isoformat()
     return await internal_client.post(f"/arrivals/{appointment_id}/visit", json=payload)
@@ -300,7 +521,13 @@ async def update_visit(
     appointment_id: int = Path(..., description="Appointment ID"),
     update_data: VisitStatusUpdate = Body(...),
 ):
+<<<<<<< HEAD
     """Update visit status."""
+=======
+    """
+    Update visit status.
+    """
+>>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
     return await internal_client.patch(
         f"/arrivals/{appointment_id}/visit",
         json=update_data.model_dump(exclude_none=True)
@@ -308,6 +535,7 @@ async def update_visit(
 
 
 # -------------------------------
+<<<<<<< HEAD
 # PATCH: /api/arrivals/{appointment_id}/status
 # -------------------------------
 class AppointmentStatusUpdate(BaseModel):
@@ -334,6 +562,10 @@ async def update_arrival_status(
 # -------------------------------
 # GET: /api/arrivals/{gate_id}
 # NOTE: MUST be LAST to avoid capturing 'stats', 'next', 'pin', 'detail'
+=======
+# GET: /api/arrivals/{gate_id}
+# NOTE: This catch-all route MUST BE LAST
+>>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
 # -------------------------------
 @router.get("/arrivals/{gate_id}")
 async def list_arrivals_by_gate(
@@ -341,7 +573,13 @@ async def list_arrivals_by_gate(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
 ):
+<<<<<<< HEAD
     """Lists arrivals filtered by gate."""
+=======
+    """
+    Lists arrivals filtered by gate.
+    """
+>>>>>>> 1dd123eab4f1c40695df311ba191cc0a927fe886
     skip = (page - 1) * limit
     params = {
         "skip": skip,
