@@ -7,6 +7,11 @@ from clients import internal_api_client as internal_client
 router = APIRouter(tags=["alerts"])
 
 
+# ===============================
+# STATIC ROUTES FIRST
+# (Must come BEFORE /alerts/{alert_id})
+# ===============================
+
 # ---------------------------------
 # GET: /api/alerts
 # ---------------------------------
@@ -31,19 +36,8 @@ async def list_alerts(
 
 
 # ---------------------------------
-# GET: /api/alerts/{alert_id}
-# ---------------------------------
-@router.get("/alerts/{alert_id}")
-async def get_alert(alert_id: int):
-    """
-    Proxy to GET /api/v1/alerts/{alert_id}
-    """
-    path = f"/alerts/{alert_id}"
-    return await internal_client.get(path)
-
-
-# ---------------------------------
 # GET: /api/alerts/active
+# NOTE: Must be BEFORE /alerts/{alert_id}
 # ---------------------------------
 @router.get("/alerts/active")
 async def list_active_alerts(
@@ -58,6 +52,7 @@ async def list_active_alerts(
 
 # ---------------------------------
 # GET: /api/alerts/stats
+# NOTE: Must be BEFORE /alerts/{alert_id}
 # ---------------------------------
 @router.get("/alerts/stats")
 async def get_alerts_stats():
@@ -69,6 +64,7 @@ async def get_alerts_stats():
 
 # ---------------------------------
 # GET: /api/alerts/visit/{visit_id}
+# NOTE: Must be BEFORE /alerts/{alert_id}
 # ---------------------------------
 @router.get("/alerts/visit/{visit_id}")
 async def get_visit_alerts(
@@ -83,6 +79,7 @@ async def get_visit_alerts(
 
 # ---------------------------------
 # REFERENCE DATA
+# NOTE: Must be BEFORE /alerts/{alert_id}
 # ---------------------------------
 @router.get("/alerts/reference/adr-codes")
 async def get_adr_codes():
@@ -102,9 +99,10 @@ async def get_kemler_codes():
     return await internal_client.get("/alerts/reference/kemler-codes")
 
 
-# ---------------------------------
+# ===============================
 # CREATE ENDPOINTS
-# ---------------------------------
+# ===============================
+
 class CreateAlertRequest(BaseModel):
     visit_id: Optional[int] = None
     type: str  # generic, safety, problem, operational
@@ -136,3 +134,19 @@ async def create_hazmat_alert(request: CreateHazmatAlertRequest):
     """
     return await internal_client.post("/alerts/hazmat", json=request.model_dump(exclude_none=True))
 
+
+# ===============================
+# DYNAMIC ROUTE LAST
+# NOTE: This must be AFTER all static routes
+# ===============================
+
+# ---------------------------------
+# GET: /api/alerts/{alert_id}
+# ---------------------------------
+@router.get("/alerts/{alert_id}")
+async def get_alert(alert_id: int):
+    """
+    Proxy to GET /api/v1/alerts/{alert_id}
+    """
+    path = f"/alerts/{alert_id}"
+    return await internal_client.get(path)

@@ -32,7 +32,7 @@ async def worker_login(credentials: WorkerLoginRequest):
     return await internal_client.post("/workers/login", json=credentials.model_dump())
 
 
-# ==================== GENERAL WORKER ENDPOINTS ====================
+# ==================== STATIC ROUTES FIRST ====================
 
 @router.get("/workers")
 async def list_workers(
@@ -47,18 +47,8 @@ async def list_workers(
     return await internal_client.get("/workers", params=params)
 
 
-@router.get("/workers/{num_worker}")
-async def get_worker(
-    num_worker: str = Path(..., description="Worker ID"),
-):
-    """
-    Get specific worker details.
-    Proxy to GET /api/v1/workers/{num_worker}
-    """
-    return await internal_client.get(f"/workers/{num_worker}")
-
-
 # ==================== OPERATOR ENDPOINTS ====================
+# NOTE: Must be BEFORE /workers/{num_worker}
 
 @router.get("/workers/operators")
 async def list_operators(
@@ -125,6 +115,7 @@ async def get_operator_dashboard(
 
 
 # ==================== MANAGER ENDPOINTS ====================
+# NOTE: Must be BEFORE /workers/{num_worker}
 
 @router.get("/workers/managers")
 async def list_managers(
@@ -172,3 +163,17 @@ async def get_manager_overview(
     Proxy to GET /api/v1/workers/managers/{num_worker}/overview
     """
     return await internal_client.get(f"/workers/managers/{num_worker}/overview")
+
+
+# ==================== CATCH-ALL DYNAMIC ROUTE - LAST! ====================
+# NOTE: Must be LAST to avoid capturing 'operators', 'managers', 'login'
+
+@router.get("/workers/{num_worker}")
+async def get_worker(
+    num_worker: str = Path(..., description="Worker ID"),
+):
+    """
+    Get specific worker details.
+    Proxy to GET /api/v1/workers/{num_worker}
+    """
+    return await internal_client.get(f"/workers/{num_worker}")
