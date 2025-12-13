@@ -2,6 +2,7 @@ from collections import defaultdict
 from typing import Dict, Set
 
 from fastapi import WebSocket
+from loguru import logger
 
 
 class DecisionsHub:
@@ -25,6 +26,7 @@ class DecisionsHub:
         """
         await websocket.accept()
         self._connections[gate_id].add(websocket)
+        logger.info(f"[Hub] Registered connection for gate '{gate_id}'. Total connections: {len(self._connections[gate_id])}")
 
     def disconnect(self, gate_id: str, websocket: WebSocket) -> None:
         """
@@ -36,6 +38,7 @@ class DecisionsHub:
             if not conns:
                 # Se ficou vazio, removemos a chave
                 self._connections.pop(gate_id, None)
+            logger.info(f"[Hub] Disconnected from gate '{gate_id}'. Remaining: {len(self._connections.get(gate_id, set()))}")
         except Exception:
             pass  # fail silent
 
@@ -45,12 +48,15 @@ class DecisionsHub:
         ao mesmo gate_id.
         """
         conns = list(self._connections.get(gate_id, []))
+        logger.info(f"[Hub] Broadcasting to gate '{gate_id}': {len(conns)} connections. All gates: {list(self._connections.keys())}")
 
         for ws in conns:
             try:
                 await ws.send_json(message)
-            except Exception:
+                logger.info(f"[Hub] Sent message to WebSocket for gate '{gate_id}'")
+            except Exception as e:
                 # Se der erro ao enviar, desligar o websocket
+                logger.error(f"[Hub] Failed to send to WebSocket: {e}")
                 self.disconnect(gate_id, ws)
 
 

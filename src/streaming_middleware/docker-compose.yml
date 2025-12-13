@@ -9,7 +9,7 @@ services:
       # ===========================================
       # STREAM MODE: "camera" (default) ou "test"
       # ===========================================
-      - STREAM_MODE=test  # Mudar para "test" para usar vídeo de teste
+      - STREAM_MODE=camera  # Mudar para "test" para usar vídeo de teste
       
       # Configuração da câmara (usado quando STREAM_MODE=camera)
       - CAMERA_IP=10.255.35.86

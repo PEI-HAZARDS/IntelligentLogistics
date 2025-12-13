@@ -13,6 +13,18 @@ from .hub import decisions_hub
 _consumer_task: Optional[asyncio.Task] = None
 
 
+def _extract_gate_id_from_topic(topic: str) -> Optional[str]:
+    """
+    Extrai o gate_id do nome do tópico Kafka.
+    
+    Exemplo: 'decision-results-1' -> '1'
+             'decision-results-42' -> '42'
+    """
+    match = re.search(r'-(\d+)$', topic)
+    if match:
+        return match.group(1)
+    return None
+
 def _normalize_payload(raw_payload: dict) -> dict:
     """
     Normaliza o payload do Kafka para o formato esperado pelo frontend.
