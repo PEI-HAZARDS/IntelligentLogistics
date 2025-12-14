@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kafka Flow Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <div class="header">
+        <h1>Kafka <span>Flow Dashboard</span></h1>
+        <div class="status">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">Connecting...</span>
+            <button class="clear-btn" onclick="clearMessages()">Clear Messages</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="flow-diagram">
+            <div class="flow-step" id="step-truck-detected">
+                <div class="flow-icon" style="background: rgba(52, 152, 219, 0.3);">🚛</div>
+                <div class="flow-name">Truck Detected</div>
+                <div class="flow-count" id="count-truck">0</div>
+            </div>
+            <div class="flow-arrow">↓</div>
+
+            <div class="flow-step" id="step-lp-results">
+                <div class="flow-icon" style="background: rgba(46, 204, 113, 0.3);">📋</div>
+                <div class="flow-name">License Plate</div>
+                <div class="flow-count" id="count-lp">0</div>
+            </div>
+            <div class="flow-arrow">↓</div>
+
+            <div class="flow-step" id="step-hz-results">
+                <div class="flow-icon" style="background: rgba(243, 156, 18, 0.3);">⚠️</div>
+                <div class="flow-name">Hazard Plate</div>
+                <div class="flow-count" id="count-hz">0</div>
+            </div>
+            <div class="flow-arrow">↓</div>
+
+            <div class="flow-step" id="step-decision">
+                <div class="flow-icon" style="background: rgba(155, 89, 182, 0.3);">✅</div>
+                <div class="flow-name">Decision</div>
+                <div class="flow-count" id="count-decision">0</div>
+            </div>
+        </div>
+
+        <div class="messages-panel">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('single')">Single Flow</button>
+                <button class="tab-btn" onclick="switchTab('all')">All Events</button>
+            </div>
+
+            <div class="messages-list" id="messagesList">
+                <div class="empty-state">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path
+                            d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z" />
+                    </svg>
+                    <p>Waiting for Kafka messages...</p>
+                    <p style="font-size: 12px; margin-top: 10px;">Messages will appear here in real-time</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/dashboard.js"></script>
+</body>
+
+</html>

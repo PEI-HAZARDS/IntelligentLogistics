@@ -1,0 +1,316 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    min-height: 100vh;
+    color: #fff;
+}
+
+.header {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 20px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.header h1 {
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.header h1 span {
+    color: #3498db;
+}
+
+.status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #e74c3c;
+    animation: pulse 2s infinite;
+}
+
+.status-dot.connected {
+    background: #2ecc71;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.container {
+    display: flex;
+    height: calc(100vh - 80px);
+}
+
+.flow-diagram {
+    width: 300px;
+    padding: 30px;
+    background: rgba(0, 0, 0, 0.2);
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.flow-step {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 15px;
+    margin-bottom: 10px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.05);
+    transition: all 0.3s ease;
+}
+
+.flow-step.active {
+    background: rgba(255, 255, 255, 0.15);
+    transform: scale(1.02);
+}
+
+.flow-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+}
+
+.flow-name {
+    font-weight: 500;
+}
+
+.flow-count {
+    margin-left: auto;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.flow-arrow {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 20px;
+    margin: 5px 0;
+}
+
+.messages-panel {
+    flex: 1;
+    padding: 30px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Tabs */
+.tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.tab-btn {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: rgba(255, 255, 255, 0.6);
+    padding: 10px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.tab-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+}
+
+.tab-btn.active {
+    background: #3498db;
+    border-color: #3498db;
+    color: #fff;
+}
+
+.messages-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.message-card {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 16px;
+    border-left: 4px solid;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.message-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.message-type {
+    font-weight: 600;
+    font-size: 15px;
+}
+
+.message-time {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.message-truck {
+    display: inline-block;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    margin-bottom: 10px;
+}
+
+/* Card content - all fields same background */
+.card-content {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.card-field {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+}
+
+.field-label {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.field-value {
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.field-value.plate {
+    font-family: 'Courier New', monospace;
+    font-size: 15px;
+    font-weight: 700;
+    color: #2ecc71;
+    letter-spacing: 1px;
+}
+
+.field-value.hazard {
+    font-family: 'Courier New', monospace;
+    font-size: 15px;
+    font-weight: 700;
+    color: #f39c12;
+}
+
+.field-value.confidence {
+    color: #3498db;
+}
+
+.field-value.decision {
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 4px;
+}
+
+.field-value.decision.approved {
+    background: rgba(46, 204, 113, 0.3);
+    color: #2ecc71;
+}
+
+.field-value.decision.rejected {
+    background: rgba(231, 76, 60, 0.3);
+    color: #e74c3c;
+}
+
+.field-value.link {
+    color: #3498db;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 60px;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.empty-state svg {
+    width: 80px;
+    height: 80px;
+    margin-bottom: 20px;
+    opacity: 0.3;
+}
+
+.clear-btn {
+    background: rgba(231, 76, 60, 0.2);
+    border: 1px solid rgba(231, 76, 60, 0.5);
+    color: #e74c3c;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.clear-btn:hover {
+    background: rgba(231, 76, 60, 0.3);
+}
+
+/* Flow separator for single flow mode */
+.flow-separator {
+    text-align: center;
+    padding: 10px;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 12px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.2);
+    margin-top: 10px;
+}
