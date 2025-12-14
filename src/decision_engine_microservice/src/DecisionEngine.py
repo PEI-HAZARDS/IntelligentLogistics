@@ -283,6 +283,8 @@ class DecisionEngine:
         un_number = hz_data.get("un", "N/A")
         kemler_code = hz_data.get("kemler", "N/A")
 
+        timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
         logger.info(f"[DecisionEngine] Extracted data - License Plate: '{license_plate}', UN Number: '{un_number}', Kemler Code: '{kemler_code}'")
         un_data = f"{un_number}: {self._get_un_description(un_number)}" if un_number and un_number != "N/A" else "No UN number detected"
         kemler_data = f"{kemler_code}: {self._get_kemler_description(kemler_code)}" if kemler_code and kemler_code != "N/A" else "No Kemler code detected"
@@ -294,8 +296,7 @@ class DecisionEngine:
             logger.warning(f"[DecisionEngine] Incomplete data for truck_id='{truck_id}'. Sending to manual review.")
             
             returned_data = {
-                "timestamp": int(time.time()),
-                "gate_id": GATE_ID,
+                "timestamp": timestamp,
                 "licensePlate": license_plate,
                 "UN": f"{un_number}: {self._get_un_description(un_number)}" if un_number and un_number != "N/A" and un_number.isdigit() else None,
                 "kemler": f"{kemler_code}: {self._get_kemler_description(kemler_code)}" if kemler_code and kemler_code != "N/A" and kemler_code.isdigit() else None,
@@ -351,8 +352,7 @@ class DecisionEngine:
             
         # Prepare Decision Data
         returned_data = {
-            "timestamp": int(time.time()),
-            "gate_id": GATE_ID,
+            "timestamp": timestamp,
             "licensePlate": license_plate,
             "UN": un_data,
             "kemler": kemler_data,

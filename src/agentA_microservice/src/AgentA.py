@@ -19,7 +19,7 @@ RTSP_STREAM_LOW = os.getenv("RTSP_STREAM_LOW", f"rtmp://{NGINX_RTMP_HOST}:{NGINX
 # --- Operational Constants ---
 MAX_CONNECTION_RETRIES = 10
 RETRY_DELAY = 5         # Wait time between connection attempts
-MESSAGE_INTERVAL = 35   # Throttle: Limit alerts to one every 30 seconds
+MESSAGE_INTERVAL = 35   # Throttle: Limit alerts to one every 35 seconds
 KAFKA_TOPIC = f"truck-detected-{GATE_ID}"
 
 logger = logging.getLogger("AgentA")

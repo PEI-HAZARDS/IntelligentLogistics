@@ -30,6 +30,7 @@ function connect() {
         const data = JSON.parse(event.data);
 
         if (data.type === 'kafka_message') {
+            console.log("Received Kafka Message:", data);
             handleMessage(data);
         }
     };
@@ -112,11 +113,11 @@ function renderCardContent(msg) {
     if (topic.includes('truck-detected')) {
         return `
             <div class="card-field">
-                <span class="field-label">⏱️ Timestamp</span>
+                <span class="field-label">Timestamp</span>
                 <span class="field-value">${data.timestamp || formatTime(msg.timestamp)}</span>
             </div>
             <div class="card-field">
-                <span class="field-label">📊 Confidence</span>
+                <span class="field-label">Confidence</span>
                 <span class="field-value confidence">${formatConfidence(data.confidence)}</span>
             </div>
         `;
@@ -126,18 +127,18 @@ function renderCardContent(msg) {
     if (topic.includes('lp-results')) {
         return `
             <div class="card-field">
-                <span class="field-label">⏱️ Timestamp</span>
+                <span class="field-label">Timestamp</span>
                 <span class="field-value">${data.timestamp || formatTime(msg.timestamp)}</span>
             </div>
             <div class="card-field">
-                <span class="field-label">🔢 License Plate</span>
+                <span class="field-label">License Plate</span>
                 <span class="field-value plate">${data.licensePlate || 'N/A'}</span>
             </div>
             <div class="card-field">
-                <span class="field-label">📊 Confidence</span>
+                <span class="field-label">Confidence</span>
                 <span class="field-value confidence">${formatConfidence(data.confidence)}</span>
             </div>
-            ${data.cropUrl ? `<div class="card-field"><span class="field-label">🖼️ Crop</span><a href="${data.cropUrl}" target="_blank" class="field-value link">View Image</a></div>` : ''}
+            ${data.cropUrl ? `<div class="card-field"><span class="field-label">Crop</span><a href="${data.cropUrl}" target="_blank" class="field-value link">View Image</a></div>` : ''}
         `;
     }
 
@@ -145,42 +146,46 @@ function renderCardContent(msg) {
     if (topic.includes('hz-results')) {
         return `
             <div class="card-field">
-                <span class="field-label">⏱️ Timestamp</span>
+                <span class="field-label">Timestamp</span>
                 <span class="field-value">${data.timestamp || formatTime(msg.timestamp)}</span>
             </div>
             <div class="card-field">
-                <span class="field-label">☢️ UN Number</span>
+                <span class="field-label">UN Number</span>
                 <span class="field-value hazard">${data.un || 'N/A'}</span>
             </div>
             <div class="card-field">
-                <span class="field-label">⚠️ Kemler Code</span>
+                <span class="field-label">Kemler Code</span>
                 <span class="field-value hazard">${data.kemler || 'N/A'}</span>
             </div>
             <div class="card-field">
-                <span class="field-label">📊 Confidence</span>
+                <span class="field-label">Confidence</span>
                 <span class="field-value confidence">${formatConfidence(data.confidence)}</span>
             </div>
+            ${data.cropUrl ? `<div class="card-field"><span class="field-label">Crop</span><a href="${data.cropUrl}" target="_blank" class="field-value link">View Image</a></div>` : ''}
         `;
     }
 
     // Decision
     if (topic.includes('decision')) {
-        const decisionClass = data.decision === 'APPROVED' ? 'approved' : 'rejected';
+        const decisionLower = (data.decision || '').toLowerCase();
+        const decisionClass = decisionLower === 'approved' ? 'approved' :
+            decisionLower === 'rejected' ? 'rejected' : 'pending';
+
         return `
             <div class="card-field">
-                <span class="field-label">⏱️ Timestamp</span>
+                <span class="field-label">Timestamp</span>
                 <span class="field-value">${data.timestamp || formatTime(msg.timestamp)}</span>
             </div>
             <div class="card-field">
-                <span class="field-label">🔢 License Plate</span>
+                <span class="field-label">License Plate</span>
                 <span class="field-value plate">${data.licensePlate || 'N/A'}</span>
             </div>
             <div class="card-field">
-                <span class="field-label">✅ Decision</span>
+                <span class="field-label">Decision</span>
                 <span class="field-value decision ${decisionClass}">${data.decision || 'PENDING'}</span>
             </div>
-            ${data.UN ? `<div class="card-field"><span class="field-label">☢️ UN</span><span class="field-value">${data.UN}</span></div>` : ''}
-            ${data.kemler ? `<div class="card-field"><span class="field-label">⚠️ Kemler</span><span class="field-value">${data.kemler}</span></div>` : ''}
+            ${data.UN ? `<div class="card-field full-width"><span class="field-label">UN</span><span class="field-value">${data.UN}</span></div>` : ''}
+            ${data.kemler ? `<div class="card-field full-width"><span class="field-label">Kemler</span><span class="field-value">${data.kemler}</span></div>` : ''}
         `;
     }
 
@@ -207,12 +212,12 @@ function renderMessages() {
 
     // Render messages (oldest first, newest at bottom)
     list.innerHTML = messages.map(msg => `
-        <div class="message-card" style="border-color: ${msg.topicColor}">
+        <div class="message-card" style="border-left-color: ${msg.topicColor}">
             <div class="message-header">
                 <span class="message-type" style="color: ${msg.topicColor}">${msg.topicName}</span>
                 <span class="message-time">${formatTime(msg.timestamp)}</span>
             </div>
-            <div class="message-truck">🚛 Truck ID: ${msg.truckId}</div>
+            <div class="message-truck">Truck ID: ${msg.truckId}</div>
             <div class="card-content">
                 ${renderCardContent(msg)}
             </div>
