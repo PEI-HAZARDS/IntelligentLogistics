@@ -20,14 +20,16 @@ class CropStorage:
         self.bucket_name = bucket_name
         self._ensure_bucket()
 
-    def _ensure_bucket(self):
-        """Checks if bucket exists, creates it if not."""
+    def _ensure_bucket(self) -> bool:
+        """Checks if bucket exists, creates it if not. Returns True if bucket is ready."""
         try:
             if not self.client.bucket_exists(self.bucket_name):
                 self.client.make_bucket(self.bucket_name)
                 logger.info(f"[AgentC/MinIO] Created bucket '{self.bucket_name}'")
+            return True
         except S3Error as e:
-            logger.error(f"[AgentC/MinIO] Bucket check failed: {e}")
+            logger.error(f"[AgentC/MinIO] Bucket check/create failed: {e}")
+            return False
 
     def upload_memory_image(self, img_array, object_name: str) -> Optional[str]:
         """
@@ -35,6 +37,11 @@ class CropStorage:
         Returns: Presigned URL or None on failure.
         """
         try:
+            # 0. Ensure bucket exists (retry if initial creation failed)
+            if not self._ensure_bucket():
+                logger.error("[AgentC/MinIO] Cannot upload: bucket unavailable")
+                return None
+            
             # 1. Encode image to memory buffer (no file system usage)
             success, encoded_img = cv2.imencode('.jpg', img_array)
             if not success:
