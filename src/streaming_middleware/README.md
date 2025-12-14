@@ -1,161 +1,267 @@
-# Nginx RTMP Streaming Middleware
+# Streaming Middleware - NGINX RTMP Server (10.255.32.35)
 
-Este serviço atua como middleware de streaming entre câmaras IP e a aplicação Intelligent Logistics.
+The **Streaming Middleware** is the video distribution infrastructure for the hazardous vehicle detection pipeline. It ingests RTSP streams from IP cameras, converts them to RTMP, and redistributes to multiple consumers (Agents and Frontend) without overloading the camera.
 
-## 🎯 Funcionalidades
+---
 
-- **Ingest RTSP**: Converte streams RTSP das câmaras para RTMP
-- **Re-distribuição**: Permite múltiplos consumidores (Agents) sem sobrecarregar câmara
-- **Transcoding**: Gera HLS/DASH para consumo web (frontend)
-- **Load Balancing**: Distribui streams para vários consumidores
-- **Always-On**: Mantém streams 720p e 4K sempre disponíveis
+## Table of Contents
 
-## 📊 Arquitetura
+- [How It Works](#how-it-works)
+- [Architecture](#architecture)
+- [Available Endpoints](#available-endpoints)
+- [Running with Docker](#running-with-docker)
+- [Environment Variables](#environment-variables)
+- [Testing](#testing)
+- [Debugging](#debugging)
+- [Performance](#performance)
+
+---
+
+## How It Works
+
+### Operation Cycle
+
+1. **RTSP Ingestion**: FFmpeg processes inside the container connect to IP cameras via RTSP and pull video streams.
+
+2. **Protocol Conversion**: RTSP streams are converted to RTMP format using FFmpeg with codec copy (no transcoding).
+
+3. **RTMP Publishing**: Converted streams are published to the local NGINX RTMP server.
+
+4. **Multi-Consumer Distribution**: NGINX redistributes streams to multiple consumers:
+   - **RTMP**: For AgentA, AgentB, AgentC (low latency)
+   - **HLS**: For Frontend web players (HTTP-based)
+
+5. **Always-On Streams**: Both 720p (LOW) and 4K (HIGH) streams are continuously ingested and available.
+
+### Stream Quality Levels
+
+| Quality | Resolution | Use Case | Latency |
+|---------|------------|----------|---------|
+| LOW | 720p | AgentA continuous monitoring | ~500ms-1s |
+| HIGH | 4K | AgentB/AgentC detailed analysis | ~500ms-1s |
+| HLS LOW | 720p | Frontend web player | ~4-6s |
+| HLS HIGH | 4K | Frontend web player | ~4-6s |
+
+---
+
+## Architecture
 
 ```
-Câmara IP (RTSP)
+IP Camera (RTSP)
     │
     ├─ rtsp://10.255.35.86:554/stream2 (720p)
     └─ rtsp://10.255.35.86:554/stream1 (4K)
     │
     ▼
-FFmpeg Ingest (dentro do container)
+FFmpeg Ingest (inside container)
     │
-    ├─ Converte RTSP → RTMP
-    └─ Publica no Nginx local
+    ├─ Converts RTSP → RTMP
+    └─ Publishes to local NGINX
     │
     ▼
-Nginx RTMP Server
+NGINX RTMP Server
     │
-    ├─ rtmp://nginx-rtmp/streams_low/gate01  (para Agents)
-    ├─ rtmp://nginx-rtmp/streams_high/gate01 (para Agents)
-    ├─ http://nginx-rtmp:8080/hls/low/gate01.m3u8  (para Frontend)
-    └─ http://nginx-rtmp:8080/hls/high/gate01.m3u8 (para Frontend)
+    ├─ rtmp://nginx-rtmp/streams_low/gate01  (for Agents)
+    ├─ rtmp://nginx-rtmp/streams_high/gate01 (for Agents)
+    ├─ http://nginx-rtmp:8080/hls/low/gate01.m3u8  (for Frontend)
+    └─ http://nginx-rtmp:8080/hls/high/gate01.m3u8 (for Frontend)
 ```
 
+---
 
-## 🔧 Variáveis de Ambiente
+## Available Endpoints
 
-| Variável           | Descrição               | Default        |
-| ------------------ | ----------------------- | -------------- |
-| `CAMERA_IP`        | IP da câmara RTSP       | `10.255.35.86` |
-| `RTSP_PORT`        | Porta RTSP da câmara    | `554`          |
-| `STREAM_LOW_PATH`  | Path do stream 720p     | `stream2`      |
-| `STREAM_HIGH_PATH` | Path do stream 4K       | `stream1`      |
-| `GATE_ID`          | Identificador do portão | `gate01`       |
+### RTMP (For Agents - Low Latency)
 
-## 📡 Endpoints Disponíveis
+| Endpoint | Description |
+|----------|-------------|
+| `rtmp://nginx-rtmp:1935/streams_low/gate01` | 720p stream for AgentA |
+| `rtmp://nginx-rtmp:1935/streams_high/gate01` | 4K stream for AgentB/AgentC |
 
-### **RTMP (Consumo pelos Agents):**
+### HTTP (For Frontend - Web Compatible)
 
-- `rtmp://nginx-rtmp:1935/streams_low/gate01` - Stream 720p
-- `rtmp://nginx-rtmp:1935/streams_high/gate01` - Stream 4K
+| Endpoint | Description |
+|----------|-------------|
+| `http://nginx-rtmp:8080/hls/low/gate01.m3u8` | HLS 720p stream |
+| `http://nginx-rtmp:8080/hls/high/gate01.m3u8` | HLS 4K stream |
+| `http://nginx-rtmp:8080/dash/low/gate01.mpd` | DASH 720p (optional) |
+| `http://nginx-rtmp:8080/stat` | RTMP statistics page |
+| `http://nginx-rtmp:8080/health` | Health check endpoint |
 
-### **HTTP (Consumo pelo Frontend):**
+---
 
-- `http://nginx-rtmp:8080/hls/low/gate01.m3u8` - HLS 720p
-- `http://nginx-rtmp:8080/hls/high/gate01.m3u8` - HLS 4K
-- `http://nginx-rtmp:8080/dash/low/gate01.mpd` - DASH 720p (opcional)
-- `http://nginx-rtmp:8080/stat` - Estatísticas RTMP
-- `http://nginx-rtmp:8080/health` - Health check
+## Running with Docker
 
-## 🧪 Testar
+### Building the Docker Image
 
-### **1. Verificar se streams estão ativos:**
+1. Navigate to the streaming_middleware directory.
+2. Build and run with Docker Compose:
+   ```bash
+   docker-compose build
+   docker-compose up -d
+   ```
+
+### Running on Remote VM
+
+```bash
+# Create Docker context for remote deployment
+docker context create NGINX --docker "host=ssh://pei_user@10.255.32.35"
+
+# Build on remote
+docker-compose build
+
+# Start service
+docker-compose up -d
+```
+
+### Firewall Configuration
+
+Ensure the required ports are open:
+```bash
+sudo ufw allow 8080/tcp   # HTTP (HLS/DASH/Stats)
+sudo ufw allow 1935/tcp   # RTMP
+sudo ufw reload
+```
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CAMERA_IP` | `10.255.35.86` | IP address of the RTSP camera |
+| `RTSP_PORT` | `554` | RTSP port on the camera |
+| `STREAM_LOW_PATH` | `stream2` | Path for 720p stream on camera |
+| `STREAM_HIGH_PATH` | `stream1` | Path for 4K stream on camera |
+| `GATE_ID` | `gate01` | Gate identifier (used in stream names) |
+
+---
+
+## Testing
+
+### 1. Check if streams are active
 
 ```bash
 curl http://10.255.32.35:8080/stat
 ```
 
-### **2. Consumir HLS no navegador:**
+### 2. Play HLS in browser
 
 ```
-http://localhost:8080/hls/low/gate01.m3u8
+http://10.255.32.35:8080/hls/low/gate01.m3u8
 ```
 
-### **3. Testar RTMP com ffplay:**
+### 3. Test RTMP with ffplay
 
 ```bash
 ffplay rtmp://10.255.32.35:1935/streams_low/gate01
 ```
 
-### **4. Health check:**
+### 4. Health check
 
 ```bash
 curl http://10.255.32.35:8080/health
 # Expected: OK
 ```
 
-## 🔍 Debug
+### 5. Measure latency
 
-### **Ver logs do container:**
+```bash
+# Direct RTSP latency
+time ffmpeg -i rtsp://10.255.35.86:554/stream2 -frames:v 1 -f null - 2>&1 | grep "time="
+
+# RTMP via NGINX latency
+time ffmpeg -i rtmp://localhost:1935/streams_low/gate01 -frames:v 1 -f null - 2>&1 | grep "time="
+```
+
+---
+
+## Debugging
+
+### View container logs
 
 ```bash
 docker logs -f nginx-rtmp
 ```
 
-### **Ver logs apenas do FFmpeg LOW:**
+### View FFmpeg LOW logs
 
 ```bash
 docker logs nginx-rtmp 2>&1 | grep "FFmpeg-LOW"
 ```
 
-### **Ver logs apenas do FFmpeg HIGH:**
+### View FFmpeg HIGH logs
 
 ```bash
 docker logs nginx-rtmp 2>&1 | grep "FFmpeg-HIGH"
 ```
 
-### **Entrar no container:**
+### Enter the container
 
 ```bash
 docker exec -it nginx-rtmp bash
 ```
 
-### **Verificar processos:**
+### Check running processes
 
 ```bash
 docker exec nginx-rtmp ps aux | grep ffmpeg
 ```
 
-## 📊 Estatísticas RTMP
+---
 
-Aceder `http://localhost:8080/stat` para ver:
+## Performance
 
-- Streams ativos
-- Bitrate (bw_in/bw_out)
-- Número de viewers
-- FPS
-- Codec info
+### Latency
 
-## 🎯 Fluxo de Dados
+| Stream Type | Latency |
+|-------------|---------|
+| RTMP (Agents) | ~500ms-1s |
+| HLS (Frontend) | ~4-6s (2s fragments) |
 
-### **Agent-A (sempre conectado ao LOW):**
+### Bandwidth
 
+| Stream | Bitrate |
+|--------|---------|
+| LOW (720p) | ~2-4 Mbps |
+| HIGH (4K) | ~15-25 Mbps |
+
+### CPU Usage
+
+| Process | Usage |
+|---------|-------|
+| NGINX | ~5-10% (retransmission) |
+| FFmpeg (2 processes) | ~15-30% (codec copy) |
+
+---
+
+## Integration with Microservices
+
+### Agent Usage Examples
+
+**AgentA (always connected to LOW):**
 ```python
-from shared_utils.RTSPstream import RTSPStream
+from agentA_microservice.src.RTSPstream import RTSPStream
 
 cap = RTSPStream("rtmp://nginx-rtmp/streams_low/gate01")
 frame = cap.read()
 ```
 
-### **Agent-B (conecta ao HIGH quando Kafka manda):**
-
+**AgentB/AgentC (connects to HIGH on Kafka event):**
 ```python
-# Aguarda evento do Kafka
+# Wait for Kafka event
 event = consumer.poll()
 
-# Conecta ao stream 4K
+# Connect to 4K stream
 cap = RTSPStream("rtmp://nginx-rtmp/streams_high/gate01")
 frame = cap.read()
 
-# Processa e desconecta
+# Process and disconnect
 cap.release()
 ```
 
-### **Frontend (consome HLS):**
-
-```jsx
+**Frontend (consumes HLS):**
+```javascript
 import Hls from "hls.js";
 
 const hls = new Hls();
@@ -163,95 +269,13 @@ hls.loadSource("http://nginx-rtmp:8080/hls/low/gate01.m3u8");
 hls.attachMedia(videoElement);
 ```
 
-## 🛡️ Segurança
+---
 
-- **Publish**: Apenas `127.0.0.1` pode publicar streams (FFmpeg ingest)
-- **Play**: Qualquer endereço pode consumir (Agents, Frontend)
-- **CORS**: Habilitado para frontend consumir de domínio diferente
+## Additional Notes
 
-## 📈 Performance
-
-### **Latência:**
-
-- RTMP para Agents: ~500ms-1s
-- HLS para Frontend: ~4-6s (devido a fragmentos de 2s)
-
-### **Bandwidth:**
-
-- Stream LOW (720p): ~2-4 Mbps
-- Stream HIGH (4K): ~15-25 Mbps
-
-### **CPU:**
-
-- Nginx: ~5-10% (re-transmissão)
-- FFmpeg (2 processos): ~15-30% (copy codec, sem transcoding)
-
-## 🔄 Restart Automático
-
-O script `ingest_streams.sh` monitora processos FFmpeg e reinicia automaticamente se falharem:
-
-```bash
-[Ingest] HIGH stream died, restarting...
-[Ingest] HIGH stream restarted (PID: 12345)
-```
-
-## 📝 Notas
-
-- Streams são **always-on** (ambas 720p e 4K sempre ingeridas)
-- Kafka gere quando Agent-B deve **consumir** o stream HIGH (não on-demand do Nginx)
-- HLS fragmentos são limpos automaticamente (`hls_cleanup on`)
-- Container tem health check automático a cada 30s
-
-## 🤝 Integração com Microserviços
-
-Este serviço é **infraestrutura**, não um microserviço. Ele:
-
-- ✅ É configurado via `nginx.conf` + environment variables
-- ✅ Serve múltiplos portões (basta adicionar `GATE_ID=gate02`)
-
-
-
-## Install on VM
-
-```bash 
-sudo apt install docker.io
-```
-
-```bash
-
-```
-
-## 🚀 Como Usar
-
-### **Build da imagem:**
-
-```bash
-docker context create NGINX --docker "host=ssh://pei_user@10.255.32.35"
-```
-
-```bash
-docker-compose build
-```
-
-
-```bash
-docker-compose up -d
-```
-
-# Para Browser
-curl http://localhost:8080/hls/low/gate01.m3u8
-
-
-# Testar latência RTSP direto
-time ffmpeg -i rtsp://10.255.35.86:554/stream2 -frames:v 1 -f null - 2>&1 | grep "time="
-
-# Testar latência RTMP via Nginx
-time ffmpeg -i rtmp://localhost:1935/streams_low/gate01 -frames:v 1 -f null - 2>&1 | grep "time="
-
-
-
-## Importante
-
-sudo ufw allow 8080/tcp
-sudo ufw allow 1935/tcp
-sudo ufw reload
+- **Always-On**: Both 720p and 4K streams are continuously ingested.
+- **Automatic Restart**: The `ingest_streams.sh` script monitors FFmpeg processes and restarts them if they fail.
+- **Health Check**: Container has automatic health check every 30 seconds.
+- **HLS Cleanup**: HLS fragments are automatically cleaned up (`hls_cleanup on`).
+- **Security**: Only localhost (127.0.0.1) can publish streams; anyone can consume.
+- **Multi-Gate**: Supports multiple gates by adding more `GATE_ID` configurations.
