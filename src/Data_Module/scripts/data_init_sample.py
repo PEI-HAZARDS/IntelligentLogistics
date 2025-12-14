@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Simple data initializer for MVP demo.
-Creates 1 driver with 22 appointments using specific license plates (max 2 per plate).
-Run with PYTHONPATH=src python src/Data_Module/scripts/data_init_simple.py
+Creates 20 appointments with unique license plates - all in_transit for demo flow.
+Run with: python scripts/data_init_sample.py
 """
 
 from datetime import datetime, date, time, timedelta
@@ -16,7 +16,7 @@ import sys
 # Add parent directory to path so we can import models
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-# Try to import models from package path (assuming PYTHONPATH includes `src`)
+# Try to import models from package path
 try:
     from Data_Module.models.sql_models import (
         Base, Worker, Manager, Operator, Company, Driver,
@@ -24,7 +24,6 @@ try:
         Booking, Cargo, Appointment, Visit, Alert, ShiftAlertHistory
     )
 except Exception:
-    # Fallback for direct execution
     try:
         from models.sql_models import (
             Base, Worker, Manager, Operator, Company, Driver,
@@ -33,28 +32,79 @@ except Exception:
         )
     except Exception as e:
         print("Error importing models:", e)
-        print("Make sure PYTHONPATH includes the `src` folder or run from repository root.")
         sys.exit(1)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Specific license plates for demo (11 plates = max 22 appointments with 2 each)
+# 20 unique license plates for MVP demo (1 plate = 1 appointment)
+# Mostly your existing platesfrom video test + extras to complete 20
 LICENSE_PLATES = [
-    "VKTH76", "SL06173", "KHTS141", "SLS06408", "WNDSU600",
-    "MZGOH112", "MZGOH89", "BC8003", "AE66LR", "AA12DF", "BI00US"
+    # Your existing plates (11 plates)
+    "VKTH76",     # 1 - HAZMAT TEST (use for hazmat demo)
+    "SL06173",    # 2 - HAZMAT
+    "KHTS141",    # 3 - HAZMAT
+    "SLS06408",   # 4 - HAZMAT
+    "WNDSU600",   # 5 - HAZMAT
+    "MZGOH112",   # 6
+    "MZGOH89",    # 7
+    "BC8003",     # 8
+    "AE66LR",     # 9
+    "AA12DF",     # 10
+    "BI00US",     # 11
+    # Additional plates to complete 20
+    "12-AB-34",   # 12 - Portuguese format
+    "56-CD-78",   # 13 - Portuguese format
+    "90-EF-12",   # 14 - Portuguese format
+    "1234-ABC",   # 15 - Spanish format
+    "5678-DEF",   # 16 - Spanish format
+    "B-AB-1234",  # 17 - German format
+    "AB-123-CD",  # 18 - French format
+    "34-GH-56",   # 19 - Portuguese format
+    "78-IJ-90",   # 20 - Portuguese format
+]
+
+
+# Cargo types with hazmat flags for demo
+# Format: (description, state, weight_kg, is_hazmat, un_code, kemler_code)
+CARGO_TYPES = [
+    # HAZMAT cargos (first 5 - for hazmat detection demo)
+    ("Gasoline fuel", "liquid", 18000, True, "1203", "33"),           # Flammable liquid
+    ("Propane gas cylinders", "gaseous", 5000, True, "1978", "23"),   # Flammable gas
+    ("Sulfuric acid", "liquid", 12000, True, "1830", "80"),           # Corrosive
+    ("Ammonium nitrate", "solid", 20000, True, "1942", "50"),         # Oxidizer
+    ("Toxic pesticides", "liquid", 8000, True, "2902", "60"),         # Toxic
+    # Normal cargos (remaining 15)
+    ("Auto parts", "solid", 8000, False, None, None),
+    ("Electronic equipment", "solid", 5500, False, None, None),
+    ("Furniture", "solid", 9000, False, None, None),
+    ("Construction materials", "solid", 16000, False, None, None),
+    ("Textile products", "solid", 6000, False, None, None),
+    ("Industrial machinery", "solid", 19000, False, None, None),
+    ("Frozen meat (refrigerated)", "solid", 18000, False, None, None),
+    ("Pharmaceutical products", "solid", 5000, False, None, None),
+    ("Wheat cereals", "solid", 22000, False, None, None),
+    ("Industrial sand", "solid", 25000, False, None, None),
+    ("Wine and beverages", "liquid", 12000, False, None, None),
+    ("Olive oil", "liquid", 9500, False, None, None),
+    ("Fresh vegetables", "solid", 14000, False, None, None),
+    ("Paper products", "solid", 11000, False, None, None),
+    ("Ceramic tiles", "solid", 24000, False, None, None),
 ]
 
 
 def init_simple_data(db: Session):
     """
-    Initialize database with simple mock data for MVP demo.
-    1 driver, 22 appointments with specific trucks (max 2 per plate).
+    Initialize database with MVP demo data.
+    20 appointments, 1 unique plate each, ALL in_transit status.
     """
-    print("Populating database with simple demo data...")
+    print("=" * 60)
+    print("  MVP DEMO DATA INITIALIZER")
+    print("=" * 60)
 
     # Check if data already exists
     if db.query(Worker).first():
-        print("Data already exists. Skipping initialization.")
+        print("\n⚠️  Data already exists. Skipping initialization.")
+        print("   To reset, run: docker-compose down -v && docker-compose up -d")
         return
 
     try:
@@ -62,7 +112,7 @@ def init_simple_data(db: Session):
         now = datetime.now()
 
         # ===== WORKERS =====
-        print("Creating workers...")
+        print("\n📋 Creating workers...")
 
         manager = Worker(
             num_worker="MGR001",
@@ -87,80 +137,97 @@ def init_simple_data(db: Session):
 
         manager_obj = Manager(num_worker=manager.num_worker, access_level="admin")
         operator_obj = Operator(num_worker=operator.num_worker)
-
         db.add_all([manager_obj, operator_obj])
         db.flush()
 
-        # ===== COMPANY =====
-        print("Creating company...")
+        # ===== COMPANIES =====
+        print("🏢 Creating transport companies...")
 
-        company = Company(nif="500123456", name="TransPortugal Lda", contact="220123456")
-        db.add(company)
+        companies = [
+            Company(nif="500123456", name="TransPortugal Lda", contact="220123456"),
+            Company(nif="500789012", name="EuroTrans SA", contact="220789012"),
+            Company(nif="500345678", name="Iberian Logistics", contact="220345678"),
+        ]
+        db.add_all(companies)
         db.flush()
 
-        # ===== DRIVER =====
-        print("Creating driver...")
+        # ===== DRIVERS =====
+        print("🚚 Creating drivers...")
 
-        driver = Driver(
-            drivers_license="PT12345678",
-            name="Rui Almeida",
-            company_nif=company.nif,
-            password_hash=pwd_context.hash("driver123"),
-            active=True
-        )
-        db.add(driver)
+        drivers = [
+            Driver(
+                drivers_license="PT12345678",
+                name="Rui Almeida",
+                company_nif=companies[0].nif,
+                password_hash=pwd_context.hash("driver123"),
+                active=True
+            ),
+            Driver(
+                drivers_license="ES87654321",
+                name="Carlos García",
+                company_nif=companies[1].nif,
+                password_hash=pwd_context.hash("driver123"),
+                active=True
+            ),
+            Driver(
+                drivers_license="DE11223344",
+                name="Hans Müller",
+                company_nif=companies[2].nif,
+                password_hash=pwd_context.hash("driver123"),
+                active=True
+            ),
+        ]
+        db.add_all(drivers)
         db.flush()
 
-        # ===== TRUCKS =====
-        print("Creating trucks...")
+        # ===== TRUCKS (20 unique plates) =====
+        print("🚛 Creating 20 trucks with unique plates...")
 
         trucks = []
-        for plate in LICENSE_PLATES:
+        for i, plate in enumerate(LICENSE_PLATES):
+            company_idx = i % len(companies)
             trucks.append(Truck(
                 license_plate=plate,
-                brand="Volvo",
-                company_nif=company.nif
+                brand=["Volvo", "Scania", "MAN", "Mercedes", "DAF"][i % 5],
+                company_nif=companies[company_idx].nif
             ))
         db.add_all(trucks)
         db.flush()
 
         # ===== TERMINAL =====
-        print("Creating terminal...")
+        print("🏭 Creating terminal...")
 
         terminal = Terminal(
-            name="Terminal Norte",
-            latitude=Decimal("41.1523"),
-            longitude=Decimal("-8.6145"),
+            name="Terminal Norte - Porto de Aveiro",
+            latitude=Decimal("40.6443"),
+            longitude=Decimal("-8.6456"),
             hazmat_approved=True
         )
         db.add(terminal)
         db.flush()
 
         # ===== DOCKS =====
-        print("Creating docks...")
+        print("🔧 Creating docks...")
 
-        docks = []
-        for i in range(1, 4):
-            docks.append(Dock(
-                terminal_id=terminal.id,
-                bay_number=f"BAY-{i:02d}",
-                latitude=Decimal(f"41.{1520 + i}"),
-                longitude=Decimal(f"-8.{6140 + i}"),
-                current_usage="operational"
-            ))
+        docks = [
+            Dock(terminal_id=terminal.id, bay_number="DOCK-A1", latitude=Decimal("40.6440"), longitude=Decimal("-8.6450"), current_usage="operational"),
+            Dock(terminal_id=terminal.id, bay_number="DOCK-A2", latitude=Decimal("40.6441"), longitude=Decimal("-8.6451"), current_usage="operational"),
+            Dock(terminal_id=terminal.id, bay_number="DOCK-B1", latitude=Decimal("40.6442"), longitude=Decimal("-8.6452"), current_usage="operational"),
+            Dock(terminal_id=terminal.id, bay_number="DOCK-B2", latitude=Decimal("40.6443"), longitude=Decimal("-8.6453"), current_usage="operational"),
+        ]
         db.add_all(docks)
         db.flush()
 
         # ===== GATES =====
-        print("Creating gates...")
+        print("🚪 Creating gates...")
 
-        gate_in = Gate(label="Gate A - Entrada", latitude=Decimal("41.1510"), longitude=Decimal("-8.6210"))
-        gate_out = Gate(label="Gate B - Saída", latitude=Decimal("41.1520"), longitude=Decimal("-8.6200"))
+        gate_in = Gate(label="Gate 1 - Entrada Norte", latitude=Decimal("40.6450"), longitude=Decimal("-8.6460"))
+        gate_out = Gate(label="Gate 2 - Saída Sul", latitude=Decimal("40.6430"), longitude=Decimal("-8.6440"))
         db.add_all([gate_in, gate_out])
         db.flush()
 
         # ===== SHIFTS =====
-        print("Creating shifts...")
+        print("📅 Creating shifts for today...")
 
         shifts = [
             Shift(
@@ -177,180 +244,149 @@ def init_simple_data(db: Session):
                 operator_num_worker=operator.num_worker,
                 manager_num_worker=manager.num_worker
             ),
+            Shift(
+                gate_id=gate_in.id,
+                shift_type=ShiftType.NIGHT,
+                date=today,
+                operator_num_worker=operator.num_worker,
+                manager_num_worker=manager.num_worker
+            ),
         ]
         db.add_all(shifts)
         db.flush()
 
-        # ===== BOOKINGS =====
-        print("Creating bookings...")
+        # ===== BOOKINGS & CARGOS & APPOINTMENTS =====
+        print("📦 Creating 20 appointments (all in_transit)...")
 
-        bookings = []
-        for i in range(22):
-            bookings.append(Booking(
-                reference=f"BK-{today.strftime('%Y%m%d')}-{i+1:04d}",
-                direction="inbound" if i % 2 == 0 else "outbound"
-            ))
-        db.add_all(bookings)
-        db.flush()
-
-        # ===== CARGOS =====
-        print("Creating cargos...")
-
-        cargo_descriptions = [
-            ("Auto parts", "solid", Decimal("8000")),
-            ("Electronic equipment", "solid", Decimal("5500")),
-            ("Furniture", "solid", Decimal("9000")),
-            ("Construction materials", "solid", Decimal("16000")),
-            ("Textile products", "solid", Decimal("6000")),
-            ("Industrial machinery", "solid", Decimal("19000")),
-            ("Frozen meat", "solid", Decimal("18000")),
-            ("Pharmaceutical products", "solid", Decimal("5000")),
-            ("Wheat cereals", "solid", Decimal("22000")),
-            ("Industrial sand", "solid", Decimal("25000")),
-            ("Wine and beverages", "liquid", Decimal("12000")),
-            ("Olive oil", "liquid", Decimal("9500")),
-        ]
-
-        cargos = []
-        for i, booking in enumerate(bookings):
-            desc, state, qty = cargo_descriptions[i % len(cargo_descriptions)]
-            cargos.append(Cargo(
-                booking_reference=booking.reference,
-                quantity=qty,
-                state=state,
-                description=desc
-            ))
-        db.add_all(cargos)
-        db.flush()
-
-        # ===== APPOINTMENTS =====
-        print("Creating 22 appointments for demo (max 2 per license plate)...")
-
-        # Spread appointments across the day starting from now
         appointments = []
-        # All appointments start as in_transit
-        statuses = ["in_transit"] * 22
+        
+        for i in range(20):
+            # Booking
+            booking = Booking(
+                reference=f"BK-{today.strftime('%Y%m%d')}-{i+1:04d}",
+                direction="inbound"
+            )
+            db.add(booking)
+            db.flush()
 
-        for i in range(22):
-            # Schedule appointments every 20 minutes starting from now
-            scheduled_time = now + timedelta(minutes=20 * i)
+            # Cargo (with hazmat for first 5)
+            desc, state, weight, is_hazmat, un_code, kemler = CARGO_TYPES[i]
+            cargo = Cargo(
+                booking_reference=booking.reference,
+                quantity=Decimal(str(weight)),
+                state=state,
+                description=desc,
+                un_code=un_code,
+                kemler_code=kemler
+            )
+            db.add(cargo)
+            db.flush()
+
+            # Distribute drivers among appointments
+            driver_idx = i % len(drivers)
             
-            # Each plate gets max 2 appointments (11 plates * 2 = 22)
-            truck_idx = i % len(trucks)
-            
+            # Schedule appointments: first 10 in next 2 hours, rest spread through day
+            if i < 10:
+                # Arriving soon - every 10 minutes starting from 5 minutes ago
+                scheduled_time = now + timedelta(minutes=-5 + (10 * i))
+            else:
+                # Later arrivals - every 30 minutes
+                scheduled_time = now + timedelta(hours=2, minutes=30 * (i - 10))
+
+            # Appointment
             appt = Appointment(
-                booking_reference=bookings[i].reference,
-                driver_license=driver.drivers_license,
-                truck_license_plate=trucks[truck_idx].license_plate,
+                booking_reference=booking.reference,
+                driver_license=drivers[driver_idx].drivers_license,
+                truck_license_plate=trucks[i].license_plate,
                 terminal_id=terminal.id,
                 gate_in_id=gate_in.id,
                 gate_out_id=None,
                 scheduled_start_time=scheduled_time,
                 expected_duration=45,
-                status=statuses[i],
-                notes=f"Demo arrival #{i+1}"
+                status="in_transit",  # ALL in_transit for demo flow
+                notes=f"HAZMAT: {desc}" if is_hazmat else f"Cargo: {desc}"
             )
-            # Insert one at a time so arrival_id auto-generation works correctly
             db.add(appt)
             db.flush()
-            appointments.append(appt)
+            appointments.append((appt, trucks[i], is_hazmat, desc))
 
         # ===== COMMIT =====
-        print("[Saving data to the database...]")
+        print("\n💾 Saving to database...")
         db.commit()
 
-        print("Database initialized successfully!")
-        print(f"""
-================================================================================
-                     SIMPLE DATABASE INITIALIZATION SUMMARY
-================================================================================
-
-ENTITIES CREATED:
-- Workers: 2 (1 manager, 1 operator)
-- Company: 1
-- Driver: 1
-- Trucks: {len(trucks)}
-- Terminal: 1
-- Docks: {len(docks)}
-- Gates: 2
-- Shifts: {len(shifts)}
-- Bookings: {len(bookings)}
-- Cargos: {len(cargos)}
-- Appointments: {len(appointments)} (12 in_transit, 6 delayed, 4 in_process)
-- Alerts: 0
-
-================================================================================
-                              MVP TEST CREDENTIALS
-================================================================================
-
-WEB PORTAL (Operator/Manager):
-┌─────────────────────────────────┬─────────────┬────────────┐
-│ Email                           │ Password    │ Role       │
-├─────────────────────────────────┼─────────────┼────────────┤
-│ joao.silva@porto.pt             │ password123 │ Manager    │
-│ worker@porto.pt                 │ password123 │ Operator   │
-└─────────────────────────────────┴─────────────┴────────────┘
-
-MOBILE APP (Driver):
-┌──────────────────┬─────────────────────┬─────────────┐
-│ Driver License   │ Name                │ Password    │
-├──────────────────┼─────────────────────┼─────────────┤
-│ PT12345678       │ Rui Almeida         │ driver123   │
-└──────────────────┴─────────────────────┴─────────────┘
-
-================================================================================
-                          APPOINTMENTS FOR DEMO
-================================================================================
-
-All 22 appointments assigned to driver: PT12345678 (Rui Almeida)
-Each license plate has max 2 appointments.
-""")
-
-        print("┌────────────┬────────────────┬───────────────────────┬─────────────┐")
-        print("│ PIN        │ Truck          │ Scheduled Time        │ Status      │")
-        print("├────────────┼────────────────┼───────────────────────┼─────────────┤")
-        
-        for i, appt in enumerate(appointments):
-            time_str = appt.scheduled_start_time.strftime('%H:%M') if appt.scheduled_start_time else '--:--'
-            pin_display = appt.arrival_id or "PRT-XXXX"
-            plate = trucks[i % len(trucks)].license_plate
-            print(f"│ {pin_display:<10} │ {plate:<14} │ {today.strftime('%Y-%m-%d')} {time_str:<7} │ {appt.status:<11} │")
-        
-        print("└────────────┴────────────────┴───────────────────────┴─────────────┘")
+        # ===== SUMMARY =====
+        print("\n" + "=" * 70)
+        print("  ✅ MVP DEMO DATABASE INITIALIZED SUCCESSFULLY")
+        print("=" * 70)
 
         print("""
-================================================================================
-                               QUICK TEST GUIDE
-================================================================================
+┌─────────────────────────────────────────────────────────────────────┐
+│                        LOGIN CREDENTIALS                             │
+├─────────────────────────────────────────────────────────────────────┤
+│  WEB PORTAL (Operator/Manager):                                      │
+│  ┌─────────────────────────┬─────────────┬────────────┐             │
+│  │ Email                   │ Password    │ Role       │             │
+│  ├─────────────────────────┼─────────────┼────────────┤             │
+│  │ worker@porto.pt         │ password123 │ Operator   │             │
+│  │ joao.silva@porto.pt     │ password123 │ Manager    │             │
+│  └─────────────────────────┴─────────────┴────────────┘             │
+│                                                                      │
+│  MOBILE APP (Drivers):                                               │
+│  ┌──────────────────┬─────────────────┬─────────────┐               │
+│  │ License          │ Name            │ Password    │               │
+│  ├──────────────────┼─────────────────┼─────────────┤               │
+│  │ PT12345678       │ Rui Almeida     │ driver123   │               │
+│  │ ES87654321       │ Carlos García   │ driver123   │               │
+│  │ DE11223344       │ Hans Müller     │ driver123   │               │
+│  └──────────────────┴─────────────────┴─────────────┘               │
+└─────────────────────────────────────────────────────────────────────┘
+""")
 
-NOTE: Arrival IDs (PINs) are auto-generated by database trigger in PRT-XXXX format.
+        print("┌" + "─" * 68 + "┐")
+        print("│  20 APPOINTMENTS - ALL IN_TRANSIT (ready for demo flow)           │")
+        print("├" + "─" * 68 + "┤")
+        print("│  #  │ PIN        │ License Plate │ Scheduled  │ Cargo              │")
+        print("├" + "─" * 68 + "┤")
 
-1. Login as driver:
-   POST /drivers/login
-   {"drivers_license": "PT12345678", "password": "driver123"}
+        for i, (appt, truck, is_hazmat, desc) in enumerate(appointments):
+            time_str = appt.scheduled_start_time.strftime('%H:%M') if appt.scheduled_start_time else '--:--'
+            pin = appt.arrival_id or f"PRT-{i+1:04d}"
+            hazmat_flag = "⚠️ " if is_hazmat else "   "
+            cargo_short = desc[:18] if len(desc) <= 18 else desc[:15] + "..."
+            print(f"│ {i+1:2} │ {pin:<10} │ {truck.license_plate:<13} │ {time_str:<10} │ {hazmat_flag}{cargo_short:<15} │")
 
-2. Claim appointment with PIN (use actual PIN from table above):
-   POST /drivers/claim?drivers_license=PT12345678
-   {"arrival_id": "PRT-0001"}
+        print("└" + "─" * 68 + "┘")
 
-3. Get active arrival:
-   GET /drivers/me/active?drivers_license=PT12345678
-
-4. Login as operator:
-   POST /workers/login
-   {"email": "worker@porto.pt", "password": "password123"}
-
-================================================================================""")
+        print("""
+┌─────────────────────────────────────────────────────────────────────┐
+│                     🎯 MVP DEMO QUICK GUIDE                          │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  FOR HAZMAT DETECTION DEMO:                                          │
+│  → Use plates AA-00-AA through EE-44-EE (first 5 appointments)      │
+│  → These have UN/Kemler codes that trigger hazmat alerts            │
+│                                                                      │
+│  FOR NORMAL FLOW DEMO:                                               │
+│  → Use any other plate (12-AB-34, VKTH76, etc.)                     │
+│  → Shows standard approval flow without hazmat alerts               │
+│                                                                      │
+│  DEMO TIPS:                                                          │
+│  1. Start with normal flow (plate 12-AB-34) to show basic operation │
+│  2. Then demo hazmat (plate AA-00-AA) to show alert generation      │
+│  3. Use operator dashboard to show real-time WebSocket updates      │
+│  4. All appointments are in_transit - ready for detection           │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+""")
 
     except Exception as e:
-        print("!!! Error during initialization:", e)
+        print(f"\n❌ Error during initialization: {e}")
         db.rollback()
         raise
 
 
 def create_and_seed(database_url: str):
     engine = create_engine(database_url)
-    # Create tables if they don't exist
     Base.metadata.create_all(engine)
 
     SessionLocal = sessionmaker(bind=engine)
@@ -362,6 +398,6 @@ def create_and_seed(database_url: str):
 
 
 if __name__ == "__main__":
-    DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://user:password@localhost/porto_db"
-    print("Using DATABASE_URL =", DATABASE_URL)
+    DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://porto:porto_password@localhost:5432/porto_logistica"
+    print(f"\n🔗 Connecting to: {DATABASE_URL}\n")
     create_and_seed(DATABASE_URL)

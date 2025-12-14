@@ -1,85 +1,98 @@
-**MinIO (Object Storage) - Local Docker setup**
+# Object Storage - MinIO S3-Compatible Storage (10.255.32.132)
 
-This folder contains a simple Dockerfile and a `docker-compose.yml` to run a local MinIO instance (S3-compatible object storage) used by the project.
+**MinIO** provides S3-compatible object storage for the hazardous vehicle detection pipeline. It stores license plate and hazard plate crop images uploaded by AgentB and AgentC, making them accessible via HTTP URLs for the API Gateway and Frontend.
 
-Files included:
-- `Dockerfile` - lightweight wrapper using the official `minio/minio` image.
-- `docker-compose.yml` - docker-compose example with ports and a persistent `./data/minio` volume.
+---
 
-Quick summary
-- MinIO API (S3) is exposed on port `9000`.
-- MinIO Console (web UI) is exposed on port `9001`.
-- Default credentials in `docker-compose.yml`: `MINIO_ROOT_USER=minioadmin`, `MINIO_ROOT_PASSWORD=minioadmin` (change for production).
+## Table of Contents
 
-Run with Docker Compose (recommended for local dev)
+- [How It Works](#how-it-works)
+- [Buckets](#buckets)
+- [Running with Docker](#running-with-docker)
+- [Environment Variables](#environment-variables)
+- [Using the MinIO Client (mc)](#using-the-minio-client-mc)
+- [Integration with Python (boto3)](#integration-with-python-boto3)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+## How It Works
+
+### Operation Flow
+
+1. **Image Upload**: AgentB and AgentC detect plates, extract crops, and upload them to MinIO.
+
+2. **URL Generation**: MinIO returns public URLs for the uploaded images.
+
+3. **URL Publishing**: Agents include the crop URLs in their Kafka messages.
+
+4. **Image Access**: The API Gateway and Frontend can access images via the stored URLs.
+
+### Storage Structure
+
+```
+MinIO Server
+    │
+    ├─ lp-crops/                    (License Plate crops)
+    │   ├─ lp_TRK123_ABC1234.jpg
+    │   └─ lp_TRK456_XYZ9876.jpg
+    │
+    └─ hz-crops/                    (Hazard Plate crops)
+        ├─ hz_TRK123_33_1203.jpg
+        └─ hz_TRK456_X423_1830.jpg
+```
+
+---
+
+## Buckets
+
+| Bucket | Purpose | Created By |
+|--------|---------|------------|
+| `lp-crops` | License plate crop images | AgentB |
+| `hz-crops` | Hazard plate crop images | AgentC |
+| `failed-crops` | Failed classification crops (debug) | AgentB |
+
+---
+
+## Running with Docker
+
+### Using Docker Compose (Recommended)
 
 ```bash
 cd src/object_storage
 docker-compose up -d
 ```
 
-Run with plain Docker
 
-```bash
-docker build -t local-minio .
-docker run -d --name minio -p 9000:9000 -p 9001:9001 -v "$PWD/data/minio:/data" \
-	-e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin local-minio
-```
+### Accessing MinIO
 
-Create a bucket (using `mc` - MinIO client)
+| Interface | URL | Description |
+|-----------|-----|-------------|
+| S3 API | `http://10.255.32.132:9000` | S3-compatible API endpoint |
+| Web Console | `http://10.255.32.132:9090` | Web-based management UI |
 
-Install `mc` (https://min.io/docs/minio/linux/reference/minio-mc.html)
+---
 
-```bash
-# configure alias
-mc alias set local http://127.0.0.1:9000 minioadmin minioadmin
+## Environment Variables
 
-# create a bucket called `lp-crops`
-mc mb local/lp-crops
+### MinIO Server Configuration
 
-# list buckets
-mc ls local
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MINIO_ROOT_USER` | `minioadmin` | Root username (change for production) |
+| `MINIO_ROOT_PASSWORD` | `minioadmin` | Root password (change for production) |
 
-Upload an object (example using `mc`)
+### Application Configuration (Used by Agents)
 
-```bash
-mc cp /path/to/image.jpg local/lp-crops/lp_sample.jpg
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MINIO_HOST` | `10.255.32.132` | MinIO server hostname/IP |
+| `MINIO_PORT` | `9000` | MinIO S3 API port |
+| `ACCESS_KEY` | (required) | MinIO access key |
+| `SECRET_KEY` | (required) | MinIO secret key |
+| `BUCKET_NAME` | `lp-crops` / `hz-crops` | Target bucket for uploads |
 
-Using AWS S3 SDKs / `boto3`
-
-MinIO is S3-compatible. Example Python snippet using `boto3`:
-
-```python
-import boto3
-from botocore.client import Config
-
-s3 = boto3.client('s3',
-									endpoint_url='http://127.0.0.1:9000',
-									aws_access_key_id='minioadmin',
-									aws_secret_access_key='minioadmin',
-									config=Config(signature_version='s3v4'),
-									region_name='us-east-1')
-
-# upload
-s3.upload_file('/path/to/image.jpg', 'lp-crops', 'lp_image.jpg')
-
-# generate presigned URL (valid 7 days)
-url = s3.generate_presigned_url('get_object', Params={'Bucket':'lp-crops','Key':'lp_image.jpg'}, ExpiresIn=604800)
-print(url)
-```
-
-Environment variables in the project
-
-The project uses environment variables to find MinIO. By default in code the bucket and host may be configured via:
-
-- `MINIO_HOST` (example: `10.255.32.132`)
-- `MINIO_PORT` (example: `9000`)
-- `ACCESS_KEY` and `SECRET_KEY` for credentials
-- `BUCKET_NAME` (example: `lp-crops`)
-
-For local testing you can export these to match the docker-compose defaults:
+### Local Testing
 
 ```bash
 export MINIO_HOST=127.0.0.1
@@ -89,14 +102,74 @@ export SECRET_KEY=minioadmin
 export BUCKET_NAME=lp-crops
 ```
 
-Notes & Recommendations
-- For production, do NOT use `minioadmin/minioadmin`. Set strong credentials and secure access (TLS).
-- Persist the `./data/minio` directory or mount a managed volume to avoid data loss.
-- If running MinIO behind a reverse proxy, configure the console and API ports accordingly.
+---
 
-Troubleshooting
-- If the console is inaccessible, check container logs: `docker logs minio`.
-- If uploads fail from the app, verify `ACCESS_KEY` / `SECRET_KEY` and endpoint/port.
+## Using the MinIO Client (mc)
 
-If you want, I can also add a small script that pre-creates the `lp-crops` bucket at container startup.
+### Installation
+
+See: https://min.io/docs/minio/linux/reference/minio-mc.html
+
+### Configure Alias
+
+```bash
+mc alias set local http://127.0.0.1:9000 minioadmin minioadmin
+```
+
+### Create Buckets
+
+```bash
+# Create license plate bucket
+mc mb local/lp-crops
+
+# Create hazard plate bucket
+mc mb local/hz-crops
+
+# List all buckets
+mc ls local
+```
+
+### Upload/Download Files
+
+```bash
+# Upload an image
+mc cp /path/to/image.jpg local/lp-crops/lp_sample.jpg
+
+# Download an image
+mc cp local/lp-crops/lp_sample.jpg /path/to/download/
+
+# List bucket contents
+mc ls local/lp-crops
+```
+
+---
+
+## Integration with Python (boto3)
+
+MinIO is S3-compatible, so you can use the AWS SDK for Python:
+
+
+### Using CropStorage (Project Utility)
+
+The project provides a `CropStorage` class that wraps MinIO operations:
+
+```python
+from agentB_microservice.src.CropStorage import CropStorage
+
+MINIO_CONF = {
+    "endpoint": "10.255.32.132:9000",
+    "access_key": "minioadmin",
+    "secret_key": "minioadmin",
+    "secure": False
+}
+
+storage = CropStorage(MINIO_CONF, "lp-crops")
+
+# Upload image from memory (numpy array)
+url = storage.upload_memory_image(crop_array, "lp_TRK123_ABC1234.jpg")
+print(f"Uploaded: {url}")
+```
+
+---
+
 
