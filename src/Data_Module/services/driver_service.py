@@ -76,7 +76,7 @@ def get_driver_active_appointment(db: Session, drivers_license: str) -> Optional
         joinedload(Appointment.truck)
     ).filter(
         Appointment.driver_license == drivers_license,
-        Appointment.status.in_(['pending', 'in_transit', 'delayed', 'in_process']),
+        Appointment.status.in_(['in_transit', 'delayed', 'in_process']),
     ).order_by(Appointment.scheduled_start_time.asc()).first()
     
     return appointment

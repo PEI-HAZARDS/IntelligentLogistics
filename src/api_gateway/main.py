@@ -17,6 +17,7 @@ from routers import (
 
 # Kafka consumer para decisões
 from realtime.kafka_consumer import start_consumer
+from realtime.kafka_producer import stop_producer
 
 
 def create_app() -> FastAPI:
@@ -61,6 +62,10 @@ def create_app() -> FastAPI:
     async def on_startup():
         loop = asyncio.get_event_loop()
         start_consumer(loop)
+
+    @app.on_event("shutdown")
+    async def on_shutdown():
+        await stop_producer()
 
     # ----------------------
     # Healthcheck
