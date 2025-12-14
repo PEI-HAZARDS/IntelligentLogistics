@@ -347,13 +347,6 @@ class DecisionEngine:
 
             logger.info(f"[DecisionEngine] Matched appointment ID: {matched_appointment.get('appointment_id')}, decision: {decision}")
             
-            # Validate confidence only for accepted matches
-            lp_confidence = lp_data.get("confidence", 0.0)
-            
-            if lp_confidence < 0.7 and decision == "ACCEPTED":
-                decision = "MANUAL_REVIEW"
-                alerts.append(f"License plate detection confidence too low ({lp_confidence:.2f})") 
-
         un_data = f"{un_number}: {self._get_un_description(un_number)}" if un_number and un_number != "N/A" else "No UN number detected"
         kemler_data = f"{kemler_code}: {self._get_kemler_description(kemler_code)}" if kemler_code and kemler_code != "N/A" else "No Kemler code detected"
         

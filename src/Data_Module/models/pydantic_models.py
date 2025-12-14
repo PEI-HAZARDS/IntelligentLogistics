@@ -283,6 +283,7 @@ class BookingCreate(BookingBase):
 class Booking(BookingBase):
     reference: str
     created_at: Optional[datetime] = None
+    cargos: List["Cargo"] = []
 
     model_config = {"from_attributes": True}
 
