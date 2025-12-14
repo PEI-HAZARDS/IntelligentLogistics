@@ -25,58 +25,6 @@ def _extract_gate_id_from_topic(topic: str) -> Optional[str]:
         return match.group(1)
     return None
 
-def _normalize_payload(raw_payload: dict) -> dict:
-    """
-    Normaliza o payload do Kafka para o formato esperado pelo frontend.
-    
-    Kafka (Decision Engine) envia:
-      - licensePlate, lp_cropUrl, hz_cropUrl, UN, kemler, decision, route, alerts
-    
-    Frontend espera:
-      - lp_result, lp_crop, hz_crop, hz_result, decision, gate_id, timestamp
-    """
-    route = raw_payload.get("route") or {}
-    
-    normalized = {
-        # Timestamps
-        "timestamp": raw_payload.get("timestamp"),
-        
-        # License plate detection
-        "lp_result": raw_payload.get("licensePlate"),
-        "lp_crop": raw_payload.get("lp_cropUrl"),
-        
-        # Hazmat detection (UN/Kemler codes)
-        "hz_crop": raw_payload.get("hz_cropUrl"),
-        "hz_result": None,  # Will be set below if UN/Kemler exist
-        
-        # Decision
-        "decision": raw_payload.get("decision"),
-        
-        # Route info (if matched)
-        "gate_id": route.get("gate_id") if isinstance(route, dict) else None,
-        "terminal_id": route.get("terminal_id") if isinstance(route, dict) else None,
-        "appointment_id": route.get("appointment_id") if isinstance(route, dict) else None,
-        
-        # Alerts from Decision Engine
-        "alerts": raw_payload.get("alerts", []),
-        
-        # Original truck_id (if exists)
-        "truck_id": raw_payload.get("truck_id") or raw_payload.get("licensePlate"),
-    }
-    
-    # Build hz_result from UN/Kemler if present
-    un_code = raw_payload.get("UN")
-    kemler_code = raw_payload.get("kemler")
-    if un_code or kemler_code:
-        parts = []
-        if un_code:
-            parts.append(f"UN {un_code}")
-        if kemler_code:
-            parts.append(f"Kemler {kemler_code}")
-        normalized["hz_result"] = " / ".join(parts)
-    
-    return normalized
-
 
 async def _run_consumer() -> None:
     """
@@ -113,9 +61,6 @@ async def _run_consumer() -> None:
         gate_id,
     )
 
-    # Use extracted gate_id or fallback to "global"
-    gate_key = gate_id if gate_id else "global"
-
     try:
         async for msg in consumer:
             raw_value = msg.value
@@ -127,35 +72,35 @@ async def _run_consumer() -> None:
                 logger.warning("Mensagem Kafka inválida (não é JSON): {}", raw_value)
                 continue
 
-            # Normalize payload for frontend consumption
-            payload = _normalize_payload(raw_payload)
-            
             logger.info(
-                "Normalized payload: decision={}, plate={}, gate_id={}, hz_result={}",
-                payload.get("decision"),
-                payload.get("lp_result"),
-                payload.get("gate_id"),
-                payload.get("hz_result"),
+                "Raw payload: decision={}, plate={}, gate_id={}, hz_result={}",
+                raw_payload.get("decision"),
+                raw_payload.get("lp_result"),
+                raw_payload.get("gate_id"),
+                raw_payload.get("hz_result"),
             )
 
-            # Extract gate_id from normalized payload
-            gate_id = payload.get("gate_id")
-
-            # Se não houver gate_id, manda para canal "global"
-            gate_key = str(gate_id) if gate_id is not None else "global"
-
+            # Generate unique message ID for tracking duplicates
+            import uuid
+            msg_id = str(uuid.uuid4())[:8]
+            
             message = {
                 "type": "decision_update",
-                "payload": payload,
+                "payload": raw_payload,
+                "msg_id": msg_id,  # Debug: track message uniqueness
             }
 
-            # Enviar para todos os clientes ligados a esse gate
-            logger.info(f"Broadcasting to gate '{gate_key}'")
-            await decisions_hub.broadcast_to_gate(gate_key, message)
+            # Log connections before broadcast
+            from .hub import decisions_hub
+            conns_count = len(decisions_hub._connections.get(gate_id, set()))
+            logger.info(f"[DEBUG] msg_id={msg_id} Broadcasting to gate '{gate_id}' with {conns_count} connections")
             
-            # Also broadcast to "global" channel for dashboards that listen to all gates
-            if gate_key != "global":
-                await decisions_hub.broadcast_to_gate("global", message)
+            await decisions_hub.broadcast_to_gate(gate_id, message)
+            
+            logger.info(f"[DEBUG] msg_id={msg_id} Broadcast complete")
+            
+            #if not gate_id:
+            #    await decisions_hub.broadcast_to_gate("global", message)
 
     finally:
         await consumer.stop()
