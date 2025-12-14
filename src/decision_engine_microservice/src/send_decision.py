@@ -19,7 +19,7 @@ def create_sample_decision(
     license_plate: str = "AA-00-BB",
     un_number: str = "1203",
     kemler_code: str = "33",
-    decision: str = "ACCEPTED",
+    decision: str = "MANUAL_REVIEW",
     alerts: list = ["Alert 1", "Alert 2"],
     route: dict = None,
     lp_crop_url: str = "https://static.vecteezy.com/system/resources/previews/030/486/333/non_2x/sporting-cp-club-logo-symbol-portugal-league-football-abstract-design-illustration-with-green-background-free-vector.jpg",

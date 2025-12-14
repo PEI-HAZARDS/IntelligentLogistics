@@ -284,6 +284,8 @@ class DecisionEngine:
         kemler_code = hz_data.get("kemler", "N/A")
 
         logger.info(f"[DecisionEngine] Extracted data - License Plate: '{license_plate}', UN Number: '{un_number}', Kemler Code: '{kemler_code}'")
+        un_data = f"{un_number}: {self._get_un_description(un_number)}" if un_number and un_number != "N/A" else "No UN number detected"
+        kemler_data = f"{kemler_code}: {self._get_kemler_description(kemler_code)}" if kemler_code and kemler_code != "N/A" else "No Kemler code detected"
 
         if license_plate == "N/A":
             decision = "MANUAL_REVIEW"
@@ -347,9 +349,6 @@ class DecisionEngine:
 
             logger.info(f"[DecisionEngine] Matched appointment ID: {matched_appointment.get('appointment_id')}, decision: {decision}")
             
-        un_data = f"{un_number}: {self._get_un_description(un_number)}" if un_number and un_number != "N/A" else "No UN number detected"
-        kemler_data = f"{kemler_code}: {self._get_kemler_description(kemler_code)}" if kemler_code and kemler_code != "N/A" else "No Kemler code detected"
-        
         # Prepare Decision Data
         returned_data = {
             "timestamp": int(time.time()),
