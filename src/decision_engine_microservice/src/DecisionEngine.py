@@ -304,7 +304,8 @@ class DecisionEngine:
                 "lp_cropUrl": lp_data.get("cropUrl"),
                 "hz_cropUrl": hz_data.get("cropUrl"),
                 "route": route,
-                "decision": decision
+                "decision": decision,
+                "decision_source": "engine"
             }
             self._publish_decision(truck_id, returned_data)
             return
@@ -360,7 +361,8 @@ class DecisionEngine:
             "lp_cropUrl": lp_data.get("cropUrl"),
             "hz_cropUrl": hz_data.get("cropUrl"),
             "route": route,
-            "decision": decision
+            "decision": decision,
+            "decision_source": "engine"
         }
 
         self._publish_decision(truck_id, returned_data)

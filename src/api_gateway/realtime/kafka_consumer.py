@@ -38,6 +38,10 @@ async def _persist_decision(payload: dict, gate_id: Optional[str]) -> None:
     decision = payload.get("decision", "").upper()
     license_plate = payload.get("licensePlate", "")
     
+    # Extract appointment_id from route object (required for status update)
+    route = payload.get("route") or {}
+    appointment_id = route.get("appointment_id")
+    
     if decision not in ("ACCEPTED", "REJECTED"):
         logger.debug(f"Decision '{decision}' does not require DB persistence (MANUAL_REVIEW)")
         return
@@ -46,21 +50,24 @@ async def _persist_decision(payload: dict, gate_id: Optional[str]) -> None:
         logger.warning("Cannot persist decision: no valid license plate")
         return
     
+    if not appointment_id:
+        logger.warning(f"Cannot persist decision: no appointment_id in payload for plate={license_plate}")
+        return
+    
     try:
         # Call Data Module to process the decision
         # This updates Appointment.status and optionally creates Visit
         path = "/decisions/process"
         body = {
             "license_plate": license_plate,
-            "gate_id": int(gate_id) if gate_id else 0,
+            "gate_id": int(gate_id) if gate_id else (route.get("gate_id") or 0),
+            "appointment_id": appointment_id,
             "decision": decision.lower(),  # 'accepted' or 'rejected'
             "status": "in_process" if decision == "ACCEPTED" else "canceled",
             "notes": f"[AUTO] Decision Engine: {decision}",
-            "un_number": payload.get("UN", ""),
-            "kemler_code": payload.get("kemler", ""),
         }
         
-        logger.info(f"Persisting decision to DB: {decision} for plate={license_plate}, gate={gate_id}")
+        logger.info(f"Persisting decision to DB: {decision} for plate={license_plate}, appointment_id={appointment_id}, gate={gate_id}")
         result = await internal_client.post(path, json=body)
         logger.info(f"Decision persisted successfully: {result}")
         

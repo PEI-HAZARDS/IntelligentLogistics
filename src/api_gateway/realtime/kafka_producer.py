@@ -44,6 +44,11 @@ async def publish_manual_review_decision(
     license_plate: str,
     decision: str,
     notes: Optional[str] = None,
+    # Optional original detection data to preserve
+    original_un: Optional[str] = None,
+    original_kemler: Optional[str] = None,
+    original_lp_crop: Optional[str] = None,
+    original_hz_crop: Optional[str] = None,
 ) -> bool:
     """
     Publish manual review decision to Kafka.
@@ -52,12 +57,15 @@ async def publish_manual_review_decision(
     that handles DecisionEngine decisions, allowing the Driver UI to
     receive real-time updates.
     
+    The payload format matches DecisionEngine._publish_decision() exactly.
+    
     Args:
         gate_id: Gate ID for topic routing
         appointment_id: The appointment being reviewed
         license_plate: Truck license plate
         decision: 'approved' or 'rejected'
         notes: Optional operator notes
+        original_*: Original detection data to preserve in the decision
     
     Returns:
         True if published successfully
@@ -71,24 +79,21 @@ async def publish_manual_review_decision(
         # Normalize decision to match frontend expectations
         decision_upper = "ACCEPTED" if decision.lower() == "approved" else "REJECTED"
         
-        # Build payload matching DecisionEngine._publish_decision() format
+        # Build payload matching DecisionEngine._publish_decision() format exactly
         payload = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "licensePlate": license_plate,
-            "decision": decision_upper,
-            "alerts": [f"[MANUAL REVIEW] Operator {decision.lower()}"],
-            "gate_id": gate_id,
+            "UN": original_un,
+            "kemler": original_kemler,
+            "alerts": [f"Operator decision: {decision.lower()}" + (f" - {notes}" if notes else "")],
+            "lp_cropUrl": original_lp_crop,
+            "hz_cropUrl": original_hz_crop,
             "route": {
                 "appointment_id": appointment_id,
                 "gate_id": gate_id,
-            },
-            # Mark as manual review for frontend distinction
-            "manual_review": True,
-            # No crop URLs for manual review updates
-            "lp_cropUrl": None,
-            "hz_cropUrl": None,
-            "UN": None,
-            "kemler": None,
+            } if appointment_id else None,
+            "decision": decision_upper,
+            "decision_source": "operator"
         }
         
         # Generate a unique key for the message
@@ -98,7 +103,7 @@ async def publish_manual_review_decision(
         
         logger.info(
             f"Published manual review to '{topic}': "
-            f"appointment_id={appointment_id}, decision={decision_upper}"
+            f"appointment_id={appointment_id}, decision={decision_upper}, source=operator"
         )
         return True
         
