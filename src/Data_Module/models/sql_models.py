@@ -1,17 +1,20 @@
 import enum
-from datetime import datetime
-from sqlalchemy import func
+from datetime import datetime, timedelta
+from sqlalchemy import func, event, select
 from sqlalchemy import Column, Integer, String, Date, Time, TIMESTAMP, DECIMAL, Boolean, ForeignKey, ForeignKeyConstraint, Text, Enum as SEnum
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, object_session
 
 Base = declarative_base()
+
+# Delay tolerance in minutes (appointment is delayed after this time past scheduled)
+DELAY_TOLERANCE_MINUTES = 1
 
 # ==========================
 # ENUMS
 # ==========================
 
-delivery_status_enum = SEnum('unloading', 'completed', name='delivery_status')
+delivery_status_enum = SEnum('not_started', 'unloading', 'completed', name='delivery_status')
 physical_state_enum = SEnum('liquid', 'solid', 'gaseous', 'hybrid', name='physical_state')
 access_level_enum = SEnum('admin', 'basic', name='access_level')
 operational_status_enum = SEnum('maintenance', 'operational', 'closed', name='operational_status')
@@ -271,6 +274,64 @@ class Appointment(Base):
         back_populates="appointments_out"
     )
     visit = relationship("Visit", back_populates="appointment", uselist=False)
+
+    @property
+    def computed_status(self) -> str:
+        """
+        Calculate real-time status based on scheduled time.
+        - 'completed' and 'canceled' are final states (stored in DB)
+        - 'delayed' is computed if past scheduled_start_time + tolerance
+        - 'in_transit' otherwise
+        """
+        # Final states are always returned as-is
+        if self.status in ('completed', 'canceled'):
+            return self.status
+        
+        # Check if delayed based on time
+        if self.scheduled_start_time:
+            delay_threshold = self.scheduled_start_time + timedelta(minutes=DELAY_TOLERANCE_MINUTES)
+            if datetime.now() > delay_threshold:
+                return 'delayed'
+        
+        return 'in_transit'
+    
+    @property
+    def is_delayed(self) -> bool:
+        """Quick check if appointment is currently delayed."""
+        return self.computed_status == 'delayed'
+    
+    @property
+    def delay_minutes(self) -> int:
+        """Calculate how many minutes the appointment is delayed (0 if not delayed)."""
+        if not self.scheduled_start_time or self.status in ('completed', 'canceled'):
+            return 0
+        
+        diff = datetime.now() - self.scheduled_start_time
+        minutes = int(diff.total_seconds() / 60)
+        return max(0, minutes - DELAY_TOLERANCE_MINUTES)
+
+
+# Event listener to auto-generate arrival_id before insert
+@event.listens_for(Appointment, 'before_insert')
+def generate_arrival_id(mapper, connection, target):
+    """Auto-generate arrival_id in PRT-XXXX format before inserting."""
+    if target.arrival_id is None:
+        # Query the max arrival_id to determine the next one
+        result = connection.execute(
+            select(func.max(Appointment.arrival_id))
+        ).scalar()
+        
+        if result:
+            # Extract number from existing arrival_id (e.g., "PRT-0042" -> 42)
+            try:
+                current_num = int(result.split('-')[1])
+                next_num = current_num + 1
+            except (IndexError, ValueError):
+                next_num = 1
+        else:
+            next_num = 1
+        
+        target.arrival_id = f"PRT-{next_num:04d}"
 
 
 # ==========================

@@ -27,7 +27,7 @@ echo "Redis is ready"
 
 # Rodar data init
 echo "Running database initialization..."
-python scripts/data_init.py
+python scripts/data_init_sample.py
 if [ $? -eq 0 ]; then
   echo "Data initialization completed successfully"
 else

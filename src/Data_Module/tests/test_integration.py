@@ -33,7 +33,7 @@ def driver_credentials():
 def worker_credentials():
     """Default worker credentials for tests"""
     return {
-        "email": "carlos.oliveira@porto.pt",
+        "email": "worker@porto.pt",
         "password": "password123"
     }
 

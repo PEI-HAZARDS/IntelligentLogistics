@@ -1,26 +1,31 @@
 -- ============================================================
 -- Triggers for Intelligent Logistics - Data Module
--- PostgreSQL functions and triggers for automatic status updates
+-- PostgreSQL functions and triggers for automatic operations
+-- ============================================================
+-- NOTE: 'delayed' status is now computed dynamically in the application
+-- layer (sql_models.py computed_status property). These triggers handle
+-- definitive state transitions and auto-generation of IDs/timestamps.
 -- ============================================================
 
 -- ============================================================
--- 1. SCHEDULED STATUS UPDATE FUNCTION
--- Call this periodically via pg_cron, crontab, or application scheduler
--- Marks all in_transit appointments as 'delayed' when past their time
+-- 1. SYNC STATUS TO DB (OPTIONAL - for reports/analytics)
+-- Call periodically to persist computed 'delayed' status to DB
+-- This is optional since computed_status handles real-time display
 -- ============================================================
 
-CREATE OR REPLACE FUNCTION fn_update_delayed_appointments()
+CREATE OR REPLACE FUNCTION fn_sync_delayed_appointments()
 RETURNS TABLE(updated_count INTEGER, appointments_updated INTEGER[]) AS $$
 DECLARE
     affected_ids INTEGER[];
 BEGIN
-    -- Update appointments that are past their scheduled time + 15 min tolerance
+    -- Sync appointments that should be marked as delayed in DB
+    -- Uses 5 minute tolerance (matching DELAY_TOLERANCE_MINUTES in Python)
     WITH updated AS (
         UPDATE appointment
         SET status = 'delayed'
         WHERE status = 'in_transit'
           AND scheduled_start_time IS NOT NULL
-          AND scheduled_start_time + INTERVAL '15 minutes' < NOW()
+          AND scheduled_start_time + INTERVAL '5 minutes' < NOW()
         RETURNING id
     )
     SELECT ARRAY_AGG(id) INTO affected_ids FROM updated;
@@ -33,60 +38,27 @@ $$ LANGUAGE plpgsql;
 
 
 -- ============================================================
--- 2. TRIGGER ON UPDATE - Prevent reverting delayed back to in_transit
+-- 2. PREVENT INVALID STATUS TRANSITIONS
+-- Only allow valid state transitions
 -- ============================================================
 
-CREATE OR REPLACE FUNCTION fn_check_appointment_delay_on_update()
+CREATE OR REPLACE FUNCTION fn_validate_status_transition()
 RETURNS TRIGGER AS $$
 BEGIN
-    -- If appointment is already delayed and time hasn't changed, keep it delayed
-    IF OLD.status = 'delayed' 
-       AND NEW.status = 'in_transit'
-       AND NEW.scheduled_start_time IS NOT NULL
-       AND NEW.scheduled_start_time + INTERVAL '15 minutes' < NOW() THEN
-        NEW.status := 'delayed';
-    END IF;
-    
-    -- Also check if currently in_transit should become delayed
-    IF NEW.status = 'in_transit' 
-       AND NEW.scheduled_start_time IS NOT NULL
-       AND NEW.scheduled_start_time + INTERVAL '15 minutes' < NOW() THEN
-        NEW.status := 'delayed';
+    -- Cannot revert from completed or canceled
+    IF OLD.status IN ('completed', 'canceled') AND NEW.status != OLD.status THEN
+        RAISE EXCEPTION 'Cannot change status from % to %', OLD.status, NEW.status;
     END IF;
     
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_appointment_delay_check ON appointment;
-CREATE TRIGGER trg_appointment_delay_check
+DROP TRIGGER IF EXISTS trg_validate_status_transition ON appointment;
+CREATE TRIGGER trg_validate_status_transition
     BEFORE UPDATE ON appointment
     FOR EACH ROW
-    EXECUTE FUNCTION fn_check_appointment_delay_on_update();
-
-
--- ============================================================
--- 3. ON INSERT - Check if new appointment should be delayed
--- ============================================================
-
-CREATE OR REPLACE FUNCTION fn_check_appointment_delay_on_insert()
-RETURNS TRIGGER AS $$
-BEGIN
-    -- If inserting an in_transit that's already past time, mark delayed
-    IF NEW.status = 'in_transit' 
-       AND NEW.scheduled_start_time IS NOT NULL
-       AND NEW.scheduled_start_time + INTERVAL '15 minutes' < NOW() THEN
-        NEW.status := 'delayed';
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_appointment_delay_insert ON appointment;
-CREATE TRIGGER trg_appointment_delay_insert
-    BEFORE INSERT ON appointment
-    FOR EACH ROW
-    EXECUTE FUNCTION fn_check_appointment_delay_on_insert();
+    EXECUTE FUNCTION fn_validate_status_transition();
 
 
 -- ============================================================
@@ -315,17 +287,23 @@ CREATE TRIGGER trg_driver_created_at
 -- ============================================================
 -- USAGE NOTES:
 -- ============================================================
--- To run the scheduled update (call every 5 minutes via cron):
---   SELECT * FROM fn_update_delayed_appointments();
+-- 
+-- DELAYED STATUS:
+-- The 'delayed' status is now computed dynamically in Python using
+-- the Appointment.computed_status property. This provides real-time
+-- status without relying on cron jobs or triggers.
 --
--- Example with pg_cron (if installed):
---   SELECT cron.schedule('update-delayed-appointments', '*/5 * * * *', 
---     'SELECT fn_update_delayed_appointments()');
+-- For analytics/reporting, you can optionally call:
+--   SELECT * FROM fn_sync_delayed_appointments();
+-- This syncs the computed status to the DB for historical queries.
 --
--- Or call from Python with APScheduler or similar
+-- ARRIVAL ID:
+-- Auto-generated as PRT-XXXX on appointment insert
 --
--- New triggers:
---   - Arrival ID auto-generated as PRT-XXXX
---   - Alerts automatically linked to shift history
---   - Timestamps auto-set for booking, worker, driver
+-- VISIT COMPLETION:
+-- Setting out_time on visit auto-completes both visit and appointment
+--
+-- ALERTS:
+-- Automatically linked to shift history when created with visit_id
+--
 -- ============================================================

@@ -280,10 +280,22 @@ class BookingCreate(BookingBase):
     reference: str
 
 
+# Forward declaration for CargoInBooking
+class CargoInBooking(BaseModel):
+    """Cargo model without booking back-reference (used inside Booking.cargos to avoid cyclic serialization)."""
+    booking_reference: str
+    quantity: Decimal
+    state: PhysicalStateEnum
+    description: Optional[str] = None
+    id: int
+
+    model_config = {"from_attributes": True}
+
+
 class Booking(BookingBase):
     reference: str
     created_at: Optional[datetime] = None
-    cargos: List["Cargo"] = []
+    cargos: List[CargoInBooking] = []
 
     model_config = {"from_attributes": True}
 
