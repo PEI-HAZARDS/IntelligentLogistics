@@ -98,6 +98,10 @@ class AgentB:
         # Best crop so far
         self.best_crop = None
         self.best_confidence = 0.0
+        
+        # Store all candidate crops for later selection based on final text similarity
+        # Each entry: {"crop": np.array, "text": str, "confidence": float}
+        self.candidate_crops = []
 
         self.crop_storage = CropStorage(MINIO_CONF, BUCKET_NAME)
         self.crop_fails = CropStorage(MINIO_CONF, "failed-crops")
@@ -129,6 +133,7 @@ class AgentB:
         self.consensus_reached = False
         self.best_crop = None
         self.best_confidence = 0.0
+        self.candidate_crops = []  # Reset candidate crops
         self.frames_processed = 0
         self.length_counter = {}
         logger.debug("[AgentB] Consensus state reset.")
@@ -307,10 +312,14 @@ class AgentB:
                     logger.info(
                         f"[AgentB] OCR: '{text}' (conf={ocr_conf:.2f})")
 
-                    # Update best crop
-                    if ocr_conf > self.best_confidence:
-                        self.best_crop = crop
-                        self.best_confidence = ocr_conf
+                    # Store candidate crop with its text and confidence
+                    text_normalized = text.upper().replace("-", "")
+                    self.candidate_crops.append({
+                        "crop": crop.copy(),
+                        "text": text_normalized,
+                        "confidence": ocr_conf
+                    })
+                    logger.debug(f"[AgentB] Added candidate crop: '{text_normalized}' (conf={ocr_conf:.2f})")
 
                     # Add to consensus
                     self._add_to_consensus(text, ocr_conf)
@@ -320,7 +329,9 @@ class AgentB:
                         final_text = self._build_final_text()
                         logger.info(
                             f"[AgentB] Full consensus achieved: '{final_text}'")
-                        return final_text, 1.0, crop
+                        # Select best crop based on similarity to final text
+                        best_crop = self._select_best_crop(final_text)
+                        return final_text, 1.0, best_crop
 
                 except Exception as e:
                     logger.exception(f"[AgentB] OCR failure: {e}")
@@ -441,6 +452,75 @@ class AgentB:
 
         return final_text
 
+    def _levenshtein_distance(self, s1: str, s2: str) -> int:
+        """Calculate Levenshtein (edit) distance between two strings."""
+        if len(s1) < len(s2):
+            return self._levenshtein_distance(s2, s1)
+        
+        if len(s2) == 0:
+            return len(s1)
+        
+        previous_row = range(len(s2) + 1)
+        for i, c1 in enumerate(s1):
+            current_row = [i + 1]
+            for j, c2 in enumerate(s2):
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + (c1 != c2)
+                current_row.append(min(insertions, deletions, substitutions))
+            previous_row = current_row
+        
+        return previous_row[-1]
+
+    def _select_best_crop(self, final_text: str):
+        """
+        Selects the best crop based on:
+        1. Similarity to final consensus text (lower Levenshtein distance is better)
+        2. OCR confidence as tiebreaker
+        
+        Returns the crop image or None.
+        """
+        if not self.candidate_crops:
+            logger.warning("[AgentB] No candidate crops available")
+            return None
+        
+        if not final_text:
+            # Fallback to highest confidence if no final text
+            best = max(self.candidate_crops, key=lambda x: x["confidence"])
+            logger.debug(f"[AgentB] No final text, using highest confidence crop: '{best['text']}'")
+            return best["crop"]
+        
+        # Calculate scores for each candidate
+        scored_crops = []
+        for candidate in self.candidate_crops:
+            distance = self._levenshtein_distance(candidate["text"], final_text)
+            # Normalize distance (0 = exact match, higher = worse)
+            max_len = max(len(candidate["text"]), len(final_text), 1)
+            similarity = 1 - (distance / max_len)
+            scored_crops.append({
+                "crop": candidate["crop"],
+                "text": candidate["text"],
+                "confidence": candidate["confidence"],
+                "distance": distance,
+                "similarity": similarity
+            })
+        
+        # Sort by similarity (descending), then confidence (descending)
+        scored_crops.sort(key=lambda x: (x["similarity"], x["confidence"]), reverse=True)
+        
+        best = scored_crops[0]
+        logger.info(
+            f"[AgentB] Selected best crop: '{best['text']}' "
+            f"(similarity={best['similarity']:.2f}, distance={best['distance']}, conf={best['confidence']:.2f}) "
+            f"for final text '{final_text}'"
+        )
+        
+        # Store for later reference
+        self.best_crop = best["crop"]
+        self.best_confidence = best["confidence"]
+        
+        return best["crop"]
+
 
     def _get_best_partial_result(self):
         """
@@ -477,10 +557,13 @@ class AgentB:
         # Maximum 0.95 for partial result
         confidence = min(confidence, 0.95)
 
+        # Select best crop based on similarity to partial text
+        best_crop = self._select_best_crop(partial_text)
+
         logger.info(
             f"[AgentB] Partial result: '{partial_text}' ({decided_count}/{total_positions} decided, conf={confidence:.2f})")
 
-        return partial_text, confidence, self.best_crop
+        return partial_text, confidence, best_crop
 
     def _delivery_callback(self, err: Optional[KafkaError], msg) -> None:
         """
