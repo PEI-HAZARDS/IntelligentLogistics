@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Set
@@ -80,7 +81,7 @@ def create_consumer():
     """Create Kafka consumer for all topics."""
     consumer = Consumer({
         "bootstrap.servers": KAFKA_BOOTSTRAP,
-        "group.id": "kafka-dashboard-consumer",
+        "group.id": f"kafka-dashboard-consumer-{uuid.uuid4()}",
         "auto.offset.reset": "latest",
         "enable.auto.commit": True,
     })
@@ -114,11 +115,11 @@ async def kafka_consumer_loop():
             except json.JSONDecodeError:
                 data = {"raw": msg.value().decode("utf-8")}
             
-            # Extract truck_id from headers
+            # Extract truck_id from headers (check both keys for compatibility)
             truck_id = None
             headers = msg.headers() or []
             for key, value in headers:
-                if key == "truckId" and value:
+                if key in ("truckId", "truck_id") and value:
                     truck_id = value.decode() if isinstance(value, bytes) else str(value)
                     break
             
@@ -136,6 +137,7 @@ async def kafka_consumer_loop():
                 "data": data,
             }
             
+            logger.info(f"[DEBUG] Processing msg topic={topic} truckId={truck_id}")
             logger.info(f"Broadcasting: {config['name']} - truckId={dashboard_msg['truckId']}")
             await broadcast(dashboard_msg)
             
