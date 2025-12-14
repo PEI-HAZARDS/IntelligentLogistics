@@ -15,6 +15,7 @@ async def manual_review(
     appointment_id: int = Path(..., description="Appointment ID"),
     decision: str = Query(..., description="Decision: approved, rejected"),
     notes: Optional[str] = Query(None, description="Operator notes"),
+    gate_id: Optional[int] = Query(None, description="Gate ID for visit creation"),
 ):
     """
     Endpoint for operator manual review.
@@ -22,14 +23,13 @@ async def manual_review(
     """
     path = f"/decisions/manual-review/{appointment_id}"
     
-    # DM expects decision and notes as query params in the URL?
-    # Checking Data Module routes/decisions.py:
-    # manual_review(..., decision: str = Query(...), notes: str = Query(...))
-    
     params = {
         "decision": decision
     }
     if notes:
         params["notes"] = notes
+    if gate_id:
+        params["gate_id"] = gate_id
 
     return await internal_client.post(path, params=params)
+

@@ -18,7 +18,7 @@ delivery_status_enum = SEnum('not_started', 'unloading', 'completed', name='deli
 physical_state_enum = SEnum('liquid', 'solid', 'gaseous', 'hybrid', name='physical_state')
 access_level_enum = SEnum('admin', 'basic', name='access_level')
 operational_status_enum = SEnum('maintenance', 'operational', 'closed', name='operational_status')
-appointment_status_enum = SEnum('in_transit', 'canceled', 'delayed', 'completed', name='appointment_status')
+appointment_status_enum = SEnum('in_transit', 'in_process', 'canceled', 'delayed', 'completed', name='appointment_status')
 type_alert_enum = SEnum('generic', 'safety', 'problem', 'operational', name='type_alert')
 direction_enum = SEnum('inbound', 'outbound', name='direction')
 

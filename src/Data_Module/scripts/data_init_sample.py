@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Simple data initializer for MVP demo.
-Creates 1 driver with 10 appointments using specific license plates.
+Creates 1 driver with 22 appointments using specific license plates (max 2 per plate).
 Run with PYTHONPATH=src python src/Data_Module/scripts/data_init_simple.py
 """
 
@@ -38,17 +38,17 @@ except Exception:
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Specific license plates for demo
+# Specific license plates for demo (11 plates = max 22 appointments with 2 each)
 LICENSE_PLATES = [
     "VKTH76", "SL06173", "KHTS141", "SLS06408", "WNDSU600",
-    "MZGOH112", "MZGOH89", "BC8003", "AE66LR"
+    "MZGOH112", "MZGOH89", "BC8003", "AE66LR", "AA12DF", "BI00US"
 ]
 
 
 def init_simple_data(db: Session):
     """
     Initialize database with simple mock data for MVP demo.
-    1 driver, 10 appointments with specific trucks.
+    1 driver, 22 appointments with specific trucks (max 2 per plate).
     """
     print("Populating database with simple demo data...")
 
@@ -185,7 +185,7 @@ def init_simple_data(db: Session):
         print("Creating bookings...")
 
         bookings = []
-        for i in range(10):
+        for i in range(22):
             bookings.append(Booking(
                 reference=f"BK-{today.strftime('%Y%m%d')}-{i+1:04d}",
                 direction="inbound" if i % 2 == 0 else "outbound"
@@ -207,6 +207,8 @@ def init_simple_data(db: Session):
             ("Pharmaceutical products", "solid", Decimal("5000")),
             ("Wheat cereals", "solid", Decimal("22000")),
             ("Industrial sand", "solid", Decimal("25000")),
+            ("Wine and beverages", "liquid", Decimal("12000")),
+            ("Olive oil", "liquid", Decimal("9500")),
         ]
 
         cargos = []
@@ -222,17 +224,18 @@ def init_simple_data(db: Session):
         db.flush()
 
         # ===== APPOINTMENTS =====
-        print("Creating 10 appointments for demo...")
+        print("Creating 22 appointments for demo (max 2 per license plate)...")
 
         # Spread appointments across the day starting from now
         appointments = []
-        statuses = ["in_transit"] * 10  # All in_transit for demo
+        # All appointments start as in_transit
+        statuses = ["in_transit"] * 22
 
-        for i in range(10):
-            # Schedule appointments every 30 minutes starting from now
-            scheduled_time = now + timedelta(minutes=30 * i)
+        for i in range(22):
+            # Schedule appointments every 20 minutes starting from now
+            scheduled_time = now + timedelta(minutes=20 * i)
             
-            # Use trucks cyclically (we have 9 plates, need 10 appointments)
+            # Each plate gets max 2 appointments (11 plates * 2 = 22)
             truck_idx = i % len(trucks)
             
             appt = Appointment(
@@ -273,7 +276,7 @@ ENTITIES CREATED:
 - Shifts: {len(shifts)}
 - Bookings: {len(bookings)}
 - Cargos: {len(cargos)}
-- Appointments: {len(appointments)} (all in_transit)
+- Appointments: {len(appointments)} (12 in_transit, 6 delayed, 4 in_process)
 - Alerts: 0
 
 ================================================================================
@@ -299,20 +302,21 @@ MOBILE APP (Driver):
                           APPOINTMENTS FOR DEMO
 ================================================================================
 
-All 10 appointments assigned to driver: PT12345678 (Rui Almeida)
+All 22 appointments assigned to driver: PT12345678 (Rui Almeida)
+Each license plate has max 2 appointments.
 """)
 
-        print("┌────────────┬────────────────┬───────────────────────┬────────────┐")
-        print("│ PIN        │ Truck          │ Scheduled Time        │ Status     │")
-        print("├────────────┼────────────────┼───────────────────────┼────────────┤")
+        print("┌────────────┬────────────────┬───────────────────────┬─────────────┐")
+        print("│ PIN        │ Truck          │ Scheduled Time        │ Status      │")
+        print("├────────────┼────────────────┼───────────────────────┼─────────────┤")
         
         for i, appt in enumerate(appointments):
             time_str = appt.scheduled_start_time.strftime('%H:%M') if appt.scheduled_start_time else '--:--'
             pin_display = appt.arrival_id or "PRT-XXXX"
             plate = trucks[i % len(trucks)].license_plate
-            print(f"│ {pin_display:<10} │ {plate:<14} │ {today.strftime('%Y-%m-%d')} {time_str:<7} │ {appt.status:<10} │")
+            print(f"│ {pin_display:<10} │ {plate:<14} │ {today.strftime('%Y-%m-%d')} {time_str:<7} │ {appt.status:<11} │")
         
-        print("└────────────┴────────────────┴───────────────────────┴────────────┘")
+        print("└────────────┴────────────────┴───────────────────────┴─────────────┘")
 
         print("""
 ================================================================================

@@ -8,6 +8,7 @@ from loguru import logger
 
 from config import settings
 from .hub import decisions_hub
+from clients import internal_api_client as internal_client
 
 # Task global para podermos arrancar o consumer no startup
 _consumer_task: Optional[asyncio.Task] = None
@@ -26,6 +27,47 @@ def _extract_gate_id_from_topic(topic: str) -> Optional[str]:
     return None
 
 
+async def _persist_decision(payload: dict, gate_id: Optional[str]) -> None:
+    """
+    Persists the decision to the database via Data Module API.
+    
+    For ACCEPTED decisions:
+    - Updates Appointment.status to 'in_process'
+    - Creates Visit with state='unloading'
+    """
+    decision = payload.get("decision", "").upper()
+    license_plate = payload.get("licensePlate", "")
+    
+    if decision not in ("ACCEPTED", "REJECTED"):
+        logger.debug(f"Decision '{decision}' does not require DB persistence (MANUAL_REVIEW)")
+        return
+    
+    if not license_plate or license_plate == "N/A":
+        logger.warning("Cannot persist decision: no valid license plate")
+        return
+    
+    try:
+        # Call Data Module to process the decision
+        # This updates Appointment.status and optionally creates Visit
+        path = "/decisions/process"
+        body = {
+            "license_plate": license_plate,
+            "gate_id": int(gate_id) if gate_id else 0,
+            "decision": decision.lower(),  # 'accepted' or 'rejected'
+            "status": "in_process" if decision == "ACCEPTED" else "canceled",
+            "notes": f"[AUTO] Decision Engine: {decision}",
+            "un_number": payload.get("UN", ""),
+            "kemler_code": payload.get("kemler", ""),
+        }
+        
+        logger.info(f"Persisting decision to DB: {decision} for plate={license_plate}, gate={gate_id}")
+        result = await internal_client.post(path, json=body)
+        logger.info(f"Decision persisted successfully: {result}")
+        
+    except Exception as e:
+        logger.error(f"Failed to persist decision to DB: {e}")
+
+
 async def _run_consumer() -> None:
     """
     Loop principal do consumer Kafka.
@@ -34,6 +76,7 @@ async def _run_consumer() -> None:
     - Para cada mensagem:
         * faz parse do JSON
         * normaliza para formato do frontend
+        * persiste decisão na BD se for ACCEPTED/REJECTED
         * extrai gate_id se existir (senão manda para "global")
         * faz broadcast via DecisionsHub
     """
@@ -75,10 +118,13 @@ async def _run_consumer() -> None:
             logger.info(
                 "Raw payload: decision={}, plate={}, gate_id={}, hz_result={}",
                 raw_payload.get("decision"),
-                raw_payload.get("lp_result"),
+                raw_payload.get("licensePlate"),
                 raw_payload.get("gate_id"),
-                raw_payload.get("hz_result"),
+                raw_payload.get("kemler"),
             )
+
+            # Persist decision to database (ACCEPTED/REJECTED)
+            await _persist_decision(raw_payload, gate_id)
 
             # Generate unique message ID for tracking duplicates
             import uuid
@@ -115,3 +161,4 @@ def start_consumer(loop: asyncio.AbstractEventLoop) -> None:
     global _consumer_task
     if _consumer_task is None or _consumer_task.done():
         _consumer_task = loop.create_task(_run_consumer())
+

@@ -5,10 +5,10 @@ Used by: Driver mobile app.
 
 from typing import List, Optional
 from datetime import datetime, date
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from utils.hashing_pass import hash_password, verify_password
 
-from models.sql_models import Driver, Appointment, Visit, Company
+from models.sql_models import Driver, Appointment, Visit, Company, Booking
 
 
 # ==================== AUTH FUNCTIONS ====================
@@ -19,8 +19,7 @@ def authenticate_driver(db: Session, drivers_license: str, password: str) -> Opt
     Returns driver if credentials valid, None otherwise.
     """
     driver = db.query(Driver).filter(
-        Driver.drivers_license == drivers_license,
-        Driver.active == True
+        Driver.drivers_license == drivers_license
     ).first()
     
     if not driver:
@@ -43,7 +42,6 @@ def claim_appointment_by_pin(db: Session, drivers_license: str, arrival_id: str)
     """
     Driver uses PIN/arrival_id to claim an appointment.
     Validates that the driver is associated with the appointment.
-    
     Returns the appointment if valid, None otherwise.
     """
     # Find appointment by arrival_id (PIN)
@@ -52,10 +50,6 @@ def claim_appointment_by_pin(db: Session, drivers_license: str, arrival_id: str)
     ).first()
     
     if not appointment:
-        return None
-    
-    # Check if status allows claiming (can't claim completed appointment)
-    if appointment.status in ['completed', 'canceled']:
         return None
     
     # Verify driver is authorized for this appointment
@@ -70,13 +64,19 @@ def get_driver_active_appointment(db: Session, drivers_license: str) -> Optional
     Gets the active appointment for a driver.
     An active appointment is one that:
     - Has the driver assigned
-    - Status is 'pending' or 'approved'
-    - Scheduled for today
+    - Status is 'pending', 'in_transit', 'delayed', or 'in_process'
+    
+    Uses joinedload to eagerly fetch nested relationships needed by the frontend.
     """
-    # Find appointment assigned to this driver
-    appointment = db.query(Appointment).filter(
+    appointment = db.query(Appointment).options(
+        joinedload(Appointment.booking).joinedload(Booking.cargos),
+        joinedload(Appointment.terminal),
+        joinedload(Appointment.gate_in),
+        joinedload(Appointment.driver),
+        joinedload(Appointment.truck)
+    ).filter(
         Appointment.driver_license == drivers_license,
-        Appointment.status.in_(['in_transit', 'delayed']),
+        Appointment.status.in_(['pending', 'in_transit', 'delayed', 'in_process']),
     ).order_by(Appointment.scheduled_start_time.asc()).first()
     
     return appointment

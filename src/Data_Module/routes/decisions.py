@@ -219,20 +219,70 @@ def get_event(event_id: str = Path(...)):
 def manual_review(
     appointment_id: int = Path(..., description="Appointment ID"),
     decision: str = Query(..., description="Decision: approved, rejected"),
-    notes: Optional[str] = Query(None, description="Operator notes")
+    notes: Optional[str] = Query(None, description="Operator notes"),
+    gate_id: Optional[int] = Query(None, description="Gate ID for visit creation")
 ):
     """
     Endpoint for operator manual review.
     Used when Decision Engine cannot decide automatically.
+    
+    When approved:
+    - Updates Appointment.status to 'in_transit' (confirmed arrival)
+    - Creates Visit with state='unloading' if gate_id provided
+    
+    When rejected:
+    - Updates Appointment.status to 'canceled'
     """
+    from db.postgres import SessionLocal
+    from services.arrival_service import create_visit_for_appointment
+    from models.sql_models import ShiftType
+    from datetime import date
+    
+    # Map decision to appointment status
+    if decision == "approved":
+        new_status = "in_process"  # Truck at gate, being processed/unloading
+    else:
+        new_status = "canceled"
+    
+    # Process decision (updates Appointment)
     result = process_incoming_decision(
         license_plate="MANUAL",  # Manual review indicator
-        gate_id=0,
+        gate_id=gate_id or 0,
         appointment_id=appointment_id,
         decision=decision,
-        status="approved" if decision == "approved" else "canceled",
+        status=new_status,
         notes=f"[MANUAL REVIEW] {notes or ''}",
         extra_data={"manual_review": True}
     )
     
+    # If approved and gate_id provided, create Visit with 'unloading' state
+    if decision == "approved" and gate_id:
+        db = SessionLocal()
+        try:
+            # Determine current shift type based on time
+            from datetime import datetime
+            hour = datetime.now().hour
+            if 6 <= hour < 14:
+                shift_type = ShiftType.MORNING
+            elif 14 <= hour < 22:
+                shift_type = ShiftType.AFTERNOON
+            else:
+                shift_type = ShiftType.NIGHT
+            
+            visit = create_visit_for_appointment(
+                db,
+                appointment_id=appointment_id,
+                shift_gate_id=gate_id,
+                shift_type=shift_type,
+                shift_date=date.today()
+            )
+            if visit:
+                result["visit_created"] = True
+                result["visit_state"] = "unloading"
+        except Exception as e:
+            result["visit_error"] = str(e)
+        finally:
+            db.close()
+    
     return result
+

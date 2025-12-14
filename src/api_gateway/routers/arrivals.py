@@ -105,6 +105,21 @@ async def get_arrival_detail(
     return await internal_client.get(f"/arrivals/{appointment_id}")
 
 
+# -------------------------------
+# GET: /api/arrivals/query/license-plate/{license_plate}
+# NOTE: Must be before /arrivals/{gate_id}
+# -------------------------------
+@router.get("/arrivals/query/license-plate/{license_plate}")
+async def query_arrivals_by_license_plate(
+    license_plate: str = Path(..., description="License plate to search"),
+):
+    """
+    Query arrivals by license plate.
+    Proxy to GET /api/v1/arrivals/query/license-plate/{license_plate}
+    """
+    return await internal_client.get(f"/arrivals/query/license-plate/{license_plate}")
+
+
 # ===============================
 # DYNAMIC PATH ROUTES
 # (These catch-all routes must come LAST)
