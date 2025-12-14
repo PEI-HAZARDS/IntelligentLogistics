@@ -674,8 +674,8 @@ class AgentC:
                 parts = plate_text.split(" ")
                 logger.info(f"Parts: {parts}")
                 if len(parts) == 2:
-                    un = parts[0]
-                    kemler = parts[1]
+                    kemler = parts[0]
+                    un = parts[1]
                 else:
                     un = "N/A"
                     kemler = "N/A"
