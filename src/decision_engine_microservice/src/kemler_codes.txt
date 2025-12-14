@@ -12,7 +12,7 @@
 268|Toxic gas, corrosive
 28|Gas, corrosive
 285|Aerosols, corrosive, oxidizing
-30|30 Flammable liquid (flash-point between 23 °C and 60 °C, inclusive) or flammable liquid or solid in the molten state with a flash-point above 60 °C, heated to a temperature equal to or above its flash-point,
+30|Flammable liquid (flash-point between 23 °C and 60 °C, inclusive) or flammable liquid or solid in the molten state with a flash-point above 60 °C, heated to a temperature equal to or above its flash-point,
 or self-heating liquid
 323|Flammable liquid which reacts with water, emitting flammable gases
 X323|Flammable liquid which reacts dangerously with water, emitting flammable gases (water not to be used except by approval of experts)

@@ -20,7 +20,7 @@ def create_sample_decision(
     un_number: str = "1203",
     kemler_code: str = "33",
     decision: str = "ACCEPTED",
-    alerts: list = None,
+    alerts: list = ["Alert 1", "Alert 2"],
     route: dict = None,
     lp_crop_url: str = "https://static.vecteezy.com/system/resources/previews/030/486/333/non_2x/sporting-cp-club-logo-symbol-portugal-league-football-abstract-design-illustration-with-green-background-free-vector.jpg",
     hz_crop_url: str = "https://img.iol.pt/image/id/682a3de7d34ef72ee4462382/1024"
@@ -118,7 +118,7 @@ def main():
         "un_number": args.un,
         "kemler_code": args.kemler,
         "decision": args.decision,
-        "alerts": args.alerts or [],
+        "alerts": args.alerts or ["Sporting Clube de Portugal", "Sporting 6 - 0 AFS"],
     }
     if args.lp_crop_url is not None:
         kwargs["lp_crop_url"] = args.lp_crop_url
