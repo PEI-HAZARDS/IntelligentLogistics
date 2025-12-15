@@ -182,7 +182,7 @@ def init_simple_data(db: Session):
         print("🏭 Creating terminal...")
 
         terminal = Terminal(
-            name="Terminal Norte - Porto de Aveiro",
+            name="Terminal Norte",
             latitude=Decimal("40.6443"),
             longitude=Decimal("-8.6456"),
             hazmat_approved=True
