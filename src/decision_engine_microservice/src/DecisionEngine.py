@@ -350,6 +350,12 @@ class DecisionEngine:
                 alerts.append(f"Fuzzy match: detected '{license_plate}' matched to '{matched_appointment.get('license_plate')}' (distance: {distance})")
 
             logger.info(f"[DecisionEngine] Matched appointment ID: {matched_appointment.get('appointment_id')}, decision: {decision}")
+        
+        # Update appointment status in database (like manual review does)
+        if matched_appointment and decision in ["ACCEPTED", "REJECTED"]:
+            appointment_id = matched_appointment.get("appointment_id")
+            if appointment_id:
+                self._update_appointment_status(appointment_id, decision)
             
         # Prepare Decision Data
         returned_data = {
@@ -366,6 +372,31 @@ class DecisionEngine:
         }
 
         self._publish_decision(truck_id, returned_data)
+    
+    def _update_appointment_status(self, appointment_id: int, decision: str):
+        """Updates the appointment status via the Data Module API."""
+        # Map decision to status (same as manual review)
+        if decision == "ACCEPTED":
+            new_status = "in_process"  # Truck at gate, being processed
+        elif decision == "REJECTED":
+            new_status = "canceled"
+        else:
+            return  # Don't update for MANUAL_REVIEW
+        
+        url = f"{API_URL}/arrivals/{appointment_id}/status"
+        payload = {
+            "status": new_status,
+            "notes": f"[Decision Engine] Auto-{decision.lower()}"
+        }
+        
+        try:
+            response = requests.patch(url, json=payload, timeout=5)
+            if response.status_code == 200:
+                logger.info(f"[DecisionEngine] Updated appointment {appointment_id} status to '{new_status}'")
+            else:
+                logger.warning(f"[DecisionEngine] Failed to update appointment status: {response.status_code} - {response.text}")
+        except Exception as e:
+            logger.error(f"[DecisionEngine] Error updating appointment status: {e}")
 
     def _publish_decision(self, truck_id: str, decision_data: dict):
         """Publishes decision result to Kafka gate topic."""

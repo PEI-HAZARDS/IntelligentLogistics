@@ -271,13 +271,13 @@ def init_simple_data(db: Session):
 
             # Cargo (with hazmat for first 5)
             desc, state, weight, is_hazmat, un_code, kemler = CARGO_TYPES[i]
+            # Note: un_code and kemler_code are not stored in Cargo model,
+            # hazmat info is tracked via description and appointment notes
             cargo = Cargo(
                 booking_reference=booking.reference,
                 quantity=Decimal(str(weight)),
                 state=state,
-                description=desc,
-                un_code=un_code,
-                kemler_code=kemler
+                description=desc if not is_hazmat else f"{desc} [UN:{un_code}, Kemler:{kemler}]"
             )
             db.add(cargo)
             db.flush()
