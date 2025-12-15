@@ -41,8 +41,8 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 LICENSE_PLATES = [
     # Your existing plates (11 plates)
     "VKTH76",     # 1 - HAZMAT TEST (use for hazmat demo)
-    "SL06173",    # 2 - HAZMAT
-    "KHTS141",    # 3 - HAZMAT
+    "SLS06173",    # 2 - HAZMAT
+    "KHDS141",    # 3 - HAZMAT
     "SLS06408",   # 4 - HAZMAT
     "WNDSU600",   # 5 - HAZMAT
     "MZGOH112",   # 6
@@ -151,33 +151,17 @@ def init_simple_data(db: Session):
         db.add_all(companies)
         db.flush()
 
-        # ===== DRIVERS =====
-        print("🚚 Creating drivers...")
+        # ===== DRIVER =====
+        print("🚚 Creating driver...")
 
-        drivers = [
-            Driver(
-                drivers_license="PT12345678",
-                name="Rui Almeida",
-                company_nif=companies[0].nif,
-                password_hash=pwd_context.hash("driver123"),
-                active=True
-            ),
-            Driver(
-                drivers_license="ES87654321",
-                name="Carlos García",
-                company_nif=companies[1].nif,
-                password_hash=pwd_context.hash("driver123"),
-                active=True
-            ),
-            Driver(
-                drivers_license="DE11223344",
-                name="Hans Müller",
-                company_nif=companies[2].nif,
-                password_hash=pwd_context.hash("driver123"),
-                active=True
-            ),
-        ]
-        db.add_all(drivers)
+        driver = Driver(
+            drivers_license="PT12345678",
+            name="Rui Almeida",
+            company_nif=companies[0].nif,
+            password_hash=pwd_context.hash("driver123"),
+            active=True
+        )
+        db.add(driver)
         db.flush()
 
         # ===== TRUCKS (20 unique plates) =====
@@ -282,8 +266,7 @@ def init_simple_data(db: Session):
             db.add(cargo)
             db.flush()
 
-            # Distribute drivers among appointments
-            driver_idx = i % len(drivers)
+            # All appointments use the same driver
             
             # Schedule appointments: first 10 in next 2 hours, rest spread through day
             if i < 10:
@@ -296,7 +279,7 @@ def init_simple_data(db: Session):
             # Appointment
             appt = Appointment(
                 booking_reference=booking.reference,
-                driver_license=drivers[driver_idx].drivers_license,
+                driver_license=driver.drivers_license,
                 truck_license_plate=trucks[i].license_plate,
                 terminal_id=terminal.id,
                 gate_in_id=gate_in.id,
@@ -331,13 +314,11 @@ def init_simple_data(db: Session):
 │  │ joao.silva@porto.pt     │ password123 │ Manager    │             │
 │  └─────────────────────────┴─────────────┴────────────┘             │
 │                                                                      │
-│  MOBILE APP (Drivers):                                               │
+│  MOBILE APP (Driver):                                                │
 │  ┌──────────────────┬─────────────────┬─────────────┐               │
 │  │ License          │ Name            │ Password    │               │
 │  ├──────────────────┼─────────────────┼─────────────┤               │
 │  │ PT12345678       │ Rui Almeida     │ driver123   │               │
-│  │ ES87654321       │ Carlos García   │ driver123   │               │
-│  │ DE11223344       │ Hans Müller     │ driver123   │               │
 │  └──────────────────┴─────────────────┴─────────────┘               │
 └─────────────────────────────────────────────────────────────────────┘
 """)
