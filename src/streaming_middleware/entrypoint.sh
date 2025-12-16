@@ -27,9 +27,19 @@ mkdir -p /tmp/hls/low /tmp/hls/high /tmp/dash/low /tmp/dash/high
 chmod -R 777 /tmp/hls /tmp/dash
 echo "[Entrypoint] ✓ Directories created"
 
-# Iniciar script de ingest em background
-echo "[Entrypoint] Starting stream ingestion in background..."
-/usr/local/bin/ingest_streams.sh &
+# Escolher script de ingest baseado em STREAM_MODE
+STREAM_MODE="${STREAM_MODE:-camera}"
+echo "[Entrypoint] ===================================="
+echo "[Entrypoint] STREAM MODE: ${STREAM_MODE}"
+echo "[Entrypoint] ===================================="
+
+if [ "$STREAM_MODE" = "test" ]; then
+    echo "[Entrypoint] Starting TEST VIDEO ingestion..."
+    /usr/local/bin/ingest_test_video.sh &
+else
+    echo "[Entrypoint] Starting CAMERA (RTSP) ingestion..."
+    /usr/local/bin/ingest_streams.sh &
+fi
 INGEST_PID=$!
 echo "[Entrypoint] ✓ Ingest started (PID: $INGEST_PID)"
 

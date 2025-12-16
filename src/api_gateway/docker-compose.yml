@@ -1,0 +1,23 @@
+services:
+  api-gateway:
+    build: .
+    container_name: api_gateway
+    restart: unless-stopped
+
+    environment:
+      # Backend Internal API (Data Module on separate VM)
+      DATA_MODULE_URL: "http://10.255.32.82:8080"
+
+      # Streams (Nginx-RTMP / HLS) - on separate VM
+      STREAM_BASE_URL: "http://10.255.32.35:8080"
+
+      # Kafka (decisions realtime) - on separate VM
+      KAFKA_BOOTSTRAP_SERVERS: "10.255.32.143:9092"
+      KAFKA_DECISION_TOPIC: "decision-results-1"
+      KAFKA_CONSUMER_GROUP: "api-gateway-decisions"
+
+      ENV: "production"
+
+    ports:
+      - "8000:8000"
+

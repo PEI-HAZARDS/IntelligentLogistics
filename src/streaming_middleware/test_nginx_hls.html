@@ -97,7 +97,7 @@
   </div>
 
   <script>
-    const BASE_URL = window.location.origin;
+    const BASE_URL = "http://10.255.32.35:8080";
     const URLS = {
       low: `${BASE_URL}/hls/low/gate01/index.m3u8`,
       high: `${BASE_URL}/hls/high/gate01/index.m3u8`
@@ -110,7 +110,7 @@
       const status = document.getElementById('status-low');
       
       document.getElementById('url-low').textContent = URLS.low;
-      status.textContent = '⏳ Connecting...';
+      status.textContent = 'Connecting...';
       
       if (Hls.isSupported()) {
         hlsLow = new Hls({

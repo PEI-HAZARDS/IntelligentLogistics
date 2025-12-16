@@ -6,21 +6,27 @@ services:
       - "1935:1935"  # RTMP - EXPOSTO para rede externa
       - "8080:8080"  # HTTP/HLS - EXPOSTO para frontend
     environment:
+      # ===========================================
+      # STREAM MODE: "camera" (default) ou "test"
+      # ===========================================
+      - STREAM_MODE=camera  # Mudar para "test" para usar vídeo de teste
+      
+      # Configuração da câmara (usado quando STREAM_MODE=camera)
       - CAMERA_IP=10.255.35.86
       - RTSP_PORT=554
       - STREAM_LOW_PATH=stream2
       - STREAM_HIGH_PATH=stream1
-      - GATE_ID=gate01
+      - GATE_ID=gate1
+      
+      # Configuração do vídeo de teste (usado quando STREAM_MODE=test)
+      - TEST_VIDEO_PATH=/videos/test_video.mp4
+    volumes:
+      # Caminho absoluto na VM para os vídeos de teste
+      - /home/pei_user/streaming_middleware/videos:/videos:ro
     restart: unless-stopped
-    networks:
-      - host  # Usar rede host para acesso externo simplificado
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
-
-networks:
-  host:
-    external: true
