@@ -1,0 +1,428 @@
+/**
+ * IntelligentLogistics - Jenkins Smart Auto-Deploy Pipeline
+ * 
+ * This pipeline automatically detects which services have changed
+ * and deploys only those services.
+ * 
+ * Auto Mode: Detects changed files and deploys selectively
+ * Manual Mode: Uses parameters to choose what to deploy
+ * 
+ * Requires: Jenkins running on a VM inside the UA network
+ * 
+ * Jenkins Credentials:
+ * - ssh-vm-key: SSH key for VM access
+ * - minio-credentials: MinIO username/password
+ */
+
+pipeline {
+    agent any
+    
+    parameters {
+        choice(
+            name: 'DEPLOY_MODE',
+            choices: ['auto', 'manual'],
+            description: 'auto = detect changes automatically, manual = choose service'
+        )
+        
+        choice(
+            name: 'SERVICE',
+            choices: ['all', 'agentA', 'agentB', 'agentC', 'kafka', 'data-module', 'decision-engine', 'api-gateway', 'ui'],
+            description: 'Service to deploy (only used in manual mode)'
+        )
+        
+        string(
+            name: 'BRANCH',
+            defaultValue: 'main',
+            description: 'Git branch'
+        )
+    }
+    
+    environment {
+        // VM IPs
+        AGENTA_IP = '10.255.32.134'
+        AGENTB_IP = '10.255.32.32'
+        AGENTC_IP = '10.255.32.128'
+        KAFKA_IP = '10.255.32.143'
+        DATA_MODULE_IP = '10.255.32.82'
+        DECISION_ENGINE_IP = '10.255.32.104'
+        API_GATEWAY_IP = '10.255.32.100'
+        UI_IP = '10.255.32.108'
+        
+        // Repositories
+        BACKEND_REPO = 'https://github.com/PEI-HAZARDS/IntelligentLogistics.git'
+        APP_REPO = 'https://github.com/PEI-HAZARDS/IntelligentLogistics_APP.git'
+        
+        // Deploy flags (set dynamically)
+        DEPLOY_AGENTA = 'false'
+        DEPLOY_AGENTB = 'false'
+        DEPLOY_AGENTC = 'false'
+        DEPLOY_KAFKA = 'false'
+        DEPLOY_DATA_MODULE = 'false'
+        DEPLOY_DECISION_ENGINE = 'false'
+        DEPLOY_API_GATEWAY = 'false'
+        DEPLOY_UI = 'false'
+    }
+    
+    stages {
+        stage('Check Network') {
+            steps {
+                script {
+                    echo "🔍 Checking network connectivity..."
+                    
+                    def result = sh(
+                        script: "ping -c 1 -W 5 ${DATA_MODULE_IP} > /dev/null 2>&1",
+                        returnStatus: true
+                    )
+                    
+                    if (result != 0) {
+                        error "❌ No connectivity to VM network! Check network configuration."
+                    }
+                    
+                    echo "✅ Network OK - connectivity verified"
+                }
+            }
+        }
+        
+        stage('Checkout') {
+            steps {
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: "*/${params.BRANCH}"]],
+                    userRemoteConfigs: [[url: BACKEND_REPO]]
+                ])
+            }
+        }
+        
+        stage('Detect Changes') {
+            steps {
+                script {
+                    if (params.DEPLOY_MODE == 'manual') {
+                        echo "📋 MANUAL mode - Selected service: ${params.SERVICE}"
+                        
+                        if (params.SERVICE == 'all') {
+                            env.DEPLOY_AGENTA = 'true'
+                            env.DEPLOY_AGENTB = 'true'
+                            env.DEPLOY_AGENTC = 'true'
+                            env.DEPLOY_KAFKA = 'true'
+                            env.DEPLOY_DATA_MODULE = 'true'
+                            env.DEPLOY_DECISION_ENGINE = 'true'
+                            env.DEPLOY_API_GATEWAY = 'true'
+                            env.DEPLOY_UI = 'true'
+                        } else {
+                            env."DEPLOY_${params.SERVICE.toUpperCase().replace('-', '_')}" = 'true'
+                        }
+                    } else {
+                        echo "🔍 AUTO mode - Detecting changed files..."
+                        
+                        // Get list of changed files
+                        def changedFiles = sh(
+                            script: "git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only HEAD",
+                            returnStdout: true
+                        ).trim()
+                        
+                        echo "Changed files:\n${changedFiles}"
+                        
+                        // Check each service
+                        if (changedFiles.contains('src/agentA_microservice/')) {
+                            env.DEPLOY_AGENTA = 'true'
+                            echo "✓ Agent A will be deployed"
+                        }
+                        if (changedFiles.contains('src/agentB_microservice/')) {
+                            env.DEPLOY_AGENTB = 'true'
+                            echo "✓ Agent B will be deployed"
+                        }
+                        if (changedFiles.contains('src/agentC_microservice/')) {
+                            env.DEPLOY_AGENTC = 'true'
+                            echo "✓ Agent C will be deployed"
+                        }
+                        if (changedFiles.contains('src/kafka/')) {
+                            env.DEPLOY_KAFKA = 'true'
+                            echo "✓ Kafka will be deployed"
+                        }
+                        if (changedFiles.contains('src/Data_Module/') || changedFiles.contains('src/object_storage/')) {
+                            env.DEPLOY_DATA_MODULE = 'true'
+                            echo "✓ Data Module + MinIO will be deployed"
+                        }
+                        if (changedFiles.contains('src/Decision_Engine/')) {
+                            env.DEPLOY_DECISION_ENGINE = 'true'
+                            echo "✓ Decision Engine will be deployed"
+                        }
+                        if (changedFiles.contains('src/API_Gateway/') || changedFiles.contains('src/nginx/')) {
+                            env.DEPLOY_API_GATEWAY = 'true'
+                            echo "✓ API Gateway + Nginx will be deployed"
+                        }
+                        // UI is from another repo, manual deploy or when workflow changes
+                        if (changedFiles.contains('src/UI/') || changedFiles.contains('src/frontend/')) {
+                            env.DEPLOY_UI = 'true'
+                            echo "✓ UI will be deployed"
+                        }
+                        
+                        // If no service was marked
+                        if (env.DEPLOY_AGENTA == 'false' && env.DEPLOY_AGENTB == 'false' && 
+                            env.DEPLOY_AGENTC == 'false' && env.DEPLOY_KAFKA == 'false' &&
+                            env.DEPLOY_DATA_MODULE == 'false' && env.DEPLOY_DECISION_ENGINE == 'false' &&
+                            env.DEPLOY_API_GATEWAY == 'false' && env.DEPLOY_UI == 'false') {
+                            echo "ℹ️ No service affected by changes. Nothing to do."
+                        }
+                    }
+                    
+                    echo """
+═══════════════════════════════════════════════════════
+   📊 Deploy Summary
+═══════════════════════════════════════════════════════
+   Agent A:         ${env.DEPLOY_AGENTA}
+   Agent B:         ${env.DEPLOY_AGENTB}
+   Agent C:         ${env.DEPLOY_AGENTC}
+   Kafka:           ${env.DEPLOY_KAFKA}
+   Data Module:     ${env.DEPLOY_DATA_MODULE}
+   Decision Engine: ${env.DEPLOY_DECISION_ENGINE}
+   API Gateway:     ${env.DEPLOY_API_GATEWAY}
+   UI:              ${env.DEPLOY_UI}
+═══════════════════════════════════════════════════════
+"""
+                }
+            }
+        }
+        
+        stage('Deploy Agent A') {
+            when { expression { return env.DEPLOY_AGENTA == 'true' } }
+            steps { script { deployService('agentA', AGENTA_IP, 'src/agentA_microservice/Dockerfile', 'agentA') } }
+        }
+        
+        stage('Deploy Agent B') {
+            when { expression { return env.DEPLOY_AGENTB == 'true' } }
+            steps { script { deployService('agentB', AGENTB_IP, 'src/agentB_microservice/Dockerfile', 'agentB') } }
+        }
+        
+        stage('Deploy Agent C') {
+            when { expression { return env.DEPLOY_AGENTC == 'true' } }
+            steps { script { deployService('agentC', AGENTC_IP, 'src/agentC_microservice/Dockerfile', 'agentC') } }
+        }
+        
+        stage('Deploy Kafka') {
+            when { expression { return env.DEPLOY_KAFKA == 'true' } }
+            steps { script { deployKafka(KAFKA_IP) } }
+        }
+        
+        stage('Deploy Data Module') {
+            when { expression { return env.DEPLOY_DATA_MODULE == 'true' } }
+            steps { script { deployDataModule(DATA_MODULE_IP) } }
+        }
+        
+        stage('Deploy Decision Engine') {
+            when { expression { return env.DEPLOY_DECISION_ENGINE == 'true' } }
+            steps { script { deployService('decision_engine', DECISION_ENGINE_IP, 'src/Decision_Engine/Dockerfile', 'decision_engine', '8001:8001') } }
+        }
+        
+        stage('Deploy API Gateway') {
+            when { expression { return env.DEPLOY_API_GATEWAY == 'true' } }
+            steps { script { deployApiGateway(API_GATEWAY_IP) } }
+        }
+        
+        stage('Deploy UI') {
+            when { expression { return env.DEPLOY_UI == 'true' } }
+            steps { script { deployUI(UI_IP) } }
+        }
+    }
+    
+    post {
+        success {
+            echo "✅ Pipeline concluído com sucesso!"
+        }
+        failure {
+            echo "❌ Pipeline falhou - ver logs acima"
+        }
+        always {
+            cleanWs()
+        }
+    }
+}
+
+// ============================================================================
+// Funções de Deploy
+// ============================================================================
+
+def deployService(String serviceName, String vmIp, String dockerfile, String containerName, String ports = '') {
+    echo "📦 Deploying ${serviceName} to ${vmIp}..."
+    
+    withCredentials([
+        sshUserPrivateKey(credentialsId: 'ssh-vm-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
+    ]) {
+        sh """
+            mkdir -p ~/.ssh
+            cp \$SSH_KEY ~/.ssh/deploy_key
+            chmod 600 ~/.ssh/deploy_key
+            
+            cat > ~/.ssh/config << EOF
+Host ${serviceName}-vm
+    HostName ${vmIp}
+    User \$SSH_USER
+    IdentityFile ~/.ssh/deploy_key
+    StrictHostKeyChecking no
+    UserKnownHostsFile=/dev/null
+EOF
+            
+            docker context create ${serviceName} --docker "host=ssh://${serviceName}-vm" 2>/dev/null || true
+            docker context use ${serviceName}
+            
+            docker build -t ${containerName}:latest -f ${dockerfile} .
+            
+            docker stop ${containerName} || true
+            docker rm ${containerName} || true
+            
+            docker run -d \\
+                --name ${containerName} \\
+                --restart unless-stopped \\
+                ${ports ? "-p ${ports}" : ''} \\
+                ${containerName}:latest
+            
+            echo "✅ ${serviceName} deployed"
+            docker context use default
+        """
+    }
+}
+
+def deployKafka(String vmIp) {
+    echo "📦 Deploying Kafka to ${vmIp}..."
+    
+    withCredentials([
+        sshUserPrivateKey(credentialsId: 'ssh-vm-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
+    ]) {
+        sh """
+            mkdir -p ~/.ssh
+            cp \$SSH_KEY ~/.ssh/deploy_key
+            chmod 600 ~/.ssh/deploy_key
+            
+            ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \$SSH_USER@${vmIp} << 'ENDSSH'
+                docker network create kafka-net 2>/dev/null || true
+                docker stop kafka kafka-ui zookeeper 2>/dev/null || true
+                docker rm kafka kafka-ui zookeeper 2>/dev/null || true
+                
+                docker run -d --name zookeeper --network kafka-net --restart unless-stopped \\
+                    -e ZOOKEEPER_CLIENT_PORT=2181 confluentinc/cp-zookeeper:latest
+                
+                sleep 10
+                
+                docker run -d --name kafka --network kafka-net --restart unless-stopped \\
+                    -p 9092:9092 \\
+                    -e KAFKA_BROKER_ID=1 \\
+                    -e KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181 \\
+                    -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${vmIp}:9092 \\
+                    -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \\
+                    confluentinc/cp-kafka:latest
+                
+                sleep 10
+                
+                docker run -d --name kafka-ui --network kafka-net --restart unless-stopped \\
+                    -p 8080:8080 \\
+                    -e KAFKA_CLUSTERS_0_NAME=local \\
+                    -e KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092 \\
+                    provectuslabs/kafka-ui:latest
+                
+                echo "✅ Kafka deployed"
+ENDSSH
+        """
+    }
+}
+
+def deployDataModule(String vmIp) {
+    echo "📦 Deploying Data Module + MinIO to ${vmIp}..."
+    
+    withCredentials([
+        sshUserPrivateKey(credentialsId: 'ssh-vm-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER'),
+        usernamePassword(credentialsId: 'minio-credentials', usernameVariable: 'MINIO_USER', passwordVariable: 'MINIO_PASS')
+    ]) {
+        sh """
+            mkdir -p ~/.ssh
+            cp \$SSH_KEY ~/.ssh/deploy_key
+            chmod 600 ~/.ssh/deploy_key
+            
+            ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \$SSH_USER@${vmIp} << ENDSSH
+                mkdir -p ~/minio/data
+                docker stop minio 2>/dev/null || true
+                docker rm minio 2>/dev/null || true
+                
+                docker run -d --name minio --restart unless-stopped \\
+                    -p 9000:9000 -p 9001:9001 \\
+                    -v ~/minio/data:/data \\
+                    -e "MINIO_ROOT_USER=${MINIO_USER}" \\
+                    -e "MINIO_ROOT_PASSWORD=${MINIO_PASS}" \\
+                    quay.io/minio/minio server /data --console-address ":9001"
+ENDSSH
+            
+            docker context create data_module --docker "host=ssh://\$SSH_USER@${vmIp}" 2>/dev/null || true
+            docker context use data_module
+            
+            docker build -t data_module:latest -f src/Data_Module/Dockerfile .
+            docker stop data_module 2>/dev/null || true
+            docker rm data_module 2>/dev/null || true
+            docker run -d --name data_module --restart unless-stopped -p 8000:8000 data_module:latest
+            
+            echo "✅ Data Module deployed"
+            docker context use default
+        """
+    }
+}
+
+def deployApiGateway(String vmIp) {
+    echo "📦 Deploying API Gateway + Nginx to ${vmIp}..."
+    
+    withCredentials([
+        sshUserPrivateKey(credentialsId: 'ssh-vm-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
+    ]) {
+        sh """
+            mkdir -p ~/.ssh
+            cp \$SSH_KEY ~/.ssh/deploy_key
+            chmod 600 ~/.ssh/deploy_key
+            
+            docker context create api_gateway --docker "host=ssh://\$SSH_USER@${vmIp}" 2>/dev/null || true
+            docker context use api_gateway
+            
+            docker stop nginx 2>/dev/null || true
+            docker rm nginx 2>/dev/null || true
+            docker run -d --name nginx --restart unless-stopped -p 80:80 -p 443:443 nginx:alpine
+            
+            docker build -t api_gateway:latest -f src/API_Gateway/Dockerfile .
+            docker stop api_gateway 2>/dev/null || true
+            docker rm api_gateway 2>/dev/null || true
+            docker run -d --name api_gateway --restart unless-stopped -p 8080:8080 api_gateway:latest
+            
+            echo "✅ API Gateway deployed"
+            docker context use default
+        """
+    }
+}
+
+def deployUI(String vmIp) {
+    echo "📦 Deploying UI to ${vmIp}..."
+    
+    withCredentials([
+        sshUserPrivateKey(credentialsId: 'ssh-vm-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
+    ]) {
+        dir('app') {
+            checkout([
+                $class: 'GitSCM',
+                branches: [[name: "*/${params.BRANCH}"]],
+                userRemoteConfigs: [[url: APP_REPO]]
+            ])
+        }
+        
+        sh """
+            mkdir -p ~/.ssh
+            cp \$SSH_KEY ~/.ssh/deploy_key
+            chmod 600 ~/.ssh/deploy_key
+            
+            docker context create ui --docker "host=ssh://\$SSH_USER@${vmIp}" 2>/dev/null || true
+            docker context use ui
+            
+            cd app
+            docker build -t ui_il:latest .
+            docker stop ui_il 2>/dev/null || true
+            docker rm ui_il 2>/dev/null || true
+            docker run -d --name ui_il --restart unless-stopped -p 3000:3000 ui_il:latest
+            
+            echo "✅ UI deployed"
+            docker context use default
+        """
+    }
+}
