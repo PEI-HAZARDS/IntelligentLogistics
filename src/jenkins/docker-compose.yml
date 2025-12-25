@@ -1,0 +1,33 @@
+services:
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: jenkins
+    restart: unless-stopped
+    
+    # Run as root to avoid permission issues with Docker socket
+    user: root
+    
+    ports:
+      - "8089:8080"      # Jenkins UI
+      - "50000:50000"    # Agent connections
+    
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock  # Allow Jenkins to run Docker
+    
+    environment:
+      - JAVA_OPTS=-Djenkins.install.runSetupWizard=true
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/login"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  jenkins_home:
+    driver: local
+
+# After starting, get initial password with:
+# docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
