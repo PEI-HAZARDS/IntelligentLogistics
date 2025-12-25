@@ -69,8 +69,11 @@ pipeline {
                 script {
                     echo "🔍 Checking network connectivity..."
                     
+                    // Use timeout with bash TCP check instead of ping (not available in Jenkins container)
                     def result = sh(
-                        script: "ping -c 1 -W 5 ${DATA_MODULE_IP} > /dev/null 2>&1",
+                        script: """
+                            timeout 5 bash -c 'cat < /dev/null > /dev/tcp/${DATA_MODULE_IP}/22' 2>/dev/null
+                        """,
                         returnStatus: true
                     )
                     
@@ -78,7 +81,7 @@ pipeline {
                         error "❌ No connectivity to VM network! Check network configuration."
                     }
                     
-                    echo "✅ Network OK - connectivity verified"
+                    echo "✅ Network OK - connectivity verified (SSH port reachable)"
                 }
             }
         }
