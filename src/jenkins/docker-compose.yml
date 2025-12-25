@@ -7,13 +7,13 @@ services:
     # Run as root to avoid permission issues with Docker socket
     user: root
     
-    ports:
-      - "8089:8080"      # Jenkins UI
-      - "50000:50000"    # Agent connections
+    # Use host network to access VMs directly
+    network_mode: host
     
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock  # Allow Jenkins to run Docker
+      - ~/.ssh:/root/.ssh:ro  # SSH keys for VM access
     
     environment:
       - JAVA_OPTS=-Djenkins.install.runSetupWizard=true
@@ -29,5 +29,8 @@ volumes:
   jenkins_home:
     driver: local
 
+# Jenkins will be accessible at http://<host-ip>:8080
+# (or http://localhost:8080 from the VM itself)
+#
 # After starting, get initial password with:
 # docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
