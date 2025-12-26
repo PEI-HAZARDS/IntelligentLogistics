@@ -8,6 +8,8 @@ from typing import Optional
 import json
 import logging
 
+# Test Jenkins deploy
+
 # --- Configuration ---
 # Load environment variables or fallback to default network settings
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
