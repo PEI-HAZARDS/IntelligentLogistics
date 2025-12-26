@@ -116,6 +116,11 @@ class Driver(Base):
     active = Column(Boolean, default=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     
+    # Session management fields
+    session_token = Column(String(64), index=True)  # Current auth token
+    session_expires_at = Column(TIMESTAMP)          # Token expiration time
+    current_appointment_id = Column(Integer)        # Current active delivery (for sequential access)
+    
     # Relationships
     company = relationship("Company", back_populates="drivers")
     appointments = relationship("Appointment", back_populates="driver")

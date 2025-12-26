@@ -1,47 +1,69 @@
-#!/usr/bin/env python3
 """
-pytest configuration file for Data Module tests
+pytest configuration for Data Module tests
 """
 
 import pytest
 import os
 import sys
 from pathlib import Path
+from unittest.mock import Mock
+from datetime import datetime, timedelta
 
-# Adicionar src ao path para imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-@pytest.fixture(scope="session")
-def test_config():
-    """Configuração de testes"""
-    return {
-        "base_url": os.getenv("TEST_BASE_URL", "http://localhost:8080/api/v1"),
-        "timeout": 30,
-        "database_url": os.getenv("DATABASE_URL", "postgresql://porto:porto_password@localhost:5432/porto_logistica"),
-        "mongo_url": os.getenv("MONGO_URL", "mongodb://admin:admin123@localhost:27017"),
-        "redis_url": os.getenv("REDIS_URL", "redis://localhost:6379"),
-    }
 
-@pytest.fixture(scope="session")
-def anyio_backend():
-    """Configure anyio backend for async tests"""
-    return "asyncio"
+# ============================================================================
+# FIXTURES
+# ============================================================================
+
+@pytest.fixture
+def mock_db():
+    """Mock database session"""
+    db = Mock()
+    db.commit = Mock()
+    db.refresh = Mock()
+    return db
+
+
+@pytest.fixture
+def mock_driver():
+    """Mock driver"""
+    driver = Mock()
+    driver.drivers_license = "PT12345678"
+    driver.name = "Test Driver"
+    driver.password_hash = "hash"
+    driver.active = True
+    driver.company = Mock(name="Test Co")
+    driver.company.name = "Test Co"
+    return driver
+
+
+@pytest.fixture
+def mock_appointment():
+    """Mock appointment"""
+    appt = Mock()
+    appt.id = 1
+    appt.arrival_id = "PRT-0001"
+    appt.driver_license = "PT12345678"
+    appt.status = "in_transit"
+    appt.truck_license_plate = "XX-XX-XX"
+    return appt
+
+
+@pytest.fixture
+def driver_credentials():
+    return {"drivers_license": "PT12345678", "password": "driver123"}
+
+
+@pytest.fixture
+def worker_credentials():
+    return {"email": "worker@porto.pt", "password": "password123"}
+
+
+# ============================================================================
+# CONFIG
+# ============================================================================
 
 def pytest_configure(config):
-    """Configure pytest with custom markers"""
-    config.addinivalue_line(
-        "markers", "integration: mark test as integration test"
-    )
-    config.addinivalue_line(
-        "markers", "unit: mark test as unit test"
-    )
-    config.addinivalue_line(
-        "markers", "slow: mark test as slow"
-    )
-
-def pytest_collection_modifyitems(config, items):
-    """Modify test items during collection"""
-    for item in items:
-        # Adicionar marker de integração a todos os testes
-        if "test_integration" in str(item.fspath):
-            item.add_marker(pytest.mark.integration)
+    config.addinivalue_line("markers", "integration: integration tests")
+    config.addinivalue_line("markers", "unit: unit tests")

@@ -1,0 +1,4 @@
+# Test dependencies for Decision Engine
+pytest>=7.0.0
+pytest-mock>=3.10.0
+requests-mock>=1.10.0

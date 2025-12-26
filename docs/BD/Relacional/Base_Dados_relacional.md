@@ -35,18 +35,23 @@ O modelo foi estruturado até à **3ª Forma Normal (3FN)**:
 
 ---
 
-### **CONDUTOR**
-| Campo | Tipo | PK/FK | Descrição |
+### **CONDUTOR** (Driver)
+| Field | Type | PK/FK | Description |
 |--------|------|--------|------------|
-| num_carta | VARCHAR(20) | PK | Nº da carta de condução |
-| nome | VARCHAR |  | Nome completo |
-| contacto | VARCHAR |  | Telefone  |
-| password | VARCHAR |  | Password de autenticação |
-| id_empresa | INT | FK → Empresa.id_empresa | Empresa empregadora |
+| num_carta | VARCHAR(20) | PK | Driver's license number |
+| nome | VARCHAR |  | Full name |
+| contacto | VARCHAR |  | Phone  |
+| password | VARCHAR |  | Authentication password |
+| id_empresa | INT | FK → Empresa.id_empresa | Employer company |
+| session_token | VARCHAR(64) | INDEX | Current session token (authentication) |
+| session_expires_at | TIMESTAMP |  | Token expiration date/time |
+| current_appointment_id | INT | FK → Chegadas_Diarias | Current active delivery in queue |
 
-**Relações:**
-- 1:N com **Veiculo_Pesado**  
-- N:M com **Veiculo_Pesado** via tabela `Condutor_Veiculo`
+> **Note**: The `session_token`, `session_expires_at` and `current_appointment_id` fields were added to support token-based authentication and sequential delivery control in the driver mobile app.
+
+**Relationships:**
+- 1:N with **Veiculo_Pesado**  
+- N:M with **Veiculo_Pesado** via table `Condutor_Veiculo`
 
 ---
 
@@ -281,6 +286,10 @@ Fluxo do agente de consenso:
 
 ---
 
-**Versão:** 1.2  
-**Atualização:** Novembro 2025  
+**Versão:** 1.3  
+**Atualização:** Dezembro 2025  
 **Equipa:** Porto Inteligente — Engenharia Informática @ UA
+
+**Changelog v1.3:**
+- Adicionados campos de sessão ao CONDUTOR (`session_token`, `session_expires_at`, `current_appointment_id`) para suporte de autenticação por token e controlo sequencial de entregas
+

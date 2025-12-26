@@ -27,6 +27,7 @@ async def _request(
     path: str,
     params: Optional[Dict[str, Any]] = None,
     json: Optional[Any] = None,
+    headers: Optional[Dict[str, str]] = None,
     timeout: float = 10.0,
 ) -> Any:
     """
@@ -36,12 +37,19 @@ async def _request(
     - path: caminho relativo no Data Module (ex: "/arrivals/1/pending")
     - params: query string (opcional)
     - json: body em JSON (opcional)
+    - headers: headers HTTP a incluir no request (opcional)
     """
     url = _build_url(path)
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.request(method=method, url=url, params=params, json=json)
+            response = await client.request(
+                method=method, 
+                url=url, 
+                params=params, 
+                json=json,
+                headers=headers
+            )
     except httpx.RequestError as exc:
         # erro de rede / timeout / DNS
         raise HTTPException(
@@ -72,6 +80,7 @@ async def _request(
 async def get(
     path: str,
     params: Optional[Dict[str, Any]] = None,
+    headers: Optional[Dict[str, str]] = None,
     timeout: float = 10.0,
 ) -> Any:
     """
@@ -80,41 +89,45 @@ async def get(
     Exemplo de uso num router:
         data = await internal_client.get(f"/arrivals/{gate_id}/pending", params={"page": 1, "limit": 20})
     """
-    return await _request("GET", path, params=params, timeout=timeout)
+    return await _request("GET", path, params=params, headers=headers, timeout=timeout)
 
 
 async def post(
     path: str,
     json: Optional[Any] = None,
     params: Optional[Dict[str, Any]] = None,
+    headers: Optional[Dict[str, str]] = None,
     timeout: float = 10.0,
 ) -> Any:
     """
     Faz um POST ao Data Module.
     """
-    return await _request("POST", path, params=params, json=json, timeout=timeout)
+    return await _request("POST", path, params=params, json=json, headers=headers, timeout=timeout)
 
 
 async def put(
     path: str,
     json: Optional[Any] = None,
     params: Optional[Dict[str, Any]] = None,
+    headers: Optional[Dict[str, str]] = None,
     timeout: float = 10.0,
 ) -> Any:
     """
     Faz um PUT ao Data Module.
     """
-    return await _request("PUT", path, params=params, json=json, timeout=timeout)
+    return await _request("PUT", path, params=params, json=json, headers=headers, timeout=timeout)
 
 
 async def patch(
     path: str,
     json: Optional[Any] = None,
     params: Optional[Dict[str, Any]] = None,
+    headers: Optional[Dict[str, str]] = None,
     timeout: float = 10.0,
 ) -> Any:
     """
     Faz um PATCH ao Data Module.
     """
-    return await _request("PATCH", path, params=params, json=json, timeout=timeout)
+    return await _request("PATCH", path, params=params, json=json, headers=headers, timeout=timeout)
+
 
