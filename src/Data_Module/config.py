@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     environment: str = "development"
     debug: bool = False
     
+    # Driver Authentication
+    debug_mode: bool = False  # When True, allows bypassing sequential delivery checks
+    token_expiry_hours: int = 24  # Session token expiration time in hours
+    
     # API
     api_prefix: str = "/api/v1"
     
