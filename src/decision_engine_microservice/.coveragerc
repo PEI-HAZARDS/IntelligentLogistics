@@ -1,0 +1,16 @@
+[run]
+source = src
+omit =
+    src/send_decision.py
+    src/send_hz.py
+    src/send_lp.py
+    */tests/*
+    */__pycache__/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if __name__ == .__main__.:
+    raise AssertionError
+    raise NotImplementedError
