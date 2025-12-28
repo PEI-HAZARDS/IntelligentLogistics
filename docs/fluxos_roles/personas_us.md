@@ -1,6 +1,3 @@
-# Use Case Diagram - Intelligent Logistics
-
-```plantuml
 @startuml
 scale 1.5
 left to right direction
@@ -16,10 +13,9 @@ skinparam packageFontSize 15
 title Intelligent Logistics - Use Case Diagram
 
 ' === ACTORS ===
-actor "Marco\n(Driver)" as Driver
-actor "João\n(Logistics Manager)" as Manager  
-actor "Maria\n(Gate Operator)" as Operator
-actor "Camera\nSystem" as Camera
+actor "Marco\n(Driver)" as DriverActor
+actor "João\n(Logistics Manager)" as ManagerActor  
+actor "Maria\n(Gate Operator)" as OperatorActor
 
 rectangle "Intelligent Logistics System" {
     
@@ -52,20 +48,18 @@ rectangle "Intelligent Logistics System" {
 }
 
 ' === ACTOR CONNECTIONS ===
-Driver --> UC_D1
-Driver --> UC_D2
-Driver --> UC_D3
+DriverActor --> UC_D1
+DriverActor --> UC_D2
+DriverActor --> UC_D3
 
-Manager --> UC_M1
-Manager --> UC_M2
-Manager --> UC_M3
+ManagerActor --> UC_M1
+ManagerActor --> UC_M2
+ManagerActor --> UC_M3
 
-Operator --> UC_O1
-Operator --> UC_O2
-Operator --> UC_O3
-Operator --> UC_O4
-
-Camera --> UC_S1
+OperatorActor --> UC_O1
+OperatorActor --> UC_O2
+OperatorActor --> UC_O3
+OperatorActor --> UC_O4
 
 ' === SYSTEM FLOW ===
 UC_S1 ..> UC_S2 : <<include>>
@@ -84,4 +78,3 @@ note right of UC_D3
 end note
 
 @enduml
-```
