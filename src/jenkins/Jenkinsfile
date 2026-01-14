@@ -59,13 +59,13 @@ pipeline {
         string(
             name: 'BRANCH',
             defaultValue: 'main',
-            description: 'Git branch (para deploy)'
+            description: 'Git branch (apenas para deploy - ignorado nas outras ações)'
         )
         
         string(
             name: 'LOG_LINES',
             defaultValue: '100',
-            description: 'Número de linhas de log a mostrar (para ação logs)'
+            description: 'Linhas de log a mostrar (apenas para ação logs)'
         )
     }
     
@@ -132,12 +132,20 @@ pipeline {
                         error "❌ Nenhum serviço selecionado! Seleciona pelo menos um serviço."
                     }
                     
+                    // Info contextual baseada na ação
+                    def extraInfo = ""
+                    if (params.ACTION == 'deploy') {
+                        extraInfo = "║  Branch: ${params.BRANCH.padRight(52)}║"
+                    } else if (params.ACTION == 'logs') {
+                        extraInfo = "║  Linhas: ${params.LOG_LINES.padRight(52)}║"
+                    }
+                    
                     echo """
 ╔═══════════════════════════════════════════════════════════════╗
 ║                    🎛️  PAINEL DE CONTROLO                     ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║  Ação: ${params.ACTION.toUpperCase().padRight(52)}║
-╠═══════════════════════════════════════════════════════════════╣
+${extraInfo ? extraInfo + '\n' : ''}╠═══════════════════════════════════════════════════════════════╣
 ║  Serviços selecionados:                                       ║
 ║    ${env.SEL_AGENT_A == 'true' ? '✅' : '⬜'} Agent A           ${env.SEL_STREAMING == 'true' ? '✅' : '⬜'} Streaming                   ║
 ║    ${env.SEL_AGENT_B == 'true' ? '✅' : '⬜'} Agent B           ${env.SEL_KAFKA == 'true' ? '✅' : '⬜'} Kafka                        ║
