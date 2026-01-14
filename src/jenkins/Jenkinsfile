@@ -313,7 +313,8 @@ def executeAction(String containerName, String vmIp, String buildPath, String im
             case 'status':
                 echo "📊 Estado de ${containerName} em ${vmIp}:"
                 sh """
-                    mkdir -p ~/.ssh && cp \$SSH_KEY ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+                    SSH_DIR="\${HOME}/.ssh"
+                    mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                     ${sshCmd} 'docker ps -a --filter name=${containerName} --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}\\t{{.Image}}"'
                 """
                 break
@@ -321,7 +322,8 @@ def executeAction(String containerName, String vmIp, String buildPath, String im
             case 'logs':
                 echo "📜 Logs de ${containerName} em ${vmIp}:"
                 sh """
-                    mkdir -p ~/.ssh && cp \$SSH_KEY ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+                    SSH_DIR="\${HOME}/.ssh"
+                    mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                     ${sshCmd} 'docker logs --tail ${params.LOG_LINES} ${containerName} 2>&1' || echo "Container não encontrado ou sem logs"
                 """
                 break
@@ -329,7 +331,8 @@ def executeAction(String containerName, String vmIp, String buildPath, String im
             case 'restart':
                 echo "🔄 Reiniciando ${containerName} em ${vmIp}..."
                 sh """
-                    mkdir -p ~/.ssh && cp \$SSH_KEY ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+                    SSH_DIR="\${HOME}/.ssh"
+                    mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                     ${sshCmd} 'docker restart ${containerName}'
                 """
                 echo "✅ ${containerName} reiniciado"
@@ -338,7 +341,8 @@ def executeAction(String containerName, String vmIp, String buildPath, String im
             case 'stop':
                 echo "⏹️ Parando ${containerName} em ${vmIp}..."
                 sh """
-                    mkdir -p ~/.ssh && cp \$SSH_KEY ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+                    SSH_DIR="\${HOME}/.ssh"
+                    mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                     ${sshCmd} 'docker stop ${containerName}'
                 """
                 echo "✅ ${containerName} parado"
@@ -354,13 +358,14 @@ def executeAction(String containerName, String vmIp, String buildPath, String im
                 
                 def buildOutput = sh(
                     script: """
-                        mkdir -p ~/.ssh && cp \$SSH_KEY ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+                        SSH_DIR="\${HOME}/.ssh"
+                        mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                         
-                        cat > ~/.ssh/config << EOF
+                        cat > "\${SSH_DIR}/config" << EOF
 Host ${containerName}-vm
     HostName ${vmIp}
     User \$SSH_USER
-    IdentityFile ~/.ssh/deploy_key
+    IdentityFile \${SSH_DIR}/deploy_key
     StrictHostKeyChecking no
     UserKnownHostsFile=/dev/null
 EOF
@@ -451,7 +456,8 @@ def executeActionMulti(List<String> containers, String vmIp) {
             case 'status':
                 echo "📊 Estado dos containers em ${vmIp}:"
                 sh """
-                    mkdir -p ~/.ssh && cp \$SSH_KEY ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+                    SSH_DIR="\${HOME}/.ssh"
+                    mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                     ${sshCmd} 'docker ps -a --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"'
                 """
                 break
@@ -460,7 +466,8 @@ def executeActionMulti(List<String> containers, String vmIp) {
                 containers.each { container ->
                     echo "📜 Logs de ${container}:"
                     sh """
-                        mkdir -p ~/.ssh && cp \$SSH_KEY ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+                        SSH_DIR="\${HOME}/.ssh"
+                        mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                         ${sshCmd} 'docker logs --tail ${params.LOG_LINES} ${container} 2>&1' || echo "Container não encontrado"
                     """
                 }
@@ -470,7 +477,8 @@ def executeActionMulti(List<String> containers, String vmIp) {
                 echo "🔄 Reiniciando containers em ${vmIp}..."
                 containers.each { container ->
                     sh """
-                        mkdir -p ~/.ssh && cp \$SSH_KEY ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+                        SSH_DIR="\${HOME}/.ssh"
+                        mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                         ${sshCmd} 'docker restart ${container} 2>/dev/null' || echo "${container} não encontrado"
                     """
                 }
@@ -481,7 +489,8 @@ def executeActionMulti(List<String> containers, String vmIp) {
                 echo "⏹️ Parando containers em ${vmIp}..."
                 containers.reverse().each { container ->
                     sh """
-                        mkdir -p ~/.ssh && cp \$SSH_KEY ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+                        SSH_DIR="\${HOME}/.ssh"
+                        mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                         ${sshCmd} 'docker stop ${container} 2>/dev/null' || echo "${container} não encontrado"
                     """
                 }
@@ -498,9 +507,10 @@ def deployKafka(String vmIp) {
         sshUserPrivateKey(credentialsId: 'ssh-vm-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
     ]) {
         sh """
-            mkdir -p ~/.ssh && cp \$SSH_KEY ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+            SSH_DIR="\${HOME}/.ssh"
+            mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
             
-            ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \$SSH_USER@${vmIp} << 'ENDSSH'
+            ssh -i "\${SSH_DIR}/deploy_key" -o StrictHostKeyChecking=no \$SSH_USER@${vmIp} << 'ENDSSH'
                 docker network create kafka-net 2>/dev/null || true
                 
                 # Para containers mas não remove (mantém volumes)
@@ -543,14 +553,15 @@ def deployDataModule(String vmIp) {
         usernamePassword(credentialsId: 'minio-credentials', usernameVariable: 'MINIO_USER', passwordVariable: 'MINIO_PASS')
     ]) {
         sh """
-            mkdir -p ~/.ssh && cp \$SSH_KEY ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+            SSH_DIR="\${HOME}/.ssh"
+            mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
             
             # Copiar docker-compose para a VM
-            scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \\
+            scp -i "\${SSH_DIR}/deploy_key" -o StrictHostKeyChecking=no \\
                 src/Data_Module/docker-compose.yml \\
                 \$SSH_USER@${vmIp}:~/data-module/
             
-            ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \$SSH_USER@${vmIp} << ENDSSH
+            ssh -i "\${SSH_DIR}/deploy_key" -o StrictHostKeyChecking=no \$SSH_USER@${vmIp} << ENDSSH
                 cd ~/data-module
                 
                 # Para mas mantém volumes (dados persistentes)
@@ -600,7 +611,8 @@ def deployUI(String vmIp) {
         }
         
         sh """
-            mkdir -p ~/.ssh && cp \$SSH_KEY ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+            SSH_DIR="\${HOME}/.ssh"
+            mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
             
             docker context create ui_ctx --docker "host=ssh://\$SSH_USER@${vmIp}" 2>/dev/null || true
             docker context use ui_ctx
