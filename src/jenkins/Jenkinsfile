@@ -182,121 +182,92 @@ pipeline {
         }
         
         // ================================================================
-        // AGENT A
+        // EXECUÇÃO PARALELA DE SERVIÇOS
         // ================================================================
-        stage('🚚 Agent A') {
-            when { expression { return env.SEL_AGENT_A == 'true' } }
+        stage('⚡ Deploy Paralelo') {
+            when { expression { return true } }
             steps {
                 script {
-                    executeAction('agentA', AGENTA_IP, 'src/agentA_microservice', 'agentA')
-                }
-            }
-        }
-        
-        // ================================================================
-        // AGENT B
-        // ================================================================
-        stage('🔢 Agent B') {
-            when { expression { return env.SEL_AGENT_B == 'true' } }
-            steps {
-                script {
-                    executeAction('agentB', AGENTB_IP, 'src/agentB_microservice', 'agentB')
-                }
-            }
-        }
-        
-        // ================================================================
-        // AGENT C
-        // ================================================================
-        stage('⚠️ Agent C') {
-            when { expression { return env.SEL_AGENT_C == 'true' } }
-            steps {
-                script {
-                    executeAction('agentC', AGENTC_IP, 'src/agentC_microservice', 'agentC')
-                }
-            }
-        }
-        
-        // ================================================================
-        // STREAMING MIDDLEWARE
-        // ================================================================
-        stage('📹 Streaming') {
-            when { expression { return env.SEL_STREAMING == 'true' } }
-            steps {
-                script {
-                    executeAction('nginx-rtmp', STREAMING_IP, 'src/streaming_middleware', 'nginx-rtmp', '1935:1935,8080:8080')
-                }
-            }
-        }
-        
-        // ================================================================
-        // KAFKA
-        // ================================================================
-        stage('📨 Kafka') {
-            when { expression { return env.SEL_KAFKA == 'true' } }
-            steps {
-                script {
-                    if (params.ACTION == 'deploy') {
-                        deployKafka(KAFKA_IP)
-                    } else {
-                        // Para Kafka, verificar múltiplos containers
-                        executeActionMulti(['zookeeper', 'kafka', 'kafka-ui'], KAFKA_IP)
+                    def parallelStages = [:]
+                    
+                    // Agent A
+                    if (env.SEL_AGENT_A == 'true') {
+                        parallelStages['🚚 Agent A'] = {
+                            executeAction('agentA', AGENTA_IP, 'src/agentA_microservice', 'agentA')
+                        }
                     }
-                }
-            }
-        }
-        
-        // ================================================================
-        // DATA MODULE
-        // ================================================================
-        stage('💾 Data Module') {
-            when { expression { return env.SEL_DATA_MODULE == 'true' } }
-            steps {
-                script {
-                    if (params.ACTION == 'deploy') {
-                        deployDataModule(DATA_MODULE_IP)
-                    } else {
-                        executeActionMulti(['dm_postgres', 'dm_mongo', 'dm_redis', 'minio', 'dm_data_module'], DATA_MODULE_IP)
+                    
+                    // Agent B
+                    if (env.SEL_AGENT_B == 'true') {
+                        parallelStages['🔢 Agent B'] = {
+                            executeAction('agentB', AGENTB_IP, 'src/agentB_microservice', 'agentB')
+                        }
                     }
-                }
-            }
-        }
-        
-        // ================================================================
-        // DECISION ENGINE
-        // ================================================================
-        stage('🧠 Decision Engine') {
-            when { expression { return env.SEL_DECISION_ENGINE == 'true' } }
-            steps {
-                script {
-                    executeAction('decision-engine', DECISION_ENGINE_IP, 'src/decision_engine_microservice', 'decision-engine')
-                }
-            }
-        }
-        
-        // ================================================================
-        // API GATEWAY
-        // ================================================================
-        stage('🌐 API Gateway') {
-            when { expression { return env.SEL_API_GATEWAY == 'true' } }
-            steps {
-                script {
-                    executeAction('api_gateway', API_GATEWAY_IP, 'src/api_gateway', 'api_gateway', '8000:8000')
-                }
-            }
-        }
-        
-        // ================================================================
-        // UI
-        // ================================================================
-        stage('🖥️ UI') {
-            when { expression { return env.SEL_UI == 'true' } }
-            steps {
-                script {
-                    if (params.ACTION == 'deploy') {
-                        deployUI(UI_IP)
-                    } else {
-                        executeAction('ui_il', UI_IP, null, 'ui_il')
+                    
+                    // Agent C
+                    if (env.SEL_AGENT_C == 'true') {
+                        parallelStages['⚠️ Agent C'] = {
+                            executeAction('agentC', AGENTC_IP, 'src/agentC_microservice', 'agentC')
+                        }
+                    }
+                    
+                    // Streaming
+                    if (env.SEL_STREAMING == 'true') {
+                        parallelStages['📹 Streaming'] = {
+                            executeAction('nginx-rtmp', STREAMING_IP, 'src/streaming_middleware', 'nginx-rtmp', '1935:1935,8080:8080')
+                        }
+                    }
+                    
+                    // Kafka
+                    if (env.SEL_KAFKA == 'true') {
+                        parallelStages['📨 Kafka'] = {
+                            if (params.ACTION == 'deploy') {
+                                deployKafka(KAFKA_IP)
+                            } else {
+                                executeActionMulti(['zookeeper', 'kafka', 'kafka-ui'], KAFKA_IP)
+                            }
+                        }
+                    }
+                    
+                    // Data Module
+                    if (env.SEL_DATA_MODULE == 'true') {
+                        parallelStages['💾 Data Module'] = {
+                            if (params.ACTION == 'deploy') {
+                                deployDataModule(DATA_MODULE_IP)
+                            } else {
+                                executeActionMulti(['dm_postgres', 'dm_mongo', 'dm_redis', 'minio', 'dm_data_module'], DATA_MODULE_IP)
+                            }
+                        }
+                    }
+                    
+                    // Decision Engine
+                    if (env.SEL_DECISION_ENGINE == 'true') {
+                        parallelStages['🧠 Decision Engine'] = {
+                            executeAction('decision-engine', DECISION_ENGINE_IP, 'src/decision_engine_microservice', 'decision-engine')
+                        }
+                    }
+                    
+                    // API Gateway
+                    if (env.SEL_API_GATEWAY == 'true') {
+                        parallelStages['🌐 API Gateway'] = {
+                            executeAction('api_gateway', API_GATEWAY_IP, 'src/api_gateway', 'api_gateway', '8000:8000')
+                        }
+                    }
+                    
+                    // UI
+                    if (env.SEL_UI == 'true') {
+                        parallelStages['🖥️ UI'] = {
+                            if (params.ACTION == 'deploy') {
+                                deployUI(UI_IP)
+                            } else {
+                                executeAction('ui_il', UI_IP, null, 'ui_il')
+                            }
+                        }
+                    }
+                    
+                    // Executar tudo em paralelo
+                    if (parallelStages.size() > 0) {
+                        parallel parallelStages
                     }
                 }
             }
@@ -374,12 +345,18 @@ def executeAction(String containerName, String vmIp, String buildPath, String im
                 break
                 
             case 'deploy':
-                echo "📦 Deploy de ${containerName} para ${vmIp}..."
+                echo """
+╔═══════════════════════════════════════════════════════════════╗
+║  📦 Deploy: ${containerName.padRight(48)}║
+║  🖥️  VM: ${vmIp.padRight(51)}║
+╚═══════════════════════════════════════════════════════════════╝
+"""
                 
-                sh """
-                    mkdir -p ~/.ssh && cp \$SSH_KEY ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
-                    
-                    cat > ~/.ssh/config << EOF
+                def buildOutput = sh(
+                    script: """
+                        mkdir -p ~/.ssh && cp \$SSH_KEY ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+                        
+                        cat > ~/.ssh/config << EOF
 Host ${containerName}-vm
     HostName ${vmIp}
     User \$SSH_USER
@@ -387,25 +364,75 @@ Host ${containerName}-vm
     StrictHostKeyChecking no
     UserKnownHostsFile=/dev/null
 EOF
-                    
-                    docker context create ${containerName}_ctx --docker "host=ssh://${containerName}-vm" 2>/dev/null || true
-                    docker context use ${containerName}_ctx
-                    
-                    cd ${buildPath}
-                    docker compose build 2>/dev/null || docker build -t ${imageName}:latest .
-                    
-                    docker stop ${containerName} 2>/dev/null || true
-                    docker rm ${containerName} 2>/dev/null || true
-                    
-                    docker compose up -d 2>/dev/null || docker run -d \\
-                        --name ${containerName} \\
-                        --restart unless-stopped \\
-                        ${ports ? ports.split(',').collect { "-p ${it}" }.join(' ') : ''} \\
-                        ${imageName}:latest
-                    
-                    docker context use default
-                """
-                echo "✅ ${containerName} deployed"
+                        
+                        docker context create ${containerName}_ctx --docker "host=ssh://${containerName}-vm" 2>/dev/null || true
+                        docker context use ${containerName}_ctx
+                        
+                        echo "🔍 Verificando imagem existente..."
+                        OLD_IMAGE_ID=\$(docker images -q ${imageName}:latest 2>/dev/null || echo "none")
+                        echo "   Imagem anterior: \$OLD_IMAGE_ID"
+                        
+                        cd ${buildPath}
+                        
+                        echo ""
+                        echo "🔨 Iniciando build..."
+                        docker compose build 2>/dev/null || docker build -t ${imageName}:latest . 2>&1 | tee /tmp/build_${containerName}.log
+                        
+                        NEW_IMAGE_ID=\$(docker images -q ${imageName}:latest)
+                        echo ""
+                        echo "   Imagem nova: \$NEW_IMAGE_ID"
+                        
+                        if [ "\$OLD_IMAGE_ID" = "\$NEW_IMAGE_ID" ] && [ "\$OLD_IMAGE_ID" != "none" ]; then
+                            echo ""
+                            echo "✨ CACHE COMPLETO - Nenhuma layer foi reconstruída"
+                            echo "   (Imagem não mudou, tudo reutilizado do cache)"
+                        else
+                            echo ""
+                            echo "🔄 BUILD REALIZADO - Layers foram reconstruídas"
+                            
+                            # Análise do log de build para mostrar o que mudou
+                            if grep -q "CACHED" /tmp/build_${containerName}.log 2>/dev/null; then
+                                CACHED_STEPS=\$(grep -c "CACHED" /tmp/build_${containerName}.log)
+                                echo "   ✅ \$CACHED_STEPS steps reutilizados do cache"
+                            fi
+                            
+                            if grep -qE "RUN|COPY" /tmp/build_${containerName}.log 2>/dev/null; then
+                                REBUILT_STEPS=\$(grep -cE "Step [0-9]+/[0-9]+ : (RUN|COPY)" /tmp/build_${containerName}.log | grep -v CACHED || echo "0")
+                                if [ "\$REBUILT_STEPS" != "0" ]; then
+                                    echo "   🔨 \$REBUILT_STEPS steps reconstruídos"
+                                fi
+                            fi
+                        fi
+                        
+                        echo ""
+                        echo "🔄 Atualizando container..."
+                        docker stop ${containerName} 2>/dev/null || true
+                        docker rm ${containerName} 2>/dev/null || true
+                        
+                        docker compose up -d 2>/dev/null || docker run -d \\
+                            --name ${containerName} \\
+                            --restart unless-stopped \\
+                            ${ports ? ports.split(',').collect { "-p ${it}" }.join(' ') : ''} \\
+                            ${imageName}:latest
+                        
+                        echo ""
+                        echo "📊 Status final:"
+                        docker ps --filter name=${containerName} --format "   ID: {{.ID}} | Status: {{.Status}} | Ports: {{.Ports}}"
+                        
+                        docker context use default
+                        
+                        rm -f /tmp/build_${containerName}.log
+                    """,
+                    returnStdout: true
+                )
+                
+                echo buildOutput
+                
+                echo """
+╔═══════════════════════════════════════════════════════════════╗
+║  ✅ ${containerName.padRight(48)} DEPLOYED    ║
+╚═══════════════════════════════════════════════════════════════╝
+"""
                 break
         }
     }
@@ -476,6 +503,7 @@ def deployKafka(String vmIp) {
             ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \$SSH_USER@${vmIp} << 'ENDSSH'
                 docker network create kafka-net 2>/dev/null || true
                 
+                # Para containers mas não remove (mantém volumes)
                 docker stop kafka kafka-ui zookeeper 2>/dev/null || true
                 docker rm kafka kafka-ui zookeeper 2>/dev/null || true
                 
@@ -517,16 +545,20 @@ def deployDataModule(String vmIp) {
         sh """
             mkdir -p ~/.ssh && cp \$SSH_KEY ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
             
-            # Copiar docker-compose e .env para a VM
+            # Copiar docker-compose para a VM
             scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \\
                 src/Data_Module/docker-compose.yml \\
                 \$SSH_USER@${vmIp}:~/data-module/
             
             ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \$SSH_USER@${vmIp} << ENDSSH
                 cd ~/data-module
-                docker compose down 2>/dev/null || true
-                docker compose pull
-                docker compose up -d
+                
+                # Para mas mantém volumes (dados persistentes)
+                docker compose down --volumes=false 2>/dev/null || true
+                
+                # Up com build cache automático
+                docker compose up -d --build
+                
                 echo "✅ Data Module stack deployed"
 ENDSSH
         """
@@ -537,7 +569,14 @@ ENDSSH
             docker context use data_module_ctx
             
             cd src/Data_Module
+            
+            # Build com cache automático
             docker compose build
+            
+            # Para mas não remove volumes
+            docker compose stop
+            
+            # Up
             docker compose up -d
             
             docker context use default
@@ -567,9 +606,14 @@ def deployUI(String vmIp) {
             docker context use ui_ctx
             
             cd app
+            
+            # Build com cache automático de layers
             docker build -t ui_il:latest .
+            
+            # Para mas não remove (pode ter volumes de config)
             docker stop ui_il 2>/dev/null || true
             docker rm ui_il 2>/dev/null || true
+            
             docker run -d --name ui_il --restart unless-stopped -p 3000:3000 ui_il:latest
             
             echo "✅ UI deployed"
