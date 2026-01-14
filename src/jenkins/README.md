@@ -188,6 +188,72 @@ ssh_keys/
 
 ---
 
+## 🔒 Configurar Ficheiros .env (Secrets)
+
+Os ficheiros `.env` contêm segredos (passwords, API keys, endpoints) e **não estão no git**.
+O Jenkins injeta automaticamente os `.env` durante o deploy usando **Credentials**.
+
+### Passo 1: Criar o .env real
+
+Usa o `.env.example` de cada serviço como base:
+
+```bash
+cd src/agentA_microservice
+cp .env.example .env
+# Editar com valores reais
+```
+
+### Passo 2: Adicionar ao Jenkins
+
+1. **Jenkins** → **Manage Jenkins** → **Credentials**
+2. **System** → **Global credentials (unrestricted)**
+3. **Add Credentials**
+4. Preencher:
+   - **Kind:** `Secret file`
+   - **File:** Selecionar o `.env` criado
+   - **ID:** Ver tabela abaixo (IMPORTANTE: usar ID exato!)
+   - **Description:** Nome do serviço
+5. **Create**
+
+### Mapeamento de Credentials
+
+O Jenkinsfile usa o padrão `env-{containerName}`. IDs a configurar:
+
+| Container         | Credential ID         | Ficheiro Base                                   |
+| ----------------- | --------------------- | ----------------------------------------------- |
+| `agenta`          | `env-agenta`          | `src/agentA_microservice/.env.example`          |
+| `agentb`          | `env-agentb`          | `src/agentB_microservice/.env.example`          |
+| `agentc`          | `env-agentc`          | `src/agentC_microservice/.env.example`          |
+| `nginx-rtmp`      | `env-nginx-rtmp`      | `src/streaming_middleware/.env.example`         |
+| `dm_data_module`  | `env-dm_data_module`  | `src/Data_Module/.env.example`                  |
+| `decision-engine` | `env-decision-engine` | `src/decision_engine_microservice/.env.example` |
+| `api_gateway`     | `env-api_gateway`     | `src/api_gateway/.env.example`                  |
+
+### Verificar nos Logs
+
+Durante o deploy, verás:
+
+```
+✅ .env injectado do Jenkins Credentials (env-agenta)
+```
+
+Se a credential não existir:
+
+```
+⚠️  Credential 'env-agenta' não encontrada - usando .env existente (se houver)
+```
+
+### Atualizar um .env
+
+Para alterar variáveis de ambiente:
+
+1. Editar o `.env` localmente
+2. No Jenkins: **Credentials** → Selecionar a credential → **Update**
+3. Fazer upload do novo ficheiro
+4. Re-deploy do serviço
+
+---
+
 ## 🐛 Troubleshooting
 
 ### "Build with Parameters" não aparece

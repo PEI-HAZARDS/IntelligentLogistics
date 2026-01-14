@@ -87,6 +87,11 @@ pipeline {
         // Repositories
         BACKEND_REPO = 'https://github.com/PEI-HAZARDS/IntelligentLogistics.git'
         APP_REPO = 'https://github.com/PEI-HAZARDS/IntelligentLogistics_APP.git'
+        
+        // Jenkins Credentials IDs para os .env de cada serviço
+        // Configurar no Jenkins: Manage Jenkins → Credentials → Add "Secret file"
+        // ID sugerido: env-<serviço> (ex: env-agenta, env-datamodule)
+        ENV_CREDENTIALS_ENABLED = 'true'  // Mudar para 'false' se .env já estiver nas VMs
     }
     
     stages {
@@ -352,6 +357,22 @@ def executeAction(String containerName, String vmIp, String buildPath, String im
 ║  🖥️  VM: ${vmIp.padRight(51)}║
 ╚═══════════════════════════════════════════════════════════════╝
 """
+            
+            // Injectar .env do Jenkins Credentials (se configurado)
+            def envCredentialId = "env-${containerName}"
+            def envFileExists = false
+            
+            if (env.ENV_CREDENTIALS_ENABLED == 'true') {
+                try {
+                    withCredentials([file(credentialsId: envCredentialId, variable: 'ENV_FILE')]) {
+                        sh "cp \$ENV_FILE ${buildPath}/.env"
+                        echo "✅ .env injectado do Jenkins Credentials (${envCredentialId})"
+                        envFileExists = true
+                    }
+                } catch (Exception e) {
+                    echo "⚠️  Credential '${envCredentialId}' não encontrada - usando .env existente (se houver)"
+                }
+            }
             
             def buildOutput = sh(
                 script: """
