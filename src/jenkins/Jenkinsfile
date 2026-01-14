@@ -41,17 +41,17 @@ pipeline {
         // ================================================================
         // SELEÇÃO DE SERVIÇOS (checkboxes)
         // ================================================================
-        booleanParam(name: 'ALL_SERVICES', defaultValue: false, description: '⚡ Selecionar TODOS os serviços')
+        booleanParam(name: 'ALL_SERVICES', defaultValue: false, description: 'Selecionar TODOS')
         
-        booleanParam(name: 'AGENT_A', defaultValue: false, description: '🚚 Agent A - Truck Detection (10.255.32.134)')
-        booleanParam(name: 'AGENT_B', defaultValue: false, description: '🔢 Agent B - License Plate (10.255.32.32)')
-        booleanParam(name: 'AGENT_C', defaultValue: false, description: '⚠️  Agent C - Hazard Detection (10.255.32.128)')
-        booleanParam(name: 'STREAMING', defaultValue: false, description: '📹 Streaming Middleware - Nginx RTMP (10.255.32.35)')
-        booleanParam(name: 'KAFKA', defaultValue: false, description: '📨 Kafka Broker (10.255.32.143)')
-        booleanParam(name: 'DATA_MODULE', defaultValue: false, description: '💾 Data Module + Databases (10.255.32.82)')
-        booleanParam(name: 'DECISION_ENGINE', defaultValue: false, description: '🧠 Decision Engine (10.255.32.104)')
-        booleanParam(name: 'API_GATEWAY', defaultValue: false, description: '🌐 API Gateway (10.255.32.100)')
-        booleanParam(name: 'UI', defaultValue: false, description: '🖥️  Frontend UI (10.255.32.108)')
+        booleanParam(name: 'AGENT_A', defaultValue: false, description: 'Agent A (10.255.32.134)')
+        booleanParam(name: 'AGENT_B', defaultValue: false, description: 'Agent B (10.255.32.32)')
+        booleanParam(name: 'AGENT_C', defaultValue: false, description: 'Agent C (10.255.32.128)')
+        booleanParam(name: 'STREAMING', defaultValue: false, description: 'Streaming (10.255.32.80)')
+        booleanParam(name: 'KAFKA', defaultValue: false, description: 'Kafka (10.255.32.143)')
+        booleanParam(name: 'DATA_MODULE', defaultValue: false, description: 'Data Module (10.255.32.82)')
+        booleanParam(name: 'DECISION_ENGINE', defaultValue: false, description: 'Decision Engine (10.255.32.104)')
+        booleanParam(name: 'API_GATEWAY', defaultValue: false, description: 'API Gateway (10.255.32.100)')
+        booleanParam(name: 'UI', defaultValue: false, description: 'UI (10.255.32.108)')
         
         // ================================================================
         // OPÇÕES ADICIONAIS
