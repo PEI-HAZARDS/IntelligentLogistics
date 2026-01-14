@@ -1,0 +1,8 @@
+# Ignorar chaves privadas SSH (nunca devem ir para o git!)
+id_ed25519
+id_rsa
+*.pem
+
+# Manter apenas o .gitkeep e chaves públicas
+!.gitkeep
+!*.pub
