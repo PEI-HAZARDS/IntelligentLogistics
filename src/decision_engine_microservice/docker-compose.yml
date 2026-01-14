@@ -1,0 +1,13 @@
+services:
+  decision-engine:
+    build:
+      context: .
+    image: decision-engine:latest
+    container_name: decision-engine
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+      - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
+      - GATE_ID=${GATE_ID}
+      - API_URL=${API_URL}
+      - TIME_TOLERANCE_MINUTES=${TIME_TOLERANCE_MINUTES}

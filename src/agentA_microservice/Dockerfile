@@ -1,13 +1,9 @@
 # Use Python 3.11 slim image as base
 FROM docker.io/python:3.11-slim@sha256:193fdd0bbcb3d2ae612bd6cc3548d2f7c78d65b549fcaa8af75624c47474444d
 
-# Environment variables
+# Environment variables (runtime vars provided via docker-compose/.env)
 ENV PYTHONPATH=/app \
-    KAFKA_BOOTSTRAP=10.255.32.143:9092 \
-    MODELS_PATH=/app/agentA_microservice/data \
-    GATE_ID=1 \
-    NGINX_RTMP_HOST=10.255.32.35 \
-    NGINX_RTMP_PORT=1935
+    MODELS_PATH=/app/agentA_microservice/data
 
 WORKDIR /app
 

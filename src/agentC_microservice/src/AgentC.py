@@ -16,14 +16,14 @@ from typing import Optional, Tuple
 
 # --- Configuration ---
 # Load environment variables or fallback to default network settings
-NGINX_RTMP_HOST = os.getenv("NGINX_RTMP_HOST", "10.255.32.35")
+NGINX_RTMP_HOST = os.getenv("NGINX_RTMP_HOST", "10.255.32.80")
 NGINX_RTMP_PORT = os.getenv("NGINX_RTMP_PORT", "1935")
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
 GATE_ID = os.getenv("GATE_ID", "1")
 RTSP_STREAM_HIGH = os.getenv("RTSP_STREAM_HIGH", f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_high/gate{GATE_ID}")
 
 # MinIO Configuration
-MINIO_HOST = os.getenv("MINIO_HOST", "10.255.32.132")
+MINIO_HOST = os.getenv("MINIO_HOST", "10.255.32.82")
 MINIO_PORT = os.getenv("MINIO_PORT", "9000")
 
 MINIO_CONF = {

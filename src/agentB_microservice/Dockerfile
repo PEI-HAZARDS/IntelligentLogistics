@@ -1,18 +1,9 @@
 # Use Python 3.11 slim image as base
 FROM docker.io/python:3.11-slim@sha256:193fdd0bbcb3d2ae612bd6cc3548d2f7c78d65b549fcaa8af75624c47474444d
 
-# Environment variables (TODO: store sensitive data securely)
+# Environment variables (runtime vars provided via docker-compose/.env)
 ENV PYTHONPATH=/app \
-    KAFKA_BOOTSTRAP=10.255.32.143:9092 \
-    MODELS_PATH=/app/agentB_microservice/data \
-    GATE_ID=1 \
-    NGINX_RTMP_HOST=10.255.32.35 \
-    MINIO_HOST=10.255.32.132 \
-    MINIO_PORT=9000 \
-    ACCESS_KEY=admin \    
-    SECRET_KEY=adminadmin \
-    BUCKET_NAME=lp-crops \
-    NGINX_RTMP_PORT=1935
+    MODELS_PATH=/app/agentB_microservice/data
 
 WORKDIR /app
 

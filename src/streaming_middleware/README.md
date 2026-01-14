@@ -1,4 +1,4 @@
-# Streaming Middleware - NGINX RTMP Server (10.255.32.35)
+# Streaming Middleware - NGINX RTMP Server (10.255.32.80)
 
 The **Streaming Middleware** is the video distribution infrastructure for the hazardous vehicle detection pipeline. It ingests RTSP streams from IP cameras, converts them to RTMP, and redistributes to multiple consumers (Agents and Frontend) without overloading the camera.
 
@@ -105,7 +105,7 @@ NGINX RTMP Server
 
 ```bash
 # Create Docker context for remote deployment
-docker context create NGINX --docker "host=ssh://pei_user@10.255.32.35"
+docker context create NGINX --docker "host=ssh://pei_user@10.255.32.80"
 
 # Build on remote
 docker-compose build
@@ -142,25 +142,25 @@ sudo ufw reload
 ### 1. Check if streams are active
 
 ```bash
-curl http://10.255.32.35:8080/stat
+curl http://10.255.32.80:8080/stat
 ```
 
 ### 2. Play HLS in browser
 
 ```
-http://10.255.32.35:8080/hls/low/gate01.m3u8
+http://10.255.32.80:8080/hls/low/gate01.m3u8
 ```
 
 ### 3. Test RTMP with ffplay
 
 ```bash
-ffplay rtmp://10.255.32.35:1935/streams_low/gate01
+ffplay rtmp://10.255.32.80:1935/streams_low/gate01
 ```
 
 ### 4. Health check
 
 ```bash
-curl http://10.255.32.35:8080/health
+curl http://10.255.32.80:8080/health
 # Expected: OK
 ```
 

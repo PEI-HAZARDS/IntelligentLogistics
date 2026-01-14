@@ -1,0 +1,249 @@
+# Full Stack Deployment - All Services
+# Usage: docker-compose up -d
+
+services:
+  # =============================================================================
+  # INFRASTRUCTURE
+  # =============================================================================
+  
+  postgres:
+    image: postgres:15
+    container_name: dm_postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - intelligent-logistics
+
+  mongo:
+    image: mongo:6
+    container_name: dm_mongo
+    restart: unless-stopped
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+    ports:
+      - "${MONGO_PORT}:27017"
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - intelligent-logistics
+
+  redis:
+    image: redis:7
+    container_name: dm_redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - intelligent-logistics
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "${MINIO_API_PORT}:9000"
+      - "${MINIO_CONSOLE_PORT}:9090"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    volumes:
+      - miniodata:/data
+    command: server /data --console-address ":9090"
+    restart: unless-stopped
+    networks:
+      - intelligent-logistics
+
+  nginx-rtmp:
+    build: ./streaming_middleware
+    container_name: nginx-rtmp
+    ports:
+      - "1935:1935"
+      - "8081:8080"
+    environment:
+      - STREAM_MODE=${STREAM_MODE}
+      - CAMERA_IP=${CAMERA_IP}
+      - RTSP_PORT=${RTSP_PORT}
+      - STREAM_LOW_PATH=${STREAM_LOW_PATH}
+      - STREAM_HIGH_PATH=${STREAM_HIGH_PATH}
+      - GATE_ID=${GATE_ID}
+      - TEST_VIDEO_PATH=${TEST_VIDEO_PATH}
+    volumes:
+      - ${TEST_VIDEOS_HOST_PATH}:/videos:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - intelligent-logistics
+
+  # =============================================================================
+  # CORE SERVICES
+  # =============================================================================
+
+  data-module:
+    build: ./Data_Module
+    container_name: dm_data_module
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - DATABASE_URL=${DATABASE_URL}
+      - MONGO_URL=${MONGO_URL}
+      - MONGO_HOST=${MONGO_HOST}
+      - MONGO_PORT=${MONGO_PORT}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - DECISION_ENGINE_URL=${DECISION_ENGINE_URL}
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=${ENVIRONMENT}
+      - DEBUG=${DEBUG}
+      - DEBUG_MODE=${DEBUG_MODE}
+      - TOKEN_EXPIRY_HOURS=${TOKEN_EXPIRY_HOURS}
+      - API_PREFIX=${API_PREFIX}
+    ports:
+      - "8080:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - intelligent-logistics
+
+  api-gateway:
+    build: ./api_gateway
+    container_name: api_gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATA_MODULE_URL=${DATA_MODULE_URL}
+      - STREAM_BASE_URL=${STREAM_BASE_URL}
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+      - KAFKA_DECISION_TOPIC=${KAFKA_DECISION_TOPIC}
+      - KAFKA_CONSUMER_GROUP=${KAFKA_CONSUMER_GROUP}
+      - API_PREFIX=${API_PREFIX}
+      - ENV=${ENV}
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS}
+      - CORS_ALLOW_CREDENTIALS=${CORS_ALLOW_CREDENTIALS}
+      - CORS_ALLOW_METHODS=${CORS_ALLOW_METHODS}
+      - CORS_ALLOW_HEADERS=${CORS_ALLOW_HEADERS}
+    depends_on:
+      data-module:
+        condition: service_healthy
+    networks:
+      - intelligent-logistics
+
+  decision-engine:
+    build: ./decision_engine_microservice
+    container_name: decision-engine
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+      - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
+      - GATE_ID=${GATE_ID}
+      - API_URL=${API_URL}
+      - TIME_TOLERANCE_MINUTES=${TIME_TOLERANCE_MINUTES}
+    networks:
+      - intelligent-logistics
+
+  # =============================================================================
+  # ML AGENTS
+  # =============================================================================
+
+  agentA:
+    build: ./agentA_microservice
+    container_name: agentA
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+      - MODELS_PATH=/app/agentA_microservice/data
+      - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
+      - GATE_ID=${GATE_ID}
+      - NGINX_RTMP_HOST=${NGINX_RTMP_HOST}
+      - NGINX_RTMP_PORT=${NGINX_RTMP_PORT}
+    networks:
+      - intelligent-logistics
+
+  agentB:
+    build: ./agentB_microservice
+    container_name: agentB
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+      - MODELS_PATH=/app/agentB_microservice/data
+      - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
+      - GATE_ID=${GATE_ID}
+      - NGINX_RTMP_HOST=${NGINX_RTMP_HOST}
+      - NGINX_RTMP_PORT=${NGINX_RTMP_PORT}
+      - MINIO_HOST=${MINIO_HOST}
+      - MINIO_PORT=${MINIO_API_PORT}
+      - ACCESS_KEY=${ACCESS_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - BUCKET_NAME=${LP_BUCKET_NAME}
+    networks:
+      - intelligent-logistics
+
+  agentC:
+    build: ./agentC_microservice
+    container_name: agentC
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+      - MODELS_PATH=/app/agentC_microservice/data
+      - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
+      - GATE_ID=${GATE_ID}
+      - NGINX_RTMP_HOST=${NGINX_RTMP_HOST}
+      - NGINX_RTMP_PORT=${NGINX_RTMP_PORT}
+      - MINIO_HOST=${MINIO_HOST}
+      - MINIO_PORT=${MINIO_API_PORT}
+      - ACCESS_KEY=${ACCESS_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - BUCKET_NAME=${HZ_BUCKET_NAME}
+    networks:
+      - intelligent-logistics
+
+volumes:
+  pgdata:
+  mongodata:
+  miniodata:
+
+networks:
+  intelligent-logistics:
+    driver: bridge

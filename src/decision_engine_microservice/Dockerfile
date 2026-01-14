@@ -1,12 +1,8 @@
 # Use Python 3.11 slim image as base
 FROM docker.io/python:3.11-slim@sha256:193fdd0bbcb3d2ae612bd6cc3548d2f7c78d65b549fcaa8af75624c47474444d
 
-# Environment variables
-ENV PYTHONPATH=/app \
-    KAFKA_BOOTSTRAP=10.255.32.143:9092 \
-    GATE_ID=1 \
-    API_URL=http://10.255.32.82:8080/api/v1 \
-    TIME_TOLERANCE_MINUTES=30
+# Environment variables (runtime vars provided via docker-compose/.env)
+ENV PYTHONPATH=/app
 
 WORKDIR /app
 

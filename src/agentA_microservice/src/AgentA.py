@@ -13,7 +13,7 @@ import logging
 # --- Configuration ---
 # Load environment variables or fallback to default network settings
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
-NGINX_RTMP_HOST = os.getenv("NGINX_RTMP_HOST", "10.255.32.35")
+NGINX_RTMP_HOST = os.getenv("NGINX_RTMP_HOST", "10.255.32.80")
 NGINX_RTMP_PORT = os.getenv("NGINX_RTMP_PORT", "1935")
 GATE_ID = os.getenv("GATE_ID", "1")
 RTSP_STREAM_LOW = os.getenv("RTSP_STREAM_LOW", f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_low/gate{GATE_ID}")

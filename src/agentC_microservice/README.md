@@ -201,9 +201,9 @@ The variables below are defined in the Dockerfile but can be overridden at runti
 |----------|---------|-------------|
 | `KAFKA_BOOTSTRAP` | `10.255.32.143:9092` | Kafka server address (host:port) |
 | `GATE_ID` | `1` | Identifier for the gate that the agent monitors |
-| `NGINX_RTMP_HOST` | `10.255.32.35` | Hostname/IP of the NGINX-RTMP server |
+| `NGINX_RTMP_HOST` | `10.255.32.80` | Hostname/IP of the NGINX-RTMP server |
 | `NGINX_RTMP_PORT` | `1935` | Port for the NGINX RTMP service |
-| `MINIO_HOST` | `10.255.32.132` | MinIO server hostname/IP |
+| `MINIO_HOST` | `10.255.32.82` | MinIO server hostname/IP |
 | `MINIO_PORT` | `9000` | MinIO S3 API port |
 | `ACCESS_KEY` | (required) | MinIO access key |
 | `SECRET_KEY` | (required) | MinIO secret key |

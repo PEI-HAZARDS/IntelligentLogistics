@@ -1,0 +1,60 @@
+# ML Agents Group Deployment
+# Usage: docker-compose -f docker-compose.agents.yml up -d
+# Requires: Network 'intelligent-logistics' must exist
+
+services:
+  agentA:
+    build: ./agentA_microservice
+    container_name: agentA
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+      - MODELS_PATH=/app/agentA_microservice/data
+      - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
+      - GATE_ID=${GATE_ID}
+      - NGINX_RTMP_HOST=${NGINX_RTMP_HOST}
+      - NGINX_RTMP_PORT=${NGINX_RTMP_PORT}
+    networks:
+      - intelligent-logistics
+
+  agentB:
+    build: ./agentB_microservice
+    container_name: agentB
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+      - MODELS_PATH=/app/agentB_microservice/data
+      - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
+      - GATE_ID=${GATE_ID}
+      - NGINX_RTMP_HOST=${NGINX_RTMP_HOST}
+      - NGINX_RTMP_PORT=${NGINX_RTMP_PORT}
+      - MINIO_HOST=${MINIO_HOST}
+      - MINIO_PORT=${MINIO_API_PORT}
+      - ACCESS_KEY=${ACCESS_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - BUCKET_NAME=${LP_BUCKET_NAME}
+    networks:
+      - intelligent-logistics
+
+  agentC:
+    build: ./agentC_microservice
+    container_name: agentC
+    restart: unless-stopped
+    environment:
+      - PYTHONPATH=/app
+      - MODELS_PATH=/app/agentC_microservice/data
+      - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
+      - GATE_ID=${GATE_ID}
+      - NGINX_RTMP_HOST=${NGINX_RTMP_HOST}
+      - NGINX_RTMP_PORT=${NGINX_RTMP_PORT}
+      - MINIO_HOST=${MINIO_HOST}
+      - MINIO_PORT=${MINIO_API_PORT}
+      - ACCESS_KEY=${ACCESS_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - BUCKET_NAME=${HZ_BUCKET_NAME}
+    networks:
+      - intelligent-logistics
+
+networks:
+  intelligent-logistics:
+    external: true
