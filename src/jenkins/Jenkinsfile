@@ -313,7 +313,7 @@ def executeAction(String containerName, String vmIp, String buildPath, String im
             case 'status':
                 echo "📊 Estado de ${containerName} em ${vmIp}:"
                 sh """
-                    SSH_DIR="/var/jenkins_home/.ssh"
+                    SSH_DIR="\${HOME}/.ssh"
                     mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                     ${sshCmd} 'docker ps -a --filter name=${containerName} --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}\\t{{.Image}}"'
                 """
@@ -322,7 +322,7 @@ def executeAction(String containerName, String vmIp, String buildPath, String im
             case 'logs':
                 echo "📜 Logs de ${containerName} em ${vmIp}:"
                 sh """
-                    SSH_DIR="/var/jenkins_home/.ssh"
+                    SSH_DIR="\${HOME}/.ssh"
                     mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                     ${sshCmd} 'docker logs --tail ${params.LOG_LINES} ${containerName} 2>&1' || echo "Container não encontrado ou sem logs"
                 """
@@ -331,7 +331,7 @@ def executeAction(String containerName, String vmIp, String buildPath, String im
             case 'restart':
                 echo "🔄 Reiniciando ${containerName} em ${vmIp}..."
                 sh """
-                    SSH_DIR="/var/jenkins_home/.ssh"
+                    SSH_DIR="\${HOME}/.ssh"
                     mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                     ${sshCmd} 'docker restart ${containerName}'
                 """
@@ -341,7 +341,7 @@ def executeAction(String containerName, String vmIp, String buildPath, String im
             case 'stop':
                 echo "⏹️ Parando ${containerName} em ${vmIp}..."
                 sh """
-                    SSH_DIR="/var/jenkins_home/.ssh"
+                    SSH_DIR="\${HOME}/.ssh"
                     mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                     ${sshCmd} 'docker stop ${containerName}'
                 """
@@ -359,31 +359,34 @@ def executeAction(String containerName, String vmIp, String buildPath, String im
                 def buildOutput = sh(
                     script: """
                         SSH_DIR="/var/jenkins_home/.ssh"
-                        mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
+                        mkdir -p "\${SSH_DIR}" && chmod 700 "\${SSH_DIR}"
+                        cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                         
+                        # Configurar SSH para o host
                         cat > "\${SSH_DIR}/config" << EOF
 Host ${containerName}-vm
     HostName ${vmIp}
     User \$SSH_USER
     IdentityFile \${SSH_DIR}/deploy_key
     StrictHostKeyChecking no
-    UserKnownHostsFile=/dev/null
+    UserKnownHostsFile /dev/null
 EOF
+                        chmod 600 "\${SSH_DIR}/config"
                         
-                        docker context create ${containerName}_ctx --docker "host=ssh://${containerName}-vm" 2>/dev/null || true
-                        docker context use ${containerName}_ctx
+                        # Usar SSH direto com IP em vez de hostname
+                        export DOCKER_HOST="ssh://\$SSH_USER@${vmIp}"
                         
                         echo "🔍 Verificando imagem existente..."
-                        OLD_IMAGE_ID=\$(docker images -q ${imageName}:latest 2>/dev/null || echo "none")
+                        OLD_IMAGE_ID=\$(docker -H "ssh://\$SSH_USER@${vmIp}" images -q ${imageName}:latest 2>/dev/null || echo "none")
                         echo "   Imagem anterior: \$OLD_IMAGE_ID"
                         
                         cd ${buildPath}
                         
                         echo ""
                         echo "🔨 Iniciando build..."
-                        docker compose build 2>/dev/null || docker build -t ${imageName}:latest . 2>&1 | tee /tmp/build_${containerName}.log
+                        docker -H "ssh://\$SSH_USER@${vmIp}" compose build 2>/dev/null || docker -H "ssh://\$SSH_USER@${vmIp}" build -t ${imageName}:latest . 2>&1 | tee /tmp/build_${containerName}.log
                         
-                        NEW_IMAGE_ID=\$(docker images -q ${imageName}:latest)
+                        NEW_IMAGE_ID=\$(docker -H "ssh://\$SSH_USER@${vmIp}" images -q ${imageName}:latest)
                         echo ""
                         echo "   Imagem nova: \$NEW_IMAGE_ID"
                         
@@ -400,21 +403,14 @@ EOF
                                 CACHED_STEPS=\$(grep -c "CACHED" /tmp/build_${containerName}.log)
                                 echo "   ✅ \$CACHED_STEPS steps reutilizados do cache"
                             fi
-                            
-                            if grep -qE "RUN|COPY" /tmp/build_${containerName}.log 2>/dev/null; then
-                                REBUILT_STEPS=\$(grep -cE "Step [0-9]+/[0-9]+ : (RUN|COPY)" /tmp/build_${containerName}.log | grep -v CACHED || echo "0")
-                                if [ "\$REBUILT_STEPS" != "0" ]; then
-                                    echo "   🔨 \$REBUILT_STEPS steps reconstruídos"
-                                fi
-                            fi
                         fi
                         
                         echo ""
                         echo "🔄 Atualizando container..."
-                        docker stop ${containerName} 2>/dev/null || true
-                        docker rm ${containerName} 2>/dev/null || true
+                        docker -H "ssh://\$SSH_USER@${vmIp}" stop ${containerName} 2>/dev/null || true
+                        docker -H "ssh://\$SSH_USER@${vmIp}" rm ${containerName} 2>/dev/null || true
                         
-                        docker compose up -d 2>/dev/null || docker run -d \\
+                        docker -H "ssh://\$SSH_USER@${vmIp}" compose up -d 2>/dev/null || docker -H "ssh://\$SSH_USER@${vmIp}" run -d \\
                             --name ${containerName} \\
                             --restart unless-stopped \\
                             ${ports ? ports.split(',').collect { "-p ${it}" }.join(' ') : ''} \\
@@ -422,9 +418,7 @@ EOF
                         
                         echo ""
                         echo "📊 Status final:"
-                        docker ps --filter name=${containerName} --format "   ID: {{.ID}} | Status: {{.Status}} | Ports: {{.Ports}}"
-                        
-                        docker context use default
+                        docker -H "ssh://\$SSH_USER@${vmIp}" ps --filter name=${containerName} --format "   ID: {{.ID}} | Status: {{.Status}} | Ports: {{.Ports}}"
                         
                         rm -f /tmp/build_${containerName}.log
                     """,
@@ -456,7 +450,7 @@ def executeActionMulti(List<String> containers, String vmIp) {
             case 'status':
                 echo "📊 Estado dos containers em ${vmIp}:"
                 sh """
-                    SSH_DIR="/var/jenkins_home/.ssh"
+                    SSH_DIR="\${HOME}/.ssh"
                     mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                     ${sshCmd} 'docker ps -a --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"'
                 """
@@ -466,7 +460,7 @@ def executeActionMulti(List<String> containers, String vmIp) {
                 containers.each { container ->
                     echo "📜 Logs de ${container}:"
                     sh """
-                        SSH_DIR="/var/jenkins_home/.ssh"
+                        SSH_DIR="\${HOME}/.ssh"
                         mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                         ${sshCmd} 'docker logs --tail ${params.LOG_LINES} ${container} 2>&1' || echo "Container não encontrado"
                     """
@@ -477,7 +471,7 @@ def executeActionMulti(List<String> containers, String vmIp) {
                 echo "🔄 Reiniciando containers em ${vmIp}..."
                 containers.each { container ->
                     sh """
-                        SSH_DIR="/var/jenkins_home/.ssh"
+                        SSH_DIR="\${HOME}/.ssh"
                         mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                         ${sshCmd} 'docker restart ${container} 2>/dev/null' || echo "${container} não encontrado"
                     """
@@ -489,7 +483,7 @@ def executeActionMulti(List<String> containers, String vmIp) {
                 echo "⏹️ Parando containers em ${vmIp}..."
                 containers.reverse().each { container ->
                     sh """
-                        SSH_DIR="/var/jenkins_home/.ssh"
+                        SSH_DIR="\${HOME}/.ssh"
                         mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
                         ${sshCmd} 'docker stop ${container} 2>/dev/null' || echo "${container} não encontrado"
                     """
@@ -507,7 +501,7 @@ def deployKafka(String vmIp) {
         sshUserPrivateKey(credentialsId: 'ssh-vm-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
     ]) {
         sh """
-            SSH_DIR="/var/jenkins_home/.ssh"
+            SSH_DIR="\${HOME}/.ssh"
             mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
             
             ssh -i "\${SSH_DIR}/deploy_key" -o StrictHostKeyChecking=no \$SSH_USER@${vmIp} << 'ENDSSH'
@@ -553,7 +547,7 @@ def deployDataModule(String vmIp) {
         usernamePassword(credentialsId: 'minio-credentials', usernameVariable: 'MINIO_USER', passwordVariable: 'MINIO_PASS')
     ]) {
         sh """
-            SSH_DIR="/var/jenkins_home/.ssh"
+            SSH_DIR="\${HOME}/.ssh"
             mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
             
             # Copiar docker-compose para a VM
@@ -611,7 +605,7 @@ def deployUI(String vmIp) {
         }
         
         sh """
-            SSH_DIR="/var/jenkins_home/.ssh"
+            SSH_DIR="\${HOME}/.ssh"
             mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
             
             docker context create ui_ctx --docker "host=ssh://\$SSH_USER@${vmIp}" 2>/dev/null || true

@@ -1,6 +1,6 @@
 services:
   jenkins:
-    image: jenkins/jenkins:lts
+    build: .
     container_name: jenkins
     restart: unless-stopped
     
@@ -13,7 +13,6 @@ services:
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock  # Allow Jenkins to run Docker
-      - ~/.ssh:/root/.ssh:ro  # SSH keys for VM access
     
     environment:
       - JAVA_OPTS=-Djenkins.install.runSetupWizard=true
