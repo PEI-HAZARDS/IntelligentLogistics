@@ -10,9 +10,13 @@
  * - restart: Reiniciar container
  * - stop: Parar container
  * 
- * Jenkins Credentials:
- * - ssh-vm-key: SSH key para acesso às VMs
- * - minio-credentials: MinIO username/password
+ * Setup inicial (uma vez):
+ *   1. Gerar chaves SSH no container Jenkins:
+ *      docker exec jenkins ssh-keygen -t ed25519 -f /var/jenkins_home/.ssh/id_ed25519 -N ""
+ *   2. Obter chave pública:
+ *      docker exec jenkins cat /var/jenkins_home/.ssh/id_ed25519.pub
+ *   3. Adicionar a chave pública em cada VM:
+ *      ssh pei_user@<VM_IP> "echo '<CHAVE_PUBLICA>' >> ~/.ssh/authorized_keys"
  */
 
 pipeline {
@@ -76,6 +80,9 @@ pipeline {
         DECISION_ENGINE_IP = '10.255.32.104'
         API_GATEWAY_IP = '10.255.32.100'
         UI_IP = '10.255.32.108'
+        
+        // SSH User para acesso às VMs
+        SSH_USER = 'pei_user'
         
         // Repositories
         BACKEND_REPO = 'https://github.com/PEI-HAZARDS/IntelligentLogistics.git'
@@ -302,328 +309,251 @@ pipeline {
 
 def executeAction(String containerName, String vmIp, String buildPath, String imageName, String ports = '') {
     /**
-     * Executa a ação selecionada num container específico
+     * Executa a ação selecionada num container específico.
+     * Usa chaves SSH persistentes em /var/jenkins_home/.ssh/
      */
-    withCredentials([
-        sshUserPrivateKey(credentialsId: 'ssh-vm-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
-    ]) {
-        def sshCmd = "ssh -i \$SSH_KEY -o StrictHostKeyChecking=no \$SSH_USER@${vmIp}"
-        
-        switch(params.ACTION) {
-            case 'status':
-                echo "📊 Estado de ${containerName} em ${vmIp}:"
-                sh """
-                    SSH_DIR="\${HOME}/.ssh"
-                    mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
-                    ${sshCmd} 'docker ps -a --filter name=${containerName} --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}\\t{{.Image}}"'
-                """
-                break
-                
-            case 'logs':
-                echo "📜 Logs de ${containerName} em ${vmIp}:"
-                sh """
-                    SSH_DIR="\${HOME}/.ssh"
-                    mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
-                    ${sshCmd} 'docker logs --tail ${params.LOG_LINES} ${containerName} 2>&1' || echo "Container não encontrado ou sem logs"
-                """
-                break
-                
-            case 'restart':
-                echo "🔄 Reiniciando ${containerName} em ${vmIp}..."
-                sh """
-                    SSH_DIR="\${HOME}/.ssh"
-                    mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
-                    ${sshCmd} 'docker restart ${containerName}'
-                """
-                echo "✅ ${containerName} reiniciado"
-                break
-                
-            case 'stop':
-                echo "⏹️ Parando ${containerName} em ${vmIp}..."
-                sh """
-                    SSH_DIR="\${HOME}/.ssh"
-                    mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
-                    ${sshCmd} 'docker stop ${containerName}'
-                """
-                echo "✅ ${containerName} parado"
-                break
-                
-            case 'deploy':
-                echo """
+    def dockerHost = "ssh://${SSH_USER}@${vmIp}"
+    
+    switch(params.ACTION) {
+        case 'status':
+            echo "📊 Estado de ${containerName} em ${vmIp}:"
+            sh """
+                docker -H "${dockerHost}" ps -a --filter name=${containerName} --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}\\t{{.Image}}"
+            """
+            break
+            
+        case 'logs':
+            echo "📜 Logs de ${containerName} em ${vmIp}:"
+            sh """
+                docker -H "${dockerHost}" logs --tail ${params.LOG_LINES} ${containerName} 2>&1 || echo "Container não encontrado ou sem logs"
+            """
+            break
+            
+        case 'restart':
+            echo "🔄 Reiniciando ${containerName} em ${vmIp}..."
+            sh """
+                docker -H "${dockerHost}" restart ${containerName}
+            """
+            echo "✅ ${containerName} reiniciado"
+            break
+            
+        case 'stop':
+            echo "⏹️ Parando ${containerName} em ${vmIp}..."
+            sh """
+                docker -H "${dockerHost}" stop ${containerName}
+            """
+            echo "✅ ${containerName} parado"
+            break
+            
+        case 'deploy':
+            echo """
 ╔═══════════════════════════════════════════════════════════════╗
 ║  📦 Deploy: ${containerName.padRight(48)}║
 ║  🖥️  VM: ${vmIp.padRight(51)}║
 ╚═══════════════════════════════════════════════════════════════╝
 """
-                
-                def buildOutput = sh(
-                    script: """
-                        SSH_DIR="/var/jenkins_home/.ssh"
-                        mkdir -p "\${SSH_DIR}" && chmod 700 "\${SSH_DIR}"
-                        cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
-                        
-                        # Configurar SSH para o host
-                        cat > "\${SSH_DIR}/config" << EOF
-Host ${containerName}-vm
-    HostName ${vmIp}
-    User \$SSH_USER
-    IdentityFile \${SSH_DIR}/deploy_key
-    StrictHostKeyChecking no
-    UserKnownHostsFile /dev/null
-EOF
-                        chmod 600 "\${SSH_DIR}/config"
-                        
-                        # Usar SSH direto com IP em vez de hostname
-                        export DOCKER_HOST="ssh://\$SSH_USER@${vmIp}"
-                        
-                        echo "🔍 Verificando imagem existente..."
-                        OLD_IMAGE_ID=\$(docker -H "ssh://\$SSH_USER@${vmIp}" images -q ${imageName}:latest 2>/dev/null || echo "none")
-                        echo "   Imagem anterior: \$OLD_IMAGE_ID"
-                        
-                        cd ${buildPath}
-                        
+            
+            def buildOutput = sh(
+                script: """
+                    echo "🔍 Verificando imagem existente..."
+                    OLD_IMAGE_ID=\$(docker -H "${dockerHost}" images -q ${imageName}:latest 2>/dev/null || echo "none")
+                    echo "   Imagem anterior: \$OLD_IMAGE_ID"
+                    
+                    cd ${buildPath}
+                    
+                    echo ""
+                    echo "🔨 Iniciando build..."
+                    docker -H "${dockerHost}" compose build 2>&1 | tee /tmp/build_${containerName}.log || \
+                    docker -H "${dockerHost}" build -t ${imageName}:latest . 2>&1 | tee /tmp/build_${containerName}.log
+                    
+                    NEW_IMAGE_ID=\$(docker -H "${dockerHost}" images -q ${imageName}:latest)
+                    echo ""
+                    echo "   Imagem nova: \$NEW_IMAGE_ID"
+                    
+                    if [ "\$OLD_IMAGE_ID" = "\$NEW_IMAGE_ID" ] && [ "\$OLD_IMAGE_ID" != "none" ]; then
                         echo ""
-                        echo "🔨 Iniciando build..."
-                        docker -H "ssh://\$SSH_USER@${vmIp}" compose build 2>/dev/null || docker -H "ssh://\$SSH_USER@${vmIp}" build -t ${imageName}:latest . 2>&1 | tee /tmp/build_${containerName}.log
-                        
-                        NEW_IMAGE_ID=\$(docker -H "ssh://\$SSH_USER@${vmIp}" images -q ${imageName}:latest)
+                        echo "✨ CACHE COMPLETO - Nenhuma layer foi reconstruída"
+                        echo "   (Imagem não mudou, tudo reutilizado do cache)"
+                    else
                         echo ""
-                        echo "   Imagem nova: \$NEW_IMAGE_ID"
+                        echo "🔄 BUILD REALIZADO - Layers foram reconstruídas"
                         
-                        if [ "\$OLD_IMAGE_ID" = "\$NEW_IMAGE_ID" ] && [ "\$OLD_IMAGE_ID" != "none" ]; then
-                            echo ""
-                            echo "✨ CACHE COMPLETO - Nenhuma layer foi reconstruída"
-                            echo "   (Imagem não mudou, tudo reutilizado do cache)"
-                        else
-                            echo ""
-                            echo "🔄 BUILD REALIZADO - Layers foram reconstruídas"
-                            
-                            # Análise do log de build para mostrar o que mudou
-                            if grep -q "CACHED" /tmp/build_${containerName}.log 2>/dev/null; then
-                                CACHED_STEPS=\$(grep -c "CACHED" /tmp/build_${containerName}.log)
-                                echo "   ✅ \$CACHED_STEPS steps reutilizados do cache"
-                            fi
+                        # Análise do log de build para mostrar o que mudou
+                        if grep -q "CACHED" /tmp/build_${containerName}.log 2>/dev/null; then
+                            CACHED_STEPS=\$(grep -c "CACHED" /tmp/build_${containerName}.log)
+                            echo "   ✅ \$CACHED_STEPS steps reutilizados do cache"
                         fi
-                        
-                        echo ""
-                        echo "🔄 Atualizando container..."
-                        docker -H "ssh://\$SSH_USER@${vmIp}" stop ${containerName} 2>/dev/null || true
-                        docker -H "ssh://\$SSH_USER@${vmIp}" rm ${containerName} 2>/dev/null || true
-                        
-                        docker -H "ssh://\$SSH_USER@${vmIp}" compose up -d 2>/dev/null || docker -H "ssh://\$SSH_USER@${vmIp}" run -d \\
-                            --name ${containerName} \\
-                            --restart unless-stopped \\
-                            ${ports ? ports.split(',').collect { "-p ${it}" }.join(' ') : ''} \\
-                            ${imageName}:latest
-                        
-                        echo ""
-                        echo "📊 Status final:"
-                        docker -H "ssh://\$SSH_USER@${vmIp}" ps --filter name=${containerName} --format "   ID: {{.ID}} | Status: {{.Status}} | Ports: {{.Ports}}"
-                        
-                        rm -f /tmp/build_${containerName}.log
-                    """,
-                    returnStdout: true
-                )
-                
-                echo buildOutput
-                
-                echo """
+                    fi
+                    
+                    echo ""
+                    echo "🔄 Atualizando container..."
+                    docker -H "${dockerHost}" stop ${containerName} 2>/dev/null || true
+                    docker -H "${dockerHost}" rm ${containerName} 2>/dev/null || true
+                    
+                    docker -H "${dockerHost}" compose up -d 2>/dev/null || docker -H "${dockerHost}" run -d \\
+                        --name ${containerName} \\
+                        --restart unless-stopped \\
+                        ${ports ? ports.split(',').collect { "-p ${it}" }.join(' ') : ''} \\
+                        ${imageName}:latest
+                    
+                    echo ""
+                    echo "📊 Status final:"
+                    docker -H "${dockerHost}" ps --filter name=${containerName} --format "   ID: {{.ID}} | Status: {{.Status}} | Ports: {{.Ports}}"
+                    
+                    rm -f /tmp/build_${containerName}.log
+                """,
+                returnStdout: true
+            )
+            
+            echo buildOutput
+            
+            echo """
 ╔═══════════════════════════════════════════════════════════════╗
 ║  ✅ ${containerName.padRight(48)} DEPLOYED    ║
 ╚═══════════════════════════════════════════════════════════════╝
 """
-                break
-        }
+            break
     }
 }
 
 def executeActionMulti(List<String> containers, String vmIp) {
     /**
-     * Executa a ação em múltiplos containers (ex: Kafka tem 3 containers)
+     * Executa a ação em múltiplos containers (ex: Kafka tem 3 containers).
+     * Usa chaves SSH persistentes em /var/jenkins_home/.ssh/
      */
-    withCredentials([
-        sshUserPrivateKey(credentialsId: 'ssh-vm-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
-    ]) {
-        def sshCmd = "ssh -i \$SSH_KEY -o StrictHostKeyChecking=no \$SSH_USER@${vmIp}"
-        
-        switch(params.ACTION) {
-            case 'status':
-                echo "📊 Estado dos containers em ${vmIp}:"
+    def dockerHost = "ssh://${SSH_USER}@${vmIp}"
+    
+    switch(params.ACTION) {
+        case 'status':
+            echo "📊 Estado dos containers em ${vmIp}:"
+            sh """
+                docker -H "${dockerHost}" ps -a --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
+            """
+            break
+            
+        case 'logs':
+            containers.each { container ->
+                echo "📜 Logs de ${container}:"
                 sh """
-                    SSH_DIR="\${HOME}/.ssh"
-                    mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
-                    ${sshCmd} 'docker ps -a --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"'
+                    docker -H "${dockerHost}" logs --tail ${params.LOG_LINES} ${container} 2>&1 || echo "Container não encontrado"
                 """
-                break
-                
-            case 'logs':
-                containers.each { container ->
-                    echo "📜 Logs de ${container}:"
-                    sh """
-                        SSH_DIR="\${HOME}/.ssh"
-                        mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
-                        ${sshCmd} 'docker logs --tail ${params.LOG_LINES} ${container} 2>&1' || echo "Container não encontrado"
-                    """
-                }
-                break
-                
-            case 'restart':
-                echo "🔄 Reiniciando containers em ${vmIp}..."
-                containers.each { container ->
-                    sh """
-                        SSH_DIR="\${HOME}/.ssh"
-                        mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
-                        ${sshCmd} 'docker restart ${container} 2>/dev/null' || echo "${container} não encontrado"
-                    """
-                }
-                echo "✅ Containers reiniciados"
-                break
-                
-            case 'stop':
-                echo "⏹️ Parando containers em ${vmIp}..."
-                containers.reverse().each { container ->
-                    sh """
-                        SSH_DIR="\${HOME}/.ssh"
-                        mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
-                        ${sshCmd} 'docker stop ${container} 2>/dev/null' || echo "${container} não encontrado"
-                    """
-                }
-                echo "✅ Containers parados"
-                break
-        }
+            }
+            break
+            
+        case 'restart':
+            echo "🔄 Reiniciando containers em ${vmIp}..."
+            containers.each { container ->
+                sh """
+                    docker -H "${dockerHost}" restart ${container} 2>/dev/null || echo "${container} não encontrado"
+                """
+            }
+            echo "✅ Containers reiniciados"
+            break
+            
+        case 'stop':
+            echo "⏹️ Parando containers em ${vmIp}..."
+            containers.reverse().each { container ->
+                sh """
+                    docker -H "${dockerHost}" stop ${container} 2>/dev/null || echo "${container} não encontrado"
+                """
+            }
+            echo "✅ Containers parados"
+            break
     }
 }
 
 def deployKafka(String vmIp) {
     echo "📦 Deploying Kafka stack to ${vmIp}..."
     
-    withCredentials([
-        sshUserPrivateKey(credentialsId: 'ssh-vm-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
-    ]) {
-        sh """
-            SSH_DIR="\${HOME}/.ssh"
-            mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
-            
-            ssh -i "\${SSH_DIR}/deploy_key" -o StrictHostKeyChecking=no \$SSH_USER@${vmIp} << 'ENDSSH'
-                docker network create kafka-net 2>/dev/null || true
-                
-                # Para containers mas não remove (mantém volumes)
-                docker stop kafka kafka-ui zookeeper 2>/dev/null || true
-                docker rm kafka kafka-ui zookeeper 2>/dev/null || true
-                
-                docker run -d --name zookeeper --network kafka-net --restart unless-stopped \\
-                    -e ZOOKEEPER_CLIENT_PORT=2181 \\
-                    confluentinc/cp-zookeeper:latest
-                
-                sleep 10
-                
-                docker run -d --name kafka --network kafka-net --restart unless-stopped \\
-                    -p 9092:9092 \\
-                    -e KAFKA_BROKER_ID=1 \\
-                    -e KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181 \\
-                    -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${vmIp}:9092 \\
-                    -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \\
-                    confluentinc/cp-kafka:latest
-                
-                sleep 10
-                
-                docker run -d --name kafka-ui --network kafka-net --restart unless-stopped \\
-                    -p 8080:8080 \\
-                    -e KAFKA_CLUSTERS_0_NAME=intelligent-logistics \\
-                    -e KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092 \\
-                    provectuslabs/kafka-ui:latest
-                
-                echo "✅ Kafka stack deployed"
-ENDSSH
-        """
-    }
+    def dockerHost = "ssh://${SSH_USER}@${vmIp}"
+    
+    sh """
+        docker -H "${dockerHost}" network create kafka-net 2>/dev/null || true
+        
+        # Para containers mas não remove (mantém volumes)
+        docker -H "${dockerHost}" stop kafka kafka-ui zookeeper 2>/dev/null || true
+        docker -H "${dockerHost}" rm kafka kafka-ui zookeeper 2>/dev/null || true
+        
+        docker -H "${dockerHost}" run -d --name zookeeper --network kafka-net --restart unless-stopped \\
+            -e ZOOKEEPER_CLIENT_PORT=2181 \\
+            confluentinc/cp-zookeeper:latest
+        
+        sleep 10
+        
+        docker -H "${dockerHost}" run -d --name kafka --network kafka-net --restart unless-stopped \\
+            -p 9092:9092 \\
+            -e KAFKA_BROKER_ID=1 \\
+            -e KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181 \\
+            -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${vmIp}:9092 \\
+            -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \\
+            confluentinc/cp-kafka:latest
+        
+        sleep 10
+        
+        docker -H "${dockerHost}" run -d --name kafka-ui --network kafka-net --restart unless-stopped \\
+            -p 8080:8080 \\
+            -e KAFKA_CLUSTERS_0_NAME=intelligent-logistics \\
+            -e KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092 \\
+            provectuslabs/kafka-ui:latest
+        
+        echo "✅ Kafka stack deployed"
+    """
 }
 
 def deployDataModule(String vmIp) {
     echo "📦 Deploying Data Module stack to ${vmIp}..."
     
-    withCredentials([
-        sshUserPrivateKey(credentialsId: 'ssh-vm-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER'),
-        usernamePassword(credentialsId: 'minio-credentials', usernameVariable: 'MINIO_USER', passwordVariable: 'MINIO_PASS')
-    ]) {
-        sh """
-            SSH_DIR="\${HOME}/.ssh"
-            mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
+    def dockerHost = "ssh://${SSH_USER}@${vmIp}"
+    
+    // Copiar docker-compose para a VM
+    sh """
+        scp -o StrictHostKeyChecking=no \\
+            src/Data_Module/docker-compose.yml \\
+            ${SSH_USER}@${vmIp}:~/data-module/
+    """
+    
+    // Deploy via SSH
+    sh """
+        ssh -o StrictHostKeyChecking=no ${SSH_USER}@${vmIp} << 'ENDSSH'
+            cd ~/data-module
             
-            # Copiar docker-compose para a VM
-            scp -i "\${SSH_DIR}/deploy_key" -o StrictHostKeyChecking=no \\
-                src/Data_Module/docker-compose.yml \\
-                \$SSH_USER@${vmIp}:~/data-module/
+            # Para mas mantém volumes (dados persistentes)
+            docker compose down --volumes=false 2>/dev/null || true
             
-            ssh -i "\${SSH_DIR}/deploy_key" -o StrictHostKeyChecking=no \$SSH_USER@${vmIp} << ENDSSH
-                cd ~/data-module
-                
-                # Para mas mantém volumes (dados persistentes)
-                docker compose down --volumes=false 2>/dev/null || true
-                
-                # Up com build cache automático
-                docker compose up -d --build
-                
-                echo "✅ Data Module stack deployed"
+            # Up com build cache automático
+            docker compose up -d --build
+            
+            echo "✅ Data Module stack deployed"
 ENDSSH
-        """
-        
-        // Deploy da aplicação Data Module
-        sh """
-            docker context create data_module_ctx --docker "host=ssh://\$SSH_USER@${vmIp}" 2>/dev/null || true
-            docker context use data_module_ctx
-            
-            cd src/Data_Module
-            
-            # Build com cache automático
-            docker compose build
-            
-            # Para mas não remove volumes
-            docker compose stop
-            
-            # Up
-            docker compose up -d
-            
-            docker context use default
-        """
-    }
+    """
 }
 
 def deployUI(String vmIp) {
     echo "📦 Deploying UI to ${vmIp}..."
     
-    withCredentials([
-        sshUserPrivateKey(credentialsId: 'ssh-vm-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
-    ]) {
-        // Checkout do repo da APP
-        dir('app') {
-            checkout([
-                $class: 'GitSCM',
-                branches: [[name: "*/${params.BRANCH}"]],
-                userRemoteConfigs: [[url: APP_REPO]]
-            ])
-        }
-        
-        sh """
-            SSH_DIR="\${HOME}/.ssh"
-            mkdir -p "\${SSH_DIR}" && cp \$SSH_KEY "\${SSH_DIR}/deploy_key" && chmod 600 "\${SSH_DIR}/deploy_key"
-            
-            docker context create ui_ctx --docker "host=ssh://\$SSH_USER@${vmIp}" 2>/dev/null || true
-            docker context use ui_ctx
-            
-            cd app
-            
-            # Build com cache automático de layers
-            docker build -t ui_il:latest .
-            
-            # Para mas não remove (pode ter volumes de config)
-            docker stop ui_il 2>/dev/null || true
-            docker rm ui_il 2>/dev/null || true
-            
-            docker run -d --name ui_il --restart unless-stopped -p 3000:3000 ui_il:latest
-            
-            echo "✅ UI deployed"
-            docker context use default
-        """
+    def dockerHost = "ssh://${SSH_USER}@${vmIp}"
+    
+    // Checkout do repo da APP
+    dir('app') {
+        checkout([
+            $class: 'GitSCM',
+            branches: [[name: "*/${params.BRANCH}"]],
+            userRemoteConfigs: [[url: APP_REPO]]
+        ])
     }
+    
+    sh """
+        cd app
+        
+        # Build com cache automático de layers
+        docker -H "${dockerHost}" build -t ui_il:latest .
+        
+        # Para mas não remove (pode ter volumes de config)
+        docker -H "${dockerHost}" stop ui_il 2>/dev/null || true
+        docker -H "${dockerHost}" rm ui_il 2>/dev/null || true
+        
+        docker -H "${dockerHost}" run -d --name ui_il --restart unless-stopped -p 3000:3000 ui_il:latest
+        
+        echo "✅ UI deployed"
+    """
 }

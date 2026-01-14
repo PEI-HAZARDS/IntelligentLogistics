@@ -23,5 +23,10 @@ RUN apt-get update && apt-get install -y \
     docker-compose-plugin \
     && rm -rf /var/lib/apt/lists/*
 
+# Copiar script de setup SSH para /usr/local/bin
+# As chaves SSH são montadas de ./ssh_keys/ via docker-compose
+COPY setup-ssh-keys.sh /usr/local/bin/setup-ssh-keys.sh
+RUN chmod +x /usr/local/bin/setup-ssh-keys.sh
+
 # Manter root para ter acesso ao Docker socket
 USER root

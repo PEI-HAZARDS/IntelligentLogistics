@@ -128,23 +128,63 @@ Jenkins VM (10.255.32.132)
 
 ---
 
-## 🔐 Credentials Required (Jenkins)
+## 🔐 Setup SSH - Chaves Persistentes
 
-Configurar em: **Manage Jenkins** → **Credentials** → **System** → **Global credentials**
+As chaves SSH são armazenadas em `ssh_keys/` e montadas no container. Persistem entre rebuilds.
 
-| ID                  | Type                          | Username        | Description                     |
-| ------------------- | ----------------------------- | --------------- | ------------------------------- |
-| `ssh-vm-key`        | SSH Username with private key | (user das VMs)  | Acesso SSH às VMs               |
-| `minio-credentials` | Username with password        | MINIO_ROOT_USER | Credenciais MinIO (Data Module) |
+### Setup Inicial (Uma Vez)
 
-### Adicionar SSH Key:
+As chaves já estão configuradas. Se precisares de regenerar:
 
-1. **Add Credentials**
-2. **Kind:** SSH Username with private key
-3. **ID:** `ssh-vm-key`
-4. **Username:** (ex: `root` ou `ubuntu`)
-5. **Private Key:** Enter directly → colar chave privada
-6. **Passphrase:** (se tiver)
+```bash
+# Gerar novas chaves
+ssh-keygen -t ed25519 -f ssh_keys/id_ed25519 -N "" -C "jenkins@intelligentlogistics"
+
+# Copiar para a VM do Jenkins
+scp ssh_keys/* pei_user@10.255.32.132:~/jenkins/ssh_keys/
+ssh pei_user@10.255.32.132 "sudo chown root:root ~/jenkins/ssh_keys/* && sudo chmod 600 ~/jenkins/ssh_keys/id_ed25519"
+
+# Rebuild
+docker compose up -d --build
+```
+
+### Adicionar Nova VM
+
+Quando surgir uma nova VM, usa o script:
+
+```bash
+# Adicionar chave do Jenkins a uma nova VM
+./add-vm.sh 10.255.32.XXX
+
+# Ou com outro utilizador
+./add-vm.sh 10.255.32.XXX outro_user
+```
+
+O script:
+
+1. ✅ Verifica conectividade à VM
+2. ✅ Adiciona a chave pública ao `~/.ssh/authorized_keys`
+3. ✅ Testa se o Jenkins consegue conectar
+
+### Testar Conexão
+
+```bash
+# Testar SSH do Jenkins
+docker exec jenkins ssh pei_user@10.255.32.134 "hostname"
+
+# Testar Docker remoto
+docker exec jenkins docker -H "ssh://pei_user@10.255.32.134" ps
+```
+
+### Estrutura de Ficheiros
+
+```
+ssh_keys/
+├── id_ed25519      # Chave privada (NÃO vai para o git)
+├── id_ed25519.pub  # Chave pública
+├── config          # Configuração SSH
+└── .gitignore      # Ignora chaves privadas
+```
 
 ---
 
@@ -159,14 +199,9 @@ Configurar em: **Manage Jenkins** → **Credentials** → **System** → **Globa
 ### SSH Connection Failed
 
 - ✅ Verifica VPN conectada à rede UA
-- ✅ Testa: `timeout 5 bash -c 'cat < /dev/null > /dev/tcp/10.255.32.134/22'`
-- ✅ Confirma credential `ssh-vm-key` configurada corretamente
-
-### Build muito lento
-
-- ✅ Cache Docker ativado? (não uses `--pull` desnecessário)
-- ✅ Múltiplos serviços rodando em paralelo?
-- ✅ Rede lenta? Verifica bandwidth Jenkins ↔ VMs
+- ✅ Testa: `docker exec jenkins ssh pei_user@10.255.32.134 "docker ps"`
+- ✅ Chave SSH gerada? `docker exec jenkins ls -la /var/jenkins_home/.ssh/`
+- ✅ Chave pública adicionada à VM? `ssh pei_user@<VM_IP> "cat ~/.ssh/authorized_keys"`
 
 ### Container não inicia
 
