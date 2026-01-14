@@ -59,7 +59,13 @@ pipeline {
         string(
             name: 'BRANCH',
             defaultValue: 'main',
-            description: 'Git branch (apenas para deploy - ignorado nas outras ações)'
+            description: 'Git branch do Backend (apenas para deploy)'
+        )
+        
+        string(
+            name: 'UI_BRANCH',
+            defaultValue: 'main',
+            description: 'Git branch da UI/APP (apenas para deploy da UI)'
         )
         
         string(
@@ -135,7 +141,10 @@ pipeline {
                     // Info contextual baseada na ação
                     def extraInfo = ""
                     if (params.ACTION == 'deploy') {
-                        extraInfo = "║  Branch: ${params.BRANCH.padRight(52)}║"
+                        extraInfo = "║  Branch Backend: ${params.BRANCH.padRight(44)}║"
+                        if (env.SEL_UI == 'true') {
+                            extraInfo += "\n║  Branch UI:      ${params.UI_BRANCH.padRight(44)}║"
+                        }
                     } else if (params.ACTION == 'logs') {
                         extraInfo = "║  Linhas: ${params.LOG_LINES.padRight(52)}║"
                     }
@@ -562,11 +571,11 @@ def deployUI(String vmIp) {
     
     def dockerHost = "ssh://${SSH_USER}@${vmIp}"
     
-    // Checkout do repo da APP
+    // Checkout do repo da APP (usa UI_BRANCH separada)
     dir('app') {
         checkout([
             $class: 'GitSCM',
-            branches: [[name: "*/${params.BRANCH}"]],
+            branches: [[name: "*/${params.UI_BRANCH}"]],
             userRemoteConfigs: [[url: APP_REPO]]
         ])
     }
