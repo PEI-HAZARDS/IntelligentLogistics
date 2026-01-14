@@ -41,17 +41,17 @@ pipeline {
         // ================================================================
         // SELEÇÃO DE SERVIÇOS (checkboxes)
         // ================================================================
-        booleanParam(name: 'ALL_SERVICES', defaultValue: false, description: '⚡ Selecionar TODOS os serviços')
+        booleanParam(name: 'ALL_SERVICES', defaultValue: false, description: 'Selecionar TODOS')
         
-        booleanParam(name: 'AGENT_A', defaultValue: false, description: '🚚 Agent A - Truck Detection (10.255.32.134)')
-        booleanParam(name: 'AGENT_B', defaultValue: false, description: '🔢 Agent B - License Plate (10.255.32.32)')
-        booleanParam(name: 'AGENT_C', defaultValue: false, description: '⚠️  Agent C - Hazard Detection (10.255.32.128)')
-        booleanParam(name: 'STREAMING', defaultValue: false, description: '📹 Streaming Middleware - Nginx RTMP (10.255.32.35)')
-        booleanParam(name: 'KAFKA', defaultValue: false, description: '📨 Kafka Broker (10.255.32.143)')
-        booleanParam(name: 'DATA_MODULE', defaultValue: false, description: '💾 Data Module + Databases (10.255.32.82)')
-        booleanParam(name: 'DECISION_ENGINE', defaultValue: false, description: '🧠 Decision Engine (10.255.32.104)')
-        booleanParam(name: 'API_GATEWAY', defaultValue: false, description: '🌐 API Gateway (10.255.32.100)')
-        booleanParam(name: 'UI', defaultValue: false, description: '🖥️  Frontend UI (10.255.32.108)')
+        booleanParam(name: 'AGENT_A', defaultValue: false, description: 'Agent A (10.255.32.134)')
+        booleanParam(name: 'AGENT_B', defaultValue: false, description: 'Agent B (10.255.32.32)')
+        booleanParam(name: 'AGENT_C', defaultValue: false, description: 'Agent C (10.255.32.128)')
+        booleanParam(name: 'STREAMING', defaultValue: false, description: 'Streaming (10.255.32.80)')
+        booleanParam(name: 'KAFKA', defaultValue: false, description: 'Kafka (10.255.32.143)')
+        booleanParam(name: 'DATA_MODULE', defaultValue: false, description: 'Data Module (10.255.32.82)')
+        booleanParam(name: 'DECISION_ENGINE', defaultValue: false, description: 'Decision Engine (10.255.32.104)')
+        booleanParam(name: 'API_GATEWAY', defaultValue: false, description: 'API Gateway (10.255.32.100)')
+        booleanParam(name: 'UI', defaultValue: false, description: 'UI (10.255.32.108)')
         
         // ================================================================
         // OPÇÕES ADICIONAIS
@@ -59,7 +59,13 @@ pipeline {
         string(
             name: 'BRANCH',
             defaultValue: 'main',
-            description: 'Git branch (apenas para deploy - ignorado nas outras ações)'
+            description: 'Git branch do Backend (apenas para deploy)'
+        )
+        
+        string(
+            name: 'UI_BRANCH',
+            defaultValue: 'main',
+            description: 'Git branch da UI/APP (apenas para deploy da UI)'
         )
         
         string(
@@ -135,7 +141,10 @@ pipeline {
                     // Info contextual baseada na ação
                     def extraInfo = ""
                     if (params.ACTION == 'deploy') {
-                        extraInfo = "║  Branch: ${params.BRANCH.padRight(52)}║"
+                        extraInfo = "║  Branch Backend: ${params.BRANCH.padRight(44)}║"
+                        if (env.SEL_UI == 'true') {
+                            extraInfo += "\n║  Branch UI:      ${params.UI_BRANCH.padRight(44)}║"
+                        }
                     } else if (params.ACTION == 'logs') {
                         extraInfo = "║  Linhas: ${params.LOG_LINES.padRight(52)}║"
                     }
@@ -562,11 +571,11 @@ def deployUI(String vmIp) {
     
     def dockerHost = "ssh://${SSH_USER}@${vmIp}"
     
-    // Checkout do repo da APP
+    // Checkout do repo da APP (usa UI_BRANCH separada)
     dir('app') {
         checkout([
             $class: 'GitSCM',
-            branches: [[name: "*/${params.BRANCH}"]],
+            branches: [[name: "*/${params.UI_BRANCH}"]],
             userRemoteConfigs: [[url: APP_REPO]]
         ])
     }
