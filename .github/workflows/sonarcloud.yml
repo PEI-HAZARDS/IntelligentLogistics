@@ -1,0 +1,35 @@
+name: SonarCloud analysis
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  pull-requests: read # allows SonarCloud to decorate PRs with analysis results
+
+jobs:
+  Analysis:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history is required for accurate analysis
+
+      - name: Analyze with SonarCloud
+        # UPDATED: Using the new unified scanner action
+        uses: SonarSource/sonarqube-scan-action@v4.1.0 
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          # GITHUB_TOKEN is recommended for PR comments/decoration
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # 1. Force the scanner to NOT wait for the quality gate (Fixes redundancy)
+          # 2. Explicitly set the URL to SonarCloud (Required for this action)
+          args: >
+            -Dsonar.qualitygate.wait=false
+            -Dsonar.host.url=https://sonarcloud.io
