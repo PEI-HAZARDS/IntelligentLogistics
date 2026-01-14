@@ -1,0 +1,9 @@
+# Environment files with secrets
+.env
+
+# Data volumes (if running locally)
+*_data/
+
+# Temporary files
+*.tmp
+*.log

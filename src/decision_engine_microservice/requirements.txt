@@ -1,2 +1,5 @@
 confluent_kafka==2.12.0
 requests
+
+# Prometheus metrics
+prometheus_client

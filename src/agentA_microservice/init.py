@@ -2,6 +2,10 @@ import os
 import signal
 import sys
 import logging
+import threading
+
+# Prometheus metrics
+from prometheus_client import start_http_server, Counter, Histogram, Gauge
 
 # Auto-configure PYTHONPATH for local execution
 # This ensures it works both in Docker (/app) and locally
@@ -18,14 +22,26 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()]
 )
 
+# Prometheus metrics
+METRICS_PORT = int(os.getenv("METRICS_PORT", 8000))
+MESSAGES_PROCESSED = Counter('agent_messages_processed_total', 'Total messages processed', ['agent', 'status'])
+INFERENCE_TIME = Histogram('agent_inference_seconds', 'Inference time in seconds', ['agent'])
+AGENT_UP = Gauge('agent_up', 'Agent is running', ['agent'])
+
 from agentA_microservice.src.AgentA import AgentA
 
 def main():
+    # Start Prometheus metrics server
+    logger.info(f"[init] Starting Prometheus metrics server on port {METRICS_PORT}")
+    start_http_server(METRICS_PORT)
+    AGENT_UP.labels(agent='agent-a').set(1)
+    
     agent = AgentA()
     
     # Register signal handler for graceful shutdown
     def signal_handler(sig, frame):
         logger.info("\n[init] Keyboard interrupt received, stopping agent...")
+        AGENT_UP.labels(agent='agent-a').set(0)
         agent.stop()
         sys.exit(0)
     
@@ -36,9 +52,11 @@ def main():
         agent._loop()
     except KeyboardInterrupt:
         logger.info("\n[init] Keyboard interrupt received, stopping agent...")
+        AGENT_UP.labels(agent='agent-a').set(0)
         agent.stop()
     except Exception as e:
         logger.error(f"[init] Unexpected error: {e}")
+        AGENT_UP.labels(agent='agent-a').set(0)
         agent.stop()
         raise
 

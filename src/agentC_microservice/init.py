@@ -19,6 +19,9 @@ logging.basicConfig(
 import gdown  # type: ignore
 import signal
 
+# Prometheus metrics
+from prometheus_client import start_http_server, Counter, Histogram, Gauge
+
 from agentC_microservice.src.AgentC import AgentC
 
 # Files to download (name, Google Drive ID, destination folder)
@@ -27,6 +30,12 @@ FILE_ID = "1Dx1XS4pALjzP6AN5ryAJXA7sJ4KgH4JD"
 NEW_DIR = "data"
 
 logger = logging.getLogger("init-AgentC")
+
+# Prometheus metrics
+METRICS_PORT = int(os.getenv("METRICS_PORT", 8000))
+MESSAGES_PROCESSED = Counter('agent_messages_processed_total', 'Total messages processed', ['agent', 'status'])
+INFERENCE_TIME = Histogram('agent_inference_seconds', 'Inference time in seconds', ['agent'])
+AGENT_UP = Gauge('agent_up', 'Agent is running', ['agent'])
 
 
 def setup():
@@ -49,11 +58,15 @@ def setup():
 
 
 def main():
+    # Start Prometheus metrics server
+    logger.info(f"[init] Starting Prometheus metrics server on port {METRICS_PORT}")
+    start_http_server(METRICS_PORT)
+    AGENT_UP.labels(agent='agent-c').set(1)
+    
     setup()
     
     logger.info("[init] Creating AgentC instance...")
     agent = AgentC()
-    
 
     # Reset logging level AFTER AgentC is created
     # PaddleOCR overrides it during OCR() initialization
@@ -64,6 +77,7 @@ def main():
     # Register signal handler for graceful shutdown
     def signal_handler(sig, frame):
         logger.info("\n[init] Keyboard interrupt received, stopping agent...")
+        AGENT_UP.labels(agent='agent-c').set(0)
         agent.stop()
         sys.exit(0)
     
@@ -75,9 +89,11 @@ def main():
         agent._loop()
     except KeyboardInterrupt:
         logger.info("\n[init] Keyboard interrupt received, stopping agent...")
+        AGENT_UP.labels(agent='agent-c').set(0)
         agent.stop()
     except Exception as e:
         logger.info(f"[init] Unexpected error: {e}")
+        AGENT_UP.labels(agent='agent-c').set(0)
         agent.stop()
         raise
 
