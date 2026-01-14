@@ -205,21 +205,21 @@ pipeline {
                     // Agent A
                     if (env.SEL_AGENT_A == 'true') {
                         parallelStages['🚚 Agent A'] = {
-                            executeAction('agentA', AGENTA_IP, 'src/agentA_microservice', 'agentA')
+                            executeAction('agenta', AGENTA_IP, 'src/agentA_microservice', 'agenta')
                         }
                     }
                     
                     // Agent B
                     if (env.SEL_AGENT_B == 'true') {
                         parallelStages['🔢 Agent B'] = {
-                            executeAction('agentB', AGENTB_IP, 'src/agentB_microservice', 'agentB')
+                            executeAction('agentb', AGENTB_IP, 'src/agentB_microservice', 'agentb')
                         }
                     }
                     
                     // Agent C
                     if (env.SEL_AGENT_C == 'true') {
                         parallelStages['⚠️ Agent C'] = {
-                            executeAction('agentC', AGENTC_IP, 'src/agentC_microservice', 'agentC')
+                            executeAction('agentc', AGENTC_IP, 'src/agentC_microservice', 'agentc')
                         }
                     }
                     
