@@ -126,6 +126,7 @@ services:
     image: grafana/tempo:latest
     container_name: tempo
     restart: unless-stopped
+    user: root
     command: ["-config.file=/etc/tempo/tempo-config.yml"]
     ports:
       - "3200:3200"   # Tempo API

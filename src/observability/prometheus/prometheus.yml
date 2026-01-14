@@ -12,7 +12,7 @@ alerting:
   alertmanagers:
     - static_configs:
         - targets:
-            - localhost:9093
+            - alertmanager:9093
 
 # Load alert rules
 rule_files:
@@ -32,7 +32,7 @@ scrape_configs:
   # =============================================================================
   - job_name: 'node-exporter'
     static_configs:
-      - targets: ['localhost:9100']
+      - targets: ['node-exporter:9100']
         labels:
           instance: 'jenkins-vm'
 
@@ -40,7 +40,7 @@ scrape_configs:
   # DATA MODULE (PostgreSQL, MongoDB, Redis, MinIO, Data Module API)
   # =============================================================================
   - job_name: 'data-module'
-    metrics_path: /api/v1/metrics
+    metrics_path: /metrics
     static_configs:
       - targets: ['10.255.32.82:8080']
         labels:
@@ -52,7 +52,7 @@ scrape_configs:
   - job_name: 'api-gateway'
     metrics_path: /metrics
     static_configs:
-      - targets: ['10.255.32.100:8080']
+      - targets: ['10.255.32.100:8000']
         labels:
           service: 'api-gateway'
 

@@ -216,7 +216,7 @@
             },
             "targets": [
                 {
-                    "expr": "(sum(rate(http_requests_total{job=\"data-module\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{job=\"data-module\"}[5m]))) * 100",
+                    "expr": "(sum(rate(http_requests_total{job=\"data-module\",status=\"5xx\"}[5m])) / sum(rate(http_requests_total{job=\"data-module\"}[5m]))) * 100",
                     "refId": "A"
                 }
             ],
@@ -266,7 +266,7 @@
             },
             "targets": [
                 {
-                    "expr": "sum(rate(http_requests_total{job=\"data-module\"}[5m])) by (endpoint)",
+                    "expr": "sum(rate(http_requests_total{job=\"data-module\"}[5m])) by (handler)",
                     "legendFormat": "{{ endpoint }}",
                     "refId": "A"
                 }

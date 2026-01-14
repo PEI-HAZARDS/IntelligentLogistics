@@ -209,7 +209,7 @@
                         "type": "prometheus",
                         "uid": "prometheus"
                     },
-                    "expr": "(sum(rate(http_requests_total{job=\"api-gateway\", status=~\"5..\"}[5m])) / sum(rate(http_requests_total{job=\"api-gateway\"}[5m]))) * 100",
+                    "expr": "(sum(rate(http_requests_total{job=\"api-gateway\", status=\"5xx\"}[5m])) / sum(rate(http_requests_total{job=\"api-gateway\"}[5m]))) * 100",
                     "legendFormat": "Error Rate %",
                     "refId": "A"
                 }
@@ -427,7 +427,7 @@
                         "type": "prometheus",
                         "uid": "prometheus"
                     },
-                    "expr": "topk(10, sum(rate(http_requests_total{job=\"api-gateway\"}[5m])) by (endpoint))",
+                    "expr": "topk(10, sum(rate(http_requests_total{job=\"api-gateway\"}[5m])) by (handler))",
                     "legendFormat": "{{ endpoint }}",
                     "refId": "A"
                 }
@@ -570,7 +570,7 @@
                         "type": "prometheus",
                         "uid": "prometheus"
                     },
-                    "expr": "sum(increase(http_requests_total{job=\"api-gateway\", status=~\"2..\"}[1h]))",
+                    "expr": "sum(increase(http_requests_total{job=\"api-gateway\", status=\"2xx\"}[1h]))",
                     "legendFormat": "2xx",
                     "refId": "A"
                 },
@@ -579,7 +579,7 @@
                         "type": "prometheus",
                         "uid": "prometheus"
                     },
-                    "expr": "sum(increase(http_requests_total{job=\"api-gateway\", status=~\"3..\"}[1h]))",
+                    "expr": "sum(increase(http_requests_total{job=\"api-gateway\", status=\"3xx\"}[1h]))",
                     "legendFormat": "3xx",
                     "refId": "B"
                 },
@@ -588,7 +588,7 @@
                         "type": "prometheus",
                         "uid": "prometheus"
                     },
-                    "expr": "sum(increase(http_requests_total{job=\"api-gateway\", status=~\"4..\"}[1h]))",
+                    "expr": "sum(increase(http_requests_total{job=\"api-gateway\", status=\"4xx\"}[1h]))",
                     "legendFormat": "4xx",
                     "refId": "C"
                 },
@@ -597,7 +597,7 @@
                         "type": "prometheus",
                         "uid": "prometheus"
                     },
-                    "expr": "sum(increase(http_requests_total{job=\"api-gateway\", status=~\"5..\"}[1h]))",
+                    "expr": "sum(increase(http_requests_total{job=\"api-gateway\", status=\"5xx\"}[1h]))",
                     "legendFormat": "5xx",
                     "refId": "D"
                 }
@@ -731,7 +731,7 @@
                         "type": "prometheus",
                         "uid": "prometheus"
                     },
-                    "expr": "sum(rate(http_requests_total{job=\"api-gateway\", status=~\"2..\"}[5m]))",
+                    "expr": "sum(rate(http_requests_total{job=\"api-gateway\", status=\"2xx\"}[5m]))",
                     "legendFormat": "2xx",
                     "refId": "A"
                 },
@@ -740,7 +740,7 @@
                         "type": "prometheus",
                         "uid": "prometheus"
                     },
-                    "expr": "sum(rate(http_requests_total{job=\"api-gateway\", status=~\"4..\"}[5m]))",
+                    "expr": "sum(rate(http_requests_total{job=\"api-gateway\", status=\"4xx\"}[5m]))",
                     "legendFormat": "4xx",
                     "refId": "B"
                 },
@@ -749,7 +749,7 @@
                         "type": "prometheus",
                         "uid": "prometheus"
                     },
-                    "expr": "sum(rate(http_requests_total{job=\"api-gateway\", status=~\"5..\"}[5m]))",
+                    "expr": "sum(rate(http_requests_total{job=\"api-gateway\", status=\"5xx\"}[5m]))",
                     "legendFormat": "5xx",
                     "refId": "C"
                 }
