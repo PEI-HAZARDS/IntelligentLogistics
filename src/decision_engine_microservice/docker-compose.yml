@@ -13,4 +13,11 @@ services:
       - GATE_ID=${GATE_ID}
       - API_URL=${API_URL}
       - TIME_TOLERANCE_MINUTES=${TIME_TOLERANCE_MINUTES}
-
+    logging:
+      driver: loki
+      options:
+        loki-url: "http://10.255.32.132:3100/loki/api/v1/push"
+        loki-batch-size: "400"
+        loki-retries: "2"
+        loki-max-backoff: "1s"
+        labels: "service=decision-engine"

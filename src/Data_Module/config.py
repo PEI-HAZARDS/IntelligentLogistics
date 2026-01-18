@@ -18,15 +18,15 @@ class Settings(BaseSettings):
     postgres_db: str = "porto_logistica"
     
     # MongoDB
-    mongo_user: str = os.getenv("MONGO_USER", "admin")
-    mongo_password: str = os.getenv("MONGO_PASSWORD", "")
+    mongo_initdb_root_username: str = "admin"
+    mongo_initdb_root_password: str = ""
     mongo_host: str = "mongo"
     mongo_port: int = 27017
     
     @property
     def mongo_url(self) -> str:
         """Construct MongoDB URL from environment variables."""
-        return f"mongodb://{self.mongo_user}:{self.mongo_password}@{self.mongo_host}:{self.mongo_port}"
+        return f"mongodb://{self.mongo_initdb_root_username}:{self.mongo_initdb_root_password}@{self.mongo_host}:{self.mongo_port}"
     
     # Redis
     redis_host: str = "redis"
@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
 settings = Settings()
