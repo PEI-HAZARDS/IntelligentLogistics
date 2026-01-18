@@ -5,6 +5,8 @@ services:
     image: agentb:latest
     container_name: agentb
     restart: unless-stopped
+    ports:
+      - "8000:8000"
     environment:
       - PYTHONPATH=/app
       - MODELS_PATH=/app/agentB_microservice/data
@@ -17,3 +19,4 @@ services:
       - ACCESS_KEY=${ACCESS_KEY}
       - SECRET_KEY=${SECRET_KEY}
       - BUCKET_NAME=${BUCKET_NAME}
+

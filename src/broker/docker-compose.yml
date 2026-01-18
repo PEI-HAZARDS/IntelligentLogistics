@@ -47,3 +47,15 @@ services:
     depends_on:
       - kafka
     restart: unless-stopped
+
+  # Prometheus exporter for Kafka metrics
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka-exporter
+    ports:
+      - "9308:9308"
+    command:
+      - --kafka.server=kafka:29092
+    depends_on:
+      - kafka
+    restart: unless-stopped

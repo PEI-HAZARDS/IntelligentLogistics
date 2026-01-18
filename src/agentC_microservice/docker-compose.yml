@@ -5,6 +5,8 @@ services:
     image: agentc:latest
     container_name: agentc
     restart: unless-stopped
+    ports:
+      - "8000:8000"
     environment:
       - PYTHONPATH=/app
       - MODELS_PATH=/app/agentC_microservice/data
@@ -17,3 +19,4 @@ services:
       - ACCESS_KEY=${ACCESS_KEY}
       - SECRET_KEY=${SECRET_KEY}
       - BUCKET_NAME=${BUCKET_NAME}
+

@@ -5,9 +5,12 @@ services:
     image: decision-engine:latest
     container_name: decision-engine
     restart: unless-stopped
+    ports:
+      - "8001:8001"
     environment:
       - PYTHONPATH=/app
       - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
       - GATE_ID=${GATE_ID}
       - API_URL=${API_URL}
       - TIME_TOLERANCE_MINUTES=${TIME_TOLERANCE_MINUTES}
+

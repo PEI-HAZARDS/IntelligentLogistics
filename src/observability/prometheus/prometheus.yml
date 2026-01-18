@@ -97,12 +97,11 @@ scrape_configs:
           service: 'decision-engine'
 
   # =============================================================================
-  # KAFKA (via JMX Exporter if configured, or Kafka metrics endpoint)
+  # KAFKA (via kafka-exporter)
   # =============================================================================
   - job_name: 'kafka'
     static_configs:
-      - targets: ['10.255.32.143:9092']
+      - targets: ['10.255.32.143:9308']
         labels:
           service: 'kafka'
-    # Note: Kafka doesn't expose Prometheus metrics by default
-    # Consider adding kafka-exporter: https://github.com/danielqsj/kafka_exporter
+
