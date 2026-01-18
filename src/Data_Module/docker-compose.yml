@@ -132,4 +132,5 @@ volumes:
 
 networks:
   intelligent-logistics:
-    external: true
+    driver: bridge
+
