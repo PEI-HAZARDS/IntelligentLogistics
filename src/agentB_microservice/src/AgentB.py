@@ -148,8 +148,8 @@ class AgentB:
         )
         
         # Start Prometheus metrics server
-        logger.info("[AgentB] Starting Prometheus metrics server on port 8000")
-        start_http_server(8000)
+        # logger.info("[AgentB] Starting Prometheus metrics server on port 8000")
+        # start_http_server(8000) - Started in init.py
 
     def _reset_consensus_state(self):
         """Resets the consensus algorithm state."""
