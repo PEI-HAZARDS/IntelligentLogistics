@@ -13,6 +13,7 @@ from queue import Queue, Empty
 from confluent_kafka import Producer, Consumer, KafkaException, KafkaError
 import logging
 from typing import Optional, Tuple
+from prometheus_client import start_http_server, Counter, Histogram
 
 # --- Configuration ---
 # Load environment variables or fallback to default network settings
@@ -124,6 +125,30 @@ class AgentC:
         self.producer = Producer({
             "bootstrap.servers": KAFKA_BOOTSTRAP,
         })
+        
+        # --- Prometheus Metrics ---
+        self.inference_latency = Histogram(
+            'agent_c_inference_latency_seconds', 
+            'Time spent running YOLO (Hazmat) inference',
+            buckets=[0.05, 0.1, 0.2, 0.5, 1.0, 2.0]
+        )
+        self.frames_processed = Counter(
+            'agent_c_frames_processed_total', 
+            'Total number of frames processed by Agent C'
+        )
+        self.hazards_detected = Counter(
+            'agent_c_hazards_detected_total', 
+            'Total number of hazardous plates detected'
+        )
+        self.hazard_confidence = Histogram(
+            'agent_c_hazard_confidence', 
+            'Confidence score of hazard detection',
+            buckets=[0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
+        )
+        
+        # Start Prometheus metrics server
+        logger.info("[AgentC] Starting Prometheus metrics server on port 8000")
+        start_http_server(8000)
 
     def _reset_consensus_state(self):
         """Resets the consensus algorithm state."""
@@ -248,7 +273,10 @@ class AgentC:
 
         try:
             logger.info("[AgentC] YOLO (HZ) running…")
-            results = self.yolo.detect(frame)
+            with self.inference_latency.time():
+                results = self.yolo.detect(frame)
+            
+            self.frames_processed.inc()
 
             if not results:
                 logger.debug(
@@ -276,6 +304,8 @@ class AgentC:
 
 
                 logger.info(f"[AgentC] Crop {i} accepted as HAZARD_PLATE")
+                self.hazards_detected.inc()
+                self.hazard_confidence.observe(conf)
                 # ============================================================
                 # Run OCR
                 logger.info("[AgentC] OCR extracting text…")

@@ -86,7 +86,7 @@ services:
   # PROMTAIL - Log Collection Agent
   # =============================================================================
   promtail:
-    image: grafana/promtail:2.9.0
+    image: grafana/promtail:latest
     container_name: promtail
     restart: unless-stopped
     command: -config.file=/etc/promtail/promtail-config.yml

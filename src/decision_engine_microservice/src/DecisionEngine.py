@@ -6,6 +6,7 @@ import requests
 import time
 from datetime import datetime, timedelta
 import itertools
+from prometheus_client import start_http_server, Counter, Histogram
 
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
@@ -49,6 +50,29 @@ class DecisionEngine:
             "bootstrap.servers": bootstrap,
             "log_level": 1
             })
+            
+        # --- Prometheus Metrics ---
+        self.decisions_processed = Counter(
+            'decision_engine_decisions_processed_total', 
+            'Total number of decisions made'
+        )
+        self.decision_latency = Histogram(
+            'decision_engine_decision_latency_seconds', 
+            'Time spent making a decision',
+            buckets=[0.1, 0.5, 1.0, 2.0, 5.0]
+        )
+        self.approved_access = Counter(
+            'decision_engine_approved_access_total', 
+            'Total number of approved access decisions'
+        )
+        self.denied_access = Counter(
+            'decision_engine_denied_access_total', 
+            'Total number of denied access decisions'
+        )
+        
+        # Start Prometheus metrics server (Port 8001 as configured in prometheus.yml)
+        logger.info("[DecisionEngine] Starting Prometheus metrics server on port 8001")
+        start_http_server(8001)
 
         self.confusion_matrix = {
             # --- NUMBERS ---
@@ -274,6 +298,8 @@ class DecisionEngine:
     def _make_decision(self, truck_id: str, lp_data: dict, hz_data: dict):
         logger.info(f"[DecisionEngine] Making decision for truck_id='{truck_id}'")
         
+        start_time = time.time()
+        
         # Return variables
         decision = "MANUAL_REVIEW"
         alerts = []
@@ -372,6 +398,16 @@ class DecisionEngine:
         }
 
         self._publish_decision(truck_id, returned_data)
+        
+        # Record Metrics
+        duration = time.time() - start_time
+        self.decision_latency.observe(duration)
+        self.decisions_processed.inc()
+        
+        if decision == "ACCEPTED":
+            self.approved_access.inc()
+        elif decision == "REJECTED":
+            self.denied_access.inc()
     
     def _update_appointment_status(self, appointment_id: int, decision: str):
         """Updates the appointment status via the Data Module API."""

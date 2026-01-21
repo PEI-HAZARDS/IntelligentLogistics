@@ -13,6 +13,7 @@ from queue import Queue, Empty
 from confluent_kafka import Producer, Consumer, KafkaException, KafkaError
 import logging
 from typing import Optional, Tuple
+from prometheus_client import start_http_server, Counter, Histogram
 
 # --- Configuration ---
 # Load environment variables or fallback to default network settings
@@ -125,6 +126,30 @@ class AgentB:
         self.producer = Producer({
             "bootstrap.servers": KAFKA_BOOTSTRAP,
         })
+        
+        # --- Prometheus Metrics ---
+        self.inference_latency = Histogram(
+            'agent_b_inference_latency_seconds', 
+            'Time spent running YOLO (LP) inference',
+            buckets=[0.05, 0.1, 0.2, 0.5, 1.0, 2.0]
+        )
+        self.frames_processed = Counter(
+            'agent_b_frames_processed_total', 
+            'Total number of frames processed by Agent B'
+        )
+        self.plates_detected = Counter(
+            'agent_b_plates_detected_total', 
+            'Total number of license plates detected'
+        )
+        self.ocr_confidence = Histogram(
+            'agent_b_ocr_confidence', 
+            'Confidence score of OCR readings',
+            buckets=[0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
+        )
+        
+        # Start Prometheus metrics server
+        logger.info("[AgentB] Starting Prometheus metrics server on port 8000")
+        start_http_server(8000)
 
     def _reset_consensus_state(self):
         """Resets the consensus algorithm state."""
@@ -249,7 +274,10 @@ class AgentB:
         counter = 0
         try:
             logger.info("[AgentB] YOLO (LP) running…")
-            results = self.yolo.detect(frame)
+            with self.inference_latency.time():
+                results = self.yolo.detect(frame)
+            
+            self.frames_processed.inc()
 
             if not results:
                 logger.debug(
@@ -298,6 +326,7 @@ class AgentB:
                     continue
 
                 logger.info(f"[AgentB] Crop {i} accepted as LICENSE_PLATE")
+                self.plates_detected.inc()
                 # ============================================================
                 # Run OCR
                 logger.info("[AgentB] OCR extracting text…")
@@ -311,6 +340,8 @@ class AgentB:
 
                     logger.info(
                         f"[AgentB] OCR: '{text}' (conf={ocr_conf:.2f})")
+                    
+                    self.ocr_confidence.observe(ocr_conf)
 
                     # Store candidate crop with its text and confidence
                     text_normalized = text.upper().replace("-", "")

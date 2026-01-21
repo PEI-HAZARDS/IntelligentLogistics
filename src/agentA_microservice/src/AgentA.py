@@ -7,6 +7,7 @@ from confluent_kafka import Producer, KafkaError  # type: ignore
 from typing import Optional
 import json
 import logging
+from prometheus_client import start_http_server, Counter, Histogram, Gauge
 
 # Test Jenkins deploy
 
@@ -46,6 +47,30 @@ class AgentA:
             "bootstrap.servers": KAFKA_BOOTSTRAP,
             "log_level": 1,
         })
+        
+        # --- Prometheus Metrics ---
+        self.inference_latency = Histogram(
+            'agent_a_inference_latency_seconds', 
+            'Time spent running YOLO inference',
+            buckets=[0.05, 0.1, 0.2, 0.5, 1.0, 2.0]
+        )
+        self.frames_processed = Counter(
+            'agent_a_frames_processed_total', 
+            'Total number of frames processed by Agent A'
+        )
+        self.trucks_detected = Counter(
+            'agent_a_trucks_detected_total', 
+            'Total number of trucks detected'
+        )
+        self.detection_confidence = Histogram(
+            'agent_a_detection_confidence', 
+            'Confidence score of detected trucks',
+            buckets=[0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
+        )
+        
+        # Start Prometheus metrics server
+        logger.info("[AgentA] Starting Prometheus metrics server on port 8000")
+        start_http_server(8000)
     
     def _delivery_callback(self, err: Optional[KafkaError], msg) -> None:
         """
@@ -151,7 +176,10 @@ class AgentA:
 
                 # Run YOLO inference
                 logger.debug("[AgentA] Frame captured, running truck detection…")
-                results = self.yolo.detect(frame)
+                with self.inference_latency.time():
+                    results = self.yolo.detect(frame)
+                
+                self.frames_processed.inc()
 
                 if results is None:
                     logger.warning("[AgentA] YOLO model returned no results (None).")
@@ -172,6 +200,11 @@ class AgentA:
                         boxes = self.yolo.get_boxes(results)  # [x1,y1,x2,y2,conf]
                         num_boxes = len(boxes)
                         max_conf = max((b[4] for b in boxes), default=0.0)
+                        
+                        # Record metrics
+                        self.trucks_detected.inc(num_boxes)
+                        self.detection_confidence.observe(max_conf)
+                        
                         self.last_message_time = now
                         self._publish_truck_detected(max_conf, num_boxes)
 
