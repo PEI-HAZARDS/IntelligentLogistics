@@ -69,8 +69,8 @@ class AgentA:
         )
         
         # Start Prometheus metrics server
-        logger.info("[AgentA] Starting Prometheus metrics server on port 8000")
-        start_http_server(8000)
+        # logger.info("[AgentA] Starting Prometheus metrics server on port 8000")
+        # start_http_server(8000) - Started in init.py
     
     def _delivery_callback(self, err: Optional[KafkaError], msg) -> None:
         """

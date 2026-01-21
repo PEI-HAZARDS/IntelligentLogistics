@@ -71,8 +71,8 @@ class DecisionEngine:
         )
         
         # Start Prometheus metrics server (Port 8001 as configured in prometheus.yml)
-        logger.info("[DecisionEngine] Starting Prometheus metrics server on port 8001")
-        start_http_server(8001)
+        # logger.info("[DecisionEngine] Starting Prometheus metrics server on port 8001")
+        # start_http_server(8001) - Started in init.py
 
         self.confusion_matrix = {
             # --- NUMBERS ---
