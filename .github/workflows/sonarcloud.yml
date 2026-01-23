@@ -23,7 +23,7 @@ jobs:
 
       - name: Analyze with SonarCloud
         # UPDATED: Using the new unified scanner action
-        uses: SonarSource/sonarqube-scan-action@v4.1.0 
+        uses: SonarSource/sonarqube-scan-action@v5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           # GITHUB_TOKEN is recommended for PR comments/decoration
