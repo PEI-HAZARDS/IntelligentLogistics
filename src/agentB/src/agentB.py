@@ -200,170 +200,171 @@ class AgentB:
                 logger.exception(f"[AgentB] Error when capturing frame {e}")
                 time.sleep(0.2)
 
-    def process_license_plate_detection(self, truck_id: str):
+    def _get_next_frame(self):
+        """
+        Gets the next frame from the queue, capturing more if needed.
+        Returns the frame or None if no frames available.
+        """
+        if self.frames_queue.empty():
+            logger.debug("[AgentB] Frames queue is empty, capturing more frames.")
+            self._get_frames(5)
+        
+        if self.frames_queue.empty():
+            logger.warning("[AgentB] No frame captured from RTSP.")
+            return None
+        
+        try:
+            frame = self.frames_queue.get_nowait()
+            logger.debug("[AgentB] Frame obtained from queue.")
+            return frame
+        except Empty:
+            logger.warning("[AgentB] Frames queue is empty.")
+            time.sleep(0.05)
+            return None
+
+    def _clear_frames_queue(self):
+        """Clears all remaining frames from the queue."""
+        remaining = self.frames_queue.qsize()
+        if remaining > 0:
+            logger.debug(f"[AgentB] Clearing {remaining} remaining frames from queue")
+            while not self.frames_queue.empty():
+                try:
+                    self.frames_queue.get_nowait()
+                except Empty:
+                    break
+
+    def _should_continue_processing(self) -> bool:
+        """Checks if frame processing should continue."""
+        return self.running and not self.consensus_reached and self.frames_processed < self.max_frames
+
+    def process_license_plate_detection(self):
         """
         Main pipeline to detect and extract license plate text.
         
         Returns:
             tuple: (plate_text, confidence, crop_image) or (None, None, None)
         """
-        logger.info(
-            "[AgentB] Starting license plate pipeline detection process…")
-
-        # Reset consensus state before starting new detection
+        logger.info("[AgentB] Starting license plate pipeline detection process…")
         self._reset_consensus_state()
 
-        # Process frames until consensus is reached, frame limit reached, or queue is empty
-        while self.running and not self.consensus_reached and self.frames_processed < self.max_frames:
-            # Ensure there are frames to process
-            if self.frames_queue.empty():
-                logger.debug("[AgentB] Frames queue is empty, capturing more frames.")
-                self._get_frames(5)
-
-            # return None if no frames were returned
-            if self.frames_queue.empty():
-                logger.warning("[AgentB] No frame captured from RTSP.")
+        while self._should_continue_processing():
+            frame = self._get_next_frame()
+            if frame is None:
                 return None, None, None
-            
-            try:
-                frame = self.frames_queue.get_nowait()
-                logger.debug("[AgentB] Frame obtained from queue.")
 
-            except Empty:
-                logger.warning("[AgentB] Frames queue is empty.")
-                time.sleep(0.05)
-                continue
-
-            # Increment frame counter
             self.frames_processed += 1
             logger.debug(f"[AgentB] Processing frame {self.frames_processed}/{self.max_frames}")
 
-            # Process single frame
-            result = self._process_single_frame(frame, truck_id)
-
-            # If full consensus reached, return immediately
+            result = self._process_single_frame(frame)
             if result:
                 text, conf, crop = result
-                logger.info(
-                    f"[AgentB] Consensus reached: '{text}' (conf={conf:.2f})")
-
-                # Clear remaining frames from queue
-                remaining = self.frames_queue.qsize()
-                if remaining > 0:
-                    logger.debug(f"[AgentB] Clearing {remaining} remaining frames from queue")
-                    while not self.frames_queue.empty():
-                        try:
-                            self.frames_queue.get_nowait()
-                        except Empty:
-                            break
-
+                logger.info(f"[AgentB] Consensus reached: '{text}' (conf={conf:.2f})")
+                self._clear_frames_queue()
                 return text, conf, crop
 
-        # Check if frame limit reached
         if self.frames_processed >= self.max_frames:
             logger.info(f"[AgentB] Frame limit reached ({self.max_frames}), returning best partial result")
 
-        # If full consensus not reached, return best partial result
         return self._get_best_partial_result()
 
-    def _process_single_frame(self, frame, truck_id: str):
+    def _run_yolo_detection(self, frame):
+        """
+        Runs YOLO detection on a frame.
+        Returns boxes list or None if no detection.
+        """
+        logger.info("[AgentB] YOLO (LP) running…")
+        with self.inference_latency.time():
+            results = self.yolo.detect(frame)
+        
+        self.frames_processed += 1
+
+        if not results:
+            logger.debug("[AgentB] YOLO did not return a result for this frame.")
+            return None
+
+        if not self.yolo.object_found(results):
+            logger.info("[AgentB] No license plate detected for this frame.")
+            return None
+
+        boxes = self.yolo.get_boxes(results)
+        logger.info(f"[AgentB] {len(boxes)} license plates detected.")
+        return boxes
+
+    def _is_valid_license_plate_box(self, box, frame, box_index: int):
+        """
+        Validates a detection box and extracts crop if valid license plate.
+        Returns (crop, confidence) or (None, None) if invalid.
+        """
+        x1, y1, x2, y2, conf = map(float, box)
+
+        if conf < 0.4:
+            logger.info(f"[AgentB] Ignored low confidence box (conf={conf:.2f}).")
+            return None, None
+
+        crop = frame[int(y1):int(y2), int(x1):int(x2)]
+        classification = self.classifier.classify(crop)
+
+        if classification == PlateClassifier.HAZARD_PLATE:
+            logger.info(f"[AgentB] Crop {box_index} rejected as {classification}, uploading to MinIO for analysis.")
+            return None, None
+
+        logger.info(f"[AgentB] Crop {box_index} accepted as LICENSE_PLATE")
+        self.plates_detected.inc()
+        return crop, conf
+
+    def _process_ocr_result(self, crop, crop_index: int):
+        """
+        Runs OCR on crop and processes result.
+        Returns (final_text, confidence, best_crop) if consensus reached, else None.
+        """
+        logger.info("[AgentB] OCR extracting text…")
+        text, ocr_conf = self.ocr._extract_text(crop)
+
+        if not text or ocr_conf <= 0.0:
+            logger.debug(f"[AgentB] OCR returned no valid text for crop {crop_index}")
+            return None
+
+        logger.info(f"[AgentB] OCR: '{text}' (conf={ocr_conf:.2f})")
+        self.ocr_confidence.observe(ocr_conf)
+
+        # Store candidate crop
+        text_normalized = text.upper().replace("-", "")
+        self.candidate_crops.append({
+            "crop": crop.copy(),
+            "text": text_normalized,
+            "confidence": ocr_conf
+        })
+        logger.debug(f"[AgentB] Added candidate crop: '{text_normalized}' (conf={ocr_conf:.2f})")
+
+        self._add_to_consensus(text, ocr_conf)
+
+        if self._check_full_consensus():
+            final_text = self._build_final_text()
+            logger.info(f"[AgentB] Full consensus achieved: '{final_text}'")
+            best_crop = self._select_best_crop(final_text)
+            return final_text, 1.0, best_crop
+
+        return None
+
+    def _process_single_frame(self, frame):
         """
         Processes a single video frame.
         Returns (text, conf, crop) if consensus is reached, else None.
         """
-        counter = 0
         try:
-            logger.info("[AgentB] YOLO (LP) running…")
-            with self.inference_latency.time():
-                results = self.yolo.detect(frame)
-            
-            self.frames_processed += 1
-
-            if not results:
-                logger.debug(
-                    "[AgentB] YOLO did not return a result for this frame.")
+            boxes = self._run_yolo_detection(frame)
+            if boxes is None:
                 return None
-
-            if not self.yolo.object_found(results):
-                logger.info(
-                    "[AgentB] No license plate detected for this frame.")
-                return None
-
-            boxes = self.yolo.get_boxes(results)
-            logger.info(f"[AgentB] {len(boxes)} license plates detected.")
 
             for i, box in enumerate(boxes, start=1):
-                x1, y1, x2, y2, conf = map(float, box)
-
-                if conf < 0.4:
-                    logger.info(
-                        f"[AgentB] Ignored low confidence box (conf={conf:.2f}).")
+                crop, _ = self._is_valid_license_plate_box(box, frame, i)
+                if crop is None:
                     continue
 
-                # Extract Crop
-                crop = frame[int(y1):int(y2), int(x1):int(x2)]
-
-                # Classify the crop (license plate vs hazard plate)
-                classification = self.classifier.classify(crop)
-
-                if classification == PlateClassifier.HAZARD_PLATE:
-                    # Save rejected crop for debugging
-                    try:
-                        logger.info(f"[AgentB] Crop {i} rejected as {classification}, uploading to MinIO for analysis.")
-                        
-                        # Uncoment for debug
-                        # counter += 1
-                        #object_name = f"crop_{classification}_{truck_id}_{counter}.jpg"
-                        #crop_url = self.crop_fails.upload_memory_image(crop, object_name)
-                        
-                        #if crop_url:
-                        #    logger.info(f"[AgentB] Crop Failed Classification: {crop_url}")
-                        #else:
-                        #    logger.warning("[AgentB] Failed to upload crop to MinIO")
-
-                    except Exception as e:
-                        logger.exception(f"[AgentB] Error uploading crop to MinIO: {e}")
-                    continue
-
-                logger.info(f"[AgentB] Crop {i} accepted as LICENSE_PLATE")
-                self.plates_detected.inc()
-                # ============================================================
-                # Run OCR
-                logger.info("[AgentB] OCR extracting text…")
                 try:
-                    text, ocr_conf = self.ocr._extract_text(crop)
-
-                    if not text or ocr_conf <= 0.0:
-                        logger.debug(
-                            f"[AgentB] OCR returned no valid text for crop {i}")
-                        continue
-
-                    logger.info(
-                        f"[AgentB] OCR: '{text}' (conf={ocr_conf:.2f})")
-                    
-                    self.ocr_confidence.observe(ocr_conf)
-
-                    # Store candidate crop with its text and confidence
-                    text_normalized = text.upper().replace("-", "")
-                    self.candidate_crops.append({
-                        "crop": crop.copy(),
-                        "text": text_normalized,
-                        "confidence": ocr_conf
-                    })
-                    logger.debug(f"[AgentB] Added candidate crop: '{text_normalized}' (conf={ocr_conf:.2f})")
-
-                    # Add to consensus
-                    self._add_to_consensus(text, ocr_conf)
-
-                    # Check if consensus reached
-                    if self._check_full_consensus():
-                        final_text = self._build_final_text()
-                        logger.info(
-                            f"[AgentB] Full consensus achieved: '{final_text}'")
-                        # Select best crop based on similarity to final text
-                        best_crop = self._select_best_crop(final_text)
-                        return final_text, 1.0, best_crop
-
+                    result = self._process_ocr_result(crop, i)
+                    if result:
+                        return result
                 except Exception as e:
                     logger.exception(f"[AgentB] OCR failure: {e}")
 
@@ -372,73 +373,89 @@ class AgentB:
 
         return None
 
+    def _normalize_text(self, text: str) -> str:
+        """Normalizes text for consensus: uppercase and remove dashes."""
+        return text.upper().replace("-", "")
+
+    def _is_valid_for_consensus(self, text_normalized: str, confidence: float) -> bool:
+        """Checks if OCR result is valid for consensus algorithm."""
+        if confidence < 0.80:
+            logger.debug(f"[AgentB] Confidence too low ({confidence:.2f}), skipping")
+            return False
+
+        if len(text_normalized) < 4:
+            logger.debug(f"[AgentB] Text too short ('{text_normalized}'), skipping")
+            return False
+
+        return True
+
+    def _track_text_length(self, text_len: int) -> bool:
+        """
+        Tracks text length and validates against most common length.
+        Returns True if text length is acceptable, False otherwise.
+        """
+        if text_len not in self.length_counter:
+            self.length_counter[text_len] = 0
+        self.length_counter[text_len] += 1
+
+        if sum(self.length_counter.values()) < 3:
+            return True
+
+        most_common_length = max(self.length_counter.items(), key=lambda x: x[1])[0]
+        if text_len != most_common_length:
+            logger.debug(
+                f"[AgentB] Text length mismatch: {text_len} chars, "
+                f"expected {most_common_length} (most common). Skipping to avoid misalignment.")
+            return False
+
+        return True
+
+    def _get_vote_weight(self, confidence: float) -> int:
+        """Returns vote weight based on confidence level."""
+        return 2 if confidence >= 0.95 else 1
+
+    def _update_position_decision(self, pos: int, char: str):
+        """Updates decision for a character position if threshold reached."""
+        if self.counter[pos][char] < self.decision_threshold:
+            return
+
+        if pos not in self.decided_chars:
+            self.decided_chars[pos] = char
+            logger.debug(f"[AgentB] Position {pos} decided: '{char}'")
+        elif self.decided_chars[pos] != char:
+            old_char = self.decided_chars[pos]
+            self.decided_chars[pos] = char
+            logger.debug(f"[AgentB] Position {pos} changed: '{old_char}' -> '{char}'")
+
     def _add_to_consensus(self, text: str, confidence: float):
         """
         Adds OCR result to consensus algorithm.
         Votes for each character at its position.
         """
+        text_normalized = self._normalize_text(text)
 
-        # Ignore low confidences
-        if confidence < 0.80:
-            logger.debug(
-                f"[AgentB] Confidence too low ({confidence:.2f}), skipping")
+        if not self._is_valid_for_consensus(text_normalized, confidence):
             return
 
-        # Normalize text (uppercase, remove only dashes, keep spaces for position tracking)
-        text_normalized = text.upper().replace("-", "")
-
-        # Ignore if too short
-        if len(text_normalized) < 4:
-            logger.debug(
-                f"[AgentB] Text too short ('{text_normalized}'), skipping")
+        if not self._track_text_length(len(text_normalized)):
             return
-        
-        # Track the length of this text
-        text_len = len(text_normalized)
-        if text_len not in self.length_counter:
-            self.length_counter[text_len] = 0
-        self.length_counter[text_len] += 1
-        
-        # After collecting some samples, only accept the most common length
-        # This prevents mixing "0N25" (4 chars) with "A0N25" (5 chars)
-        if sum(self.length_counter.values()) >= 3:
-            most_common_length = max(self.length_counter.items(), key=lambda x: x[1])[0]
-            if text_len != most_common_length:
-                logger.debug(
-                    f"[AgentB] Text length mismatch: '{text_normalized}' has {text_len} chars, "
-                    f"expected {most_common_length} (most common). Skipping to avoid misalignment.")
-                return
 
         logger.debug(
-            f"[AgentB] Adding to consensus: '{text_normalized}' (conf={confidence:.2f}, len={text_len})")
+            f"[AgentB] Adding to consensus: '{text_normalized}' (conf={confidence:.2f}, len={len(text_normalized)})")
 
-        # Dynamically expand dictionary for new positions
+        # Initialize positions
         for pos in range(len(text_normalized)):
             if pos not in self.counter:
                 self.counter[pos] = {}
 
-        # Add each character to consensus at correct position
+        # Add votes for each character
+        vote_weight = self._get_vote_weight(confidence)
         for pos, char in enumerate(text_normalized):
             if char not in self.counter[pos]:
                 self.counter[pos][char] = 0
 
-            # Confidence-weighted votes
-            if confidence >= 0.95:
-                self.counter[pos][char] += 2
-            else:
-                self.counter[pos][char] += 1
-
-            # Check if this position reached threshold
-            if self.counter[pos][char] >= self.decision_threshold:
-                if pos not in self.decided_chars:
-                    self.decided_chars[pos] = char
-                    logger.debug(f"[AgentB] Position {pos} decided: '{char}'")
-                elif self.decided_chars[pos] != char:
-                    # If changed, update
-                    old_char = self.decided_chars[pos]
-                    self.decided_chars[pos] = char
-                    logger.debug(
-                        f"[AgentB] Position {pos} changed: '{old_char}' -> '{char}'")
+            self.counter[pos][char] += vote_weight
+            self._update_position_decision(pos, char)
 
 
     def _check_full_consensus(self) -> bool:
@@ -645,95 +662,128 @@ class AgentB:
 
         self.producer.poll(0)
 
+    def _poll_latest_message(self):
+        """
+        Polls Kafka for the latest message, skipping old ones.
+        Returns the latest message or None.
+        """
+        msgs_buffer = []
+        
+        # Drain old messages
+        while True:
+            temp_msg = self.consumer.poll(timeout=0.1)
+            if temp_msg is None:
+                break
+            if temp_msg.error():
+                continue
+            msgs_buffer.append(temp_msg)
+        
+        # Return only the latest message
+        if msgs_buffer:
+            skipped = len(msgs_buffer) - 1
+            if skipped > 0:
+                logger.info(f"[AgentB] Skipped {skipped} old messages, processing latest only")
+            return msgs_buffer[-1]
+        
+        # Wait for new message if buffer was empty
+        return self.consumer.poll(timeout=1.0)
+
+    def _extract_truck_id(self, msg) -> str:
+        """
+        Extracts truckId from message headers.
+        Returns truckId or generates a new UUID if not found.
+        """
+        for k, v in (msg.headers() or []):
+            if k == "truckId" and v is not None:
+                return v.decode() if isinstance(v, (bytes, bytearray)) else str(v)
+        return str(uuid.uuid4())
+
+    def _upload_crop_to_storage(self, truck_id: str, plate_text: str) -> Optional[str]:
+        """
+        Uploads the best crop to MinIO storage.
+        Returns the crop URL or None if upload fails.
+        """
+        if self.best_crop is None:
+            return None
+        
+        try:
+            object_name = f"lp_{truck_id}_{plate_text}.jpg"
+            crop_url = self.crop_storage.upload_memory_image(self.best_crop, object_name)
+            
+            if crop_url:
+                logger.info(f"[AgentB] Crop Final Consensus: {crop_url}")
+            else:
+                logger.warning("[AgentB] Failed to upload crop to MinIO")
+            
+            return crop_url
+        except Exception as e:
+            logger.exception(f"[AgentB] Error uploading crop to MinIO: {e}")
+            return None
+
+    def _process_message(self, msg):
+        """
+        Processes a single Kafka message and handles license plate detection.
+        """
+        
+        # Extract truck ID
+        truck_id = self._extract_truck_id(msg)
+        logger.info(f"[AgentB] Received 'truck-detected' (truckId={truck_id}). Starting LP pipeline…")
+        
+        # Run detection pipeline
+        plate_text, plate_conf, _lp_img = self.process_license_plate_detection()
+        
+        # Handle empty results
+        if not plate_text:
+            logger.warning("[AgentB] No final text results — publishing empty message.")
+            self._publish_lp_detected(truck_id, "N/A", -1, None)
+            return
+        
+        # Upload crop to storage
+        crop_url = self._upload_crop_to_storage(truck_id, plate_text)
+        
+        # Publish results
+        self._publish_lp_detected(truck_id, plate_text, plate_conf, crop_url)
+        
+        # Clear frames queue for next detection
+        with self.frames_queue.mutex:
+            self.frames_queue.queue.clear()
+
+    def _cleanup_resources(self):
+        """Releases all resources gracefully."""
+        logger.info("[AgentB] Freeing resources…")
+        
+        # Release stream
+        try:
+            if self.stream is not None:
+                self.stream.release()
+                logger.debug("[AgentB] RTMP stream released.")
+        except Exception as e:
+            logger.exception(f"[AgentB] Error releasing RTMP stream: {e}")
+        
+        # Flush producer
+        try:
+            self.producer.flush(5)
+        except Exception:
+            pass
+        
+        # Close consumer
+        try:
+            self.consumer.close()
+        except Exception:
+            pass
+
     def _loop(self):
         """Main loop for Agent B."""
-        logger.info(
-            f"[AgentB] Main loop starting… (topic in='{TOPIC_CONSUME}')")
+        logger.info(f"[AgentB] Main loop starting… (topic in='{TOPIC_CONSUME}')")
 
         try:
             while self.running:
-                # SKIP OLD MESSAGES - Process only the latest
-                msg = None
-                msgs_buffer = []
-
-                # Poll multiple times to drain old messages
-                while True:
-                    temp_msg = self.consumer.poll(timeout=0.1)
-                    if temp_msg is None:
-                        break  # No more messages
-                    if temp_msg.error():
-                        continue
-                    msgs_buffer.append(temp_msg)
-
-                # If there are messages, take only the last one
-                if msgs_buffer:
-                    msg = msgs_buffer[-1]  # Last message in buffer
-                    skipped = len(msgs_buffer) - 1
-                    if skipped > 0:
-                        logger.info(
-                            f"[AgentB] Skipped {skipped} old messages, processing latest only")
-                else:
-                    # Wait for new message
-                    msg = self.consumer.poll(timeout=1.0)
-
-                if msg is None:
-                    continue
-                if msg.error():
-                    continue
-
-                # Parse Input Payload
-                try:
-                    data = json.loads(msg.value())
-                except json.JSONDecodeError:
-                    logger.warning("[AgentB] Invalid message (JSON). Ignored.")
-                    continue
-
-                # Extract truckId (Propagate if exists)
-                truck_id = None
-                for k, v in (msg.headers() or []):
-                    if k == "truckId" and v is not None:
-                        truck_id = v.decode() if isinstance(v, (bytes, bytearray)) else str(v)
-                        break
-                if truck_id is None:
-                    truck_id = str(uuid.uuid4())
-
-                logger.info(
-                    f"[AgentB] Received 'truck-detected' (truckId={truck_id}). Starting LP pipeline…")
-
-                # Process license plate detection
-                plate_text, plate_conf, _lp_img = self.process_license_plate_detection(truck_id)
-
-                if not plate_text:
-                    logger.warning("[AgentB] No final text results — publishing empty message.")
-                    self._publish_lp_detected(truck_id, "N/A", -1, None)
+                msg = self._poll_latest_message()
+                
+                if msg is None or msg.error():
                     continue
                 
-                # Upload best crop to MinIO
-                crop_url = None
-                if self.best_crop is not None:
-                    try:
-                        # Generate unique object name
-                        object_name = f"lp_{truck_id}_{plate_text}.jpg"
-                        crop_url = self.crop_storage.upload_memory_image(self.best_crop, object_name)
-                        
-                        if crop_url:
-                            logger.info(f"[AgentB] Crop Final Consensus: {crop_url}")
-                        else:
-                            logger.warning("[AgentB] Failed to upload crop to MinIO")
-                    except Exception as e:
-                        logger.exception(f"[AgentB] Error uploading crop to MinIO: {e}")
-                
-                # Publish the license plate detected message
-                self._publish_lp_detected(
-                    truck_id=truck_id,
-                    plate_text=plate_text,
-                    plate_conf=plate_conf,
-                    crop_url=crop_url
-                )
-
-                # Clear frames queue for next detection
-                with self.frames_queue.mutex:
-                    self.frames_queue.queue.clear()
+                self._process_message(msg)
                 
         except KeyboardInterrupt:
             logger.info("[AgentB] Interrupted by user.")
@@ -742,21 +792,7 @@ class AgentB:
         except Exception as e:
             logger.exception(f"[AgentB] Unexpected error: {e}")
         finally:
-            logger.info("[AgentB] Freeing resources…")
-            try:
-                if self.stream is not None:
-                    self.stream.release()
-                    logger.debug("[AgentB] RTMP stream released.")
-            except Exception as e:
-                logger.exception(f"[AgentB] Error releasing RTMP stream: {e}")
-            try:
-                self.producer.flush(5)
-            except Exception:
-                pass
-            try:
-                self.consumer.close()
-            except Exception:
-                pass
+            self._cleanup_resources()
 
     def stop(self):
         """Gracefully stop Agent B."""

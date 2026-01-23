@@ -2,11 +2,11 @@ import json
 import logging
 from confluent_kafka import Producer, Consumer, KafkaException # type: ignore
 import os
-import requests
+import requests # type: ignore
 import time
 from datetime import datetime, timedelta
 import itertools
-from prometheus_client import start_http_server, Counter, Histogram
+from prometheus_client import start_http_server, Counter, Histogram # type: ignore
 
 
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
@@ -27,8 +27,6 @@ class DecisionEngine:
         
         self.un_numbers = self._load_un_numbers()
         self.kemler_codes = self._load_kemler_codes()
-        # Mock database
-        self.database = {}
 
         self.lp_buffer = {}  # {truck_id: lp_data}
         self.hz_buffer = {}  # {truck_id: hz_data}
@@ -116,83 +114,97 @@ class DecisionEngine:
             'Z': ['2', '7']
         }
 
+    def _extract_truck_id_from_headers(self, headers) -> str | None:
+        """Extracts truck_id from Kafka message headers."""
+        for k, v in (headers or []):
+            if k == "truckId":
+                return v.decode("utf-8") if isinstance(v, bytes) else v
+        return None
+
+    def _parse_message(self, msg) -> tuple:
+        """
+        Parses a Kafka message and extracts data.
+        Returns (topic, data, truck_id) or (None, None, None) on failure.
+        """
+        if msg.error():
+            logger.error(f"[DecisionEngine/Kafka] Consumer error: {msg.error()}")
+            return None, None, None
+
+        try:
+            data = json.loads(msg.value())
+        except json.JSONDecodeError:
+            logger.warning("[DecisionEngine] Invalid message (JSON). Ignored.")
+            return None, None, None
+
+        truck_id = self._extract_truck_id_from_headers(msg.headers())
+        if not truck_id:
+            logger.warning("[DecisionEngine] Message missing 'truck_id' header. Ignored.")
+            return None, None, None
+
+        return msg.topic(), data, truck_id
+
+    def _store_in_buffer(self, topic: str, truck_id: str, data: dict):
+        """Stores message data in the appropriate buffer."""
+        if topic == KAFKA_CONSUME_TOPIC_LP:
+            self.lp_buffer[truck_id] = data
+            logger.debug(f"[DecisionEngine] LP data stored for truck_id='{truck_id}': {data}")
+        elif topic == KAFKA_CONSUME_TOPIC_HZ:
+            self.hz_buffer[truck_id] = data
+            logger.debug(f"[DecisionEngine] HZ data stored for truck_id='{truck_id}': {data}")
+
+    def _try_process_truck(self, truck_id: str):
+        """Attempts to process a truck if both LP and HZ data are available."""
+        if truck_id not in self.lp_buffer or truck_id not in self.hz_buffer:
+            return
+
+        logger.info(f"[DecisionEngine] Both LP and HZ available for truck_id='{truck_id}'. Making decision…")
+        
+        lp_data = self.lp_buffer[truck_id]
+        hz_data = self.hz_buffer[truck_id]
+        
+        self._make_decision(truck_id, lp_data, hz_data)
+        
+        del self.lp_buffer[truck_id]
+        del self.hz_buffer[truck_id]
+        logger.debug(f"[DecisionEngine] Buffers cleaned for truck_id='{truck_id}'")
+
+    def _cleanup_resources(self):
+        """Releases Kafka resources gracefully."""
+        logger.info("[DecisionEngine] Freeing resources…")
+        try:
+            self.producer.flush(5)
+        except Exception:
+            pass
+        try:
+            self.consumer.close()
+        except Exception:
+            pass
+
     def _loop(self):
         logger.info("[DecisionEngine] Starting main loop …")
 
         try:
             while self.running:
                 msg = self.consumer.poll(1.0)
-
                 if msg is None:
                     continue
 
-                if msg.error():
-                    logger.error(f"[DecisionEngine/Kafka] Consumer error: {msg.error()}")
-                    continue
-
-                topic = msg.topic()
-                
-                # Parse message payload
-                try:
-                    data = json.loads(msg.value())
-                except json.JSONDecodeError:
-                    logger.warning("[DecisionEngine] Invalid message (JSON). Ignored.")
-                    continue
-
-                # Extract truck_id from headers
-                truck_id = None
-                for k, v in (msg.headers() or []):
-                    if k == "truckId":
-                        truck_id = v.decode("utf-8") if isinstance(v, bytes) else v
-                        break
-
-                if not truck_id:
-                    logger.warning("[DecisionEngine] Message missing 'truck_id' header. Ignored.")
+                topic, data, truck_id = self._parse_message(msg)
+                if topic is None:
                     continue
 
                 logger.info(f"[DecisionEngine] Received from '{topic}' for truck_id='{truck_id}'")
-
-                # Store in appropriate buffer
-                if topic == KAFKA_CONSUME_TOPIC_LP:
-                    self.lp_buffer[truck_id] = data
-                    logger.debug(f"[DecisionEngine] LP data stored for truck_id='{truck_id}': {data}")
-                
-                elif topic == KAFKA_CONSUME_TOPIC_HZ:
-                    self.hz_buffer[truck_id] = data
-                    logger.debug(f"[DecisionEngine] HZ data stored for truck_id='{truck_id}': {data}")
-
-                # Check if we have both LP and HZ for this truck
-                if truck_id in self.lp_buffer and truck_id in self.hz_buffer:
-                    logger.info(f"[DecisionEngine] Both LP and HZ available for truck_id='{truck_id}'. Making decision…")
-                    
-                    lp_data = self.lp_buffer[truck_id]
-                    hz_data = self.hz_buffer[truck_id]
-                    
-                    self._make_decision(truck_id, lp_data, hz_data)
-                    
-                    # Clean up buffers after processing
-                    del self.lp_buffer[truck_id]
-                    del self.hz_buffer[truck_id]
-
-                    logger.debug(f"[DecisionEngine] Buffers cleaned for truck_id='{truck_id}'")
+                self._store_in_buffer(topic, truck_id, data)
+                self._try_process_truck(truck_id)
 
         except KeyboardInterrupt:
             logger.info("[DecisionEngine] Interrupted by user.")
-        
         except KafkaException as e:
             logger.exception(f"[DecisionEngine/Kafka] Kafka error: {e}")
         except Exception as e:
             logger.exception(f"[DecisionEngine] Unexpected error: {e}")
         finally:
-            logger.info("[DecisionEngine] Freeing resources…")
-            try:
-                self.producer.flush(5)
-            except Exception:
-                pass
-            try:
-                self.consumer.close()
-            except Exception:
-                pass
+            self._cleanup_resources()
 
 
     def _query_appointments_in_timeframe(self) -> dict:
@@ -246,7 +258,7 @@ class DecisionEngine:
         
         # Only return match if within threshold
         if best_distance <= MAX_LEVENSHTEIN_DISTANCE:
-            logger.info(f"[DecisionEngine] Found match: '{best_match.get('license_plate')}' with distance {best_distance}")
+            logger.info(f"[DecisionEngine] Found match: '{best_match.get('license_plate')}' with distance {best_distance}") # type: ignore
             return best_match, best_distance
         
         logger.info(f"[DecisionEngine] No match found within threshold {MAX_LEVENSHTEIN_DISTANCE} (best was {best_distance})")
@@ -295,100 +307,31 @@ class DecisionEngine:
         
         return previous_row[-1]
 
-    def _make_decision(self, truck_id: str, lp_data: dict, hz_data: dict):
-        logger.info(f"[DecisionEngine] Making decision for truck_id='{truck_id}'")
-        
-        start_time = time.time()
-        
-        # Return variables
-        decision = "MANUAL_REVIEW"
-        alerts = []
-        route = None
-
+    def _extract_detection_data(self, lp_data: dict, hz_data: dict) -> dict:
+        """Extracts and formats detection data from LP and HZ payloads."""
         license_plate = lp_data.get("licensePlate", "N/A")
         un_number = hz_data.get("un", "N/A")
         kemler_code = hz_data.get("kemler", "N/A")
 
-        timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-        logger.info(f"[DecisionEngine] Extracted data - License Plate: '{license_plate}', UN Number: '{un_number}', Kemler Code: '{kemler_code}'")
         un_data = f"{un_number}: {self._get_un_description(un_number)}" if un_number and un_number != "N/A" else "No UN number detected"
         kemler_data = f"{kemler_code}: {self._get_kemler_description(kemler_code)}" if kemler_code and kemler_code != "N/A" else "No Kemler code detected"
 
-        if license_plate == "N/A":
-            decision = "MANUAL_REVIEW"
-            alerts.append("License plate not detected")
-            
-            logger.warning(f"[DecisionEngine] Incomplete data for truck_id='{truck_id}'. Sending to manual review.")
-            
-            returned_data = {
-                "timestamp": timestamp,
-                "licensePlate": license_plate,
-                "UN": f"{un_number}: {self._get_un_description(un_number)}" if un_number and un_number != "N/A" and un_number.isdigit() else None,
-                "kemler": f"{kemler_code}: {self._get_kemler_description(kemler_code)}" if kemler_code and kemler_code != "N/A" and kemler_code.isdigit() else None,
-                "alerts": alerts,
-                "lp_cropUrl": lp_data.get("cropUrl"),
-                "hz_cropUrl": hz_data.get("cropUrl"),
-                "route": route,
-                "decision": decision,
-                "decision_source": "engine"
-            }
-            self._publish_decision(truck_id, returned_data)
-            return
-        
-        # 1. Query Database for all appointments in time frame
-        appointments_result = self._query_appointments_in_timeframe()
-        logger.info(f"[DecisionEngine] Appointments query result: {appointments_result}")
-        
-        # 2. Find matching appointment using Levenshtein distance
-        candidates = appointments_result.get("candidates", [])
-        matched_appointment, distance = self._find_matching_appointment(license_plate, candidates)
-        
-        
-        # Check if API query was successful
-        api_message = appointments_result.get("message", "")
-        if "Connection refused" in api_message or "Max retries" in api_message:
-            decision = "MANUAL_REVIEW"
-            alerts.append(f"API unavailable - Manual review required")
-            logger.warning(f"[DecisionEngine] API unavailable for truck_id='{truck_id}'. Sending to manual review.")
-        
-        elif matched_appointment is None:
-            # No matching license plate found within Levenshtein threshold
-            decision = "REJECTED"
-            if distance >= 0:
-                alerts.append(f"License plate '{license_plate}' not matched (closest distance: {distance}, threshold: {MAX_LEVENSHTEIN_DISTANCE})")
-            else:
-                alerts.append(f"No appointments found in time frame for gate {GATE_ID}")
+        return {
+            "license_plate": license_plate,
+            "un_number": un_number,
+            "kemler_code": kemler_code,
+            "un_data": un_data,
+            "kemler_data": kemler_data
+        }
 
-            logger.warning(f"[DecisionEngine] No matching license plate for '{license_plate}'. Rejecting.")
-        
-        else:
-            # Match found! Extract route info and validate time window
-            decision = "ACCEPTED"
-            route = {
-                "gate_id": matched_appointment.get("gate_in_id"),
-                "terminal_id": matched_appointment.get("terminal_id"),
-                "appointment_id": matched_appointment.get("appointment_id")
-            }
-            
-            # Add match info to alerts if distance > 0 (fuzzy match)
-            if distance > 0:
-                alerts.append(f"Fuzzy match: detected '{license_plate}' matched to '{matched_appointment.get('license_plate')}' (distance: {distance})")
-
-            logger.info(f"[DecisionEngine] Matched appointment ID: {matched_appointment.get('appointment_id')}, decision: {decision}")
-        
-        # Update appointment status in database (like manual review does)
-        if matched_appointment and decision in ["ACCEPTED", "REJECTED"]:
-            appointment_id = matched_appointment.get("appointment_id")
-            if appointment_id:
-                self._update_appointment_status(appointment_id, decision)
-            
-        # Prepare Decision Data
-        returned_data = {
+    def _build_decision_payload(self, timestamp: str, detection: dict, lp_data: dict, hz_data: dict,
+                                 decision: str, alerts: list, route: dict | None) -> dict:
+        """Builds the decision payload for publishing."""
+        return {
             "timestamp": timestamp,
-            "licensePlate": license_plate,
-            "UN": un_data,
-            "kemler": kemler_data,
+            "licensePlate": detection["license_plate"],
+            "UN": detection["un_data"],
+            "kemler": detection["kemler_data"],
             "alerts": alerts,
             "lp_cropUrl": lp_data.get("cropUrl"),
             "hz_cropUrl": hz_data.get("cropUrl"),
@@ -397,17 +340,115 @@ class DecisionEngine:
             "decision_source": "engine"
         }
 
+    def _handle_missing_license_plate(self, truck_id: str, timestamp: str, detection: dict,
+                                       lp_data: dict, hz_data: dict):
+        """Handles the case when license plate is not detected."""
+        alerts = ["License plate not detected"]
+        logger.warning(f"[DecisionEngine] Incomplete data for truck_id='{truck_id}'. Sending to manual review.")
+
+        returned_data = {
+            "timestamp": timestamp,
+            "licensePlate": detection["license_plate"],
+            "UN": detection["un_data"],
+            "kemler": detection["kemler_data"],
+            "alerts": alerts,
+            "lp_cropUrl": lp_data.get("cropUrl"),
+            "hz_cropUrl": hz_data.get("cropUrl"),
+            "route": None,
+            "decision": "MANUAL_REVIEW",
+            "decision_source": "engine"
+        }
         self._publish_decision(truck_id, returned_data)
+
+    def _is_api_unavailable(self, api_message: str) -> bool:
+        """Checks if the API is unavailable based on the response message."""
+        return "Connection refused" in api_message or "Max retries" in api_message
+
+    def _evaluate_appointment_match(self, license_plate: str, appointments_result: dict) -> tuple:
+        """
+        Evaluates appointment matching and returns decision details.
+        Returns (decision, alerts, route, matched_appointment).
+        """
+        alerts = []
+        route = None
         
-        # Record Metrics
+        api_message = appointments_result.get("message", "")
+        if self._is_api_unavailable(api_message):
+            alerts.append("API unavailable - Manual review required")
+            return "MANUAL_REVIEW", alerts, route, None
+
+        candidates = appointments_result.get("candidates", [])
+        matched_appointment, distance = self._find_matching_appointment(license_plate, candidates)
+
+        if matched_appointment is None:
+            decision = "REJECTED"
+            if distance >= 0:
+                alerts.append(f"License plate '{license_plate}' not matched (closest distance: {distance}, threshold: {MAX_LEVENSHTEIN_DISTANCE})")
+            else:
+                alerts.append(f"No appointments found in time frame for gate {GATE_ID}")
+            logger.warning(f"[DecisionEngine] No matching license plate for '{license_plate}'. Rejecting.")
+            return decision, alerts, route, None
+
+        # Match found
+        route = {
+            "gate_id": matched_appointment.get("gate_in_id"),
+            "terminal_id": matched_appointment.get("terminal_id"),
+            "appointment_id": matched_appointment.get("appointment_id")
+        }
+
+        if distance > 0:
+            alerts.append(f"Fuzzy match: detected '{license_plate}' matched to '{matched_appointment.get('license_plate')}' (distance: {distance})")
+
+        logger.info(f"[DecisionEngine] Matched appointment ID: {matched_appointment.get('appointment_id')}, decision: ACCEPTED")
+        return "ACCEPTED", alerts, route, matched_appointment
+
+    def _record_decision_metrics(self, decision: str, start_time: float):
+        """Records Prometheus metrics for the decision."""
         duration = time.time() - start_time
         self.decision_latency.observe(duration)
         self.decisions_processed.inc()
-        
+
         if decision == "ACCEPTED":
             self.approved_access.inc()
         elif decision == "REJECTED":
             self.denied_access.inc()
+
+    def _make_decision(self, truck_id: str, lp_data: dict, hz_data: dict):
+        logger.info(f"[DecisionEngine] Making decision for truck_id='{truck_id}'")
+        
+        start_time = time.time()
+        timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+        detection = self._extract_detection_data(lp_data, hz_data)
+        logger.info(f"[DecisionEngine] Extracted data - License Plate: '{detection['license_plate']}', UN Number: '{detection['un_number']}', Kemler Code: '{detection['kemler_code']}'")
+
+        # Handle missing license plate
+        if detection["license_plate"] == "N/A":
+            self._handle_missing_license_plate(truck_id, timestamp, detection, lp_data, hz_data)
+            return
+
+        # Query and evaluate appointments
+        appointments_result = self._query_appointments_in_timeframe()
+        logger.info(f"[DecisionEngine] Appointments query result: {appointments_result}")
+
+        decision, alerts, route, matched_appointment = self._evaluate_appointment_match(
+            detection["license_plate"], appointments_result
+        )
+
+        # Update appointment status if needed
+        if matched_appointment and decision in ["ACCEPTED", "REJECTED"]:
+            appointment_id = matched_appointment.get("appointment_id")
+            if appointment_id:
+                self._update_appointment_status(appointment_id, decision)
+
+        # Build and publish decision
+        returned_data = self._build_decision_payload(
+            timestamp, detection, lp_data, hz_data, decision, alerts, route
+        )
+        self._publish_decision(truck_id, returned_data)
+
+        # Record metrics
+        self._record_decision_metrics(decision, start_time)
     
     def _update_appointment_status(self, appointment_id: int, decision: str):
         """Updates the appointment status via the Data Module API."""
@@ -463,7 +504,7 @@ class DecisionEngine:
     def _load_un_numbers(self):
         dic = {}
 
-        with open("./decision_engine_microservice/src/un_numbers.txt", "r") as f:
+        with open("./src/un_numbers.txt", "r") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -482,7 +523,7 @@ class DecisionEngine:
     def _load_kemler_codes(self):
         dic = {}
 
-        with open("./decision_engine_microservice/src/kemler_codes.txt", "r") as f:
+        with open("./src/kemler_codes.txt", "r") as f:
             for line in f:
                 line = line.strip()
                 if not line:

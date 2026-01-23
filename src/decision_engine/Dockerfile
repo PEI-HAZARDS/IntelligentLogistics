@@ -2,9 +2,9 @@
 FROM docker.io/python:3.11-slim@sha256:193fdd0bbcb3d2ae612bd6cc3548d2f7c78d65b549fcaa8af75624c47474444d
 
 # Environment variables (runtime vars provided via docker-compose/.env)
-ENV PYTHONPATH=/app
+ENV PYTHONPATH=/decision_engine
 
-WORKDIR /app
+WORKDIR /decision_engine
 
 # 1. System dependencies (OpenCV, etc.)
 RUN apt-get update && \
@@ -14,14 +14,14 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # 2. Python dependencies
-COPY requirements.txt ./decision_engine_microservice/
+COPY requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r decision_engine_microservice/requirements.txt
+    pip install --no-cache-dir -r requirements.txt
 
 # 3. Copy source code
-COPY src/ ./decision_engine_microservice/src/
-COPY init.py ./decision_engine_microservice/
-COPY tests/ ./decision_engine_microservice/tests/
+COPY src/ ./src/
+COPY init.py ./
+COPY tests/ ./tests/
 
 # 5. Start the microservice
-CMD ["python", "decision_engine_microservice/init.py"]
+CMD ["python", "init.py"]
