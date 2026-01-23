@@ -4,78 +4,78 @@
 [![Microsite](https://img.shields.io/badge/Microsite-PEI-blue?logo=github)](https://pei-hazards.github.io/Micro-site/)
 
 
-## Introdução  
-Vivemos numa era em que a logística é invisível mas essencial: as nossas encomendas chegam no dia seguinte com apenas um clique, mas por trás desse processo existem milhões de contentores e operações complexas. Só em 2023, estima-se que **858 milhões de contentores** passaram por portos marítimos em todo o mundo, movimentados por navios, camiões e infraestruturas terrestres.  
+## Introduction  
+We live in an era where logistics is invisible but essential: our orders arrive the next day with just a click, but behind this process there are millions of containers and complex operations. In 2023 alone, it is estimated that **858 million containers** passed through seaports worldwide, moved by ships, trucks, and land infrastructure.  
 
-Esse volume crescente traz consigo enormes desafios logísticos: atrasos, erros de encaminhamento e custos operacionais. Nos grandes portos — verdadeiros labirintos com dezenas de armazéns — basta uma instrução mal dada para que uma carga seja encaminhada ao destino errado, gerando **perdas de tempo e dinheiro**.  
-
----
-
-## Motivação  
-Para aumentar a **eficiência** e reduzir custos, autoridades portuárias estão a adotar **Tecnologias de Informação e Comunicação (TIC)** e conceitos da **Indústria 4.0**. Com a democratização da **Inteligência Artificial**, da **computação em nuvem** e da **digitalização de processos**, surgem soluções inovadoras para tornar a logística mais **inteligente, automatizada e sustentável**.  
-
-O projeto **Intelligent Logistics** propõe exatamente isso:  
-- Automatizar o **controlo de entrada de camiões** num porto.  
-- Detetar veículos e cargas através de câmeras e algoritmos de visão computacional.  
-- Integrar a informação com um **sistema logístico inteligente** que decide a entrada e destino correto.  
-- Informar o condutor de forma clara, seja por **sinalização digital** no porto ou **aplicações móveis**.  
+This growing volume brings with it huge logistical challenges: delays, routing errors, and operational costs. In large ports — veritable mazes with dozens of warehouses — a single wrong instruction is enough for cargo to be sent to the wrong destination, generating **losses of time and money**.  
 
 ---
 
-## Concepção do Sistema  
-O sistema é baseado em dois módulos principais:  
+## Motivation  
+To increase **efficiency** and reduce costs, port authorities are adopting **Information and Communication Technologies (ICT)** and **Industry 4.0** concepts. With the democratization of **Artificial Intelligence**, **cloud computing**, and the **digitization of processes**, innovative solutions are emerging to make logistics more **intelligent, automated, and sustainable**.  
 
-1. **Deteção e Encaminhamento de Cargas**  
-   - Utilização de algoritmos de visão computacional em tempo real (ex: YOLO).  
-   - Reconhecimento de camiões, matrículas e símbolos de mercadorias perigosas.  
-   - Encaminhamento automático para o destino correto dentro do porto.  
-
-2. **Análise Estatística**  
-   - Contabilização de veículos, tipos de carga e tempos de permanência.  
-   - Visualização de métricas em diferentes granularidades (diário, mensal, individual).  
+The **Intelligent Logistics** project proposes exactly that:  
+- Automate the **truck entry control** in a port.  
+- Detect vehicles and cargo using cameras and computer vision algorithms.  
+- Integrate the information with an **intelligent logistics system** that decides the correct entry and destination.  
+- Clearly inform the driver, whether through **digital signage** at the port or **mobile applications**.  
 
 ---
 
-## Requisitos  
+## System Design  
+The system is based on two main modules:  
 
-### **Funcionais**  
-- Deteção automática de camiões em tempo real.  
-- Deteção e classificação de matrículas.
-- Deteção e classificação de símbolos de mercadorias perigosas.
-- Identificação de cargas perigosas através da placa de segurança.
-- Gestão de estados de veículos.
-- Integração com sistema de gestão logística para tomada de decisão.  
-- Encaminhamento do veículo para o destino correto dentro do porto.  
-- Notificação clara ao condutor (via sinalização digital ou aplicação móvel).  
-- Geração de relatórios estatísticos sobre tráfego e cargas.
+1. **Cargo Detection and Routing**  
+   - Use of real-time computer vision algorithms (e.g., YOLO).  
+   - Recognition of trucks, license plates, and dangerous goods symbols.  
+   - Automatic routing to the correct destination within the port.  
 
-### **Não Funcionais**  
-- **Eficiência energética**: otimização do uso de recursos computacionais.  
-- **Escalabilidade**: permitir adaptação a diferentes portos e cenários.
-- **Flexibilidade**: aprendizagem ativa de novos símbolos/tipos de carga (?).  
-- **Confiabilidade**: sistema robusto com baixa taxa de erro.
-- **Segurança**: proteção dos dados logísticos e dos veículos monitorizados.
-- Tempo de resposta: A deteção e notificação não devem exceder 2 segundos entre captura e disponibilização ao operador.
-- Confiabilidade: O sistema deve manter uma disponibilidade mínima de 99% no ambiente de produção.
+2. **Statistical Analysis**  
+   - Accounting of vehicles, cargo types, and dwell times.  
+   - Visualization of metrics in different granularities (daily, monthly, individual).  
 
 ---
 
-## Evoluções Futuras (Fase II)  
-- **Aprendizagem ativa**: permitir que o sistema aprenda a identificar novos tipos de carga e símbolos à medida que surgem.  
-- **Eficiência energética**: otimizar o uso de recursos de IA em datacenters, equilibrando performance e consumo energético.  
+## Requirements  
+
+### **Functional**  
+- Automatic detection of trucks in real-time.  
+- Detection and classification of license plates.
+- Detection and classification of dangerous goods symbols.
+- Identification of dangerous cargo through the safety placard.
+- Vehicle state management.
+- Integration with logistics management system for decision making.  
+- Routing of the vehicle to the correct destination within the port.  
+- Clear notification to the driver (via digital signage or mobile application).  
+- Generation of statistical reports on traffic and cargo.
+
+### **Non-Functional**  
+- **Energy efficiency**: optimization of computational resource usage.  
+- **Scalability**: allow adaptation to different ports and scenarios.
+- **Flexibility**: active learning of new symbols/cargo types (?).  
+- **Reliability**: robust system with low error rate.
+- **Security**: protection of logistics data and monitored vehicles.
+- Response time: Detection and notification must not exceed 2 seconds between capture and availability to the operator.
+- Reliability: The system must maintain a minimum availability of 99% in the production environment.
 
 ---
 
-## Demonstração  
-Existe a possibilidade de integração com **datacenters reais** e redes em funcionamento, bem como a realização de testes práticos em ambiente portuário (como o Porto de Aveiro).  
+## Future Evolutions (Phase II)  
+- **Active learning**: allow the system to learn to identify new cargo types and symbols as they arise.  
+- **Energy efficiency**: optimize the use of AI resources in datacenters, balancing performance and energy consumption.  
 
 ---
 
-✨ Este projeto combina **IA, visão computacional, logística e eficiência energética**, sendo uma proposta alinhada com os desafios da Indústria 4.0.  
+## Demonstration  
+There is the possibility of integration with **real datacenters** and operating networks, as well as conducting practical tests in a port environment (such as the Port of Aveiro).  
+
+---
+
+✨ This project combines **AI, computer vision, logistics, and energy efficiency**, being a proposal aligned with the challenges of Industry 4.0.  
 
 
 ## Future Work
 
-- Interface de administração.
-- Interação via dashboard entre o operador da cancela e motorista (?).
-- Monitoria
+- Administration interface.
+- Interaction via dashboard between the gate operator and driver (?).
+- Monitoring
