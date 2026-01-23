@@ -11,7 +11,7 @@ Responsibilities:
 import json
 import time
 from typing import Optional, Dict, Any, List
-from datetime import datetime as dt
+from datetime import datetime as dt, timezone
 from db.mongo import detections_collection, events_collection
 from db.redis import redis_client
 
@@ -110,7 +110,7 @@ def persist_detection_event(event_data: Dict[str, Any]) -> str:
     """
     doc = {
         **event_data,
-        "created_at": dt.utcnow().isoformat(),
+        "created_at": dt.now(timezone.utc).isoformat(),
         "processed": False
     }
     result = detections_collection.insert_one(doc)
@@ -134,7 +134,7 @@ def persist_decision_event(
         "appointment_id": appointment_id,
         "decision": decision,  # "approved", "rejected", "manual_review", "not_found"
         "decision_data": decision_data,
-        "created_at": dt.utcnow().isoformat()
+        "created_at": dt.now(timezone.utc).isoformat()
     }
     result = events_collection.insert_one(doc)
     return str(result.inserted_id)

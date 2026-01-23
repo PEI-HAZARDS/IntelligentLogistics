@@ -1,0 +1,182 @@
+# Prometheus Alert Rules - Golden Signals
+# Based on: Latency, Errors, Traffic, Saturation
+
+groups:
+  # =============================================================================
+  # SERVICE AVAILABILITY
+  # =============================================================================
+  - name: service_availability
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.instance }} has been unreachable for more than 2 minutes."
+
+      - alert: PrometheusTargetMissing
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus target missing"
+          description: "A Prometheus target has disappeared. Job: {{ $labels.job }}"
+
+  # =============================================================================
+  # LATENCY (Golden Signal)
+  # =============================================================================
+  - name: latency_alerts
+    rules:
+      - alert: HighLatencyP95
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job)) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High P95 latency on {{ $labels.job }}"
+          description: "P95 latency is above 500ms (current: {{ $value | humanize }}s)"
+
+      - alert: HighLatencyP99
+        expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job)) > 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical P99 latency on {{ $labels.job }}"
+          description: "P99 latency is above 1s (current: {{ $value | humanize }}s)"
+
+  # =============================================================================
+  # ERRORS (Golden Signal)
+  # =============================================================================
+  - name: error_alerts
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m])) by (job)
+            /
+            sum(rate(http_requests_total[5m])) by (job)
+          ) * 100 > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "Error rate is {{ $value | printf \"%.1f\" }}% (threshold: 5%)"
+
+      - alert: CriticalErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m])) by (job)
+            /
+            sum(rate(http_requests_total[5m])) by (job)
+          ) * 100 > 10
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical error rate on {{ $labels.job }}"
+          description: "Error rate is {{ $value | printf \"%.1f\" }}% (threshold: 10%)"
+
+  # =============================================================================
+  # SATURATION (Golden Signal) - Resource Usage
+  # =============================================================================
+  - name: saturation_alerts
+    rules:
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value | printf \"%.1f\" }}%"
+
+      - alert: CriticalCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value | printf \"%.1f\" }}%"
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value | printf \"%.1f\" }}%"
+
+      - alert: CriticalMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value | printf \"%.1f\" }}%"
+
+      - alert: DiskAlmostFull
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 < 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk almost full on {{ $labels.instance }}"
+          description: "Disk {{ $labels.mountpoint }} has only {{ $value | printf \"%.1f\" }}% free space"
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 < 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Disk {{ $labels.mountpoint }} has only {{ $value | printf \"%.1f\" }}% free space"
+
+  # =============================================================================
+  # INFRASTRUCTURE - Databases & Services
+  # =============================================================================
+  - name: infrastructure_alerts
+    rules:
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL database is not responding"
+
+      - alert: MongoDBDown
+        expr: mongodb_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MongoDB is down"
+          description: "MongoDB database is not responding"
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis cache is not responding"
+
+      - alert: KafkaConsumerLag
+        expr: kafka_consumer_group_lag > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Kafka consumer lag"
+          description: "Consumer group {{ $labels.consumer_group }} has lag of {{ $value }} messages"

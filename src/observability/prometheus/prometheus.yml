@@ -1,0 +1,107 @@
+# Prometheus Configuration for IntelligentLogistics
+# Scrapes metrics from all services across VMs
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'intelligent-logistics'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Load alert rules
+rule_files:
+  - /etc/prometheus/alerts/*.yml
+
+# Scrape configurations
+scrape_configs:
+  # =============================================================================
+  # PROMETHEUS SELF-MONITORING
+  # =============================================================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # =============================================================================
+  # NODE EXPORTER - Host Metrics (Jenkins VM)
+  # =============================================================================
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          instance: 'jenkins-vm'
+
+  # =============================================================================
+  # DATA MODULE (PostgreSQL, MongoDB, Redis, MinIO, Data Module API)
+  # =============================================================================
+  - job_name: 'data-module'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.82:8080']
+        labels:
+          service: 'data-module'
+
+  # =============================================================================
+  # API GATEWAY
+  # =============================================================================
+  - job_name: 'api-gateway'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.100:8000']
+        labels:
+          service: 'api-gateway'
+
+  # =============================================================================
+  # ML AGENTS
+  # =============================================================================
+  - job_name: 'agent-a'
+    metrics_path: /metrics
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['10.255.32.134:8000']
+        labels:
+          service: 'agent-a'
+          type: 'ml-agent'
+
+  - job_name: 'agent-b'
+    metrics_path: /metrics
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['10.255.32.32:8000']
+        labels:
+          service: 'agent-b'
+          type: 'ml-agent'
+
+  - job_name: 'agent-c'
+    metrics_path: /metrics
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['10.255.32.128:8000']
+        labels:
+          service: 'agent-c'
+          type: 'ml-agent'
+
+  # =============================================================================
+  # DECISION ENGINE
+  # =============================================================================
+  - job_name: 'decision-engine'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.104:8001']
+        labels:
+          service: 'decision-engine'
+
+  # =============================================================================
+  # KAFKA (via kafka-exporter)
+  # =============================================================================
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['10.255.32.143:9308']
+        labels:
+          service: 'kafka'
+

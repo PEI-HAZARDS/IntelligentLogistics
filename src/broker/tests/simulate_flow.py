@@ -97,7 +97,7 @@ def send_flow():
         "timestamp": timestamp,
         "licensePlate": "58-76-TK",
         "confidence": 0.98,
-        "cropUrl": "http://10.255.32.132:9000/lp-crops/demo_lp.jpg"
+        "cropUrl": "http://10.255.32.82:9000/lp-crops/demo_lp.jpg"
     }
 
     producer.produce(
@@ -118,7 +118,7 @@ def send_flow():
         "un": "1203",
         "kemler": "33",
         "confidence": 0.92,
-        "cropUrl": "http://10.255.32.132:9000/hz-crops/demo_hz.jpg"
+        "cropUrl": "http://10.255.32.82:9000/hz-crops/demo_hz.jpg"
     }
 
     producer.produce(
@@ -142,8 +142,8 @@ def send_flow():
         "UN": "1203: GASOLINE",
         "kemler": "33: highly flammable liquid (flash-point below 23°C)",
         "alerts": [],
-        "lp_cropUrl": "http://10.255.32.132:9000/lp-crops/demo_lp.jpg",
-        "hz_cropUrl": "http://10.255.32.132:9000/hz-crops/demo_hz.jpg",
+        "lp_cropUrl": "http://10.255.32.82:9000/lp-crops/demo_lp.jpg",
+        "hz_cropUrl": "http://10.255.32.82:9000/hz-crops/demo_hz.jpg",
         "route": {
             "gate_id": "1",
             "terminal_id": "T1",

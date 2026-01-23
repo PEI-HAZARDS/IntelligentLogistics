@@ -1,0 +1,34 @@
+# Grafana Datasources Provisioning
+# Minimal configuration - no cross-references
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+
+  - name: Alertmanager
+    type: alertmanager
+    uid: alertmanager
+    access: proxy
+    url: http://alertmanager:9093
+    editable: false
+
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: false

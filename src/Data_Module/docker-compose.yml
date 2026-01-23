@@ -6,18 +6,20 @@ services:
     container_name: dm_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: porto
-      POSTGRES_PASSWORD: porto_password
-      POSTGRES_DB: porto_logistica
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U porto -d porto_logistica"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - intelligent-logistics
 
   # MongoDB for events and logs
   mongo:
@@ -25,10 +27,10 @@ services:
     container_name: dm_mongo
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: admin123
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
     ports:
-      - "27017:27017"
+      - "${MONGO_PORT}:27017"
     volumes:
       - mongodata:/data/db
     healthcheck:
@@ -36,6 +38,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - intelligent-logistics
 
   # Redis cache
   redis:
@@ -43,12 +47,14 @@ services:
     container_name: dm_redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - intelligent-logistics
 
   # Data Module API
   data-module:
@@ -64,24 +70,28 @@ services:
         condition: service_healthy
     environment:
       # PostgreSQL
-      POSTGRES_USER: porto
-      POSTGRES_PASSWORD: porto_password
-      POSTGRES_DB: porto_logistica
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      DATABASE_URL: postgresql://porto:porto_password@postgres:5432/porto_logistica
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - DATABASE_URL=${DATABASE_URL}
       # MongoDB
-      MONGO_URL: mongodb://admin:admin123@mongo:27017
-      MONGO_HOST: mongo
-      MONGO_PORT: 27017
+      - MONGO_URL=${MONGO_URL}
+      - MONGO_HOST=${MONGO_HOST}
+      - MONGO_PORT=${MONGO_PORT}
       # Redis
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
       # External services
-      DECISION_ENGINE_URL: ${DECISION_ENGINE_URL:-http://decision-engine:8001}
+      - DECISION_ENGINE_URL=${DECISION_ENGINE_URL}
       # Runtime
-      PYTHONUNBUFFERED: 1
-      ENVIRONMENT: production
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=${ENVIRONMENT}
+      - DEBUG=${DEBUG}
+      - DEBUG_MODE=${DEBUG_MODE}
+      - TOKEN_EXPIRY_HOURS=${TOKEN_EXPIRY_HOURS}
+      - API_PREFIX=${API_PREFIX}
     ports:
       - "8080:8000"
     healthcheck:
@@ -90,11 +100,37 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    networks:
+      - intelligent-logistics
+
+  # MinIO Object Storage
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "${MINIO_API_PORT}:9000"
+      - "${MINIO_CONSOLE_PORT}:9090"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    volumes:
+      - miniodata:/data
+    command: server /data --console-address ":9090"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - intelligent-logistics
 
 volumes:
   pgdata:
   mongodata:
+  miniodata:
 
 networks:
-  default:
+  intelligent-logistics:
     driver: bridge
+

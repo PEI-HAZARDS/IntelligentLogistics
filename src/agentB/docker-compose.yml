@@ -1,0 +1,23 @@
+services:
+  agentb:
+    build:
+      context: ..              # Parent directory as build context
+      dockerfile: agentB/Dockerfile  # Path to Dockerfile from parent
+    image: agentb:latest
+    container_name: agentb
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+      - MODELS_PATH=/app/agentB_microservice/data
+      - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
+      - GATE_ID=${GATE_ID}
+      - NGINX_RTMP_HOST=${NGINX_RTMP_HOST}
+      - NGINX_RTMP_PORT=${NGINX_RTMP_PORT}
+      - MINIO_HOST=${MINIO_HOST}
+      - MINIO_PORT=${MINIO_PORT}
+      - ACCESS_KEY=${ACCESS_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - BUCKET_NAME=${BUCKET_NAME}
+

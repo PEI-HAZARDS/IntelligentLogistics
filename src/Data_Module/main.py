@@ -1,9 +1,19 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from prometheus_fastapi_instrumentator import Instrumentator
 import logging
 import asyncio
+import os
 from datetime import datetime, timezone, timedelta
+
+# OpenTelemetry for distributed tracing
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk.resources import Resource
 
 from routes.arrivals import router as arrivals_router
 from routes.events import router as events_router
@@ -107,8 +117,8 @@ async def lifespan(app: FastAPI):
         try:
             await _scheduler_task
         except asyncio.CancelledError:
-            pass
-        logger.info("Background scheduler stopped.")
+            logger.info("Background scheduler stopped.")
+            raise
 
     # Close clients
     try:
@@ -169,3 +179,21 @@ def health():
         "decision_engine_url": settings.decision_engine_url,
     }
 
+
+# =============================================================================
+# OpenTelemetry Tracing Setup
+# =============================================================================
+OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://tempo:4317")
+
+resource = Resource.create({"service.name": "data-module"})
+trace.set_tracer_provider(TracerProvider(resource=resource))
+
+otlp_exporter = OTLPSpanExporter(endpoint=OTEL_EXPORTER_OTLP_ENDPOINT, insecure=True)
+span_processor = BatchSpanProcessor(otlp_exporter)
+trace.get_tracer_provider().add_span_processor(span_processor)
+
+# Instrument FastAPI
+FastAPIInstrumentor.instrument_app(app)
+
+# Prometheus metrics at /metrics
+Instrumentator().instrument(app).expose(app)

@@ -9,3 +9,12 @@ python-dotenv
 loguru
 
 aiokafka
+
+# Prometheus metrics
+prometheus-fastapi-instrumentator
+
+# OpenTelemetry tracing
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-instrumentation-fastapi

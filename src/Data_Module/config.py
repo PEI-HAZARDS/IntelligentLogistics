@@ -3,6 +3,7 @@ Configuration settings for Data Module.
 Reads from environment variables with sensible defaults.
 """
 
+import os
 from pydantic_settings import BaseSettings
 
 
@@ -12,14 +13,20 @@ class Settings(BaseSettings):
     # PostgreSQL
     postgres_host: str = "postgres"
     postgres_port: int = 5432
-    postgres_user: str = "porto"
-    postgres_password: str = "porto_password"
+    postgres_user: str = os.getenv("POSTGRES_USER", "porto")
+    postgres_password: str = os.getenv("POSTGRES_PASSWORD", "")
     postgres_db: str = "porto_logistica"
     
     # MongoDB
-    mongo_url: str = "mongodb://admin:admin123@mongo:27017"
+    mongo_initdb_root_username: str = "admin"
+    mongo_initdb_root_password: str = ""
     mongo_host: str = "mongo"
     mongo_port: int = 27017
+    
+    @property
+    def mongo_url(self) -> str:
+        """Construct MongoDB URL from environment variables."""
+        return f"mongodb://{self.mongo_initdb_root_username}:{self.mongo_initdb_root_password}@{self.mongo_host}:{self.mongo_port}"
     
     # Redis
     redis_host: str = "redis"
@@ -42,6 +49,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"
 
 
 settings = Settings()
