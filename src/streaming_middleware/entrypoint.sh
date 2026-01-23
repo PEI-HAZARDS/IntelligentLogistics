@@ -33,7 +33,7 @@ echo "[Entrypoint] ===================================="
 echo "[Entrypoint] STREAM MODE: ${STREAM_MODE}"
 echo "[Entrypoint] ===================================="
 
-if [ "$STREAM_MODE" = "test" ]; then
+if [[ "$STREAM_MODE" = "test" ]]; then
     echo "[Entrypoint] Starting TEST VIDEO ingestion..."
     /usr/local/bin/ingest_test_video.sh &
 else

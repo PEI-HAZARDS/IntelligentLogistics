@@ -218,7 +218,7 @@ class OCR:
             logger.warning("[PaddleOCR] Invalid image input")
             return "", 0.0
         
-        h, w = cv_img.shape[:2] if cv_img is not None else (0, 0)
+        h, w = cv_img.shape[:2]
         logger.debug(f"[PaddleOCR] Processing image of size {w}x{h}")
         
         best_text = ""

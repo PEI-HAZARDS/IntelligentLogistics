@@ -117,8 +117,8 @@ async def lifespan(app: FastAPI):
         try:
             await _scheduler_task
         except asyncio.CancelledError:
-            pass
-        logger.info("Background scheduler stopped.")
+            logger.info("Background scheduler stopped.")
+            raise
 
     # Close clients
     try:

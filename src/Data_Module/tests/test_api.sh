@@ -25,7 +25,7 @@ function call_api() {
     local endpoint=$2
     local data=$3
     
-    if [ -z "$data" ]; then
+    if [[ -z "$data" ]]; then
         curl -s -X "$method" "$BASE_URL$endpoint" \
             -H "Content-Type: application/json" \
             -w "\n"
@@ -48,7 +48,7 @@ function test_endpoint() {
     echo "  Method: $method"
     echo "  Endpoint: $endpoint"
     
-    if [ -n "$data" ]; then
+    if [[ -n "$data" ]]; then
         echo "  Data: $data"
         response=$(call_api "$method" "$endpoint" "$data")
     else

@@ -146,7 +146,7 @@ DECLARE
     new_id TEXT;
     seq_num INTEGER;
 BEGIN
-    IF NEW.arrival_id IS NULL OR NEW.arrival_id = '' THEN
+    IF COALESCE(NEW.arrival_id, '') = '' THEN
         -- Get next sequence number based on existing max
         SELECT COALESCE(
             MAX(CAST(SUBSTRING(arrival_id FROM 'PRT-([0-9]+)') AS INTEGER)),

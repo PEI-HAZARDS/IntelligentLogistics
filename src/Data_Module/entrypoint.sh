@@ -28,7 +28,7 @@ echo "Redis is ready"
 # Rodar data init
 echo "Running database initialization..."
 python scripts/data_init_sample.py
-if [ $? -eq 0 ]; then
+if [[ $? -eq 0 ]]; then
   echo "Data initialization completed successfully"
 else
   echo "Data initialization failed"
@@ -37,9 +37,9 @@ fi
 
 # Run database triggers migration
 echo "Running database triggers migration..."
-if [ -f "scripts/triggers.sql" ]; then
+if [[ -f "scripts/triggers.sql" ]]; then
   PGPASSWORD=${POSTGRES_PASSWORD} psql -h ${POSTGRES_HOST:-postgres} -p ${POSTGRES_PORT:-5432} -U ${POSTGRES_USER} -d ${POSTGRES_DB} -f scripts/triggers.sql
-  if [ $? -eq 0 ]; then
+  if [[ $? -eq 0 ]]; then
     echo "Triggers migration completed successfully"
   else
     echo "Triggers migration failed (may already exist, continuing...)"
