@@ -13,6 +13,7 @@ import os
 import json
 import time
 import uuid
+import math
 import pytest
 from pathlib import Path
 from confluent_kafka import Producer, Consumer, KafkaError
@@ -174,7 +175,7 @@ class TestAgentAProducerIntegration:
         
         received_payload = json.loads(msg.value().decode("utf-8"))
         assert received_payload["truckId"] == truck_id
-        assert received_payload["confidence"] == 0.95
+        assert math.isclose(received_payload["confidence"], 0.95, rel_tol=1e-09, abs_tol=1e-09)
         assert received_payload["gateId"] == TEST_GATE_ID
 
     def test_message_key_is_truck_id(self, kafka_producer, test_topic):

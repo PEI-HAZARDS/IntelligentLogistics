@@ -9,6 +9,7 @@ Agent A: Truck Detection Agent
 
 import sys
 import types
+import math
 from pathlib import Path
 import json
 import time
@@ -105,7 +106,7 @@ class TestAgentAPublishTruckDetected:
         # Parse the payload
         payload = json.loads(call_kwargs['value'].decode('utf-8'))
         
-        assert payload['confidence'] == 0.95
+        assert math.isclose(payload['confidence'], 0.95, rel_tol=1e-09, abs_tol=1e-09)
         assert payload['detections'] == 2
         assert 'timestamp' in payload
     
@@ -489,7 +490,7 @@ class TestAgentAYOLOIntegration:
         boxes = agent.yolo.get_boxes(Mock())
         max_conf = max((b[4] for b in boxes), default=0.0)
         
-        assert max_conf == 0.0
+        assert math.isclose(max_conf, 0.0, rel_tol=1e-09, abs_tol=1e-09)
 
 
 class TestYOLOTruckUnit:

@@ -10,6 +10,7 @@ Agent B: License Plate Detection Agent
 
 import sys
 import types
+import math
 from pathlib import Path
 import json
 import time
@@ -122,7 +123,7 @@ class TestAgentBInitialization:
         assert agent.counter == {}
         assert agent.decided_chars == {}
         assert agent.decision_threshold == 8
-        assert agent.consensus_percentage == 0.8
+        assert math.isclose(agent.consensus_percentage, 0.8, rel_tol=1e-09, abs_tol=1e-09)
         assert agent.max_frames == 40
 
 
@@ -547,7 +548,7 @@ class TestAgentBPublishLPDetected:
         payload = json.loads(call_kwargs['value'].decode('utf-8'))
         
         assert payload['licensePlate'] == "AB12CD"
-        assert payload['confidence'] == 0.95
+        assert math.isclose(payload['confidence'], 0.95, rel_tol=1e-09, abs_tol=1e-09)
         assert payload['cropUrl'] == "http://minio/crop.jpg"
         assert 'timestamp' in payload
     

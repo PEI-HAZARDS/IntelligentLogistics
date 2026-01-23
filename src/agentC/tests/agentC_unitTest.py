@@ -10,6 +10,7 @@ Agent C: Hazard Plate Detection Agent
 
 import sys
 import types
+import math
 from pathlib import Path
 import json
 import time
@@ -122,7 +123,7 @@ class TestAgentCInitialization:
         assert agent.counter == {}
         assert agent.decided_chars == {}
         assert agent.decision_threshold == 8
-        assert agent.consensus_percentage == 0.8
+        assert math.isclose(agent.consensus_percentage, 0.8, rel_tol=1e-09, abs_tol=1e-09)
         assert agent.max_frames == 40
     
     @patch('AgentC.CropStorage')
