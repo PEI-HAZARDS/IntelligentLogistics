@@ -1,14 +1,13 @@
 import gdown  # type: ignore
 import logging
 import os
-from agentB_microservice.src.AgentB import AgentB
 
 # Files to download (name, Google Drive ID, destination folder)
-FILE_NAME = "license_plate_model.pt"
-FILE_ID = "1h3AXDLcFj17kXo7L20jQeId-upQovGQu"
+FILE_NAME = "hazard_plate_model.pt"
+FILE_ID = "1Dx1XS4pALjzP6AN5ryAJXA7sJ4KgH4JD"
 NEW_DIR = "data"
 
-logger = logging.getLogger("setup-AgentB")
+logger = logging.getLogger("setup-AgentC")
 
 
 def setup():

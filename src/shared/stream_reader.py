@@ -3,10 +3,10 @@ import cv2  # type: ignore
 import time
 
 import logging
-logger = logging.getLogger("RTSPStream")
+logger = logging.getLogger("StreamReader")
 
 
-class RTSPStream:
+class StreamReader:
     """
     Generic stream reader - supports RTSP, RTMP and other protocols via FFmpeg.
 
@@ -17,7 +17,7 @@ class RTSPStream:
     """
 
     def __init__(self, url):
-        logger.info(f"[RTSPStream] Starting stream from: {url}")
+        logger.info(f"[StreamReader] Starting stream from: {url}")
 
         # OpenCV with FFmpeg backend supports multiple protocols
         self.cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
@@ -37,7 +37,7 @@ class RTSPStream:
         # Thread in parallel to read stream continuously
         t = threading.Thread(target=self.update, daemon=True)
         t.start()
-        logger.info(f"[RTSPStream] Stream started successfully.")
+        logger.info("[StreamReader] Stream started successfully.")
 
     def update(self):
         """Thread that reads frames continuously"""
@@ -53,11 +53,11 @@ class RTSPStream:
             else:
                 consecutive_failures += 1
                 logger.warning(
-                    f"[RTSPStream] Failed to read frame ({consecutive_failures}/{max_failures})")
+                    f"[StreamReader] Failed to read frame ({consecutive_failures}/{max_failures})")
 
                 if consecutive_failures >= max_failures:
                     logger.error(
-                        f"[RTSPStream] Too many failures, stopping stream.")
+                        "[StreamReader] Too many failures, stopping stream.")
                     self.running = False
                     break
 
@@ -71,8 +71,8 @@ class RTSPStream:
 
     def release(self):
         """Releases resources and stops thread"""
-        logger.info(f"[RTSPStream] Releasing stream: {self.url}")
+        logger.info(f"[StreamReader] Releasing stream: {self.url}")
         self.running = False
         time.sleep(0.2)  # Wait for thread to finish
         self.cap.release()
-        logger.info(f"[RTSPStream] Stream released successfully.")
+        logger.info("[StreamReader] Stream released successfully.")

@@ -4,11 +4,10 @@ import os
 
 # Files to download (name, Google Drive ID, destination folder)
 FILE_NAME = "license_plate_model.pt"
-FILE_ID_OLD = "1h3AXDLcFj17kXo7L20jQeId-upQovGQu"
-FILE_ID = "1lffrmduZNbsDsVTLZPYvULKI597Hlz6c"
+FILE_ID = "1h3AXDLcFj17kXo7L20jQeId-upQovGQu"
 NEW_DIR = "data"
 
-logger = logging.getLogger("setup-AgentC")
+logger = logging.getLogger("setup-AgentB")
 
 
 def setup():

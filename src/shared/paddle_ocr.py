@@ -192,7 +192,7 @@ class OCR:
             if text:
                 logger.info(f"[PaddleOCR]: '{text}' (conf={conf:.2f})")
             else:
-                logger.info(f"[PaddleOCR]: No text extracted")
+                logger.info("[PaddleOCR]: No text extracted")
             
             return text, conf
             

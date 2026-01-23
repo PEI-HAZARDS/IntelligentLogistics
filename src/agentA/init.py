@@ -5,7 +5,7 @@ import logging
 import threading
 
 # Prometheus metrics
-from prometheus_client import start_http_server, Counter, Histogram, Gauge
+from prometheus_client import start_http_server, Counter, Histogram, Gauge # type: ignore
 
 # Auto-configure PYTHONPATH for local execution
 # This ensures it works both in Docker (/app) and locally
@@ -28,7 +28,7 @@ MESSAGES_PROCESSED = Counter('agent_messages_processed_total', 'Total messages p
 INFERENCE_TIME = Histogram('agent_inference_seconds', 'Inference time in seconds', ['agent'])
 AGENT_UP = Gauge('agent_up', 'Agent is running', ['agent'])
 
-from agentA_microservice.src.AgentA import AgentA
+from agentA.src.agentA import AgentA
 
 def main():
     # Start Prometheus metrics server

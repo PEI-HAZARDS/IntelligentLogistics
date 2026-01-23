@@ -6,15 +6,15 @@ import logging
 import cv2
 import io
 
-logger = logging.getLogger("CropStorage")
+logger = logging.getLogger("ImageStorage")
 
-class CropStorage:
+class ImageStorage:
     """
     Handles interactions with MinIO Object Storage.
     Uploads images directly from memory without writing to disk.
     """
     def __init__(self, configs, bucket_name):
-        logger.info(f"[AgentC/MinIO] Connecting to MinIO...")
+        logger.info("[MinIO] Connecting to MinIO...")
         
         self.client = Minio(**configs)
         self.bucket_name = bucket_name
@@ -25,10 +25,10 @@ class CropStorage:
         try:
             if not self.client.bucket_exists(self.bucket_name):
                 self.client.make_bucket(self.bucket_name)
-                logger.info(f"[AgentC/MinIO] Created bucket '{self.bucket_name}'")
+                logger.info(f"[MinIO] Created bucket '{self.bucket_name}'")
             return True
         except S3Error as e:
-            logger.error(f"[AgentC/MinIO] Bucket check/create failed: {e}")
+            logger.error(f"[MinIO] Bucket check/create failed: {e}")
             return False
 
     def upload_memory_image(self, img_array, object_name: str) -> Optional[str]:
@@ -39,13 +39,13 @@ class CropStorage:
         try:
             # 0. Ensure bucket exists (retry if initial creation failed)
             if not self._ensure_bucket():
-                logger.error("[AgentC/MinIO] Cannot upload: bucket unavailable")
+                logger.error("[MinIO] Cannot upload: bucket unavailable")
                 return None
             
             # 1. Encode image to memory buffer (no file system usage)
             success, encoded_img = cv2.imencode('.jpg', img_array)
             if not success:
-                logger.error("[AgentC/MinIO] Failed to encode image to memory.")
+                logger.error("[MinIO] Failed to encode image to memory.")
                 return None
             
             # 2. Convert to BytesIO stream
@@ -65,10 +65,10 @@ class CropStorage:
             return self._generate_presigned_url(object_name)
 
         except S3Error as e:
-            logger.error(f"[AgentC/MinIO] Upload failed: {e}")
+            logger.error(f"[MinIO] Upload failed: {e}")
             return None
         except Exception as e:
-            logger.exception(f"[AgentC/MinIO] Unexpected error during upload: {e}")
+            logger.exception(f"[MinIO] Unexpected error during upload: {e}")
             return None
 
     def _generate_presigned_url(self, object_name: str, expires_days: int = 7) -> str:

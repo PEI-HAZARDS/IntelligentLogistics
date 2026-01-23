@@ -1,7 +1,8 @@
 services:
   agentc:
     build:
-      context: .
+      context: ..              # Parent directory as build context
+      dockerfile: agentC/Dockerfile  # Path to Dockerfile from parent
     image: agentc:latest
     container_name: agentc
     restart: unless-stopped

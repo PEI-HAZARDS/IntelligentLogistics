@@ -1,5 +1,5 @@
-from agentA_microservice.src.RTSPstream import RTSPStream # type: ignore
-from agentA_microservice.src.YOLO_Truck import * # type: ignore
+from shared.stream_reader import StreamReader
+from shared.object_detector import ObjectDetector
 import os
 import time
 import uuid
@@ -7,7 +7,7 @@ from confluent_kafka import Producer, KafkaError  # type: ignore
 from typing import Optional
 import json
 import logging
-from prometheus_client import start_http_server, Counter, Histogram, Gauge
+from prometheus_client import start_http_server, Counter, Histogram, Gauge #type: ignore
 
 # Test Jenkins deploy
 
@@ -17,7 +17,7 @@ KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
 NGINX_RTMP_HOST = os.getenv("NGINX_RTMP_HOST", "10.255.32.80")
 NGINX_RTMP_PORT = os.getenv("NGINX_RTMP_PORT", "1935")
 GATE_ID = os.getenv("GATE_ID", "1")
-RTSP_STREAM_LOW = os.getenv("RTSP_STREAM_LOW", f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_low/gate{GATE_ID}")
+STREAM_LOW = f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_low/gate{GATE_ID}"
 
 # --- Operational Constants ---
 MAX_CONNECTION_RETRIES = 10
@@ -37,9 +37,11 @@ class AgentA:
 
     def __init__(self):
         # Initialize detection model
-        self.yolo = YOLO_Truck() # type: ignore
+        self.yolo = ObjectDetector("/agentA/data/truck_model.pt", 7) # type: ignore
         self.running = True
         self.last_message_time = 0
+        self.consecutive_none_frames = 0
+        self.max_none_frames_before_reconnect = 10  # Reconnect after 10 consecutive None frames
         
         # Initialize Kafka Producer
         logger.info(f"[AgentA/Kafka] Connecting to kafka via '{KAFKA_BOOTSTRAP}' …")
@@ -128,8 +130,8 @@ class AgentA:
         for attempt in range(1, max_retries + 1):
             try:
                 logger.info(
-                    f"[AgentA] Connection attempt {attempt}/{max_retries} to: {RTSP_STREAM_LOW}")
-                cap = RTSPStream(RTSP_STREAM_LOW)
+                    f"[AgentA] Connection attempt {attempt}/{max_retries} to: {STREAM_LOW}")
+                cap = StreamReader(STREAM_LOW)
                 logger.info("[AgentA] Successfully connected to stream!")
                 return cap
             
@@ -151,10 +153,97 @@ class AgentA:
                     f"[AgentA] Unexpected error during connection: {e}")
                 raise
 
+    def _handle_frame_failure(self, cap):
+        """
+        Handle consecutive frame read failures and attempt reconnection if needed.
+        
+        Args:
+            cap: Current stream capture object
+            
+        Returns:
+            Tuple of (new_cap, should_continue) where new_cap is the reconnected stream
+            or the original cap, and should_continue indicates if the loop should continue
+        """
+        self.consecutive_none_frames += 1
+        logger.debug(f"[AgentA] No frame available from stream ({self.consecutive_none_frames} consecutive failures).")
+        
+        # If stream appears dead, attempt reconnection
+        if self.consecutive_none_frames >= self.max_none_frames_before_reconnect:
+            logger.warning(f"[AgentA] Stream appears dead after {self.consecutive_none_frames} failed reads. Attempting reconnection...")
+            
+            # Release old connection
+            try:
+                if cap:
+                    cap.release()
+                    logger.info("[AgentA] Released old stream connection.")
+            except Exception as e:
+                logger.error(f"[AgentA] Error releasing old stream: {e}")
+            
+            # Attempt to reconnect
+            try:
+                new_cap = self._connect_to_stream_with_retry()
+                self.consecutive_none_frames = 0  # Reset counter on successful reconnection
+                logger.info("[AgentA] Successfully reconnected to stream!")
+                return new_cap, False
+            except Exception as e:
+                logger.error(f"[AgentA] Failed to reconnect: {e}")
+                time.sleep(RETRY_DELAY)
+                return cap, True
+        else:
+            time.sleep(0.2)
+            return cap, True
+    
+    def _process_detection(self, frame):
+        """
+        Process a frame for truck detection and publish to Kafka if detected.
+        
+        Args:
+            frame: Video frame to process
+        """
+        # Run YOLO inference
+        logger.debug("[AgentA] Frame captured, running truck detection…")
+        with self.inference_latency.time():
+            results = self.yolo.detect(frame)
+        
+        self.frames_processed.inc()
+
+        if results is None:
+            logger.warning("[AgentA] YOLO model returned no results (None).")
+            return
+
+        # Check for positive detection
+        if not self.yolo.object_found(results):
+            logger.debug("[AgentA] No truck detected in this frame.")
+            return
+        
+        now = time.time()
+        elapsed = now - self.last_message_time
+
+        # Check throttling interval (Debounce)
+        if elapsed < MESSAGE_INTERVAL:
+            logger.info(f"[AgentA] Truck detected, but waiting {MESSAGE_INTERVAL - elapsed:.1f}s before next message.")
+            return
+
+        # Extract stats and publish to Kafka
+        try:
+            boxes = self.yolo.get_boxes(results)  # [x1,y1,x2,y2,conf]
+            num_boxes = len(boxes)
+            max_conf = max((b[4] for b in boxes), default=0.0)
+            
+            # Record metrics
+            self.trucks_detected.inc(num_boxes)
+            self.detection_confidence.observe(max_conf)
+            
+            self.last_message_time = now
+            self._publish_truck_detected(max_conf, num_boxes)
+
+        except Exception as e:
+            logger.exception(f"[AgentA] Error preparing Kafka event: {e}")
+
     def _loop(self):
         """Main loop for Agent A."""
 
-        logger.info(f"[AgentA] Starting Agent A main loop (stream={RTSP_STREAM_LOW}, kafka bootstrap={KAFKA_BOOTSTRAP}) …")
+        logger.info(f"[AgentA] Starting Agent A main loop (stream={STREAM_LOW}, kafka bootstrap={KAFKA_BOOTSTRAP}) …")
 
         # Attempt initial stream connection
         cap = None
@@ -170,49 +259,15 @@ class AgentA:
             try:
                 frame = cap.read() # type: ignore
                 if frame is None:
-                    logger.debug("[AgentA] No frame available from RTSP stream yet.")
-                    time.sleep(0.2)
-                    continue
-
-                # Run YOLO inference
-                logger.debug("[AgentA] Frame captured, running truck detection…")
-                with self.inference_latency.time():
-                    results = self.yolo.detect(frame)
-                
-                self.frames_processed.inc()
-
-                if results is None:
-                    logger.warning("[AgentA] YOLO model returned no results (None).")
-                    continue
-
-                # Check for positive detection
-                if self.yolo.truck_found(results):
-                    now = time.time()
-                    elapsed = now - self.last_message_time
-
-                    # Check throttling interval (Debounce)
-                    if elapsed < MESSAGE_INTERVAL:
-                        logger.info(f"[AgentA] Truck detected, but waiting {MESSAGE_INTERVAL - elapsed:.1f}s before next message.")
+                    cap, should_continue = self._handle_frame_failure(cap)
+                    if should_continue:
                         continue
 
-                    # Extract stats and publish to Kafka
-                    try:
-                        boxes = self.yolo.get_boxes(results)  # [x1,y1,x2,y2,conf]
-                        num_boxes = len(boxes)
-                        max_conf = max((b[4] for b in boxes), default=0.0)
-                        
-                        # Record metrics
-                        self.trucks_detected.inc(num_boxes)
-                        self.detection_confidence.observe(max_conf)
-                        
-                        self.last_message_time = now
-                        self._publish_truck_detected(max_conf, num_boxes)
-
-                    except Exception as e:
-                        logger.exception(f"[AgentA] Error preparing Kafka event: {e}")
-
-                else:
-                    logger.debug("[AgentA] No truck detected in this frame.")
+                # Reset counter on successful frame read
+                self.consecutive_none_frames = 0
+                
+                # Process frame for truck detection
+                self._process_detection(frame)
 
             except Exception as e:
                 logger.exception(f"[AgentA] Exception during detection loop: {e}")
@@ -222,9 +277,9 @@ class AgentA:
         if cap:
             try:
                 cap.release()
-                logger.debug("[AgentA] RTSP stream released.")
+                logger.debug("[AgentA] stream released.")
             except Exception as e:
-                logger.exception(f"[AgentA] Error releasing RTSP stream: {e}")
+                logger.exception(f"[AgentA] Error releasing stream: {e}")
 
         # Cleanup: Flush pending Kafka messages
         try:

@@ -20,16 +20,16 @@ import gdown  # type: ignore
 import signal
 
 # Prometheus metrics
-from prometheus_client import start_http_server, Counter, Histogram, Gauge
+from prometheus_client import start_http_server, Counter, Histogram, Gauge # type: ignore
 
-from agentB_microservice.src.AgentB import AgentB
+from agentC.src.agentC import AgentC
 
 # Files to download (name, Google Drive ID, destination folder)
-FILE_NAME = "license_plate_model.pt"
-FILE_ID = "1h3AXDLcFj17kXo7L20jQeId-upQovGQu"
+FILE_NAME = "hazard_plate_model.pt"
+FILE_ID = "1Dx1XS4pALjzP6AN5ryAJXA7sJ4KgH4JD"
 NEW_DIR = "data"
 
-logger = logging.getLogger("init-AgentB")
+logger = logging.getLogger("init-AgentC")
 
 # Prometheus metrics
 METRICS_PORT = int(os.getenv("METRICS_PORT", 8000))
@@ -61,23 +61,23 @@ def main():
     # Start Prometheus metrics server
     logger.info(f"[init] Starting Prometheus metrics server on port {METRICS_PORT}")
     start_http_server(METRICS_PORT)
-    AGENT_UP.labels(agent='agent-b').set(1)
+    AGENT_UP.labels(agent='agent-c').set(1)
     
     setup()
     
-    logger.info("[init] Creating AgentB instance...")
-    agent = AgentB()
-    
-    # Reset logging level AFTER AgentB is created
+    logger.info("[init] Creating AgentC instance...")
+    agent = AgentC()
+
+    # Reset logging level AFTER AgentC is created
     # PaddleOCR overrides it during OCR() initialization
     logging.getLogger().setLevel(logging.INFO)
     
-    logger.info("[init] AgentB instance created!")
+    logger.info("[init] AgentC instance created!")
     
     # Register signal handler for graceful shutdown
     def signal_handler(sig, frame):
         logger.info("\n[init] Keyboard interrupt received, stopping agent...")
-        AGENT_UP.labels(agent='agent-b').set(0)
+        AGENT_UP.labels(agent='agent-c').set(0)
         agent.stop()
         sys.exit(0)
     
@@ -85,15 +85,15 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
     
     try:
-        logger.info("[init] Starting AgentB main loop...")
+        logger.info("[init] Starting AgentC main loop...")
         agent._loop()
     except KeyboardInterrupt:
         logger.info("\n[init] Keyboard interrupt received, stopping agent...")
-        AGENT_UP.labels(agent='agent-b').set(0)
+        AGENT_UP.labels(agent='agent-c').set(0)
         agent.stop()
     except Exception as e:
         logger.info(f"[init] Unexpected error: {e}")
-        AGENT_UP.labels(agent='agent-b').set(0)
+        AGENT_UP.labels(agent='agent-c').set(0)
         agent.stop()
         raise
 

@@ -1,7 +1,8 @@
 services:
   agenta:
     build:
-      context: .
+      context: ..              # Parent directory as build context
+      dockerfile: agentA/Dockerfile  # Path to Dockerfile from parent
     image: agenta:latest
     container_name: agenta
     restart: unless-stopped
