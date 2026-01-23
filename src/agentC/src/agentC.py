@@ -659,13 +659,6 @@ class AgentC:
                 if msg.error():
                     continue
 
-                # Parse Input Payload
-                try:
-                    data = json.loads(msg.value())
-                except json.JSONDecodeError:
-                    logger.warning("[AgentC] Invalid message (JSON). Ignored.")
-                    continue
-
                 # Extract truckId (Propagate if exists)
                 truck_id = None
                 for k, v in (msg.headers() or []):

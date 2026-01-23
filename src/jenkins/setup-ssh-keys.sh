@@ -43,7 +43,7 @@ mkdir -p "$SSH_DIR"
 chmod 700 "$SSH_DIR"
 
 # Gerar chaves se não existirem
-if [ ! -f "$KEY_FILE" ]; then
+if [[ ! -f "$KEY_FILE" ]]; then
     echo "🔑 Gerando par de chaves SSH..."
     ssh-keygen -t ed25519 -f "$KEY_FILE" -N "" -C "jenkins@intelligentlogistics"
     echo "✅ Chaves geradas em $KEY_FILE"
@@ -52,7 +52,7 @@ else
 fi
 
 # Configurar SSH config se não existir
-if [ ! -f "$SSH_DIR/config" ]; then
+if [[ ! -f "$SSH_DIR/config" ]]; then
     cat > "$SSH_DIR/config" << EOF
 Host *
     StrictHostKeyChecking no

@@ -9,10 +9,10 @@ Optimized for license plate recognition with:
 """
 
 import logging
-import cv2
-import numpy as np
-from PIL import Image
-from paddleocr import PaddleOCR
+import cv2 # type: ignore
+import numpy as np # type: ignore
+from PIL import Image # type: ignore
+from paddleocr import PaddleOCR # type: ignore
 
 logger = logging.getLogger("PaddleOCR")
 
@@ -30,7 +30,7 @@ class OCR:
 
     def __init__(self):
         """Initialize PaddleOCR with settings optimized for license plates."""
-        self.ocr = PaddleOCR(
+        self.paddle_ocr = PaddleOCR(
             use_angle_cls=True,           # Enable angle classification for rotated plates
             lang='en',                    # English language (A-Z, 0-9)
             use_doc_orientation_classify=False,
@@ -117,6 +117,35 @@ class OCR:
         
         return filtered.strip()
 
+    def _parse_dict_item(self, item, texts, confidences):
+        """Parse dictionary format result item."""
+        if 'rec_texts' in item and 'rec_scores' in item:
+            texts.extend(item['rec_texts'])
+            confidences.extend(item['rec_scores'])
+        elif 'text' in item and 'score' in item:
+            texts.append(item['text'])
+            confidences.append(item['score'])
+
+    def _parse_list_item(self, item, texts, confidences):
+        """Parse list/tuple format result item (old format)."""
+        if len(item) < 2:
+            return
+        
+        text_data = item[-1]  # Last element is (text, conf)
+        if isinstance(text_data, (list, tuple)) and len(text_data) >= 2:
+            texts.append(str(text_data[0]))
+            confidences.append(float(text_data[1]))
+        elif isinstance(text_data, str):
+            texts.append(text_data)
+            confidences.append(0.5)  # Default confidence
+
+    def _parse_result_item(self, item, texts, confidences):
+        """Parse a single result item based on its type."""
+        if isinstance(item, dict):
+            self._parse_dict_item(item, texts, confidences)
+        elif isinstance(item, (list, tuple)):
+            self._parse_list_item(item, texts, confidences)
+
     def _parse_result(self, result):
         """
         Parse PaddleOCR result and extract text and confidence.
@@ -133,28 +162,9 @@ class OCR:
         
         # Handle different result formats
         try:
-            # Format 1: New PaddleOCR 3.x predict() format
             if isinstance(result, list) and len(result) > 0:
                 for item in result:
-                    if isinstance(item, dict):
-                        # New format with rec_texts and rec_scores
-                        if 'rec_texts' in item and 'rec_scores' in item:
-                            texts.extend(item['rec_texts'])
-                            confidences.extend(item['rec_scores'])
-                        # Alternative key names
-                        elif 'text' in item and 'score' in item:
-                            texts.append(item['text'])
-                            confidences.append(item['score'])
-                    elif isinstance(item, (list, tuple)):
-                        # Old format: [[box, (text, conf)], ...]
-                        if len(item) >= 2:
-                            text_data = item[-1]  # Last element is (text, conf)
-                            if isinstance(text_data, (list, tuple)) and len(text_data) >= 2:
-                                texts.append(str(text_data[0]))
-                                confidences.append(float(text_data[1]))
-                            elif isinstance(text_data, str):
-                                texts.append(text_data)
-                                confidences.append(0.5)  # Default confidence
+                    self._parse_result_item(item, texts, confidences)
         except Exception as e:
             logger.debug(f"[PaddleOCR] Error parsing result: {e}")
             logger.debug(f"[PaddleOCR] Raw result: {result}")
@@ -165,7 +175,7 @@ class OCR:
             try:
                 result_str = str(result)
                 logger.debug(f"[PaddleOCR] Result as string: {result_str[:200]}")
-            except:
+            except Exception:
                 pass
             return "", 0.0
         
@@ -182,7 +192,7 @@ class OCR:
             processed = self._preprocess_plate(cv_img)
             
             # Use predict() method for PaddleOCR 3.x
-            result = self.ocr.predict(processed)
+            result = self.paddle_ocr.predict(processed)
             
             text, conf = self._parse_result(result)
             

@@ -14,7 +14,7 @@ set -e
 VM_IP="$1"
 VM_USER="${2:-pei_user}"
 
-if [ -z "$VM_IP" ]; then
+if [[ -z "$VM_IP" ]]; then
     echo "❌ Uso: $0 <IP_DA_VM> [USER]"
     echo ""
     echo "Exemplos:"
@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PUB_KEY_FILE="$SCRIPT_DIR/ssh_keys/id_ed25519.pub"
 
 # Verificar se a chave pública existe
-if [ ! -f "$PUB_KEY_FILE" ]; then
+if [[ ! -f "$PUB_KEY_FILE" ]]; then
     echo "❌ Chave pública não encontrada: $PUB_KEY_FILE"
     echo "   Executa primeiro: docker exec -it jenkins setup-ssh-keys.sh"
     exit 1
