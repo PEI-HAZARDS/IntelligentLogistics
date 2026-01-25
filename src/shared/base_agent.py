@@ -28,12 +28,16 @@ import logging
 from typing import Optional, Tuple, Dict, Any
 from prometheus_client import Counter, Histogram # type: ignore
 
-from shared.stream_reader import StreamReader
+from shared.stream_manager import StreamManager
 from shared.object_detector import ObjectDetector
 from shared.paddle_ocr import OCR
 from shared.image_storage import ImageStorage
 from shared.plate_classifier import PlateClassifier
+from shared.bounding_box_drawer import BoundingBoxDrawer
+from shared.kafka_wrapper import KafkaProducerWrapper, KafkaConsumerWrapper
+from shared.consensus_algorithm import ConsensusAlgorithm
 
+MAX_FRAMES = 40
 
 class BaseAgent(ABC):
     """
@@ -51,14 +55,6 @@ class BaseAgent(ABC):
     - get_object_type(): Return detected object type name for logging
     """
 
-    # Consensus configuration
-    DECISION_THRESHOLD = 8
-    CONSENSUS_PERCENTAGE = 0.8
-    MAX_FRAMES = 40
-    MIN_TEXT_LENGTH = 4
-    MIN_CONFIDENCE_CONSENSUS = 0.80
-    MIN_DETECTION_CONFIDENCE = 0.4
-
     def __init__(self):
         """Initialize base agent with common components."""
         # Agent identification
@@ -72,24 +68,24 @@ class BaseAgent(ABC):
         self.yolo = ObjectDetector(self.get_yolo_model_path())
         self.ocr = OCR()
         self.classifier = PlateClassifier()
+        self.drawer = BoundingBoxDrawer(color=self.get_bbox_color(), thickness=2, label=self.get_bbox_label())
+        self.annotated_frames_storage = ImageStorage(self.minio_conf, self.get_annotated_frames_bucket())
+        self.crop_storage = ImageStorage(self.minio_conf, self.get_crops_bucket())
+        self.stream_manager = StreamManager(self.stream_url)
+        self.kafka_producer = KafkaProducerWrapper(self.kafka_bootstrap)
+        self.kafka_consumer = KafkaConsumerWrapper(self.kafka_bootstrap, f"{self.agent_name.lower()}-group", [self.get_consume_topic()])
+        self.consensus_algorithm = ConsensusAlgorithm()
         
         # Runtime state
         self.running = True
         self.frames_queue = Queue()
         self.stream = None
-        
-        # Consensus state
-        self._init_consensus_state()
-        
-        # Storage
-        self.crop_storage = ImageStorage(self.minio_conf, self.get_storage_bucket())
-        
-        # Kafka setup
-        self._init_kafka()
+        self.truck_id = ""
         
         # Metrics
         self.init_metrics()
-        
+        self.frames_processed = 0
+
         self.logger.info(f"[{self.agent_name}] Initialized successfully")
 
     def _load_config(self):
@@ -113,41 +109,8 @@ class BaseAgent(ABC):
             "secure": False
         }
 
-    def _init_consensus_state(self):
-        """Initialize consensus algorithm state."""
-        self.consensus_reached = False
-        self.counter = {}  # {position: {character: count}}
-        self.decided_chars = {}  # {position: character}
-        self.frames_processed = 0
-        self.length_counter = {}  # {length: count}
-        self.best_crop = None
-        self.best_confidence = 0.0
-        self.candidate_crops = []  # [{"crop": array, "text": str, "confidence": float}]
-        
-        # Stream reconnection tracking
-        self.consecutive_none_frames = 0
-        self.max_none_frames_before_reconnect = 10
-
-    def _init_kafka(self):
-        """Initialize Kafka consumer and producer."""
-        self.logger.info(f"[{self.agent_name}/Kafka] Connecting to kafka via '{self.kafka_bootstrap}' …")
-        
-        # Consumer
-        self.consumer = Consumer({
-            "bootstrap.servers": self.kafka_bootstrap,
-            "group.id": f"{self.agent_name.lower()}-group",
-            "auto.offset.reset": "latest",
-            "enable.auto.commit": True,
-            "session.timeout.ms": 10000,
-            "max.poll.interval.ms": 300000,
-        })
-        
-        self.consumer.subscribe([self.get_consume_topic()])
-        
-        # Producer
-        self.producer = Producer({
-            "bootstrap.servers": self.kafka_bootstrap,
-        })
+        self.MAX_FRAMES = float(os.getenv("MAX_FRAMES", MAX_FRAMES))
+        self.MIN_DETECTION_CONFIDENCE = float(os.getenv("MIN_DETECTION_CONFIDENCE", 0.4))
 
     # ========================================================================
     # Abstract methods - must be implemented by child classes
@@ -157,6 +120,16 @@ class BaseAgent(ABC):
     def get_agent_name(self) -> str:
         """Return agent identifier (e.g., 'AgentB', 'AgentC')."""
         pass
+    
+    @abstractmethod
+    def get_bbox_color(self) -> str:
+        """Return bbox color (e.g., 'Red', 'Green')."""
+        pass
+    
+    @abstractmethod
+    def get_bbox_label(self) -> str:
+        """Return label color (e.g., 'truck', 'car')."""
+        pass
 
     @abstractmethod
     def get_yolo_model_path(self) -> str:
@@ -164,8 +137,13 @@ class BaseAgent(ABC):
         pass
 
     @abstractmethod
-    def get_storage_bucket(self) -> str:
-        """Return MinIO bucket name for storing crops."""
+    def get_annotated_frames_bucket(self) -> str:
+        """Return bucket name for annotated frames."""
+        pass
+
+    @abstractmethod
+    def get_crops_bucket(self) -> str:
+        """Return bucket name for crops."""
         pass
 
     @abstractmethod
@@ -224,98 +202,6 @@ class BaseAgent(ABC):
     # Template methods - common behavior with extension points
     # ========================================================================
 
-    def _connect_to_stream_with_retry(self, max_retries: int = 10):
-        """
-        Attempt to connect to RTMP stream with automatic retry.
-        
-        Args:
-            max_retries: Maximum number of connection attempts
-            
-        Returns:
-            StreamReader instance
-            
-        Raises:
-            ConnectionError: If connection fails after max retries
-        """
-        retry_delay = 5  # seconds
-        
-        for attempt in range(1, max_retries + 1):
-            try:
-                self.logger.info(
-                    f"[{self.agent_name}] Connection attempt {attempt}/{max_retries} to: {self.stream_url}")
-                stream = StreamReader(self.stream_url)
-                self.logger.info(f"[{self.agent_name}] Successfully connected to stream!")
-                return stream
-            
-            except ConnectionError as e:
-                self.logger.warning(
-                    f"[{self.agent_name}] Connection failed (attempt {attempt}/{max_retries}): {e}")
-
-                if attempt < max_retries:
-                    self.logger.info(
-                        f"[{self.agent_name}] Waiting {retry_delay}s before retry...")
-                    time.sleep(retry_delay)
-                else:
-                    self.logger.error(
-                        f"[{self.agent_name}] Max retries reached. Could not connect to stream.")
-                    raise
-            except Exception as e:
-                self.logger.exception(
-                    f"[{self.agent_name}] Unexpected error during connection: {e}")
-                raise
-
-    def _handle_stream_failure(self):
-        """
-        Handle consecutive frame read failures and attempt reconnection if needed.
-        
-        Returns:
-            bool: True if reconnection was attempted and successful, False otherwise
-        """
-        self.consecutive_none_frames += 1
-        self.logger.debug(
-            f"[{self.agent_name}] No frame available from stream "
-            f"({self.consecutive_none_frames} consecutive failures).")
-        
-        # If stream appears dead, attempt reconnection
-        if self.consecutive_none_frames >= self.max_none_frames_before_reconnect:
-            self.logger.warning(
-                f"[{self.agent_name}] Stream appears dead after {self.consecutive_none_frames} "
-                "failed reads. Attempting reconnection...")
-            
-            # Release old connection
-            if self.stream is not None:
-                try:
-                    self.stream.release()
-                    self.logger.info(f"[{self.agent_name}] Released old stream connection.")
-                except Exception as e:
-                    self.logger.error(f"[{self.agent_name}] Error releasing old stream: {e}")
-            
-            # Attempt to reconnect
-            try:
-                self.stream = self._connect_to_stream_with_retry()
-                self.consecutive_none_frames = 0  # Reset counter on successful reconnection
-                self.logger.info(f"[{self.agent_name}] Successfully reconnected to stream!")
-                return True
-            except Exception as e:
-                self.logger.error(f"[{self.agent_name}] Failed to reconnect: {e}")
-                time.sleep(5)  # Wait before next attempt
-                return False
-        
-        return False
-
-    def _reset_consensus_state(self):
-        """Reset consensus algorithm state."""
-        self.counter = {}
-        self.decided_chars = {}
-        self.consensus_reached = False
-        self.best_crop = None
-        self.best_confidence = 0.0
-        self.candidate_crops = []
-        self.frames_processed = 0
-        self.length_counter = {}
-        self.consecutive_none_frames = 0
-        self.logger.debug(f"[{self.agent_name}] Consensus state reset.")
-
     def _get_frames(self, num_frames: int = 30):
         """
         Capture frames from RTMP/RTSP stream with automatic reconnection.
@@ -323,34 +209,19 @@ class BaseAgent(ABC):
         Args:
             num_frames: Number of frames to capture
         """
-        if self.stream is None:
-            self.logger.info(
-                f"[{self.agent_name}] Connecting to RTMP stream (via Nginx): {self.stream_url}")
-            try:
-                self.stream = self._connect_to_stream_with_retry()
-            except Exception as e:
-                self.logger.exception(f"[{self.agent_name}] Failed to connect to stream: {e}")
-                return
-
         self.logger.info(f"[{self.agent_name}] Reading {num_frames} frame(s) from RTMP…")
 
         captured = 0
         while captured < num_frames and self.running:
             try:
-                frame = self.stream.read()
+                frame = self.stream_manager.read()
                 if frame is not None:
                     self.frames_queue.put(frame)
                     captured += 1
-                    self.consecutive_none_frames = 0  # Reset on successful read
                     self.logger.debug(f"[{self.agent_name}] Captured {captured}/{num_frames}.")
                 else:
-                    # Handle stream failure and attempt reconnection if needed
-                    if self._handle_stream_failure():
-                        # Reconnection successful, continue capturing
-                        continue
-                    else:
-                        # Wait briefly before next attempt
-                        time.sleep(0.1)
+                    time.sleep(0.1)
+            
             except Exception as e:
                 self.logger.exception(f"[{self.agent_name}] Error when capturing frame {e}")
                 time.sleep(0.2)
@@ -369,6 +240,7 @@ class BaseAgent(ABC):
             frame = self.frames_queue.get_nowait()
             self.logger.debug(f"[{self.agent_name}] Frame obtained from queue.")
             return frame
+        
         except Empty:
             self.logger.warning(f"[{self.agent_name}] Frames queue is empty.")
             time.sleep(0.05)
@@ -387,14 +259,18 @@ class BaseAgent(ABC):
 
     def _should_continue_processing(self) -> bool:
         """Check if frame processing should continue."""
-        return self.running and not self.consensus_reached and self.frames_processed < self.MAX_FRAMES
+        return self.running and not self.consensus_algorithm.consensus_reached and self.frames_processed < self.MAX_FRAMES
 
     def _run_yolo_detection(self, frame):
         """Run YOLO detection on frame."""
         self.logger.info(f"[{self.agent_name}] YOLO running…")
         
-        results = self.yolo.detect(frame)
-        self.frames_processed += 1
+        inference_latency = getattr(self, 'inference_latency', None)
+        if inference_latency:
+            with inference_latency.time():
+                results = self.yolo.detect(frame)
+        else:
+            results = self.yolo.detect(frame)
 
         if not results:
             self.logger.debug(f"[{self.agent_name}] YOLO did not return a result for this frame.")
@@ -405,6 +281,25 @@ class BaseAgent(ABC):
             return None
 
         boxes = self.yolo.get_boxes(results)
+
+        try:
+            annotated_frame = frame.copy()
+            annotated_frame = self.drawer.draw_box(annotated_frame, boxes)
+            self.annotated_frames_storage.upload_memory_image(annotated_frame, f"{self.truck_id}_{int(time.time())}.jpg")
+        except Exception as e:
+            self.logger.exception(f"[{self.agent_name}] Error drawing boxes: {e}")
+        
+        plates_detected = getattr(self, 'plates_detected', None)
+        hazards_detected = getattr(self, 'hazards_detected', None)
+        
+        if plates_detected:
+            for _ in boxes:
+                plates_detected.inc()
+
+        if hazards_detected:
+            for _ in boxes:
+                hazards_detected.inc()
+
         self.logger.info(f"[{self.agent_name}] {len(boxes)} {self.get_object_type()}(s) detected.")
         return boxes
 
@@ -445,22 +340,23 @@ class BaseAgent(ABC):
 
         self.logger.info(f"[{self.agent_name}] OCR: '{text}' (conf={ocr_conf:.2f})")
 
-        # Store candidate crop
+        ocr_confidence = getattr(self, 'ocr_confidence', None)
+        if ocr_confidence:
+            ocr_confidence.observe(ocr_conf)
+
+        # Store candidate crop with OCR text (overwrites fallback entry)
         text_normalized = text.upper().replace("-", "")
-        self.candidate_crops.append({
-            "crop": crop.copy(),
-            "text": text_normalized,
-            "confidence": ocr_conf
-        })
+        self.consensus_algorithm.add_candidate_crop(crop.copy(), text_normalized, ocr_conf, is_fallback=False)
+        
         self.logger.debug(
             f"[{self.agent_name}] Added candidate crop: '{text_normalized}' (conf={ocr_conf:.2f})")
 
-        self._add_to_consensus(text, ocr_conf)
+        self.consensus_algorithm.add_to_consensus(text_normalized, ocr_conf)
 
-        if self._check_full_consensus():
-            final_text = self._build_final_text()
+        if self.consensus_algorithm.check_full_consensus():
+            final_text = self.consensus_algorithm.build_final_text()
             self.logger.info(f"[{self.agent_name}] Full consensus achieved: '{final_text}'")
-            best_crop = self._select_best_crop(final_text)
+            best_crop = self.consensus_algorithm.select_best_crop(final_text)
             return final_text, 1.0, best_crop
 
         return None
@@ -478,9 +374,13 @@ class BaseAgent(ABC):
                 return None
 
             for i, box in enumerate(boxes, start=1):
-                crop, _ = self._extract_crop(box, frame, i)
+                crop, yolo_conf = self._extract_crop(box, frame, i) # type: ignore
                 if crop is None:
                     continue
+
+                # Always add valid crops to candidates (even if OCR fails)
+                # This ensures we have crops available for fallback selection
+                self.consensus_algorithm.add_candidate_crop(crop.copy(), "", yolo_conf, is_fallback=True)
 
                 try:
                     result = self._process_ocr_result(crop, i)
@@ -502,13 +402,18 @@ class BaseAgent(ABC):
             tuple: (text, confidence, crop_image) or (None, None, None)
         """
         self.logger.info(f"[{self.agent_name}] Starting detection pipeline…")
-        self._reset_consensus_state()
+        self.consensus_algorithm.reset()
+        self.frames_processed = 0
 
         while self._should_continue_processing():
             frame = self._get_next_frame()
             if frame is None:
                 return None, None, None
-
+            
+            frames_metric = getattr(self, 'frames_processed_metric', None)
+            if frames_metric:
+                frames_metric.inc()
+            
             self.frames_processed += 1
             self.logger.debug(
                 f"[{self.agent_name}] Processing frame {self.frames_processed}/{self.MAX_FRAMES}")
@@ -524,285 +429,7 @@ class BaseAgent(ABC):
             self.logger.info(
                 f"[{self.agent_name}] Frame limit reached ({self.MAX_FRAMES}), returning best partial result")
 
-        return self._get_best_partial_result()
-
-    # ========================================================================
-    # Consensus algorithm
-    # ========================================================================
-
-    def _normalize_text(self, text: str) -> str:
-        """Normalize text for consensus: uppercase and remove dashes."""
-        return text.upper().replace("-", "")
-
-    def _is_valid_for_consensus(self, text_normalized: str, confidence: float) -> bool:
-        """Check if OCR result is valid for consensus algorithm."""
-        if confidence < self.MIN_CONFIDENCE_CONSENSUS:
-            self.logger.debug(
-                f"[{self.agent_name}] Confidence too low ({confidence:.2f}), skipping")
-            return False
-
-        if len(text_normalized) < self.MIN_TEXT_LENGTH:
-            self.logger.debug(
-                f"[{self.agent_name}] Text too short ('{text_normalized}'), skipping")
-            return False
-
-        return True
-
-    def _track_text_length(self, text_len: int) -> bool:
-        """
-        Track text length and validate against most common length.
-        
-        Returns:
-            True if text length is acceptable, False otherwise
-        """
-        if text_len not in self.length_counter:
-            self.length_counter[text_len] = 0
-        self.length_counter[text_len] += 1
-
-        if sum(self.length_counter.values()) < 3:
-            return True
-
-        most_common_length = max(self.length_counter.items(), key=lambda x: x[1])[0]
-        if text_len != most_common_length:
-            self.logger.debug(
-                f"[{self.agent_name}] Text length mismatch: {text_len} chars, "
-                f"expected {most_common_length} (most common). Skipping to avoid misalignment.")
-            return False
-
-        return True
-
-    def _get_vote_weight(self, confidence: float) -> int:
-        """Return vote weight based on confidence level."""
-        return 2 if confidence >= 0.95 else 1
-
-    def _update_position_decision(self, pos: int, char: str):
-        """Update decision for a character position if threshold reached."""
-        if self.counter[pos][char] < self.DECISION_THRESHOLD:
-            return
-
-        if pos not in self.decided_chars:
-            self.decided_chars[pos] = char
-            self.logger.debug(f"[{self.agent_name}] Position {pos} decided: '{char}'")
-        elif self.decided_chars[pos] != char:
-            old_char = self.decided_chars[pos]
-            self.decided_chars[pos] = char
-            self.logger.debug(f"[{self.agent_name}] Position {pos} changed: '{old_char}' -> '{char}'")
-
-    def _add_to_consensus(self, text: str, confidence: float):
-        """
-        Add OCR result to consensus algorithm.
-        Vote for each character at its position.
-        """
-        text_normalized = self._normalize_text(text)
-
-        if not self._is_valid_for_consensus(text_normalized, confidence):
-            return
-
-        if not self._track_text_length(len(text_normalized)):
-            return
-
-        self.logger.debug(
-            f"[{self.agent_name}] Adding to consensus: '{text_normalized}' "
-            f"(conf={confidence:.2f}, len={len(text_normalized)})")
-
-        # Initialize positions
-        for pos in range(len(text_normalized)):
-            if pos not in self.counter:
-                self.counter[pos] = {}
-
-        # Add votes for each character
-        vote_weight = self._get_vote_weight(confidence)
-        for pos, char in enumerate(text_normalized):
-            if char not in self.counter[pos]:
-                self.counter[pos][char] = 0
-
-            self.counter[pos][char] += vote_weight
-            self._update_position_decision(pos, char)
-
-    def _check_full_consensus(self) -> bool:
-        """
-        Check if consensus reached based on percentage of decided positions.
-        """
-        if not self.counter:
-            return False
-
-        total_positions = len(self.counter)
-        decided_count = len(self.decided_chars)
-
-        required_positions = math.ceil(total_positions * self.CONSENSUS_PERCENTAGE)
-
-        if decided_count >= required_positions:
-            self.logger.info(
-                f"[{self.agent_name}] Consensus reached! {decided_count}/{total_positions} "
-                f"positions decided (need {required_positions}) ✓")
-            self.consensus_reached = True
-            return True
-
-        self.logger.debug(
-            f"[{self.agent_name}] Consensus check: {decided_count}/{total_positions} "
-            f"positions decided (need {required_positions})")
-        return False
-
-    def _build_final_text(self) -> str:
-        """Build final text from decided characters."""
-        if not self.decided_chars:
-            return ""
-
-        text_chars = []
-        for pos in sorted(self.decided_chars.keys()):
-            text_chars.append(self.decided_chars[pos])
-
-        final_text = "".join(text_chars)
-        self.logger.debug(f"[{self.agent_name}] Built final text: '{final_text}'")
-        return final_text
-
-    def _levenshtein_distance(self, s1: str, s2: str) -> int:
-        """Calculate Levenshtein (edit) distance between two strings."""
-        if len(s1) < len(s2):
-            return self._levenshtein_distance(s2, s1)
-        
-        if len(s2) == 0:
-            return len(s1)
-        
-        previous_row = range(len(s2) + 1)
-        for i, c1 in enumerate(s1):
-            current_row = [i + 1]
-            for j, c2 in enumerate(s2):
-                insertions = previous_row[j + 1] + 1
-                deletions = current_row[j] + 1
-                substitutions = previous_row[j] + (c1 != c2)
-                current_row.append(min(insertions, deletions, substitutions))
-            previous_row = current_row
-        
-        return previous_row[-1]
-
-    def _select_best_crop(self, final_text: str):
-        """
-        Select best crop based on similarity to final consensus text.
-        
-        Returns:
-            Crop image or None
-        """
-        if not self.candidate_crops:
-            self.logger.warning(f"[{self.agent_name}] No candidate crops available")
-            return None
-        
-        if not final_text:
-            best = max(self.candidate_crops, key=lambda x: x["confidence"])
-            self.logger.debug(
-                f"[{self.agent_name}] No final text, using highest confidence crop: '{best['text']}'")
-            return best["crop"]
-        
-        # Calculate scores for each candidate
-        scored_crops = []
-        for candidate in self.candidate_crops:
-            distance = self._levenshtein_distance(candidate["text"], final_text)
-            max_len = max(len(candidate["text"]), len(final_text), 1)
-            similarity = 1 - (distance / max_len)
-            scored_crops.append({
-                "crop": candidate["crop"],
-                "text": candidate["text"],
-                "confidence": candidate["confidence"],
-                "distance": distance,
-                "similarity": similarity
-            })
-        
-        # Sort by similarity (descending), then confidence (descending)
-        scored_crops.sort(key=lambda x: (x["similarity"], x["confidence"]), reverse=True)
-        
-        best = scored_crops[0]
-        self.logger.info(
-            f"[{self.agent_name}] Selected best crop: '{best['text']}' "
-            f"(similarity={best['similarity']:.2f}, distance={best['distance']}, "
-            f"conf={best['confidence']:.2f}) for final text '{final_text}'"
-        )
-        
-        self.best_crop = best["crop"]
-        self.best_confidence = best["confidence"]
-        
-        return best["crop"]
-
-    def _get_best_partial_result(self):
-        """
-        Return best partial result if full consensus not reached.
-        Fill undecided positions with most voted character.
-        """
-        if not self.counter:
-            self.logger.warning(
-                f"[{self.agent_name}] No valid {self.get_object_type()}s detected in any frame.")
-            return None, None, None
-
-        text_chars = []
-        total_positions = max(self.counter.keys()) + 1
-
-        for pos in range(total_positions):
-            if pos in self.decided_chars:
-                text_chars.append(self.decided_chars[pos])
-            elif pos in self.counter and self.counter[pos]:
-                best_char = max(self.counter[pos].items(), key=lambda x: x[1])[0]
-                text_chars.append(best_char)
-            else:
-                text_chars.append("_")
-
-        partial_text = "".join(text_chars)
-
-        decided_count = len(self.decided_chars)
-        confidence = decided_count / total_positions
-        confidence = min(confidence, 0.95)
-
-        best_crop = self._select_best_crop(partial_text)
-
-        self.logger.info(
-            f"[{self.agent_name}] Partial result: '{partial_text}' "
-            f"({decided_count}/{total_positions} decided, conf={confidence:.2f})")
-
-        return partial_text, confidence, best_crop
-
-    # ========================================================================
-    # Kafka operations
-    # ========================================================================
-
-    def _delivery_callback(self, err: Optional[KafkaError], msg) -> None:
-        """Kafka message delivery confirmation callback."""
-        if err is not None:
-            self.logger.error(
-                f"[{self.agent_name}/Kafka] Message delivery failed: {err} "
-                f"(topic={msg.topic()}, partition={msg.partition()})"
-            )
-        else:
-            self.logger.debug(
-                f"[{self.agent_name}/Kafka] Message delivered successfully to "
-                f"{msg.topic()}[{msg.partition()}] at offset {msg.offset()}"
-            )
-
-    def _poll_latest_message(self):
-        """
-        Poll Kafka for latest message, skipping old ones.
-        
-        Returns:
-            Latest message or None
-        """
-        msgs_buffer = []
-        
-        # Drain old messages
-        while True:
-            temp_msg = self.consumer.poll(timeout=0.1)
-            if temp_msg is None:
-                break
-            if temp_msg.error():
-                continue
-            msgs_buffer.append(temp_msg)
-        
-        # Return only the latest message
-        if msgs_buffer:
-            skipped = len(msgs_buffer) - 1
-            if skipped > 0:
-                self.logger.info(
-                    f"[{self.agent_name}] Skipped {skipped} old messages, processing latest only")
-            return msgs_buffer[-1]
-        
-        # Wait for new message if buffer was empty
-        return self.consumer.poll(timeout=1.0)
+        return self.consensus_algorithm.get_best_partial_result(self.get_object_type())
 
     def _extract_truck_id(self, msg) -> str:
         """
@@ -816,19 +443,21 @@ class BaseAgent(ABC):
                 return v.decode() if isinstance(v, (bytes, bytearray)) else str(v)
         return str(uuid.uuid4())
 
-    def _upload_crop_to_storage(self, truck_id: str, text: str) -> Optional[str]:
+    def _upload_crop_to_storage(self, text: str) -> Optional[str]:
         """
         Upload best crop to MinIO storage.
+        
+        Uses self.truck_id which is set when receiving a Kafka message.
         
         Returns:
             Crop URL or None if upload fails
         """
-        if self.best_crop is None:
+        if self.consensus_algorithm.best_crop is None:
             return None
         
         try:
-            object_name = self._generate_crop_filename(truck_id, text)
-            crop_url = self.crop_storage.upload_memory_image(self.best_crop, object_name)
+            best_crop = self.consensus_algorithm.best_crop
+            crop_url = self.crop_storage.upload_memory_image(best_crop, f"{self.truck_id}_{int(time.time())}.jpg")
             
             if crop_url:
                 self.logger.info(f"[{self.agent_name}] Crop uploaded: {crop_url}")
@@ -840,68 +469,63 @@ class BaseAgent(ABC):
             self.logger.exception(f"[{self.agent_name}] Error uploading crop to MinIO: {e}")
             return None
 
-    def _generate_crop_filename(self, truck_id: str, text: str) -> str:
-        """
-        Generate crop filename for MinIO storage.
-        Can be overridden by child classes for custom naming.
-        """
-        return f"{self.agent_name.lower()}_{truck_id}_{text}.jpg"
-
-    def _publish_detection(self, truck_id: str, detection_result: Dict[str, Any], 
+    def _publish_detection(self, detection_result: Dict[str, Any], 
                           confidence: float, crop_url: Optional[str]):
         """
         Publish detection event to Kafka.
         
+        Uses self.truck_id which is set when receiving a Kafka message.
+        
         Args:
-            truck_id: Truck identifier
             detection_result: Detection-specific data
             confidence: Detection confidence
             crop_url: MinIO crop URL
         """
         timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         
-        payload = self.build_publish_payload(truck_id, detection_result, confidence, crop_url)
+        payload = self.build_publish_payload(self.truck_id, detection_result, confidence, crop_url)
         payload["timestamp"] = timestamp
         
-        self.logger.info(f"[{self.agent_name}] Publishing '{self.get_produce_topic()}' (truckId={truck_id}) …")
+        self.logger.info(f"[{self.agent_name}] Publishing '{self.get_produce_topic()}' (truckId={self.truck_id}) …")
 
-        self.producer.produce(
-            topic=self.get_produce_topic(),
-            key=None,
-            value=json.dumps(payload).encode("utf-8"),
-            headers={"truckId": truck_id},
-            callback=self._delivery_callback
-        )
-
-        self.producer.poll(0)
+        self.kafka_producer.produce(self.get_produce_topic(), payload, headers={"truckId": self.truck_id})
 
     def _process_message(self, msg):
         """
         Process single Kafka message and handle detection.
         Can be overridden by child classes for custom processing logic.
         """
-        truck_id = self._extract_truck_id(msg)
+        # Set truck_id as instance variable for use throughout the processing cycle
+        self.truck_id = self._extract_truck_id(msg)
         self.logger.info(
-            f"[{self.agent_name}] Received 'truck-detected' (truckId={truck_id}). Starting pipeline…")
-        
-        # Run detection pipeline
-        text, confidence, _crop = self.process_detection()
-        
-        # Handle empty results
+            f"[{self.agent_name}] Received 'truck-detected' (truckId={self.truck_id}). Starting pipeline…")
+
+        # Run detection pipeline and always use the returned crop
+        text, confidence, crop = self.process_detection()
+
+        crop_url = None
+        if crop is not None:
+            # Always upload the returned crop, even if text is N/A
+            try:
+                crop_url = self.crop_storage.upload_memory_image(crop, f"{self.truck_id}_{int(time.time())}.jpg")
+                self.logger.info(f"[{self.agent_name}] Crop uploaded: {crop_url}")
+            except Exception as e:
+                self.logger.exception(f"[{self.agent_name}] Error uploading crop to MinIO: {e}")
+        else:
+            self.logger.warning(f"[{self.agent_name}] No crop available for upload")
+
+        # Handle text results
         if not text:
-            self.logger.warning(f"[{self.agent_name}] No final text results — publishing empty message.")
-            self._publish_empty_result(truck_id)
-            return
-        
-        # Upload crop to storage
-        crop_url = self._upload_crop_to_storage(truck_id, text)
-        
+            self.logger.warning(f"[{self.agent_name}] No final text results — using fallback.")
+            text = "N/A"
+            confidence = confidence if confidence is not None else 0.0
+
         # Parse detection result (can be overridden)
         detection_result = self._parse_detection_result(text)
-        
+
         # Publish results
-        self._publish_detection(truck_id, detection_result, confidence, crop_url)
-        
+        self._publish_detection(detection_result, confidence, crop_url) # type: ignore
+
         # Clear frames queue for next detection
         with self.frames_queue.mutex:
             self.frames_queue.queue.clear()
@@ -914,36 +538,21 @@ class BaseAgent(ABC):
         """
         return {"text": text}
 
-    def _publish_empty_result(self, truck_id: str):
+    def _publish_empty_result(self):
         """
         Publish empty result when detection fails.
+        
+        Uses self.truck_id which is set when receiving a Kafka message.
         Can be overridden by child classes.
         """
-        self._publish_detection(truck_id, {"text": "N/A"}, -1, None)
+        self._publish_detection({"text": "N/A"}, -1, None)
 
     def _cleanup_resources(self):
         """Release all resources gracefully."""
         self.logger.info(f"[{self.agent_name}] Freeing resources…")
         
-        # Release stream
-        try:
-            if self.stream is not None:
-                self.stream.release()
-                self.logger.debug(f"[{self.agent_name}] RTMP stream released.")
-        except Exception as e:
-            self.logger.exception(f"[{self.agent_name}] Error releasing RTMP stream: {e}")
-        
-        # Flush producer
-        try:
-            self.producer.flush(5)
-        except Exception:
-            pass
-        
-        # Close consumer
-        try:
-            self.consumer.close()
-        except Exception:
-            pass
+        self.stream_manager.release()
+        self.kafka_producer.flush()
 
     def _loop(self):
         """Main processing loop."""
@@ -952,7 +561,7 @@ class BaseAgent(ABC):
 
         try:
             while self.running:
-                msg = self._poll_latest_message()
+                msg = self.kafka_consumer.get_latest_message()
                 
                 if msg is None or msg.error():
                     continue

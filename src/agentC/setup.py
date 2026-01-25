@@ -4,7 +4,7 @@ import os
 
 # Files to download (name, Google Drive ID, destination folder)
 FILE_NAME = "hazard_plate_model.pt"
-FILE_ID = "1Dx1XS4pALjzP6AN5ryAJXA7sJ4KgH4JD"
+FILE_ID = "1Vl5nbXwWBz_J3ydKxaaWb48Dut4rHZHg"
 NEW_DIR = "data"
 
 logger = logging.getLogger("setup-AgentC")

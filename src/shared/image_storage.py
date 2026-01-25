@@ -1,6 +1,6 @@
 from typing import Optional
-from minio import Minio
-from minio.error import S3Error
+from minio import Minio # type: ignore
+from minio.error import S3Error # type: ignore
 from datetime import timedelta
 import logging
 import cv2
@@ -14,7 +14,7 @@ class ImageStorage:
     Uploads images directly from memory without writing to disk.
     """
     def __init__(self, configs, bucket_name):
-        logger.info("[MinIO] Connecting to MinIO...")
+        logger.info("Connecting to MinIO...")
         
         self.client = Minio(**configs)
         self.bucket_name = bucket_name
@@ -25,10 +25,10 @@ class ImageStorage:
         try:
             if not self.client.bucket_exists(self.bucket_name):
                 self.client.make_bucket(self.bucket_name)
-                logger.info(f"[MinIO] Created bucket '{self.bucket_name}'")
+                logger.info(f"Created bucket '{self.bucket_name}'")
             return True
         except S3Error as e:
-            logger.error(f"[MinIO] Bucket check/create failed: {e}")
+            logger.error(f"Bucket check/create failed: {e}")
             return False
 
     def upload_memory_image(self, img_array, object_name: str) -> Optional[str]:
@@ -39,13 +39,21 @@ class ImageStorage:
         try:
             # 0. Ensure bucket exists (retry if initial creation failed)
             if not self._ensure_bucket():
-                logger.error("[MinIO] Cannot upload: bucket unavailable")
+                logger.error("Cannot upload: bucket unavailable")
                 return None
-            
+
+            # Guard: ensure image is not empty/None before encoding
+            if img_array is None:
+                logger.error("Cannot upload: image is None")
+                return None
+            if hasattr(img_array, 'size') and img_array.size == 0:
+                logger.error("Cannot upload: image array is empty")
+                return None
+
             # 1. Encode image to memory buffer (no file system usage)
             success, encoded_img = cv2.imencode('.jpg', img_array)
             if not success:
-                logger.error("[MinIO] Failed to encode image to memory.")
+                logger.error("Failed to encode image to memory.")
                 return None
             
             # 2. Convert to BytesIO stream
@@ -60,15 +68,17 @@ class ImageStorage:
                 stream_size,
                 content_type="image/jpeg"
             )
+
+            logger.info(f"Uploaded image as '{object_name}' to bucket '{self.bucket_name}'")
             
             # 4. Generate Link
             return self._generate_presigned_url(object_name)
 
         except S3Error as e:
-            logger.error(f"[MinIO] Upload failed: {e}")
+            logger.error(f"Upload failed: {e}")
             return None
         except Exception as e:
-            logger.exception(f"[MinIO] Unexpected error during upload: {e}")
+            logger.exception(f"Unexpected error during upload: {e}")
             return None
 
     def _generate_presigned_url(self, object_name: str, expires_days: int = 7) -> str:

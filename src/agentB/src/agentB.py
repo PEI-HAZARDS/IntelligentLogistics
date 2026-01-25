@@ -41,14 +41,26 @@ class AgentB(BaseAgent):
     def get_agent_name(self) -> str:
         """Return agent identifier."""
         return "AgentB"
+    
+    def get_bbox_color(self) -> str:
+        """Return bbox color (e.g., 'Red', 'Green')."""
+        return "blue"
+    
+    def get_bbox_label(self) -> str:
+        """Return bbox label (e.g., 'truck', 'car')."""
+        return "License Plate"
 
     def get_yolo_model_path(self) -> str:
         """Return path to license plate YOLO model."""
         return "/agentB/data/license_plate_model.pt"
 
-    def get_storage_bucket(self) -> str:
-        """Return MinIO bucket for license plate crops."""
-        return os.getenv("BUCKET_NAME", "lp-crops")
+    def get_annotated_frames_bucket(self) -> str:
+        """Return bucket name for annotated frames."""
+        return f"lp-annotated-frames-gate-{self.gate_id}"
+
+    def get_crops_bucket(self) -> str:
+        """Return bucket name for crops."""
+        return f"lp-crops-gate-{self.gate_id}"
 
     def get_consume_topic(self) -> str:
         """Return Kafka topic to consume truck detection events."""
@@ -113,61 +125,10 @@ class AgentB(BaseAgent):
     # Agent B specific overrides
     # ========================================================================
 
-    def _run_yolo_detection(self, frame):
-        """Override to include inference latency metric."""
-        self.logger.info("[AgentB] YOLO (LP) running…")
-        with self.inference_latency.time():
-            results = self.yolo.detect(frame)
-        
-        self.frames_processed_metric.inc()
-
-        if not results:
-            self.logger.debug("[AgentB] YOLO did not return a result for this frame.")
-            return None
-
-        if not self.yolo.object_found(results):
-            self.logger.info("[AgentB] No license plate detected for this frame.")
-            return None
-
-        boxes = self.yolo.get_boxes(results)
-        self.logger.info(f"[AgentB] {len(boxes)} license plates detected.")
-        return boxes
-
-    def _process_ocr_result(self, crop, crop_index: int):
-        """Override to include OCR confidence metric."""
-        self.logger.info("[AgentB] OCR extracting text…")
-        text, ocr_conf = self.ocr._extract_text(crop)
-
-        if not text or ocr_conf <= 0.0:
-            self.logger.debug(f"[AgentB] OCR returned no valid text for crop {crop_index}")
-            return None
-
-        self.logger.info(f"[AgentB] OCR: '{text}' (conf={ocr_conf:.2f})")
-        self.ocr_confidence.observe(ocr_conf)
-
-        # Store candidate crop
-        text_normalized = text.upper().replace("-", "")
-        self.candidate_crops.append({
-            "crop": crop.copy(),
-            "text": text_normalized,
-            "confidence": ocr_conf
-        })
-        self.logger.debug(f"[AgentB] Added candidate crop: '{text_normalized}' (conf={ocr_conf:.2f})")
-
-        self._add_to_consensus(text, ocr_conf)
-
-        if self._check_full_consensus():
-            final_text = self._build_final_text()
-            self.logger.info(f"[AgentB] Full consensus achieved: '{final_text}'")
-            best_crop = self._select_best_crop(final_text)
-            return final_text, 1.0, best_crop
-
-        return None
-
     def _parse_detection_result(self, text: str) -> Dict[str, Any]:
         """Parse license plate text (simple pass-through)."""
         return {"text": text}
 
-    def _publish_empty_result(self, truck_id: str):
+    def _publish_empty_result(self):
         """Publish empty result when no license plate detected."""
-        self._publish_detection(truck_id, {"text": "N/A"}, -1, None)
+        self._publish_detection({"text": "N/A"}, -1, None)

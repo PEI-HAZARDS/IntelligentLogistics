@@ -28,14 +28,26 @@ class AgentC(BaseAgent):
     def get_agent_name(self) -> str:
         """Return agent identifier."""
         return "AgentC"
+    
+    def get_bbox_color(self) -> str:
+        """Return bbox color (e.g., 'Red', 'Green')."""
+        return "orange"
+    
+    def get_bbox_label(self) -> str:
+        """Return bbox label text (e.g., 'truck', 'car')."""
+        return "Hazard Plate"
 
     def get_yolo_model_path(self) -> str:
         """Return path to hazard plate YOLO model."""
         return "/agentC/data/hazard_plate_model.pt"
 
-    def get_storage_bucket(self) -> str:
-        """Return MinIO bucket for hazard plate crops."""
-        return os.getenv("BUCKET_NAME", "hz-crops")
+    def get_annotated_frames_bucket(self) -> str:
+        """Return bucket name for annotated frames."""
+        return f"hz-annotated-frames-gate-{self.gate_id}"
+
+    def get_crops_bucket(self) -> str:
+        """Return bucket name for crops."""
+        return f"hz-crops-gate-{self.gate_id}"
 
     def get_consume_topic(self) -> str:
         """Return Kafka topic to consume truck detection events."""
@@ -56,7 +68,7 @@ class AgentC(BaseAgent):
         """
         self.logger.info(f"[AgentC] Crop {box_index} accepted as HAZARD_PLATE")
         self.hazards_detected.inc()
-        self.hazard_confidence.observe(confidence)
+        self.ocr_confidence.observe(confidence)
         return True
 
     def build_publish_payload(self, truck_id: str, detection_result: Dict[str, Any], 
@@ -84,7 +96,7 @@ class AgentC(BaseAgent):
             'agent_c_hazards_detected_total', 
             'Total number of hazardous plates detected'
         )
-        self.hazard_confidence = Histogram(
+        self.ocr_confidence = Histogram(
             'agent_c_hazard_confidence', 
             'Confidence score of hazard detection',
             buckets=[0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
@@ -93,26 +105,6 @@ class AgentC(BaseAgent):
     # ========================================================================
     # Agent C specific overrides
     # ========================================================================
-
-    def _run_yolo_detection(self, frame):
-        """Override to include inference latency metric."""
-        self.logger.info("[AgentC] YOLO (HZ) running…")
-        with self.inference_latency.time():
-            results = self.yolo.detect(frame)
-        
-        self.frames_processed_metric.inc()
-
-        if not results:
-            self.logger.debug("[AgentC] YOLO did not return a result for this frame.")
-            return None
-
-        if not self.yolo.object_found(results):
-            self.logger.info("[AgentC] No hazard plate detected for this frame.")
-            return None
-
-        boxes = self.yolo.get_boxes(results)
-        self.logger.info(f"[AgentC] {len(boxes)} hazard plates detected.")
-        return boxes
 
     def _parse_detection_result(self, text: str) -> Dict[str, Any]:
         """
@@ -131,6 +123,6 @@ class AgentC(BaseAgent):
         
         return {"un": un, "kemler": kemler, "text": text}
 
-    def _publish_empty_result(self, truck_id: str):
+    def _publish_empty_result(self):
         """Publish empty result when no hazard plate detected."""
-        self._publish_detection(truck_id, {"un": "N/A", "kemler": "N/A"}, -1, None)
+        self._publish_detection({"un": "N/A", "kemler": "N/A"}, -1, None)
