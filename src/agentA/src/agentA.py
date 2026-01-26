@@ -36,7 +36,7 @@ MINIO_CONFIG = {
         "secure": False
     }
 
-BUCKET_NAME = f"hz-annotated-frames-gate-{GATE_ID}"
+BUCKET_NAME = f"trk-annotated-frames-gate-{GATE_ID}"
 
 logger = logging.getLogger("AgentA")
 
