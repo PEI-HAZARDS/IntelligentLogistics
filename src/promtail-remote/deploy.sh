@@ -8,6 +8,7 @@ VMS=(
   "10.255.32.104"   # Decision Engine
   "10.255.32.82"    # Data Module
   "10.255.32.143"   # Kafka
+  "10.255.32.100"   # API Gateway
 )
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
