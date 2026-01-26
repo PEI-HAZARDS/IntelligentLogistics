@@ -4,7 +4,7 @@ Consumed by: Decision Engine (microservice), Operator frontend.
 """
 
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, status, Body, Query, Path
 from bson.objectid import ObjectId
 from pydantic import BaseModel
@@ -139,7 +139,7 @@ def register_detection_event(request: DetectionEventRequest):
         "confidence": request.confidence,
         "agent": request.agent,
         "raw_data": request.raw_data,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
     
     event_id = persist_detection_event(event_data)

@@ -4,7 +4,7 @@ Used to publish manual review decisions to the same topic as DecisionEngine.
 """
 import json
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from aiokafka import AIOKafkaProducer
 from loguru import logger
@@ -81,7 +81,7 @@ async def publish_manual_review_decision(
         
         # Build payload matching DecisionEngine._publish_decision() format exactly
         payload = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
             "licensePlate": license_plate,
             "UN": original_un,
             "kemler": original_kemler,

@@ -22,7 +22,7 @@ echo "  RTMP LOW: ${RTMP_URL_LOW}"
 echo "  RTMP HIGH: ${RTMP_URL_HIGH}"
 
 # Verificar se o vídeo existe
-if [ ! -f "${TEST_VIDEO_PATH}" ]; then
+if [[ ! -f "${TEST_VIDEO_PATH}" ]]; then
     echo "[Ingest Test] ERROR: Test video not found at ${TEST_VIDEO_PATH}"
     echo "[Ingest Test] Make sure to mount the video file in the container."
     exit 1
