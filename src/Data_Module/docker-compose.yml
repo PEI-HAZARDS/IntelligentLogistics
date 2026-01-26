@@ -85,6 +85,8 @@ services:
       - REDIS_PORT=${REDIS_PORT}
       # External services
       - DECISION_ENGINE_URL=${DECISION_ENGINE_URL}
+      # OpenTelemetry Tracing
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
       # Runtime
       - PYTHONUNBUFFERED=1
       - ENVIRONMENT=${ENVIRONMENT}
