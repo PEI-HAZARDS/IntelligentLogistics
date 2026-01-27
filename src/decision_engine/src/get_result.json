@@ -1,0 +1,195 @@
+{
+    "found": true,
+    "candidates": [
+        {
+            "appointment_id": 1,
+            "license_plate": "VKTH76",
+            "gate_in_id": 1,
+            "terminal_id": 1,
+            "shift_gate_id": 1,
+            "shift_type": "MORNING",
+            "shift_date": "2026-01-26",
+            "scheduled_time": "2026-01-26T22:26:00.052218",
+            "status": "delayed",
+            "cargo": {
+                "id": 1,
+                "description": "Gasoline fuel [UN:1203, Kemler:33]",
+                "state": "liquid",
+                "quantity": 18000.0
+            },
+            "booking": {
+                "reference": "BK-20260126-0001",
+                "direction": "inbound"
+            }
+        },
+        {
+            "appointment_id": 2,
+            "license_plate": "SLS06173",
+            "gate_in_id": 1,
+            "terminal_id": 1,
+            "shift_gate_id": 1,
+            "shift_type": "MORNING",
+            "shift_date": "2026-01-26",
+            "scheduled_time": "2026-01-26T22:36:00.052218",
+            "status": "delayed",
+            "cargo": {
+                "id": 2,
+                "description": "Propane gas cylinders [UN:1978, Kemler:23]",
+                "state": "gaseous",
+                "quantity": 5000.0
+            },
+            "booking": {
+                "reference": "BK-20260126-0002",
+                "direction": "inbound"
+            }
+        },
+        {
+            "appointment_id": 3,
+            "license_plate": "KHDS141",
+            "gate_in_id": 1,
+            "terminal_id": 1,
+            "shift_gate_id": 1,
+            "shift_type": "MORNING",
+            "shift_date": "2026-01-26",
+            "scheduled_time": "2026-01-26T22:46:00.052218",
+            "status": "delayed",
+            "cargo": {
+                "id": 3,
+                "description": "Sulfuric acid [UN:1830, Kemler:80]",
+                "state": "liquid",
+                "quantity": 12000.0
+            },
+            "booking": {
+                "reference": "BK-20260126-0003",
+                "direction": "inbound"
+            }
+        },
+        {
+            "appointment_id": 4,
+            "license_plate": "SLS06408",
+            "gate_in_id": 1,
+            "terminal_id": 1,
+            "shift_gate_id": 1,
+            "shift_type": "MORNING",
+            "shift_date": "2026-01-26",
+            "scheduled_time": "2026-01-26T22:56:00.052218",
+            "status": "delayed",
+            "cargo": {
+                "id": 4,
+                "description": "Ammonium nitrate [UN:1942, Kemler:50]",
+                "state": "solid",
+                "quantity": 20000.0
+            },
+            "booking": {
+                "reference": "BK-20260126-0004",
+                "direction": "inbound"
+            }
+        },
+        {
+            "appointment_id": 5,
+            "license_plate": "WNDSU600",
+            "gate_in_id": 1,
+            "terminal_id": 1,
+            "shift_gate_id": 1,
+            "shift_type": "MORNING",
+            "shift_date": "2026-01-26",
+            "scheduled_time": "2026-01-26T23:06:00.052218",
+            "status": "delayed",
+            "cargo": {
+                "id": 5,
+                "description": "Toxic pesticides [UN:2902, Kemler:60]",
+                "state": "liquid",
+                "quantity": 8000.0
+            },
+            "booking": {
+                "reference": "BK-20260126-0005",
+                "direction": "inbound"
+            }
+        },
+        {
+            "appointment_id": 6,
+            "license_plate": "MZGOH112",
+            "gate_in_id": 1,
+            "terminal_id": 1,
+            "shift_gate_id": 1,
+            "shift_type": "MORNING",
+            "shift_date": "2026-01-26",
+            "scheduled_time": "2026-01-26T23:16:00.052218",
+            "status": "delayed",
+            "cargo": {
+                "id": 6,
+                "description": "Auto parts",
+                "state": "solid",
+                "quantity": 8000.0
+            },
+            "booking": {
+                "reference": "BK-20260126-0006",
+                "direction": "inbound"
+            }
+        },
+        {
+            "appointment_id": 7,
+            "license_plate": "MZGOH89",
+            "gate_in_id": 1,
+            "terminal_id": 1,
+            "shift_gate_id": 1,
+            "shift_type": "MORNING",
+            "shift_date": "2026-01-26",
+            "scheduled_time": "2026-01-26T23:26:00.052218",
+            "status": "delayed",
+            "cargo": {
+                "id": 7,
+                "description": "Electronic equipment",
+                "state": "solid",
+                "quantity": 5500.0
+            },
+            "booking": {
+                "reference": "BK-20260126-0007",
+                "direction": "inbound"
+            }
+        },
+        {
+            "appointment_id": 8,
+            "license_plate": "BC8003",
+            "gate_in_id": 1,
+            "terminal_id": 1,
+            "shift_gate_id": 1,
+            "shift_type": "MORNING",
+            "shift_date": "2026-01-26",
+            "scheduled_time": "2026-01-26T23:36:00.052218",
+            "status": "in_transit",
+            "cargo": {
+                "id": 8,
+                "description": "Furniture",
+                "state": "solid",
+                "quantity": 9000.0
+            },
+            "booking": {
+                "reference": "BK-20260126-0008",
+                "direction": "inbound"
+            }
+        },
+        {
+            "appointment_id": 10,
+            "license_plate": "AA12DF",
+            "gate_in_id": 1,
+            "terminal_id": 1,
+            "shift_gate_id": 1,
+            "shift_type": "MORNING",
+            "shift_date": "2026-01-26",
+            "scheduled_time": "2026-01-26T23:56:00.052218",
+            "status": "in_transit",
+            "cargo": {
+                "id": 10,
+                "description": "Textile products",
+                "state": "solid",
+                "quantity": 6000.0
+            },
+            "booking": {
+                "reference": "BK-20260126-0010",
+                "direction": "inbound"
+            }
+        }
+    ],
+    "message": "Found 9 candidate appointment(s)"
+}

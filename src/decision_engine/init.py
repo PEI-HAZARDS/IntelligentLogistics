@@ -48,7 +48,7 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
     
     try:
-        decision_engine._loop()
+        decision_engine.loop()
     except KeyboardInterrupt:
         logger.info("\n[init] Keyboard interrupt received, stopping agent...")
         ENGINE_UP.set(0)

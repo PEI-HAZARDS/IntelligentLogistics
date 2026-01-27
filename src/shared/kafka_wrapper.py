@@ -72,6 +72,41 @@ class KafkaConsumerWrapper:
             
         # If queue was empty, wait for one
         return self.consumer.poll(timeout=timeout)
+    
+    
+    def parse_message(self, msg):
+        """
+        Parses a Kafka message and extracts data.
+        Returns (topic, data, truck_id) or (None, None, None) on failure.
+        """
+        if msg is None:
+            return None, None, None
+            
+        if msg.error():
+            logger.error(f"Consumer error: {msg.error()}")
+            return None, None, None
+            
+        try:
+            data = json.loads(msg.value())
+        except json.JSONDecodeError:
+            logger.warning("Invalid message (JSON). Ignored.")
+            return None, None, None
+            
+        truck_id = self._extract_truck_id_from_headers(msg.headers())
+        if not truck_id:
+            logger.warning("Message missing 'truck_id' header. Ignored.")
+            return None, None, None
+            
+        return msg.topic(), data, truck_id
+
+    def _extract_truck_id_from_headers(self, headers):
+        """Extract truck_id from message headers. Accepts both 'truck_id' and 'truckId'."""
+        if not headers:
+            return None
+        for key, value in headers:
+            if key in ("truck_id", "truckId"):
+                return value.decode("utf-8") if isinstance(value, bytes) else value
+        return None
 
     def close(self):
         self.consumer.close()

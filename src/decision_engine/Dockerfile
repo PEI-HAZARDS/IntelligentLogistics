@@ -14,14 +14,16 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # 2. Python dependencies
-COPY requirements.txt ./
+COPY decision_engine/requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # 3. Copy source code
-COPY src/ ./src/
-COPY init.py ./
-COPY tests/ ./tests/
+# 3. Copy source code
+COPY decision_engine/src/ ./src/
+COPY shared/ ./shared/
+COPY decision_engine/init.py ./
+COPY decision_engine/tests/ ./tests/
 
 # 5. Start the microservice
 CMD ["python", "init.py"]
