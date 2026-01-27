@@ -28,14 +28,14 @@ import logging
 from typing import Optional, Tuple, Dict, Any
 from prometheus_client import Counter, Histogram # type: ignore
 
-from shared.stream_manager import StreamManager
-from shared.object_detector import ObjectDetector
-from shared.paddle_ocr import OCR
-from shared.image_storage import ImageStorage
-from shared.plate_classifier import PlateClassifier
-from shared.bounding_box_drawer import BoundingBoxDrawer
-from shared.kafka_wrapper import KafkaProducerWrapper, KafkaConsumerWrapper
-from shared.consensus_algorithm import ConsensusAlgorithm
+from shared.src.stream_manager import StreamManager
+from shared.src.object_detector import ObjectDetector
+from shared.src.paddle_ocr import OCR
+from shared.src.image_storage import ImageStorage
+from shared.src.plate_classifier import PlateClassifier
+from shared.src.bounding_box_drawer import BoundingBoxDrawer
+from shared.src.kafka_wrapper import KafkaProducerWrapper, KafkaConsumerWrapper
+from shared.src.consensus_algorithm import ConsensusAlgorithm
 
 MAX_FRAMES = 40
 
@@ -55,8 +55,34 @@ class BaseAgent(ABC):
     - get_object_type(): Return detected object type name for logging
     """
 
-    def __init__(self):
-        """Initialize base agent with common components."""
+    def __init__(
+        self,
+        stream_manager: Optional[StreamManager] = None,
+        object_detector: Optional[ObjectDetector] = None,
+        ocr: Optional[OCR] = None,
+        classifier: Optional[PlateClassifier] = None,
+        drawer: Optional[BoundingBoxDrawer] = None,
+        annotated_frames_storage: Optional[ImageStorage] = None,
+        crop_storage: Optional[ImageStorage] = None,
+        kafka_producer: Optional[KafkaProducerWrapper] = None,
+        kafka_consumer: Optional[KafkaConsumerWrapper] = None,
+        consensus_algorithm: Optional[ConsensusAlgorithm] = None,
+    ):
+        """
+        Initialize base agent with common components.
+        
+        Args:
+            stream_manager: Optional StreamManager instance (for testing)
+            object_detector: Optional ObjectDetector instance (for testing)
+            ocr: Optional OCR instance (for testing)
+            classifier: Optional PlateClassifier instance (for testing)
+            drawer: Optional BoundingBoxDrawer instance (for testing)
+            annotated_frames_storage: Optional ImageStorage instance (for testing)
+            crop_storage: Optional ImageStorage instance (for testing)
+            kafka_producer: Optional KafkaProducerWrapper instance (for testing)
+            kafka_consumer: Optional KafkaConsumerWrapper instance (for testing)
+            consensus_algorithm: Optional ConsensusAlgorithm instance (for testing)
+        """
         # Agent identification
         self.agent_name = self.get_agent_name()
         self.logger = logging.getLogger(self.agent_name)
@@ -64,17 +90,17 @@ class BaseAgent(ABC):
         # Load environment configuration
         self._load_config()
         
-        # Initialize models
-        self.yolo = ObjectDetector(self.get_yolo_model_path())
-        self.ocr = OCR()
-        self.classifier = PlateClassifier()
-        self.drawer = BoundingBoxDrawer(color=self.get_bbox_color(), thickness=2, label=self.get_bbox_label())
-        self.annotated_frames_storage = ImageStorage(self.minio_conf, self.get_annotated_frames_bucket())
-        self.crop_storage = ImageStorage(self.minio_conf, self.get_crops_bucket())
-        self.stream_manager = StreamManager(self.stream_url)
-        self.kafka_producer = KafkaProducerWrapper(self.kafka_bootstrap)
-        self.kafka_consumer = KafkaConsumerWrapper(self.kafka_bootstrap, f"{self.agent_name.lower()}-group", [self.get_consume_topic()])
-        self.consensus_algorithm = ConsensusAlgorithm()
+        # Initialize models - use provided dependencies or create defaults
+        self.yolo = object_detector or ObjectDetector(self.get_yolo_model_path())
+        self.ocr = ocr or OCR()
+        self.classifier = classifier or PlateClassifier()
+        self.drawer = drawer or BoundingBoxDrawer(color=self.get_bbox_color(), thickness=2, label=self.get_bbox_label())
+        self.annotated_frames_storage = annotated_frames_storage or ImageStorage(self.minio_conf, self.get_annotated_frames_bucket())
+        self.crop_storage = crop_storage or ImageStorage(self.minio_conf, self.get_crops_bucket())
+        self.stream_manager = stream_manager or StreamManager(self.stream_url)
+        self.kafka_producer = kafka_producer or KafkaProducerWrapper(self.kafka_bootstrap)
+        self.kafka_consumer = kafka_consumer or KafkaConsumerWrapper(self.kafka_bootstrap, f"{self.agent_name.lower()}-group", [self.get_consume_topic()])
+        self.consensus_algorithm = consensus_algorithm or ConsensusAlgorithm()
         
         # Runtime state
         self.running = True

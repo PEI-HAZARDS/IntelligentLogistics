@@ -1,7 +1,7 @@
 from typing import Any
 from logging import getLogger
 import math
-from shared.utils import levenshtein_distance
+from shared.src.utils import levenshtein_distance
 
 # Consensus configuration
 DECISION_THRESHOLD = 8

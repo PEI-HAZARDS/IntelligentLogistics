@@ -1,5 +1,5 @@
-from shared.base_agent import BaseAgent
-from shared.plate_classifier import PlateClassifier
+from shared.src.base_agent import BaseAgent
+from shared.src.plate_classifier import PlateClassifier
 
 import os
 from typing import Dict, Any
@@ -16,10 +16,10 @@ class AgentC(BaseAgent):
     - Publish hazard plate results to Kafka
     """
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         """Initialize Agent C with hazard plate detection capabilities."""
-        # Call parent constructor
-        super().__init__()
+        # Call parent constructor (forwards any injected dependencies)
+        super().__init__(**kwargs)
 
     # ========================================================================
     # Required abstract method implementations

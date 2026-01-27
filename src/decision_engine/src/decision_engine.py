@@ -6,8 +6,8 @@ import time
 from datetime import datetime, timedelta
 import itertools
 from prometheus_client import start_http_server, Counter, Histogram # type: ignore
-from shared.utils import load_from_file
-from shared.kafka_wrapper import KafkaConsumerWrapper, KafkaProducerWrapper
+from shared.src.utils import load_from_file
+from shared.src.kafka_wrapper import KafkaConsumerWrapper, KafkaProducerWrapper
 from decision_engine.src.plate_matcher import PlateMatcher
 from decision_engine.src.database_client import DatabaseClient
 from enum import Enum
