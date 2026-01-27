@@ -201,6 +201,37 @@ class BaseAgent(ABC):
     # ========================================================================
     # Template methods - common behavior with extension points
     # ========================================================================
+    
+    def loop(self):
+        """Main processing loop."""
+        self.logger.info(
+            f"[{self.agent_name}] Main loop starting… (topic in='{self.get_consume_topic()}')")
+        
+        # Clear any stale messages on startup
+        self.kafka_consumer.clear_stale_messages()
+
+        try:
+            while self.running:
+                msg = self.kafka_consumer.consume_message(timeout=1.0)
+                
+                if msg is None or msg.error():
+                    continue
+                
+                self._process_message(msg)
+                
+        except KeyboardInterrupt:
+            self.logger.info(f"[{self.agent_name}] Interrupted by user.")
+        except KafkaException as e:
+            self.logger.exception(f"[{self.agent_name}/Kafka] Kafka error: {e}")
+        except Exception as e:
+            self.logger.exception(f"[{self.agent_name}] Unexpected error: {e}")
+        finally:
+            self._cleanup_resources()
+
+    def stop(self):
+        """Gracefully stop agent."""
+        self.logger.info(f"[{self.agent_name}] Stopping agent…")
+        self.running = False
 
     def _get_frames(self, num_frames: int = 30):
         """
@@ -553,31 +584,3 @@ class BaseAgent(ABC):
         
         self.stream_manager.release()
         self.kafka_producer.flush()
-
-    def _loop(self):
-        """Main processing loop."""
-        self.logger.info(
-            f"[{self.agent_name}] Main loop starting… (topic in='{self.get_consume_topic()}')")
-
-        try:
-            while self.running:
-                msg = self.kafka_consumer.get_latest_message()
-                
-                if msg is None or msg.error():
-                    continue
-                
-                self._process_message(msg)
-                
-        except KeyboardInterrupt:
-            self.logger.info(f"[{self.agent_name}] Interrupted by user.")
-        except KafkaException as e:
-            self.logger.exception(f"[{self.agent_name}/Kafka] Kafka error: {e}")
-        except Exception as e:
-            self.logger.exception(f"[{self.agent_name}] Unexpected error: {e}")
-        finally:
-            self._cleanup_resources()
-
-    def stop(self):
-        """Gracefully stop agent."""
-        self.logger.info(f"[{self.agent_name}] Stopping agent…")
-        self.running = False

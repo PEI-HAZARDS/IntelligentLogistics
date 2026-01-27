@@ -14,9 +14,9 @@ class KafkaProducerWrapper:
     def _delivery_callback(self, err, msg):
         """Standard delivery callback."""
         if err is not None:
-            logger.debug(f"Message delivery failed: {err}")
+            logger.error(f"Message delivery failed: {err}")
         else:
-            logger.info(f"Message delivered to {msg.topic()} [{msg.partition()}]")
+            logger.info(f"Message delivered to {msg.topic()}.")
 
     def produce(self, topic, data, key=None, headers=None):
         """
@@ -49,29 +49,86 @@ class KafkaConsumerWrapper:
             "enable.auto.commit": True,
         })
         self.consumer.subscribe(topics)
-
-    def get_latest_message(self, timeout=1.0):
+    
+    def consume_message(self, timeout=1.0):
         """
-        Consumes messages, skipping old ones to return only the latest.
+        Consumes a single message from Kafka.
+        Returns the next message in order, or None if timeout expires.
         """
-        msgs_buffer = []
+        msg = self.consumer.poll(timeout=timeout)
         
-        # Drain the queue
+        if msg is None:
+            return None
+            
+        if msg.error():
+            logger.error(f"Consumer error: {msg.error()}")
+            return None
+        
+        logger.info(f"Consumed message from topic {msg.topic()}")
+        return msg
+
+    def clear_stale_messages(self):
+        """
+        Drains all pending messages from the queue.
+        
+        Call this when initializing an agent to discard messages that are 
+        no longer actionable (e.g., old auction data, expired time-sensitive events).
+        
+        Returns the number of messages cleared.
+        """
+        cleared_count = 0
+        
+        logger.info("Clearing stale messages from queue...")
+        
         while True:
             msg = self.consumer.poll(timeout=0.1)
             if msg is None:
                 break
             if msg.error():
-                logger.error(f"Consumer error: {msg.error()}")
+                logger.error(f"Consumer error while clearing: {msg.error()}")
                 continue
-            msgs_buffer.append(msg)
+            cleared_count += 1
         
-        # Return the last valid message
-        if msgs_buffer:
-            return msgs_buffer[-1]
+        if cleared_count > 0:
+            logger.info(f"Cleared {cleared_count} stale message(s) from queue")
+        else:
+            logger.info("No stale messages found in queue")
             
-        # If queue was empty, wait for one
-        return self.consumer.poll(timeout=timeout)
+        return cleared_count
+    
+    def parse_message(self, msg):
+        """
+        Parses a Kafka message and extracts data.
+        Returns (topic, data, truck_id) or (None, None, None) on failure.
+        """
+        if msg is None:
+            return None, None, None
+            
+        if msg.error():
+            logger.error(f"Consumer error: {msg.error()}")
+            return None, None, None
+            
+        try:
+            data = json.loads(msg.value())
+        except json.JSONDecodeError:
+            logger.warning("Invalid message (JSON). Ignored.")
+            return None, None, None
+            
+        truck_id = self._extract_truck_id_from_headers(msg.headers())
+        if not truck_id:
+            logger.warning("Message missing 'truck_id' header. Ignored.")
+            return None, None, None
+            
+        return msg.topic(), data, truck_id
+
+    def _extract_truck_id_from_headers(self, headers):
+        """Extract truck_id from message headers. Accepts both 'truck_id' and 'truckId'."""
+        if not headers:
+            return None
+        for key, value in headers:
+            if key in ("truck_id", "truckId"):
+                return value.decode("utf-8") if isinstance(value, bytes) else value
+        return None
 
     def close(self):
         self.consumer.close()

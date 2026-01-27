@@ -15,10 +15,8 @@ class ImageStorage:
     """
     def __init__(self, configs, bucket_name):
         logger.info("Connecting to MinIO...")
-        
         self.client = Minio(**configs)
         self.bucket_name = bucket_name
-        self._ensure_bucket()
 
     def _ensure_bucket(self) -> bool:
         """Checks if bucket exists, creates it if not. Returns True if bucket is ready."""
@@ -77,7 +75,14 @@ class ImageStorage:
         except S3Error as e:
             logger.error(f"Upload failed: {e}")
             return None
+        except (ConnectionRefusedError, OSError) as e:
+            logger.warning(f"[MinIO] Connection error during upload: {e}. MinIO may be down. Skipping upload and continuing.")
+            return None
         except Exception as e:
+            # Check for urllib3/requests connection errors by type name
+            if e.__class__.__name__ in ("MaxRetryError", "NewConnectionError"):
+                logger.warning(f"[MinIO] Connection error during upload: {e}. MinIO may be down. Skipping upload and continuing.")
+                return None
             logger.exception(f"Unexpected error during upload: {e}")
             return None
 

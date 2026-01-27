@@ -13,7 +13,7 @@ src_dir = os.path.dirname(current_dir)  # Go up to 'src/'
 if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
-logger = logging.getLogger("init-DecisionEngine")
+logger = logging.getLogger("init")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,7 +31,7 @@ from decision_engine.src.decision_engine import DecisionEngine
 
 def main():
     # Start Prometheus metrics server
-    logger.info(f"[init] Starting Prometheus metrics server on port {METRICS_PORT}")
+    logger.info(f"Starting Prometheus metrics server on port {METRICS_PORT}")
     start_http_server(METRICS_PORT)
     ENGINE_UP.set(1)
     
@@ -39,7 +39,7 @@ def main():
     
     # Register signal handler for graceful shutdown
     def signal_handler(sig, frame):
-        logger.info("\n[init] Keyboard interrupt received, stopping agent...")
+        logger.info("\nKeyboard interrupt received, stopping agent...")
         ENGINE_UP.set(0)
         decision_engine.stop()
         sys.exit(0)
@@ -48,13 +48,13 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
     
     try:
-        decision_engine._loop()
+        decision_engine.loop()
     except KeyboardInterrupt:
-        logger.info("\n[init] Keyboard interrupt received, stopping agent...")
+        logger.info("\nKeyboard interrupt received, stopping agent...")
         ENGINE_UP.set(0)
         decision_engine.stop()
     except Exception as e:
-        logger.error(f"[init] Unexpected error: {e}")
+        logger.error(f"Unexpected error: {e}")
         ENGINE_UP.set(0)
         decision_engine.stop()
         raise

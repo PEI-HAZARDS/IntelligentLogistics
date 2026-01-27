@@ -1,16 +1,13 @@
 services:
   decision-engine:
     build:
-      context: .
+      context: ..
+      dockerfile: decision_engine/Dockerfile
     image: decision-engine:latest
     container_name: decision-engine
     restart: unless-stopped
+    env_file:
+      - .env
     ports:
       - "8001:8001"
-    environment:
-      - PYTHONPATH=/app
-      - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
-      - GATE_ID=${GATE_ID}
-      - API_URL=${API_URL}
-      - TIME_TOLERANCE_MINUTES=${TIME_TOLERANCE_MINUTES}
 
