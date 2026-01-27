@@ -66,6 +66,48 @@ class PlateMatcher:
         }
         
         logger.info(f"PlateMatcher initialized in {self.mode.value} mode with max distance {self.max_distance}")
+    
+    def match_plate(self, ocr_text: str, db_plates: list) -> str | None:
+        """
+        Matches the OCR-read license plate against a list of plates.
+        Returns the best matching plate, or None if no match found.
+        """
+        
+        logger.info(f"Matching OCR plate '{ocr_text}' against {len(db_plates)} database plates...")
+        
+        if not db_plates:
+            logger.warning("No database plates provided for matching")
+            return None
+            
+        normalized_ocr = ocr_text.upper().replace(" ", "").replace("-", "")
+        normalized_db_plates = [p.upper().replace(" ", "").replace("-", "") for p in db_plates]
+        
+        logger.info(f"Trying exact match for normalized OCR '{normalized_ocr}'...")
+        
+        # Always try exact match first
+        for i, normalized_db in enumerate(normalized_db_plates):
+            if normalized_ocr == normalized_db:
+                logger.info(f"Exact match found: '{ocr_text}' matched to '{db_plates[i]}'")
+                return db_plates[i]
+        
+        logger.info("No exact match found, trying fuzzy matching...")
+        
+        match = None
+        if self.mode == PlateMatcherMode.CONFUSION_MATRIX:
+            match = self._match_with_confusion_matrix(normalized_ocr, db_plates, normalized_db_plates)
+        
+        elif self.mode == PlateMatcherMode.LEVENSHTEIN:
+            match = self._match_with_levenshtein(normalized_ocr, db_plates, normalized_db_plates)
+        
+        elif self.mode == PlateMatcherMode.HYBRID:
+            match = self._match_with_hybrid(normalized_ocr, db_plates, normalized_db_plates)
+        
+        if match:
+            logger.info(f"Match found: '{ocr_text}' matched to '{match}' using {self.mode.value} mode")
+        else:
+            logger.warning(f"No match found for OCR plate '{ocr_text}' using {self.mode.value} mode")
+        
+        return match
 
     def _generate_plate_candidates(self, ocr_text: str, max_substitutions: int = 0):
         """
@@ -73,11 +115,10 @@ class PlateMatcher:
         
         Args:
             ocr_text: The OCR-read text
-            max_substitutions: Maximum number of characters to substitute (None = unlimited)
+            max_substitutions: Maximum number of characters to substitute (0 = unlimited)
         """
         
-        
-        if max_substitutions is None:
+        if max_substitutions == 0:
             max_substitutions = len(ocr_text)
             
         # Build a list of possibilities for each character position
@@ -98,9 +139,10 @@ class PlateMatcher:
                 diff_count = sum(1 for i, c in enumerate(candidate) if c != ocr_text[i])
                 if diff_count <= max_substitutions:
                     filtered.append(candidate)
+            logger.debug(f"Generated {len(filtered)} candidates for OCR text '{ocr_text}' (max {max_substitutions} substitutions)")
             return filtered
 
-        logger.info(f"Generated {len(candidates)} candidates for OCR text '{ocr_text}'")        
+        logger.debug(f"Generated {len(candidates)} candidates for OCR text '{ocr_text}'")        
 
         return candidates
 
@@ -110,13 +152,15 @@ class PlateMatcher:
         """
         candidates = self._generate_plate_candidates(normalized_ocr, max_substitutions=2)
         
-        logger.info(f"Trying confusion matrix match for OCR '{normalized_ocr}' with {len(candidates)} candidates")
+        logger.info(f"Trying confusion matrix match with {len(candidates)} candidates...")
         
         for candidate in candidates:
             for i, normalized_db in enumerate(normalized_db_plates):
                 if candidate == normalized_db:
+                    logger.info(f"Confusion matrix match: candidate '{candidate}' matched to '{db_plates[i]}'")
                     return db_plates[i]
         
+        logger.info("No confusion matrix match found")
         return None
 
     def _match_with_levenshtein(self, normalized_ocr: str, db_plates: list, normalized_db_plates: list) -> str | None:
@@ -126,7 +170,7 @@ class PlateMatcher:
         best_match = None
         best_distance = None
         
-        logger.info(f"Trying Levenshtein match for OCR '{normalized_ocr}'")
+        logger.info(f"Trying Levenshtein match (max distance: {self.max_distance})...")
         
         for i, normalized_db in enumerate(normalized_db_plates):
             distance = levenshtein_distance(normalized_ocr, normalized_db)
@@ -136,6 +180,11 @@ class PlateMatcher:
                     best_distance = distance
                     best_match = db_plates[i]
         
+        if best_match:
+            logger.info(f"Levenshtein match: '{normalized_ocr}' matched to '{best_match}' (distance: {best_distance})")
+        else:
+            logger.info(f"No Levenshtein match found within distance {self.max_distance}")
+        
         return best_match
 
     def _match_with_hybrid(self, normalized_ocr: str, db_plates: list, normalized_db_plates: list) -> str | None:
@@ -143,42 +192,21 @@ class PlateMatcher:
         Match using hybrid approach: confusion matrix first, then Levenshtein fallback.
         """
         
-        # Step 1: Try confusion matrix
+        logger.info("Trying hybrid matching (confusion matrix + Levenshtein fallback)...")
+        
+        # Try confusion matrix
         match = self._match_with_confusion_matrix(normalized_ocr, db_plates, normalized_db_plates)
         if match is not None:
+            logger.info("Hybrid match successful via confusion matrix")
             return match
         
-        # Step 2: Fallback to Levenshtein
-        return self._match_with_levenshtein(normalized_ocr, db_plates, normalized_db_plates)
-
-    def match_plate(self, ocr_text: str, db_plates: list) -> str | None:
-        """
-        Matches the OCR-read license plate against a list of plates.
-        Returns the best matching plate and its distance, or (None, None) if no match found.
-        """
+        logger.info("Confusion matrix failed, falling back to Levenshtein...")
         
-        logger.info(f"Matching OCR plate '{ocr_text}' against database plates: {db_plates}")
+        # Fallback to Levenshtein
+        match = self._match_with_levenshtein(normalized_ocr, db_plates, normalized_db_plates)
+        if match is not None:
+            logger.info("Hybrid match successful via Levenshtein fallback")
+        else:
+            logger.info("Hybrid match failed")
         
-        if not db_plates:
-            return None
-            
-        normalized_ocr = ocr_text.upper().replace(" ", "").replace("-", "")
-        normalized_db_plates = [p.upper().replace(" ", "").replace("-", "") for p in db_plates]
-        
-        logger.info("Trying exact match...")
-        
-        # Step 1: Try exact match first
-        for i, normalized_db in enumerate(normalized_db_plates):
-            if normalized_ocr == normalized_db:
-                return db_plates[i]
-        
-        if self.mode == PlateMatcherMode.CONFUSION_MATRIX:
-            return self._match_with_confusion_matrix(normalized_ocr, db_plates, normalized_db_plates)
-        
-        elif self.mode == PlateMatcherMode.LEVENSHTEIN:
-            return self._match_with_levenshtein(normalized_ocr, db_plates, normalized_db_plates)
-        
-        elif self.mode == PlateMatcherMode.HYBRID:
-            return self._match_with_hybrid(normalized_ocr, db_plates, normalized_db_plates)
-        
-        return None
+        return match

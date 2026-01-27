@@ -21,11 +21,11 @@ class DatabaseClient:
             if response.status_code == 200:
                 return response.json()
             else:
-                logger.error(f"[DecisionEngine] API Error {response.status_code}: {response.text}")
+                logger.error(f"API Error {response.status_code}: {response.text}")
                 return {"found": False, "candidates": [], "message": "API Error"}
             
         except Exception as e:
-            logger.error(f"[DecisionEngine] API Request failed: {e}")
+            logger.error(f"API Request failed: {e}")
             return {"found": False, "candidates": [], "message": str(e)}
         
     
@@ -48,12 +48,12 @@ class DatabaseClient:
         try:
             response = requests.patch(url, json=payload, timeout=5)
             if response.status_code == 200:
-                logger.info(f"[DecisionEngine] Updated appointment {appointment_id} status to '{new_status}'")
+                logger.info(f"Updated appointment {appointment_id} status to '{new_status}'")
             else:
-                logger.warning(f"[DecisionEngine] Failed to update appointment status: {response.status_code} - {response.text}")
+                logger.warning(f"Failed to update appointment status: {response.status_code} - {response.text}")
         
         except Exception as e:
-            logger.error(f"[DecisionEngine] Error updating appointment status: {e}")
+            logger.error(f"Error updating appointment status: {e}")
     
     def is_api_unavailable(self, api_message: str) -> bool:
         """Checks if the API is unavailable based on the response message."""

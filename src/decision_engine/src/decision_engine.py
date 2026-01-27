@@ -30,11 +30,12 @@ class DecisionStatus(Enum):
     MANUAL_REVIEW = "MANUAL_REVIEW"
 
 class DecisionEngine:
-    def __init__(self, kafka_bootstrap: str | None = None):
+    def __init__(self) -> None:
         self.running = True
         
         self.un_numbers = load_from_file("./src/un_numbers.txt", separator="|")
         self.kemler_codes = load_from_file("./src/kemler_codes.txt", separator="|")
+        logger.info(f"Loaded {len(self.un_numbers)} UN numbers and {len(self.kemler_codes)} Kemler codes.")
 
         self.lp_buffer = {}  # {truck_id: lp_data}
         self.hz_buffer = {}  # {truck_id: hz_data}
@@ -74,7 +75,7 @@ class DecisionEngine:
 
         try:
             while self.running:
-                msg = self.kafka_consumer.get_latest_message(timeout=1.0)
+                msg = self.kafka_consumer.consume_message(timeout=1.0)
                 if msg is None:
                     continue
 
@@ -82,7 +83,6 @@ class DecisionEngine:
                 if topic is None or data is None or truck_id is None:
                     continue
 
-                logger.info(f"Received from '{topic}' for truck_id='{truck_id}'")
                 self._store_in_buffer(topic, truck_id, data)
                 self._try_process_truck(truck_id)
 
@@ -102,13 +102,14 @@ class DecisionEngine:
     
     
     def _make_decision(self, truck_id: str, lp_data: dict, hz_data: dict):
-        logger.info(f"Making decision for truck_id='{truck_id}'")
+        """Makes a decision for the truck based on LP and HZ data."""
+        logger.info(f"Both LP and HZ available for truck_id='{truck_id}'. Making decision…")
         
         start_time = time.time()
         timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
         detection = self._extract_detection_data(lp_data, hz_data)
-        logger.info(f"Extracted data - License Plate: '{detection['license_plate']}', UN Number: '{detection['un_number']}', Kemler Code: '{detection['kemler_code']}'")
+        logger.debug(f"Extracted data:\nLicense Plate: '{detection['license_plate']}'\nUN Number: '{detection['un_number']}'\nKemler Code: '{detection['kemler_code']}'")
 
         decision = ""
         reason = ""
@@ -117,28 +118,29 @@ class DecisionEngine:
         if detection["license_plate"] == "N/A":
             decision = DecisionStatus.MANUAL_REVIEW.value
             reason = "license_plate_not_detected"
+            logger.info(f"Decision: [{decision} - {reason}]")
             payload = self._build_decision_payload(timestamp, detection, lp_data, hz_data, decision, [], reason, None)
             self.kafka_producer.produce(KAFKA_PRODUCE_TOPIC, payload, headers={"truckId": truck_id})
             return
         
         # Query and evaluate appointments
         appointments = self.database_client.get_appointments()
-        #logger.info(f"Appointments query result: {appointments}")
+        logger.debug(f"Appointments query result: {appointments}")
         
         # Handle API unavailability
         if self.database_client.is_api_unavailable(appointments.get("message", "")):
-            logger.info("API unavailable when querying appointments.")
             decision = DecisionStatus.MANUAL_REVIEW.value
             reason = "api_unavailable"
+            logger.info(f"Decision: [{decision} - {reason}]")
             payload = self._build_decision_payload(timestamp, detection, lp_data, hz_data, decision, [], reason, None)
             self.kafka_producer.produce(KAFKA_PRODUCE_TOPIC, payload, headers={"truckId": truck_id})
             return
         
         # Handle no appointments found
         if appointments.get("found") is False:
-            logger.info("No appointments found in the database.")
             decision = DecisionStatus.MANUAL_REVIEW.value
             reason = "empty_db_appointments"
+            logger.info(f"Decision: [{decision} - {reason}]")
             payload = self._build_decision_payload(timestamp, detection, lp_data, hz_data, decision, [], reason, None)
             self.kafka_producer.produce(KAFKA_PRODUCE_TOPIC, payload, headers={"truckId": truck_id})
             return
@@ -150,16 +152,16 @@ class DecisionEngine:
         
         # Handle no matched plate
         if matched_plate is None:
-            logger.info(f"No matching appointment for license plate '{ocr_plate}'.")
             decision = DecisionStatus.MANUAL_REVIEW.value
             reason = "license_plate_not_found"
+            logger.info(f"Decision: [{decision} - {reason}]")
             payload = self._build_decision_payload(timestamp, detection, lp_data, hz_data, decision, [], reason, None)
         
         # Handle matched plate
         else:
-            logger.info(f"Matched license plate '{ocr_plate}' to appointment plate '{matched_plate}'. Access ACCEPTED.")
             decision = DecisionStatus.ACCEPTED.value
-            reason = None
+            reason = "license_plate_matched"
+            logger.info(f"Decision: [{decision} - {reason}]")
             payload = self._build_decision_payload(timestamp, detection, lp_data, hz_data, decision, [], reason, None)
             
             # Update appointment status in the database
@@ -176,11 +178,10 @@ class DecisionEngine:
 
     def _try_process_truck(self, truck_id: str):
         """Attempts to process a truck if both LP and HZ data are available."""
+        
         if truck_id not in self.lp_buffer or truck_id not in self.hz_buffer:
             return
-
-        logger.info(f"Both LP and HZ available for truck_id='{truck_id}'. Making decision…")
-        
+                
         lp_data = self.lp_buffer[truck_id]
         hz_data = self.hz_buffer[truck_id]
         
@@ -188,11 +189,13 @@ class DecisionEngine:
         
         del self.lp_buffer[truck_id]
         del self.hz_buffer[truck_id]
+        
         logger.debug(f"Buffers cleaned for truck_id='{truck_id}'")
 
 
     def _extract_detection_data(self, lp_data: dict, hz_data: dict) -> dict:
         """Extracts and formats detection data from LP and HZ payloads."""
+        
         license_plate = lp_data.get("licensePlate", "N/A")
         un_number = hz_data.get("un", "N/A")
         kemler_code = hz_data.get("kemler", "N/A")
