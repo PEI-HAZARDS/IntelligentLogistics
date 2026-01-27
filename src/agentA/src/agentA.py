@@ -1,8 +1,8 @@
-from shared.stream_manager import StreamManager
-from shared.object_detector import ObjectDetector
-from shared.bounding_box_drawer import BoundingBoxDrawer
-from shared.image_storage import ImageStorage
-from shared.kafka_wrapper import KafkaProducerWrapper
+from shared.src.stream_manager import StreamManager
+from shared.src.object_detector import ObjectDetector
+from shared.src.bounding_box_drawer import BoundingBoxDrawer
+from shared.src.image_storage import ImageStorage
+from shared.src.kafka_wrapper import KafkaProducerWrapper
 import os
 import time
 import uuid

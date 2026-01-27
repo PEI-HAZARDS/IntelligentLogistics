@@ -1,6 +1,6 @@
-from shared.base_agent import BaseAgent
-from shared.plate_classifier import PlateClassifier
-from shared.image_storage import ImageStorage
+from shared.src.base_agent import BaseAgent
+from shared.src.plate_classifier import PlateClassifier
+from shared.src.image_storage import ImageStorage
 
 import os
 from typing import Dict, Any

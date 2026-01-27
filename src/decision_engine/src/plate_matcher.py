@@ -1,6 +1,6 @@
 from enum import Enum
 import itertools
-from shared.utils import levenshtein_distance
+from shared.src.utils import levenshtein_distance
 import logging
 
 logger = logging.getLogger("PlateMatcher")
