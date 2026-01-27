@@ -48,13 +48,21 @@ class AgentA:
     - Publishes 'truck-detected-GATE_ID' events to Kafka
     """
 
-    def __init__(self):
-        # Initialize detection model
-        self.yolo = ObjectDetector("/agentA/data/truck_model.pt", 7)
-        self.drawer = BoundingBoxDrawer(color="green", thickness=2, label="truck")
-        self.image_storage = ImageStorage(MINIO_CONFIG, BUCKET_NAME)
-        self.stream_manager = StreamManager(STREAM_LOW)
-        self.kafka_producer = KafkaProducerWrapper(KAFKA_BOOTSTRAP)
+    def __init__(
+        self,
+        object_detector: Optional[ObjectDetector] = None,
+        stream_manager: Optional[StreamManager] = None,
+        kafka_producer: Optional[KafkaProducerWrapper] = None,
+        image_storage: Optional[ImageStorage] = None,
+        drawer: Optional[BoundingBoxDrawer] = None,
+    ):
+        # Initialize dependencies (use injected or default)
+        self.yolo = object_detector or ObjectDetector("/agentA/data/truck_model.pt", 7)
+        self.drawer = drawer or BoundingBoxDrawer(color="green", thickness=2, label="truck")
+        self.image_storage = image_storage or ImageStorage(MINIO_CONFIG, BUCKET_NAME)
+        self.stream_manager = stream_manager or StreamManager(STREAM_LOW)
+        self.kafka_producer = kafka_producer or KafkaProducerWrapper(KAFKA_BOOTSTRAP)
+        
         self.running = True
         self.last_message_time = 0
         

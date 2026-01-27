@@ -21,6 +21,28 @@ jobs:
         with:
           fetch-depth: 0  # Full history is required for accurate analysis
 
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov mock
+          # Install dependencies for working modules
+          if [ -f src/shared/tests/requirements.txt ]; then pip install -r src/shared/tests/requirements.txt; fi
+          if [ -f src/decision_engine/requirements.txt ]; then pip install -r src/decision_engine/requirements.txt; fi
+          if [ -f src/agentA/requirements.txt ]; then pip install -r src/agentA/requirements.txt; fi
+          if [ -f src/agentB/requirements.txt ]; then pip install -r src/agentB/requirements.txt; fi
+          if [ -f src/agentC/requirements.txt ]; then pip install -r src/agentC/requirements.txt; fi
+          if [ -f src/broker/tests/requirements.txt ]; then pip install -r src/broker/tests/requirements.txt; fi
+
+      - name: Run Tests
+        run: |
+          chmod +x run_tests.sh
+          ./run_tests.sh
+
       - name: Analyze with SonarCloud
         # UPDATED: Using the new unified scanner action
         uses: SonarSource/sonarqube-scan-action@v5

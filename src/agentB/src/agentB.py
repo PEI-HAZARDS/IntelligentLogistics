@@ -18,7 +18,7 @@ class AgentB(BaseAgent):
     - Publish license plate results to Kafka
     """
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         """Initialize Agent B with license plate detection capabilities."""
         # Create separate storage for failed crops
         minio_host = os.getenv("MINIO_HOST", "10.255.32.82")
@@ -31,8 +31,8 @@ class AgentB(BaseAgent):
         }
         self.crop_fails = ImageStorage(minio_conf, "failed-crops")
         
-        # Call parent constructor
-        super().__init__()
+        # Call parent constructor (forwards any injected dependencies)
+        super().__init__(**kwargs)
 
     # ========================================================================
     # Required abstract method implementations
