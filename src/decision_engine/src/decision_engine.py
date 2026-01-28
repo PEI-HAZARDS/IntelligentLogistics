@@ -115,7 +115,7 @@ class DecisionEngine:
         reason = ""
         
         # Handle missing license plate
-        if detection["license_plate"] == "N/A":
+        if detection.get("license_plate", "N/A") == "N/A":
             decision = DecisionStatus.MANUAL_REVIEW.value
             reason = "license_plate_not_detected"
             logger.info(f"Decision: [{decision} - {reason}]")
@@ -128,7 +128,7 @@ class DecisionEngine:
         logger.debug(f"Appointments query result: {appointments}")
         
         # Handle API unavailability
-        if self.database_client.is_api_unavailable(appointments.get("message", "")):
+        if appointments is not None and self.database_client.is_api_unavailable(appointments.get("message", "")):
             decision = DecisionStatus.MANUAL_REVIEW.value
             reason = "api_unavailable"
             logger.info(f"Decision: [{decision} - {reason}]")
@@ -137,7 +137,7 @@ class DecisionEngine:
             return
         
         # Handle no appointments found
-        if appointments.get("found") is False:
+        if appointments is None or appointments.get("found") is False:
             decision = DecisionStatus.MANUAL_REVIEW.value
             reason = "empty_db_appointments"
             logger.info(f"Decision: [{decision} - {reason}]")
@@ -145,7 +145,7 @@ class DecisionEngine:
             self.kafka_producer.produce(KAFKA_PRODUCE_TOPIC, payload, headers={"truckId": truck_id})
             return
         
-        ocr_plate = detection["license_plate"]
+        ocr_plate = detection.get("license_plate", "")
         candidate_plates = [appt["license_plate"] for appt in appointments.get("candidates", [])]
         
         matched_plate = self.plate_matcher.match_plate(ocr_plate, candidate_plates)
@@ -165,9 +165,10 @@ class DecisionEngine:
             payload = self._build_decision_payload(timestamp, detection, lp_data, hz_data, decision, [], reason, None)
             
             # Update appointment status in the database
-            matched_appointment = self._get_appointment_from_plate(matched_plate, appointments.get("candidates", [])) if matched_plate else None
-            matched_appointment_id = int(matched_appointment.get("appointment_id")) # type: ignore
-            self.database_client.update_appointment_status(matched_appointment_id, DecisionStatus.ACCEPTED.value)
+            matched_appointment = self._get_appointment_from_plate(matched_plate, appointments.get("candidates", []))
+            if matched_appointment is not None:
+                matched_appointment_id = int(matched_appointment.get("appointment_id", 0))
+                self.database_client.update_appointment_status(matched_appointment_id, DecisionStatus.ACCEPTED.value)
             
         # Publish decision result
         self.kafka_producer.produce(KAFKA_PRODUCE_TOPIC, payload, headers={"truckId": truck_id})
@@ -267,7 +268,6 @@ class DecisionEngine:
     def _get_kemler_description(self, kemler_code: str) -> str | None:
         return self.kemler_codes.get(str(kemler_code), "Unknown Kemler Code")
     
-    # TODO: Change decision metrics to the correct ones (There is no denied access decision currently)
     def _record_decision_metrics(self, decision: str, start_time: float):
         """Records Prometheus metrics for the decision."""
         duration = time.time() - start_time
