@@ -1,0 +1,5 @@
+Host *
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    LogLevel ERROR
+    IdentityFile /var/jenkins_home/.ssh/id_ed25519

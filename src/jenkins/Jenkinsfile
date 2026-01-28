@@ -1,92 +1,206 @@
 /**
- * IntelligentLogistics - Jenkins Smart Auto-Deploy Pipeline
+ * IntelligentLogistics - Jenkins Control Panel
  * 
- * This pipeline automatically detects which services have changed
- * and deploys only those services.
+ * Interface centralizada para gerir todos os serviços nas diferentes VMs.
  * 
- * Auto Mode: Detects changed files and deploys selectively
- * Manual Mode: Uses parameters to choose what to deploy
+ * Ações disponíveis:
+ * - deploy: Build e deploy do serviço
+ * - status: Ver estado dos containers
+ * - logs: Ver logs do container
+ * - restart: Reiniciar container
+ * - stop: Parar container
  * 
- * Requires: Jenkins running on a VM inside the UA network
- * 
- * Jenkins Credentials:
- * - ssh-vm-key: SSH key for VM access
- * - minio-credentials: MinIO username/password
+ * Setup inicial (uma vez):
+ *   1. Gerar chaves SSH no container Jenkins:
+ *      docker exec jenkins ssh-keygen -t ed25519 -f /var/jenkins_home/.ssh/id_ed25519 -N ""
+ *   2. Obter chave pública:
+ *      docker exec jenkins cat /var/jenkins_home/.ssh/id_ed25519.pub
+ *   3. Adicionar a chave pública em cada VM:
+ *      ssh pei_user@<VM_IP> "echo '<CHAVE_PUBLICA>' >> ~/.ssh/authorized_keys"
  */
 
 pipeline {
     agent any
     
     parameters {
+        // ================================================================
+        // AÇÃO A EXECUTAR
+        // ================================================================
         choice(
-            name: 'DEPLOY_MODE',
-            choices: ['auto', 'manual'],
-            description: 'auto = detect changes automatically, manual = choose service'
+            name: 'ACTION',
+            choices: ['status', 'deploy', 'restart', 'stop', 'logs'],
+            description: '''
+                status  → Ver estado dos containers selecionados
+                deploy  → Build e deploy dos serviços selecionados
+                restart → Reiniciar containers selecionados
+                stop    → Parar containers selecionados
+                logs    → Ver logs dos containers selecionados
+            '''
         )
         
-        choice(
-            name: 'SERVICE',
-            choices: ['all', 'agentA', 'agentB', 'agentC', 'kafka', 'data-module', 'decision-engine', 'api-gateway', 'ui'],
-            description: 'Service to deploy (only used in manual mode)'
-        )
+        // ================================================================
+        // SELEÇÃO DE SERVIÇOS (checkboxes)
+        // ================================================================
+        booleanParam(name: 'ALL_SERVICES', defaultValue: false, description: 'Selecionar TODOS')
         
+        booleanParam(name: 'AGENT_A', defaultValue: false, description: 'Agent A (10.255.32.134)')
+        booleanParam(name: 'AGENT_B', defaultValue: false, description: 'Agent B (10.255.32.32)')
+        booleanParam(name: 'AGENT_C', defaultValue: false, description: 'Agent C (10.255.32.128)')
+        booleanParam(name: 'STREAMING', defaultValue: false, description: 'Streaming (10.255.32.80)')
+        booleanParam(name: 'KAFKA', defaultValue: false, description: 'Kafka (10.255.32.143)')
+        booleanParam(name: 'DATA_MODULE', defaultValue: false, description: 'Data Module (10.255.32.82)')
+        booleanParam(name: 'DECISION_ENGINE', defaultValue: false, description: 'Decision Engine (10.255.32.104)')
+        booleanParam(name: 'API_GATEWAY', defaultValue: false, description: 'API Gateway (10.255.32.100)')
+        booleanParam(name: 'UI', defaultValue: false, description: 'UI (10.255.32.108)')
+        
+        // ================================================================
+        // OPÇÕES ADICIONAIS
+        // ================================================================
         string(
             name: 'BRANCH',
             defaultValue: 'main',
-            description: 'Git branch'
+            description: 'Git branch do Backend (apenas para deploy)'
+        )
+        
+        string(
+            name: 'UI_BRANCH',
+            defaultValue: 'main',
+            description: 'Git branch da UI/APP (apenas para deploy da UI)'
+        )
+        
+        string(
+            name: 'LOG_LINES',
+            defaultValue: '100',
+            description: 'Linhas de log a mostrar (apenas para ação logs)'
         )
     }
     
     environment {
-        // VM IPs
+        // VM IPs - Mapeamento serviço → VM
         AGENTA_IP = '10.255.32.134'
         AGENTB_IP = '10.255.32.32'
         AGENTC_IP = '10.255.32.128'
+        STREAMING_IP = '10.255.32.80'
         KAFKA_IP = '10.255.32.143'
         DATA_MODULE_IP = '10.255.32.82'
         DECISION_ENGINE_IP = '10.255.32.104'
         API_GATEWAY_IP = '10.255.32.100'
         UI_IP = '10.255.32.108'
         
+        // SSH User para acesso às VMs
+        SSH_USER = 'pei_user'
+        
         // Repositories
         BACKEND_REPO = 'https://github.com/PEI-HAZARDS/IntelligentLogistics.git'
         APP_REPO = 'https://github.com/PEI-HAZARDS/IntelligentLogistics_APP.git'
         
-        // Deploy flags (set dynamically)
-        DEPLOY_AGENTA = 'false'
-        DEPLOY_AGENTB = 'false'
-        DEPLOY_AGENTC = 'false'
-        DEPLOY_KAFKA = 'false'
-        DEPLOY_DATA_MODULE = 'false'
-        DEPLOY_DECISION_ENGINE = 'false'
-        DEPLOY_API_GATEWAY = 'false'
-        DEPLOY_UI = 'false'
+        // Jenkins Credentials IDs para os .env de cada serviço
+        // Configurar no Jenkins: Manage Jenkins → Credentials → Add "Secret file"
+        // ID sugerido: env-<serviço> (ex: env-agenta, env-datamodule)
+        ENV_CREDENTIALS_ENABLED = 'true'  // Mudar para 'false' se .env já estiver nas VMs
     }
     
     stages {
-        stage('Check Network') {
+        stage('📋 Validar Seleção') {
             steps {
                 script {
-                    echo "🔍 Checking network connectivity..."
-                    
-                    // Use timeout with bash TCP check instead of ping (not available in Jenkins container)
-                    def result = sh(
-                        script: """
-                            timeout 5 bash -c 'cat < /dev/null > /dev/tcp/${DATA_MODULE_IP}/22' 2>/dev/null
-                        """,
-                        returnStatus: true
-                    )
-                    
-                    if (result != 0) {
-                        error "❌ No connectivity to VM network! Check network configuration."
+                    // Expandir ALL_SERVICES
+                    if (params.ALL_SERVICES) {
+                        env.SEL_AGENT_A = 'true'
+                        env.SEL_AGENT_B = 'true'
+                        env.SEL_AGENT_C = 'true'
+                        env.SEL_STREAMING = 'true'
+                        env.SEL_KAFKA = 'true'
+                        env.SEL_DATA_MODULE = 'true'
+                        env.SEL_DECISION_ENGINE = 'true'
+                        env.SEL_API_GATEWAY = 'true'
+                        env.SEL_UI = 'true'
+                    } else {
+                        env.SEL_AGENT_A = params.AGENT_A.toString()
+                        env.SEL_AGENT_B = params.AGENT_B.toString()
+                        env.SEL_AGENT_C = params.AGENT_C.toString()
+                        env.SEL_STREAMING = params.STREAMING.toString()
+                        env.SEL_KAFKA = params.KAFKA.toString()
+                        env.SEL_DATA_MODULE = params.DATA_MODULE.toString()
+                        env.SEL_DECISION_ENGINE = params.DECISION_ENGINE.toString()
+                        env.SEL_API_GATEWAY = params.API_GATEWAY.toString()
+                        env.SEL_UI = params.UI.toString()
                     }
                     
-                    echo "✅ Network OK - connectivity verified (SSH port reachable)"
+                    // Verificar se algo foi selecionado
+                    def anySelected = [
+                        env.SEL_AGENT_A, env.SEL_AGENT_B, env.SEL_AGENT_C,
+                        env.SEL_STREAMING, env.SEL_KAFKA, env.SEL_DATA_MODULE,
+                        env.SEL_DECISION_ENGINE, env.SEL_API_GATEWAY, env.SEL_UI
+                    ].any { it == 'true' }
+                    
+                    if (!anySelected) {
+                        error "❌ Nenhum serviço selecionado! Seleciona pelo menos um serviço."
+                    }
+                    
+                    // Info contextual baseada na ação
+                    def extraInfo = ""
+                    if (params.ACTION == 'deploy') {
+                        extraInfo = "║  Branch Backend: ${params.BRANCH.padRight(44)}║"
+                        if (env.SEL_UI == 'true') {
+                            extraInfo += "\n║  Branch UI:      ${params.UI_BRANCH.padRight(44)}║"
+                        }
+                    } else if (params.ACTION == 'logs') {
+                        extraInfo = "║  Linhas: ${params.LOG_LINES.padRight(52)}║"
+                    }
+                    
+                    echo """
+╔═══════════════════════════════════════════════════════════════╗
+║                    🎛️  PAINEL DE CONTROLO                     ║
+╠═══════════════════════════════════════════════════════════════╣
+║  Ação: ${params.ACTION.toUpperCase().padRight(52)}║
+${extraInfo ? extraInfo + '\n' : ''}╠═══════════════════════════════════════════════════════════════╣
+║  Serviços selecionados:                                       ║
+║    ${env.SEL_AGENT_A == 'true' ? '✅' : '⬜'} Agent A           ${env.SEL_STREAMING == 'true' ? '✅' : '⬜'} Streaming                   ║
+║    ${env.SEL_AGENT_B == 'true' ? '✅' : '⬜'} Agent B           ${env.SEL_KAFKA == 'true' ? '✅' : '⬜'} Kafka                        ║
+║    ${env.SEL_AGENT_C == 'true' ? '✅' : '⬜'} Agent C           ${env.SEL_DATA_MODULE == 'true' ? '✅' : '⬜'} Data Module                  ║
+║    ${env.SEL_DECISION_ENGINE == 'true' ? '✅' : '⬜'} Decision Engine  ${env.SEL_API_GATEWAY == 'true' ? '✅' : '⬜'} API Gateway                  ║
+║    ${env.SEL_UI == 'true' ? '✅' : '⬜'} UI                                                     ║
+╚═══════════════════════════════════════════════════════════════╝
+"""
                 }
             }
         }
         
-        stage('Checkout') {
+        stage('🔌 Verificar Conectividade') {
+            when { expression { return params.ACTION != 'status' } }
+            steps {
+                script {
+                    echo "🔍 Verificando conectividade às VMs..."
+                    
+                    def vmChecks = [:]
+                    
+                    if (env.SEL_AGENT_A == 'true') vmChecks['Agent A'] = AGENTA_IP
+                    if (env.SEL_AGENT_B == 'true') vmChecks['Agent B'] = AGENTB_IP
+                    if (env.SEL_AGENT_C == 'true') vmChecks['Agent C'] = AGENTC_IP
+                    if (env.SEL_STREAMING == 'true') vmChecks['Streaming'] = STREAMING_IP
+                    if (env.SEL_KAFKA == 'true') vmChecks['Kafka'] = KAFKA_IP
+                    if (env.SEL_DATA_MODULE == 'true') vmChecks['Data Module'] = DATA_MODULE_IP
+                    if (env.SEL_DECISION_ENGINE == 'true') vmChecks['Decision Engine'] = DECISION_ENGINE_IP
+                    if (env.SEL_API_GATEWAY == 'true') vmChecks['API Gateway'] = API_GATEWAY_IP
+                    if (env.SEL_UI == 'true') vmChecks['UI'] = UI_IP
+                    
+                    vmChecks.each { name, ip ->
+                        def result = sh(
+                            script: "timeout 5 bash -c 'cat < /dev/null > /dev/tcp/${ip}/22' 2>/dev/null",
+                            returnStatus: true
+                        )
+                        if (result != 0) {
+                            error "❌ Não foi possível conectar a ${name} (${ip})"
+                        }
+                        echo "✅ ${name} (${ip}) - Acessível"
+                    }
+                }
+            }
+        }
+        
+        stage('📥 Checkout') {
+            when { expression { return params.ACTION == 'deploy' } }
             steps {
                 checkout([
                     $class: 'GitSCM',
@@ -96,144 +210,114 @@ pipeline {
             }
         }
         
-        stage('Detect Changes') {
+        // ================================================================
+        // EXECUÇÃO PARALELA DE SERVIÇOS
+        // ================================================================
+        stage('⚡ Deploy Paralelo') {
+            when { expression { return true } }
             steps {
                 script {
-                    if (params.DEPLOY_MODE == 'manual') {
-                        echo "📋 MANUAL mode - Selected service: ${params.SERVICE}"
-                        
-                        if (params.SERVICE == 'all') {
-                            env.DEPLOY_AGENTA = 'true'
-                            env.DEPLOY_AGENTB = 'true'
-                            env.DEPLOY_AGENTC = 'true'
-                            env.DEPLOY_KAFKA = 'true'
-                            env.DEPLOY_DATA_MODULE = 'true'
-                            env.DEPLOY_DECISION_ENGINE = 'true'
-                            env.DEPLOY_API_GATEWAY = 'true'
-                            env.DEPLOY_UI = 'true'
-                        } else {
-                            env."DEPLOY_${params.SERVICE.toUpperCase().replace('-', '_')}" = 'true'
-                        }
-                    } else {
-                        echo "🔍 AUTO mode - Detecting changed files..."
-                        
-                        // Get list of changed files
-                        def changedFiles = sh(
-                            script: "git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only HEAD",
-                            returnStdout: true
-                        ).trim()
-                        
-                        echo "Changed files:\n${changedFiles}"
-                        
-                        // Check each service
-                        if (changedFiles.contains('src/agentA_microservice/')) {
-                            env.DEPLOY_AGENTA = 'true'
-                            echo "✓ Agent A will be deployed"
-                        }
-                        if (changedFiles.contains('src/agentB_microservice/')) {
-                            env.DEPLOY_AGENTB = 'true'
-                            echo "✓ Agent B will be deployed"
-                        }
-                        if (changedFiles.contains('src/agentC_microservice/')) {
-                            env.DEPLOY_AGENTC = 'true'
-                            echo "✓ Agent C will be deployed"
-                        }
-                        if (changedFiles.contains('src/kafka/')) {
-                            env.DEPLOY_KAFKA = 'true'
-                            echo "✓ Kafka will be deployed"
-                        }
-                        if (changedFiles.contains('src/Data_Module/') || changedFiles.contains('src/object_storage/')) {
-                            env.DEPLOY_DATA_MODULE = 'true'
-                            echo "✓ Data Module + MinIO will be deployed"
-                        }
-                        if (changedFiles.contains('src/Decision_Engine/')) {
-                            env.DEPLOY_DECISION_ENGINE = 'true'
-                            echo "✓ Decision Engine will be deployed"
-                        }
-                        if (changedFiles.contains('src/API_Gateway/') || changedFiles.contains('src/nginx/')) {
-                            env.DEPLOY_API_GATEWAY = 'true'
-                            echo "✓ API Gateway + Nginx will be deployed"
-                        }
-                        // UI is from another repo, manual deploy or when workflow changes
-                        if (changedFiles.contains('src/UI/') || changedFiles.contains('src/frontend/')) {
-                            env.DEPLOY_UI = 'true'
-                            echo "✓ UI will be deployed"
-                        }
-                        
-                        // If no service was marked
-                        if (env.DEPLOY_AGENTA == 'false' && env.DEPLOY_AGENTB == 'false' && 
-                            env.DEPLOY_AGENTC == 'false' && env.DEPLOY_KAFKA == 'false' &&
-                            env.DEPLOY_DATA_MODULE == 'false' && env.DEPLOY_DECISION_ENGINE == 'false' &&
-                            env.DEPLOY_API_GATEWAY == 'false' && env.DEPLOY_UI == 'false') {
-                            echo "ℹ️ No service affected by changes. Nothing to do."
+                    def parallelStages = [:]
+                    
+                    // Agent A
+                    if (env.SEL_AGENT_A == 'true') {
+                        parallelStages['🚚 Agent A'] = {
+                            executeAction('agenta', AGENTA_IP, 'src/agentA_microservice', 'agenta')
                         }
                     }
                     
-                    echo """
-═══════════════════════════════════════════════════════
-   📊 Deploy Summary
-═══════════════════════════════════════════════════════
-   Agent A:         ${env.DEPLOY_AGENTA}
-   Agent B:         ${env.DEPLOY_AGENTB}
-   Agent C:         ${env.DEPLOY_AGENTC}
-   Kafka:           ${env.DEPLOY_KAFKA}
-   Data Module:     ${env.DEPLOY_DATA_MODULE}
-   Decision Engine: ${env.DEPLOY_DECISION_ENGINE}
-   API Gateway:     ${env.DEPLOY_API_GATEWAY}
-   UI:              ${env.DEPLOY_UI}
-═══════════════════════════════════════════════════════
-"""
+                    // Agent B
+                    if (env.SEL_AGENT_B == 'true') {
+                        parallelStages['🔢 Agent B'] = {
+                            executeAction('agentb', AGENTB_IP, 'src/agentB_microservice', 'agentb')
+                        }
+                    }
+                    
+                    // Agent C
+                    if (env.SEL_AGENT_C == 'true') {
+                        parallelStages['⚠️ Agent C'] = {
+                            executeAction('agentc', AGENTC_IP, 'src/agentC_microservice', 'agentc')
+                        }
+                    }
+                    
+                    // Streaming
+                    if (env.SEL_STREAMING == 'true') {
+                        parallelStages['📹 Streaming'] = {
+                            executeAction('nginx-rtmp', STREAMING_IP, 'src/streaming_middleware', 'nginx-rtmp', '1935:1935,8080:8080')
+                        }
+                    }
+                    
+                    // Kafka
+                    if (env.SEL_KAFKA == 'true') {
+                        parallelStages['📨 Kafka'] = {
+                            if (params.ACTION == 'deploy') {
+                                deployKafka(KAFKA_IP)
+                            } else {
+                                executeActionMulti(['zookeeper', 'kafka', 'kafka-ui'], KAFKA_IP)
+                            }
+                        }
+                    }
+                    
+                    // Data Module
+                    if (env.SEL_DATA_MODULE == 'true') {
+                        parallelStages['💾 Data Module'] = {
+                            if (params.ACTION == 'deploy') {
+                                deployDataModule(DATA_MODULE_IP)
+                            } else {
+                                executeActionMulti(['dm_postgres', 'dm_mongo', 'dm_redis', 'minio', 'dm_data_module'], DATA_MODULE_IP)
+                            }
+                        }
+                    }
+                    
+                    // Decision Engine
+                    if (env.SEL_DECISION_ENGINE == 'true') {
+                        parallelStages['🧠 Decision Engine'] = {
+                            executeAction('decision-engine', DECISION_ENGINE_IP, 'src/decision_engine_microservice', 'decision-engine')
+                        }
+                    }
+                    
+                    // API Gateway
+                    if (env.SEL_API_GATEWAY == 'true') {
+                        parallelStages['🌐 API Gateway'] = {
+                            executeAction('api_gateway', API_GATEWAY_IP, 'src/api_gateway', 'api_gateway', '8000:8000')
+                        }
+                    }
+                    
+                    // UI
+                    if (env.SEL_UI == 'true') {
+                        parallelStages['🖥️ UI'] = {
+                            if (params.ACTION == 'deploy') {
+                                deployUI(UI_IP)
+                            } else {
+                                executeAction('ui_il', UI_IP, null, 'ui_il')
+                            }
+                        }
+                    }
+                    
+                    // Executar tudo em paralelo
+                    if (parallelStages.size() > 0) {
+                        parallel parallelStages
+                    }
                 }
             }
-        }
-        
-        stage('Deploy Agent A') {
-            when { expression { return env.DEPLOY_AGENTA == 'true' } }
-            steps { script { deployService('agentA', AGENTA_IP, 'src/agentA_microservice/Dockerfile', 'agentA') } }
-        }
-        
-        stage('Deploy Agent B') {
-            when { expression { return env.DEPLOY_AGENTB == 'true' } }
-            steps { script { deployService('agentB', AGENTB_IP, 'src/agentB_microservice/Dockerfile', 'agentB') } }
-        }
-        
-        stage('Deploy Agent C') {
-            when { expression { return env.DEPLOY_AGENTC == 'true' } }
-            steps { script { deployService('agentC', AGENTC_IP, 'src/agentC_microservice/Dockerfile', 'agentC') } }
-        }
-        
-        stage('Deploy Kafka') {
-            when { expression { return env.DEPLOY_KAFKA == 'true' } }
-            steps { script { deployKafka(KAFKA_IP) } }
-        }
-        
-        stage('Deploy Data Module') {
-            when { expression { return env.DEPLOY_DATA_MODULE == 'true' } }
-            steps { script { deployDataModule(DATA_MODULE_IP) } }
-        }
-        
-        stage('Deploy Decision Engine') {
-            when { expression { return env.DEPLOY_DECISION_ENGINE == 'true' } }
-            steps { script { deployService('decision_engine', DECISION_ENGINE_IP, 'src/Decision_Engine/Dockerfile', 'decision_engine', '8001:8001') } }
-        }
-        
-        stage('Deploy API Gateway') {
-            when { expression { return env.DEPLOY_API_GATEWAY == 'true' } }
-            steps { script { deployApiGateway(API_GATEWAY_IP) } }
-        }
-        
-        stage('Deploy UI') {
-            when { expression { return env.DEPLOY_UI == 'true' } }
-            steps { script { deployUI(UI_IP) } }
         }
     }
     
     post {
         success {
-            echo "✅ Pipeline concluído com sucesso!"
+            echo """
+╔═══════════════════════════════════════════════════════════════╗
+║              ✅ OPERAÇÃO CONCLUÍDA COM SUCESSO                ║
+╚═══════════════════════════════════════════════════════════════╝
+"""
         }
         failure {
-            echo "❌ Pipeline falhou - ver logs acima"
+            echo """
+╔═══════════════════════════════════════════════════════════════╗
+║                    ❌ OPERAÇÃO FALHOU                         ║
+║                  Ver logs acima para detalhes                 ║
+╚═══════════════════════════════════════════════════════════════╝
+"""
         }
         always {
             cleanWs()
@@ -242,190 +326,272 @@ pipeline {
 }
 
 // ============================================================================
-// Funções de Deploy
+// FUNÇÕES AUXILIARES
 // ============================================================================
 
-def deployService(String serviceName, String vmIp, String dockerfile, String containerName, String ports = '') {
-    echo "📦 Deploying ${serviceName} to ${vmIp}..."
+def executeAction(String containerName, String vmIp, String buildPath, String imageName, String ports = '') {
+    /**
+     * Executa a ação selecionada num container específico.
+     * Usa chaves SSH persistentes em /var/jenkins_home/.ssh/
+     */
+    def dockerHost = "ssh://${SSH_USER}@${vmIp}"
     
-    withCredentials([
-        sshUserPrivateKey(credentialsId: 'ssh-vm-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
-    ]) {
-        sh """
-            mkdir -p ~/.ssh
-            cp \$SSH_KEY ~/.ssh/deploy_key
-            chmod 600 ~/.ssh/deploy_key
+    switch(params.ACTION) {
+        case 'status':
+            echo "📊 Estado de ${containerName} em ${vmIp}:"
+            sh """
+                docker -H "${dockerHost}" ps -a --filter name=${containerName} --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}\\t{{.Image}}"
+            """
+            break
             
-            cat > ~/.ssh/config << EOF
-Host ${serviceName}-vm
-    HostName ${vmIp}
-    User \$SSH_USER
-    IdentityFile ~/.ssh/deploy_key
-    StrictHostKeyChecking no
-    UserKnownHostsFile=/dev/null
-EOF
+        case 'logs':
+            echo "📜 Logs de ${containerName} em ${vmIp}:"
+            sh """
+                docker -H "${dockerHost}" logs --tail ${params.LOG_LINES} ${containerName} 2>&1 || echo "Container não encontrado ou sem logs"
+            """
+            break
             
-            docker context create ${serviceName} --docker "host=ssh://${serviceName}-vm" 2>/dev/null || true
-            docker context use ${serviceName}
+        case 'restart':
+            echo "🔄 Reiniciando ${containerName} em ${vmIp}..."
+            sh """
+                docker -H "${dockerHost}" restart ${containerName}
+            """
+            echo "✅ ${containerName} reiniciado"
+            break
             
-            docker build -t ${containerName}:latest -f ${dockerfile} .
+        case 'stop':
+            echo "⏹️ Parando ${containerName} em ${vmIp}..."
+            sh """
+                docker -H "${dockerHost}" stop ${containerName}
+            """
+            echo "✅ ${containerName} parado"
+            break
             
-            docker stop ${containerName} || true
-            docker rm ${containerName} || true
+        case 'deploy':
+            echo """
+╔═══════════════════════════════════════════════════════════════╗
+║  📦 Deploy: ${containerName.padRight(48)}║
+║  🖥️  VM: ${vmIp.padRight(51)}║
+╚═══════════════════════════════════════════════════════════════╝
+"""
             
-            docker run -d \\
-                --name ${containerName} \\
-                --restart unless-stopped \\
-                ${ports ? "-p ${ports}" : ''} \\
-                ${containerName}:latest
+            // Injectar .env do Jenkins Credentials (se configurado)
+            def envCredentialId = "env-${containerName}"
+            def envFileExists = false
             
-            echo "✅ ${serviceName} deployed"
-            docker context use default
-        """
+            if (env.ENV_CREDENTIALS_ENABLED == 'true') {
+                try {
+                    withCredentials([file(credentialsId: envCredentialId, variable: 'ENV_FILE')]) {
+                        sh "cp \$ENV_FILE ${buildPath}/.env"
+                        echo "✅ .env injectado do Jenkins Credentials (${envCredentialId})"
+                        envFileExists = true
+                    }
+                } catch (Exception e) {
+                    echo "⚠️  Credential '${envCredentialId}' não encontrada - usando .env existente (se houver)"
+                }
+            }
+            
+            def buildOutput = sh(
+                script: """
+                    echo "🔍 Verificando imagem existente..."
+                    OLD_IMAGE_ID=\$(docker -H "${dockerHost}" images -q ${imageName}:latest 2>/dev/null || echo "none")
+                    echo "   Imagem anterior: \$OLD_IMAGE_ID"
+                    
+                    cd ${buildPath}
+                    
+                    echo ""
+                    echo "🔨 Iniciando build..."
+                    docker -H "${dockerHost}" compose build 2>&1 | tee /tmp/build_${containerName}.log || \
+                    docker -H "${dockerHost}" build -t ${imageName}:latest . 2>&1 | tee /tmp/build_${containerName}.log
+                    
+                    NEW_IMAGE_ID=\$(docker -H "${dockerHost}" images -q ${imageName}:latest)
+                    echo ""
+                    echo "   Imagem nova: \$NEW_IMAGE_ID"
+                    
+                    if [ "\$OLD_IMAGE_ID" = "\$NEW_IMAGE_ID" ] && [ "\$OLD_IMAGE_ID" != "none" ]; then
+                        echo ""
+                        echo "✨ CACHE COMPLETO - Nenhuma layer foi reconstruída"
+                        echo "   (Imagem não mudou, tudo reutilizado do cache)"
+                    else
+                        echo ""
+                        echo "🔄 BUILD REALIZADO - Layers foram reconstruídas"
+                        
+                        # Análise do log de build para mostrar o que mudou
+                        if grep -q "CACHED" /tmp/build_${containerName}.log 2>/dev/null; then
+                            CACHED_STEPS=\$(grep -c "CACHED" /tmp/build_${containerName}.log)
+                            echo "   ✅ \$CACHED_STEPS steps reutilizados do cache"
+                        fi
+                    fi
+                    
+                    echo ""
+                    echo "🔄 Atualizando container..."
+                    docker -H "${dockerHost}" stop ${containerName} 2>/dev/null || true
+                    docker -H "${dockerHost}" rm ${containerName} 2>/dev/null || true
+                    
+                    docker -H "${dockerHost}" compose up -d 2>/dev/null || docker -H "${dockerHost}" run -d \\
+                        --name ${containerName} \\
+                        --restart unless-stopped \\
+                        ${ports ? ports.split(',').collect { "-p ${it}" }.join(' ') : ''} \\
+                        ${imageName}:latest
+                    
+                    echo ""
+                    echo "📊 Status final:"
+                    docker -H "${dockerHost}" ps --filter name=${containerName} --format "   ID: {{.ID}} | Status: {{.Status}} | Ports: {{.Ports}}"
+                    
+                    rm -f /tmp/build_${containerName}.log
+                """,
+                returnStdout: true
+            )
+            
+            echo buildOutput
+            
+            echo """
+╔═══════════════════════════════════════════════════════════════╗
+║  ✅ ${containerName.padRight(48)} DEPLOYED    ║
+╚═══════════════════════════════════════════════════════════════╝
+"""
+            break
+    }
+}
+
+def executeActionMulti(List<String> containers, String vmIp) {
+    /**
+     * Executa a ação em múltiplos containers (ex: Kafka tem 3 containers).
+     * Usa chaves SSH persistentes em /var/jenkins_home/.ssh/
+     */
+    def dockerHost = "ssh://${SSH_USER}@${vmIp}"
+    
+    switch(params.ACTION) {
+        case 'status':
+            echo "📊 Estado dos containers em ${vmIp}:"
+            sh """
+                docker -H "${dockerHost}" ps -a --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
+            """
+            break
+            
+        case 'logs':
+            containers.each { container ->
+                echo "📜 Logs de ${container}:"
+                sh """
+                    docker -H "${dockerHost}" logs --tail ${params.LOG_LINES} ${container} 2>&1 || echo "Container não encontrado"
+                """
+            }
+            break
+            
+        case 'restart':
+            echo "🔄 Reiniciando containers em ${vmIp}..."
+            containers.each { container ->
+                sh """
+                    docker -H "${dockerHost}" restart ${container} 2>/dev/null || echo "${container} não encontrado"
+                """
+            }
+            echo "✅ Containers reiniciados"
+            break
+            
+        case 'stop':
+            echo "⏹️ Parando containers em ${vmIp}..."
+            containers.reverse().each { container ->
+                sh """
+                    docker -H "${dockerHost}" stop ${container} 2>/dev/null || echo "${container} não encontrado"
+                """
+            }
+            echo "✅ Containers parados"
+            break
     }
 }
 
 def deployKafka(String vmIp) {
-    echo "📦 Deploying Kafka to ${vmIp}..."
+    echo "📦 Deploying Kafka stack to ${vmIp}..."
     
-    withCredentials([
-        sshUserPrivateKey(credentialsId: 'ssh-vm-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
-    ]) {
-        sh """
-            mkdir -p ~/.ssh
-            cp \$SSH_KEY ~/.ssh/deploy_key
-            chmod 600 ~/.ssh/deploy_key
-            
-            ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \$SSH_USER@${vmIp} << 'ENDSSH'
-                docker network create kafka-net 2>/dev/null || true
-                docker stop kafka kafka-ui zookeeper 2>/dev/null || true
-                docker rm kafka kafka-ui zookeeper 2>/dev/null || true
-                
-                docker run -d --name zookeeper --network kafka-net --restart unless-stopped \\
-                    -e ZOOKEEPER_CLIENT_PORT=2181 confluentinc/cp-zookeeper:latest
-                
-                sleep 10
-                
-                docker run -d --name kafka --network kafka-net --restart unless-stopped \\
-                    -p 9092:9092 \\
-                    -e KAFKA_BROKER_ID=1 \\
-                    -e KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181 \\
-                    -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${vmIp}:9092 \\
-                    -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \\
-                    confluentinc/cp-kafka:latest
-                
-                sleep 10
-                
-                docker run -d --name kafka-ui --network kafka-net --restart unless-stopped \\
-                    -p 8080:8080 \\
-                    -e KAFKA_CLUSTERS_0_NAME=local \\
-                    -e KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092 \\
-                    provectuslabs/kafka-ui:latest
-                
-                echo "✅ Kafka deployed"
-ENDSSH
-        """
-    }
+    def dockerHost = "ssh://${SSH_USER}@${vmIp}"
+    
+    sh """
+        docker -H "${dockerHost}" network create kafka-net 2>/dev/null || true
+        
+        # Para containers mas não remove (mantém volumes)
+        docker -H "${dockerHost}" stop kafka kafka-ui zookeeper 2>/dev/null || true
+        docker -H "${dockerHost}" rm kafka kafka-ui zookeeper 2>/dev/null || true
+        
+        docker -H "${dockerHost}" run -d --name zookeeper --network kafka-net --restart unless-stopped \\
+            -e ZOOKEEPER_CLIENT_PORT=2181 \\
+            confluentinc/cp-zookeeper:latest
+        
+        sleep 10
+        
+        docker -H "${dockerHost}" run -d --name kafka --network kafka-net --restart unless-stopped \\
+            -p 9092:9092 \\
+            -e KAFKA_BROKER_ID=1 \\
+            -e KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181 \\
+            -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${vmIp}:9092 \\
+            -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \\
+            confluentinc/cp-kafka:latest
+        
+        sleep 10
+        
+        docker -H "${dockerHost}" run -d --name kafka-ui --network kafka-net --restart unless-stopped \\
+            -p 8080:8080 \\
+            -e KAFKA_CLUSTERS_0_NAME=intelligent-logistics \\
+            -e KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092 \\
+            provectuslabs/kafka-ui:latest
+        
+        echo "✅ Kafka stack deployed"
+    """
 }
 
 def deployDataModule(String vmIp) {
-    echo "📦 Deploying Data Module + MinIO to ${vmIp}..."
+    echo "📦 Deploying Data Module stack to ${vmIp}..."
     
-    withCredentials([
-        sshUserPrivateKey(credentialsId: 'ssh-vm-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER'),
-        usernamePassword(credentialsId: 'minio-credentials', usernameVariable: 'MINIO_USER', passwordVariable: 'MINIO_PASS')
-    ]) {
-        sh """
-            mkdir -p ~/.ssh
-            cp \$SSH_KEY ~/.ssh/deploy_key
-            chmod 600 ~/.ssh/deploy_key
+    def dockerHost = "ssh://${SSH_USER}@${vmIp}"
+    
+    // Copiar docker-compose para a VM
+    sh """
+        scp -o StrictHostKeyChecking=no \\
+            src/Data_Module/docker-compose.yml \\
+            ${SSH_USER}@${vmIp}:~/data-module/
+    """
+    
+    // Deploy via SSH
+    sh """
+        ssh -o StrictHostKeyChecking=no ${SSH_USER}@${vmIp} << 'ENDSSH'
+            cd ~/data-module
             
-            ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \$SSH_USER@${vmIp} << ENDSSH
-                mkdir -p ~/minio/data
-                docker stop minio 2>/dev/null || true
-                docker rm minio 2>/dev/null || true
-                
-                docker run -d --name minio --restart unless-stopped \\
-                    -p 9000:9000 -p 9001:9001 \\
-                    -v ~/minio/data:/data \\
-                    -e "MINIO_ROOT_USER=${MINIO_USER}" \\
-                    -e "MINIO_ROOT_PASSWORD=${MINIO_PASS}" \\
-                    quay.io/minio/minio server /data --console-address ":9001"
+            # Para mas mantém volumes (dados persistentes)
+            docker compose down --volumes=false 2>/dev/null || true
+            
+            # Up com build cache automático
+            docker compose up -d --build
+            
+            echo "✅ Data Module stack deployed"
 ENDSSH
-            
-            docker context create data_module --docker "host=ssh://\$SSH_USER@${vmIp}" 2>/dev/null || true
-            docker context use data_module
-            
-            docker build -t data_module:latest -f src/Data_Module/Dockerfile .
-            docker stop data_module 2>/dev/null || true
-            docker rm data_module 2>/dev/null || true
-            docker run -d --name data_module --restart unless-stopped -p 8000:8000 data_module:latest
-            
-            echo "✅ Data Module deployed"
-            docker context use default
-        """
-    }
-}
-
-def deployApiGateway(String vmIp) {
-    echo "📦 Deploying API Gateway + Nginx to ${vmIp}..."
-    
-    withCredentials([
-        sshUserPrivateKey(credentialsId: 'ssh-vm-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
-    ]) {
-        sh """
-            mkdir -p ~/.ssh
-            cp \$SSH_KEY ~/.ssh/deploy_key
-            chmod 600 ~/.ssh/deploy_key
-            
-            docker context create api_gateway --docker "host=ssh://\$SSH_USER@${vmIp}" 2>/dev/null || true
-            docker context use api_gateway
-            
-            docker stop nginx 2>/dev/null || true
-            docker rm nginx 2>/dev/null || true
-            docker run -d --name nginx --restart unless-stopped -p 80:80 -p 443:443 nginx:alpine
-            
-            docker build -t api_gateway:latest -f src/API_Gateway/Dockerfile .
-            docker stop api_gateway 2>/dev/null || true
-            docker rm api_gateway 2>/dev/null || true
-            docker run -d --name api_gateway --restart unless-stopped -p 8080:8080 api_gateway:latest
-            
-            echo "✅ API Gateway deployed"
-            docker context use default
-        """
-    }
+    """
 }
 
 def deployUI(String vmIp) {
     echo "📦 Deploying UI to ${vmIp}..."
     
-    withCredentials([
-        sshUserPrivateKey(credentialsId: 'ssh-vm-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
-    ]) {
-        dir('app') {
-            checkout([
-                $class: 'GitSCM',
-                branches: [[name: "*/${params.BRANCH}"]],
-                userRemoteConfigs: [[url: APP_REPO]]
-            ])
-        }
-        
-        sh """
-            mkdir -p ~/.ssh
-            cp \$SSH_KEY ~/.ssh/deploy_key
-            chmod 600 ~/.ssh/deploy_key
-            
-            docker context create ui --docker "host=ssh://\$SSH_USER@${vmIp}" 2>/dev/null || true
-            docker context use ui
-            
-            cd app
-            docker build -t ui_il:latest .
-            docker stop ui_il 2>/dev/null || true
-            docker rm ui_il 2>/dev/null || true
-            docker run -d --name ui_il --restart unless-stopped -p 3000:3000 ui_il:latest
-            
-            echo "✅ UI deployed"
-            docker context use default
-        """
+    def dockerHost = "ssh://${SSH_USER}@${vmIp}"
+    
+    // Checkout do repo da APP (usa UI_BRANCH separada)
+    dir('app') {
+        checkout([
+            $class: 'GitSCM',
+            branches: [[name: "*/${params.UI_BRANCH}"]],
+            userRemoteConfigs: [[url: APP_REPO]]
+        ])
     }
+    
+    sh """
+        cd app
+        
+        # Build com cache automático de layers
+        docker -H "${dockerHost}" build -t ui_il:latest .
+        
+        # Para mas não remove (pode ter volumes de config)
+        docker -H "${dockerHost}" stop ui_il 2>/dev/null || true
+        docker -H "${dockerHost}" rm ui_il 2>/dev/null || true
+        
+        docker -H "${dockerHost}" run -d --name ui_il --restart unless-stopped -p 3000:3000 ui_il:latest
+        
+        echo "✅ UI deployed"
+    """
 }

@@ -78,6 +78,65 @@ Data_Module/
 
 ---
 
+## Driver Authentication
+
+### Current Flow (Simplified)
+
+The driver authentication uses a simple flow:
+
+1. **Login**: Driver validates credentials (license + password)
+2. **Access via PIN**: Driver uses the appointment PIN (arrival_id) to access delivery details
+
+```mermaid
+sequenceDiagram
+    participant App as Driver App
+    participant GW as API Gateway
+    participant DM as Data Module
+
+    Note over App,DM: 1. Login (validate credentials)
+    App->>GW: POST /drivers/login {license, password}
+    GW->>DM: Forward request
+    DM-->>GW: {driver_info}
+    GW-->>App: Store driver info locally
+
+    Note over App,DM: 2. View today's deliveries
+    App->>GW: GET /drivers/me/today?drivers_license=XX
+    DM-->>App: List of today's appointments
+
+    Note over App,DM: 3. Access delivery via PIN
+    App->>GW: POST /drivers/claim {arrival_id: "PRT-001"}
+    GW->>DM: Validate PIN + sequential order
+    DM-->>App: Delivery details + navigation
+```
+
+### Sequential Delivery Control
+
+Drivers must complete deliveries in order. The `/claim` endpoint validates:
+- PIN is valid and belongs to the driver
+- This is the next delivery in queue (unless debug mode is enabled)
+
+### Debug Mode
+
+For testing, sequential validation can be disabled:
+
+```bash
+export DEBUG_MODE=true
+# Then use: POST /drivers/claim?debug=true
+```
+
+### Future: OAuth 2.0 + JWT
+
+> [!NOTE]
+> **Planned Enhancement**: Full token-based authentication with OAuth 2.0 + JWT.
+> 
+> When implemented:
+> - Login will return JWT access token
+> - All `/me/*` endpoints will require `Authorization: Bearer <token>`
+> - Proper session management with refresh tokens
+> - Session fields in Driver model are reserved for this purpose
+
+---
+
 ## Database Schema
 
 We designed the database searching for the most common use cases and the most important data for the system to function.
@@ -177,6 +236,8 @@ docker-compose down -v
 | `REDIS_HOST`           | `redis`                                    | Redis hostname                 |
 | `REDIS_PORT`           | `6379`                                     | Redis port                     |
 | `DECISION_ENGINE_URL`  | `http://decision-engine:8001`              | Decision Engine endpoint       |
+| `DEBUG_MODE`           | `false`                                    | Enable debug mode (bypass sequential delivery validation) |
+| `TOKEN_EXPIRY_HOURS`   | `24`                                       | Driver session token expiry (hours) |
 
 ---
 
@@ -213,13 +274,22 @@ Swagger UI: `http://localhost:8080/docs`
 
 ### Drivers
 
-| Method | Endpoint                 | Description                    |
-|--------|--------------------------|--------------------------------|
-| POST   | `/drivers/login`         | Driver authentication          |
-| GET    | `/drivers/me/active`     | Get driver's active appointment|
-| GET    | `/drivers/me/today`      | Get driver's appointments today|
-| POST   | `/drivers/claim`         | Claim an appointment           |
-| POST   | `/drivers/{id}/complete` | Mark arrival as completed      |
+Simple flow: Login validates credentials, then use `drivers_license` as query parameter for subsequent calls.
+
+| Method | Endpoint                      | Description                           |
+|--------|-------------------------------|---------------------------------------|
+| POST   | `/drivers/login`              | Validate credentials, get driver info |
+| POST   | `/drivers/claim`              | Claim delivery via PIN (arrival_id)   |
+| GET    | `/drivers/me/active`          | Get driver's active appointment       |
+| GET    | `/drivers/me/today`           | Get driver's today appointments       |
+| GET    | `/drivers/me/history`         | Get driver's delivery history         |
+| GET    | `/drivers`                    | List all drivers (backoffice)         |
+| GET    | `/drivers/{license}`          | Get driver details (backoffice)       |
+| GET    | `/drivers/{license}/arrivals` | Get driver history (backoffice)       |
+
+> **Note**: `/claim` validates sequential order. Use `?debug=true` with `DEBUG_MODE=true` to bypass.
+> 
+> **Future**: OAuth 2.0 + JWT will add `Authorization: Bearer <token>` to all `/me/*` endpoints.
 
 ### Workers
 
@@ -381,24 +451,30 @@ sequenceDiagram
 
 ### Driver Mobile App Flow
 
-Complete driver journey from login to unloading assignment:
+Complete driver journey from login to unloading assignment (with token authentication):
 
 ```mermaid
 sequenceDiagram
     participant DR as Driver Mobile App
     participant GW as API Gateway
     participant DM as Data Module
+    participant DB as PostgreSQL
     participant DE as Decision Engine
     participant CAM as Gate Camera
 
     Note over DR,CAM: 1. Authentication & Route
     DR->>GW: POST /drivers/login (license, password)
-    GW->>DM: Validate credentials
-    DM-->>GW: Access Token + Driver info
-    GW-->>DR: Access Token
+    GW->>DM: Forward request
+    DM->>DB: Validate credentials
+    DM->>DB: Generate & store session_token
+    DM->>DB: Set current_appointment_id (next in queue)
+    DM-->>GW: {token, driver_info}
+    GW-->>DR: Store token locally
     
-    DR->>GW: GET /drivers/me/today (with token)
-    GW->>DM: Query today's appointments
+    DR->>GW: GET /drivers/me/today
+    Note over DR: Header: Authorization: Bearer <token>
+    GW->>DM: Forward with auth header
+    DM->>DB: Validate token + Get appointments
     DM-->>GW: Appointments list
     GW-->>DR: Show scheduled arrivals
     
@@ -421,21 +497,36 @@ sequenceDiagram
     GW->>DR: Push notification (WebSocket/FCM)
     DR->>DR: Show "Access Granted"
     
-    DR->>GW: GET /drivers/me/active
-    GW->>DM: Get active appointment with details
+    DR->>GW: GET /drivers/me/active (with Bearer token)
+    GW->>DM: Forward with auth header
+    DM->>DB: Validate token + Get active appointment
     DM-->>GW: Appointment + Terminal + Dock info
     GW-->>DR: Display assignment
 
-    Note over DR,CAM: 5. Unloading Assignment
+    Note over DR,CAM: 5. Claim (if manual entry)
+    DR->>GW: POST /drivers/claim {arrival_id: "PRT-0001"}
+    Note over DR: Header: Authorization: Bearer <token>
+    GW->>DM: Forward with auth header
+    DM->>DB: Validate token
+    DM->>DB: Check sequential order (is this the next delivery?)
+    alt Next in queue
+        DM->>DB: UPDATE driver.current_appointment_id
+        DM-->>GW: Appointment claimed
+        GW-->>DR: Show navigation to dock
+    else Not next in queue
+        DM-->>GW: Error: Complete previous delivery first
+        GW-->>DR: Show error message
+    end
+
+    Note over DR,CAM: 6. Unloading & Completion
     DR->>DR: Show dock location on map
     DR->>DR: Navigate to assigned dock
     DR->>DR: Unload cargo
-    
-    Note over DR,CAM: 6. Completion
-    DR->>GW: POST /drivers/{id}/complete
+    DR->>GW: Complete delivery
     GW->>DM: UPDATE status = completed
-    DM-->>GW: Confirmation
-    GW-->>DR: Show "Delivery Complete"
+    DM->>DB: Advance to next appointment in queue
+    DM-->>GW: Confirmation + next appointment
+    GW-->>DR: Show "Delivery Complete" + next delivery info
 ```
 
 ---

@@ -1,0 +1,16 @@
+# Grafana Dashboard Provisioning
+# Auto-loads dashboards from JSON files
+
+apiVersion: 1
+
+providers:
+  - name: 'IntelligentLogistics'
+    orgId: 1
+    folder: 'IntelligentLogistics'
+    folderUid: 'intelligent-logistics'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/json

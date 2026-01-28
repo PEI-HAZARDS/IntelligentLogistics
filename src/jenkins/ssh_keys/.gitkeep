@@ -1,0 +1,9 @@
+# Este diretório contém as chaves SSH do Jenkins
+# As chaves são geradas uma vez e persistem entre rebuilds do container
+# 
+# Ficheiros esperados (gerados automaticamente):
+# - id_ed25519      (chave privada)
+# - id_ed25519.pub  (chave pública)
+# - config          (configuração SSH)
+#
+# NOTA: As chaves privadas estão no .gitignore por segurança

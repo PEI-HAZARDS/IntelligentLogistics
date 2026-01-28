@@ -1,29 +1,32 @@
 services:
   kafka:
-    image: apache/kafka:latest
+    image: confluentinc/cp-kafka:7.6.0
     container_name: kafka
     ports:
       - "9092:9092"
       - "29092:29092"
     environment:
-      # KRaft (broker + controller no mesmo nó)
+      # KRaft mode configuration
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: "broker,controller"
       KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@localhost:9093"
-      # Listeners: INTERNAL para Docker, EXTERNAL para fora
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      # Listeners
       KAFKA_LISTENERS: "INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093"
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT"
       KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
-      # Advertised: INTERNAL usa nome do container, EXTERNAL usa IP da VM
       KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka:29092,EXTERNAL://10.255.32.143:9092"
-      # Nó único
+      # Single node settings
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      # Com auto-criação durante desenvolvimento
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      # Auto-create topics for development
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      # Cluster ID (gera com kafka-storage.sh random-uuid e formata antes do primeiro arranque)
+      # Cluster ID for KRaft
       CLUSTER_ID: "5L6g3nShT-eMCtK--X86sw"
+      # Log dirs
+      KAFKA_LOG_DIRS: "/tmp/kraft-combined-logs"
     
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -44,6 +47,18 @@ services:
     environment:
       - KAFKA_BOOTSTRAP=kafka:29092
       - GATE_ID=1
+    depends_on:
+      - kafka
+    restart: unless-stopped
+
+  # Prometheus exporter for Kafka metrics
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka-exporter
+    ports:
+      - "9308:9308"
+    command:
+      - --kafka.server=kafka:29092
     depends_on:
       - kafka
     restart: unless-stopped

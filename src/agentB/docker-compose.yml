@@ -1,0 +1,13 @@
+services:
+  agentb:
+    build:
+      context: ..              # Parent directory as build context
+      dockerfile: agentB/Dockerfile  # Path to Dockerfile from parent
+    image: agentb:latest
+    container_name: agentb
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+

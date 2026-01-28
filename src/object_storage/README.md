@@ -1,4 +1,4 @@
-# Object Storage - MinIO S3-Compatible Storage (10.255.32.132)
+# Object Storage - MinIO S3-Compatible Storage (10.255.32.82)
 
 **MinIO** provides S3-compatible object storage for the hazardous vehicle detection pipeline. It stores license plate and hazard plate crop images uploaded by AgentB and AgentC, making them accessible via HTTP URLs for the API Gateway and Frontend.
 
@@ -68,8 +68,8 @@ docker-compose up -d
 
 | Interface | URL | Description |
 |-----------|-----|-------------|
-| S3 API | `http://10.255.32.132:9000` | S3-compatible API endpoint |
-| Web Console | `http://10.255.32.132:9090` | Web-based management UI |
+| S3 API | `http://10.255.32.82:9000` | S3-compatible API endpoint |
+| Web Console | `http://10.255.32.82:9090` | Web-based management UI |
 
 ---
 
@@ -86,7 +86,7 @@ docker-compose up -d
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `MINIO_HOST` | `10.255.32.132` | MinIO server hostname/IP |
+| `MINIO_HOST` | `10.255.32.82` | MinIO server hostname/IP |
 | `MINIO_PORT` | `9000` | MinIO S3 API port |
 | `ACCESS_KEY` | (required) | MinIO access key |
 | `SECRET_KEY` | (required) | MinIO secret key |
@@ -157,7 +157,7 @@ The project provides a `CropStorage` class that wraps MinIO operations:
 from agentB_microservice.src.CropStorage import CropStorage
 
 MINIO_CONF = {
-    "endpoint": "10.255.32.132:9000",
+    "endpoint": "10.255.32.82:9000",
     "access_key": "minioadmin",
     "secret_key": "minioadmin",
     "secure": False

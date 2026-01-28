@@ -7,7 +7,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Set
 
@@ -63,6 +63,9 @@ app.add_middleware(
 # Connected WebSocket clients
 clients: Set[WebSocket] = set()
 
+# Background task reference to prevent garbage collection
+_consumer_task = None
+
 
 async def broadcast(message: dict):
     """Broadcast message to all connected clients."""
@@ -90,6 +93,51 @@ def create_consumer():
     return consumer
 
 
+def _parse_message_data(msg) -> dict:
+    """Parse Kafka message value to dict."""
+    try:
+        return json.loads(msg.value().decode("utf-8"))
+    except json.JSONDecodeError:
+        return {"raw": msg.value().decode("utf-8")}
+
+
+def _extract_truck_id(msg) -> str | None:
+    """Extract truck_id from Kafka message headers."""
+    headers = msg.headers() or []
+    for key, value in headers:
+        if key in ("truckId", "truck_id") and value:
+            return value.decode() if isinstance(value, bytes) else str(value)
+    return None
+
+
+def _build_dashboard_message(topic: str, truck_id: str | None, data: dict) -> dict:
+    """Build dashboard message from Kafka message data."""
+    config = TOPIC_CONFIG.get(topic, {"name": topic, "color": "#95a5a6", "order": 99})
+    return {
+        "type": "kafka_message",
+        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+        "topic": topic,
+        "topicName": config["name"],
+        "topicColor": config["color"],
+        "topicOrder": config["order"],
+        "truckId": truck_id or data.get("truckId", "N/A"),
+        "data": data,
+    }
+
+
+async def _process_kafka_message(msg):
+    """Process a single Kafka message and broadcast to clients."""
+    topic = msg.topic()
+    data = _parse_message_data(msg)
+    truck_id = _extract_truck_id(msg)
+    
+    dashboard_msg = _build_dashboard_message(topic, truck_id, data)
+    
+    logger.info(f"[DEBUG] Processing msg topic={topic} truckId={truck_id}")
+    logger.info(f"Broadcasting: {dashboard_msg['topicName']} - truckId={dashboard_msg['truckId']}")
+    await broadcast(dashboard_msg)
+
+
 async def kafka_consumer_loop():
     """Main Kafka consumer loop."""
     consumer = create_consumer()
@@ -107,39 +155,7 @@ async def kafka_consumer_loop():
                     logger.error(f"Kafka error: {msg.error()}")
                 continue
             
-            topic = msg.topic()
-            
-            # Parse message
-            try:
-                data = json.loads(msg.value().decode("utf-8"))
-            except json.JSONDecodeError:
-                data = {"raw": msg.value().decode("utf-8")}
-            
-            # Extract truck_id from headers (check both keys for compatibility)
-            truck_id = None
-            headers = msg.headers() or []
-            for key, value in headers:
-                if key in ("truckId", "truck_id") and value:
-                    truck_id = value.decode() if isinstance(value, bytes) else str(value)
-                    break
-            
-            # Build message for dashboard
-            config = TOPIC_CONFIG.get(topic, {"name": topic, "color": "#95a5a6", "order": 99})
-            
-            dashboard_msg = {
-                "type": "kafka_message",
-                "timestamp": datetime.utcnow().isoformat() + "Z",
-                "topic": topic,
-                "topicName": config["name"],
-                "topicColor": config["color"],
-                "topicOrder": config["order"],
-                "truckId": truck_id or data.get("truckId", "N/A"),
-                "data": data,
-            }
-            
-            logger.info(f"[DEBUG] Processing msg topic={topic} truckId={truck_id}")
-            logger.info(f"Broadcasting: {config['name']} - truckId={dashboard_msg['truckId']}")
-            await broadcast(dashboard_msg)
+            await _process_kafka_message(msg)
             
     except Exception as e:
         logger.exception(f"Consumer error: {e}")
@@ -150,7 +166,8 @@ async def kafka_consumer_loop():
 @app.on_event("startup")
 async def startup():
     """Start Kafka consumer on app startup."""
-    asyncio.create_task(kafka_consumer_loop())
+    global _consumer_task
+    _consumer_task = asyncio.create_task(kafka_consumer_loop())
     logger.info("Kafka Dashboard started")
 
 

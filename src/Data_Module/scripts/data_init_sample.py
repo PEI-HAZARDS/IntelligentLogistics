@@ -379,6 +379,8 @@ def create_and_seed(database_url: str):
 
 
 if __name__ == "__main__":
-    DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://porto:porto_password@localhost:5432/porto_logistica"
+    DATABASE_URL = os.getenv("DATABASE_URL")
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL environment variable is required")
     print(f"\n🔗 Connecting to: {DATABASE_URL}\n")
     create_and_seed(DATABASE_URL)

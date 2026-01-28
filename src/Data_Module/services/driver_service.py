@@ -1,14 +1,25 @@
 """
 Driver Service - Driver management and mobile authentication.
 Used by: Driver mobile app.
+
+Authentication Flow (Current - Simplified):
+- Driver logs in with credentials (license + password) to validate identity
+- Driver accesses deliveries using PIN (arrival_id)
+- Simple flow without persistent session tokens
+
+Future: OAuth 2.0 + JWT
+- Will implement proper token-based authentication with JWT
+- Endpoints will require Bearer tokens
+- Session fields in Driver model are reserved for this purpose
 """
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from datetime import datetime, date
 from sqlalchemy.orm import Session, joinedload
 from utils.hashing_pass import hash_password, verify_password
 
 from models.sql_models import Driver, Appointment, Visit, Company, Booking
+from config import settings
 
 
 # ==================== AUTH FUNCTIONS ====================
@@ -16,13 +27,19 @@ from models.sql_models import Driver, Appointment, Visit, Company, Booking
 def authenticate_driver(db: Session, drivers_license: str, password: str) -> Optional[Driver]:
     """
     Authenticates driver for mobile app login.
-    Returns driver if credentials valid, None otherwise.
+    Validates credentials and returns driver info if valid.
+    
+    Current: Simple credential validation, no persistent session.
+    Future: Will generate JWT token when OAuth 2.0 is implemented.
     """
     driver = db.query(Driver).filter(
         Driver.drivers_license == drivers_license
     ).first()
     
     if not driver:
+        return None
+    
+    if not driver.active:
         return None
     
     if not verify_password(password, driver.password_hash):
@@ -38,35 +55,66 @@ def get_driver_by_license(db: Session, drivers_license: str) -> Optional[Driver]
 
 # ==================== PIN/CLAIM FUNCTIONS ====================
 
-def claim_appointment_by_pin(db: Session, drivers_license: str, arrival_id: str) -> Optional[Appointment]:
+def get_next_appointment_in_queue(db: Session, drivers_license: str) -> Optional[Appointment]:
+    """
+    Returns the next appointment in the sequential queue for the driver.
+    This is the earliest active appointment by scheduled_start_time.
+    """
+    return db.query(Appointment).filter(
+        Appointment.driver_license == drivers_license,
+        Appointment.status.in_(['in_transit', 'delayed', 'in_process']),
+    ).order_by(Appointment.scheduled_start_time.asc()).first()
+
+
+def claim_appointment_by_pin(
+    db: Session, 
+    drivers_license: str, 
+    arrival_id: str,
+    debug_mode: bool = False
+) -> Tuple[Optional[Appointment], str]:
     """
     Driver uses PIN/arrival_id to claim an appointment.
-    Validates that the driver is associated with the appointment.
-    Returns the appointment if valid, None otherwise.
+    
+    In production mode: validates that this is the next appointment in sequence.
+    In debug mode: allows claiming any of the driver's appointments.
+    
+    Returns: (appointment, error_message)
     """
     # Find appointment by arrival_id (PIN)
-    appointment = db.query(Appointment).filter(
+    appointment = db.query(Appointment).options(
+        joinedload(Appointment.booking).joinedload(Booking.cargos),
+        joinedload(Appointment.terminal),
+        joinedload(Appointment.gate_in),
+        joinedload(Appointment.truck)
+    ).filter(
         Appointment.arrival_id == arrival_id
     ).first()
     
     if not appointment:
-        return None
+        return None, "Invalid PIN or appointment not found"
     
     # Verify driver is authorized for this appointment
     if appointment.driver_license != drivers_license:
-        return None
+        return None, "Not authorized for this appointment"
     
-    return appointment
+    # Check if appointment is in a claimable state
+    if appointment.status not in ['in_transit', 'delayed', 'in_process']:
+        return None, f"Appointment cannot be claimed (status: {appointment.status})"
+    
+    # In production mode, validate sequential access
+    use_debug = debug_mode or settings.debug_mode
+    if not use_debug:
+        next_in_queue = get_next_appointment_in_queue(db, drivers_license)
+        if next_in_queue and next_in_queue.id != appointment.id:
+            return None, f"Must complete delivery {next_in_queue.arrival_id} first"
+    
+    return appointment, ""
 
 
 def get_driver_active_appointment(db: Session, drivers_license: str) -> Optional[Appointment]:
     """
     Gets the active appointment for a driver.
-    An active appointment is one that:
-    - Has the driver assigned
-    - Status is 'pending', 'in_transit', 'delayed', or 'in_process'
-    
-    Uses joinedload to eagerly fetch nested relationships needed by the frontend.
+    Returns the earliest active appointment by scheduled_start_time.
     """
     appointment = db.query(Appointment).options(
         joinedload(Appointment.booking).joinedload(Booking.cargos),
@@ -85,9 +133,7 @@ def get_driver_active_appointment(db: Session, drivers_license: str) -> Optional
 # ==================== QUERY FUNCTIONS ====================
 
 def get_drivers(db: Session, skip: int = 0, limit: int = 100, only_active: bool = True) -> List[Driver]:
-    """
-    Returns drivers with pagination.
-    """
+    """Returns drivers with pagination."""
     query = db.query(Driver)
     
     if only_active:
@@ -97,22 +143,22 @@ def get_drivers(db: Session, skip: int = 0, limit: int = 100, only_active: bool 
 
 
 def get_driver_appointments(db: Session, drivers_license: str, limit: int = 50) -> List[Appointment]:
-    """
-    Returns appointments for a driver.
-    """
+    """Returns appointments for a driver."""
     return db.query(Appointment).filter(
         Appointment.driver_license == drivers_license
     ).order_by(Appointment.scheduled_start_time.desc()).limit(limit).all()
 
 
 def get_driver_today_appointments(db: Session, drivers_license: str) -> List[Appointment]:
-    """
-    Returns today's appointments for a driver.
-    Used in mobile app to show daily deliveries.
-    """
+    """Returns today's appointments for a driver."""
     from sqlalchemy import func
     
-    return db.query(Appointment).filter(
+    return db.query(Appointment).options(
+        joinedload(Appointment.booking).joinedload(Booking.cargos),
+        joinedload(Appointment.terminal),
+        joinedload(Appointment.gate_in),
+        joinedload(Appointment.truck)
+    ).filter(
         Appointment.driver_license == drivers_license,
         func.date(Appointment.scheduled_start_time) == date.today()
     ).order_by(Appointment.scheduled_start_time.asc()).all()

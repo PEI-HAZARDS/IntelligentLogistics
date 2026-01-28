@@ -1,0 +1,95 @@
+# Alertmanager Configuration - Email Notifications
+#
+# IMPORTANT: Credentials are loaded from environment variables
+# Configure them in the .env file (not committed to git)
+#
+# ============================================================================
+
+global:
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: '${SMTP_FROM}'
+  smtp_auth_username: '${SMTP_AUTH_USERNAME}'
+  smtp_auth_password: '${SMTP_AUTH_PASSWORD}'
+  smtp_require_tls: true
+
+# Notification templates
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# Routing tree
+route:
+  # Default receiver
+  receiver: 'email-critical'
+  
+  # Wait before sending first notification
+  group_wait: 30s
+  
+  # Wait before sending new alerts for the same group
+  group_interval: 5m
+  
+  # Wait before re-sending notification
+  repeat_interval: 4h
+  
+  # Group by alertname and service
+  group_by: ['alertname', 'service', 'severity']
+  
+  # Child routes for different severities
+  routes:
+    # Critical alerts - immediate
+    - match:
+        severity: critical
+      receiver: 'email-critical'
+      group_wait: 10s
+      repeat_interval: 1h
+    
+    # Warning alerts - less urgent
+    - match:
+        severity: warning
+      receiver: 'email-warning'
+      group_wait: 1m
+      repeat_interval: 4h
+
+# Receivers
+receivers:
+  - name: 'email-critical'
+    email_configs:
+      - to: '${ALERT_EMAIL_TO}'
+        send_resolved: true
+        headers:
+          Subject: '🚨 [CRITICAL] IntelligentLogistics Alert: {{ .GroupLabels.alertname }}'
+        html: |
+          <h2>🚨 Critical Alert</h2>
+          <p><strong>Alert:</strong> {{ .GroupLabels.alertname }}</p>
+          <p><strong>Service:</strong> {{ .GroupLabels.service }}</p>
+          {{ range .Alerts }}
+          <hr>
+          <p><strong>Instance:</strong> {{ .Labels.instance }}</p>
+          <p><strong>Summary:</strong> {{ .Annotations.summary }}</p>
+          <p><strong>Description:</strong> {{ .Annotations.description }}</p>
+          <p><strong>Started:</strong> {{ .StartsAt.Format "2006-01-02 15:04:05" }}</p>
+          {{ end }}
+
+  - name: 'email-warning'
+    email_configs:
+      - to: '${ALERT_EMAIL_TO}'
+        send_resolved: true
+        headers:
+          Subject: '⚠️ [WARNING] IntelligentLogistics Alert: {{ .GroupLabels.alertname }}'
+        html: |
+          <h2>⚠️ Warning Alert</h2>
+          <p><strong>Alert:</strong> {{ .GroupLabels.alertname }}</p>
+          <p><strong>Service:</strong> {{ .GroupLabels.service }}</p>
+          {{ range .Alerts }}
+          <hr>
+          <p><strong>Instance:</strong> {{ .Labels.instance }}</p>
+          <p><strong>Summary:</strong> {{ .Annotations.summary }}</p>
+          <p><strong>Description:</strong> {{ .Annotations.description }}</p>
+          {{ end }}
+
+# Inhibition rules - suppress less severe alerts when critical ones fire
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'instance']
