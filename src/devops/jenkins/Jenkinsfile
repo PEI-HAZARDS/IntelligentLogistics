@@ -222,21 +222,21 @@ ${extraInfo ? extraInfo + '\n' : ''}╠═════════════�
                     // Agent A
                     if (env.SEL_AGENT_A == 'true') {
                         parallelStages['🚚 Agent A'] = {
-                            executeAction('agenta', AGENTA_IP, 'src/agentA_microservice', 'agenta')
+                            executeAction('agenta', AGENTA_IP, 'src/AI_APP/agentA', 'agenta')
                         }
                     }
                     
                     // Agent B
                     if (env.SEL_AGENT_B == 'true') {
                         parallelStages['🔢 Agent B'] = {
-                            executeAction('agentb', AGENTB_IP, 'src/agentB_microservice', 'agentb')
+                            executeAction('agentb', AGENTB_IP, 'src/AI_APP/agentB', 'agentb')
                         }
                     }
                     
                     // Agent C
                     if (env.SEL_AGENT_C == 'true') {
                         parallelStages['⚠️ Agent C'] = {
-                            executeAction('agentc', AGENTC_IP, 'src/agentC_microservice', 'agentc')
+                            executeAction('agentc', AGENTC_IP, 'src/AI_APP/agentC', 'agentc')
                         }
                     }
                     
@@ -272,14 +272,14 @@ ${extraInfo ? extraInfo + '\n' : ''}╠═════════════�
                     // Decision Engine
                     if (env.SEL_DECISION_ENGINE == 'true') {
                         parallelStages['🧠 Decision Engine'] = {
-                            executeAction('decision-engine', DECISION_ENGINE_IP, 'src/decision_engine_microservice', 'decision-engine')
+                            executeAction('decision-engine', DECISION_ENGINE_IP, 'src/V_APP/decision_engine', 'decision-engine')
                         }
                     }
                     
                     // API Gateway
                     if (env.SEL_API_GATEWAY == 'true') {
                         parallelStages['🌐 API Gateway'] = {
-                            executeAction('api_gateway', API_GATEWAY_IP, 'src/api_gateway', 'api_gateway', '8000:8000')
+                            executeAction('api_gateway', API_GATEWAY_IP, 'src/V_APP/api_gateway', 'api_gateway', '8000:8000')
                         }
                     }
                     
@@ -546,7 +546,7 @@ def deployDataModule(String vmIp) {
     // Copiar docker-compose para a VM
     sh """
         scp -o StrictHostKeyChecking=no \\
-            src/Data_Module/docker-compose.yml \\
+            src/V_APP/Data_Module/docker-compose.yml \\
             ${SSH_USER}@${vmIp}:~/data-module/
     """
     

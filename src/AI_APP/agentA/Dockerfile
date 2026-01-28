@@ -15,15 +15,15 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # 2. Python dependencies
-COPY agentA/requirements.txt ./
+COPY AI_APP/agentA/requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # 3. Copy source code
-COPY agentA/src/ ./src/
+COPY AI_APP/agentA/src/ ./src/
 COPY shared/ ./shared/
-COPY agentA/init.py agentA/setup.py ./
-COPY agentA/tests/ ./tests/
+COPY AI_APP/agentA/init.py AI_APP/agentA/setup.py ./
+COPY AI_APP/agentA/tests/ ./tests/
 
 # 4. Download YOLO model
 RUN python -c "from setup import setup; setup()" && \

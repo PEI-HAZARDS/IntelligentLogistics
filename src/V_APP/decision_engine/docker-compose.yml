@@ -1,8 +1,8 @@
 services:
   decision-engine:
     build:
-      context: ..
-      dockerfile: decision_engine/Dockerfile
+      context: ../..              # src/ directory as build context
+      dockerfile: V_APP/decision_engine/Dockerfile  # Path to Dockerfile from src/
     image: decision-engine:latest
     container_name: decision-engine
     restart: unless-stopped
