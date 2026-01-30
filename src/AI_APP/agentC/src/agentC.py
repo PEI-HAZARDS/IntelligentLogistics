@@ -1,5 +1,6 @@
 from shared.src.base_agent import BaseAgent
 from shared.src.plate_classifier import PlateClassifier
+from shared.src.paddle_ocr import OCR
 
 import os
 from typing import Dict, Any
@@ -28,6 +29,11 @@ class AgentC(BaseAgent):
     def get_agent_name(self) -> str:
         """Return agent identifier."""
         return "AgentC"
+    
+    def initiallize_ocr(self) -> OCR:
+        """Initialize and return OCR instance."""
+        allowed_chars = '0123456789xX '  # Digits, space, and hyphen for hazard plates
+        return OCR(allowed_chars=allowed_chars)
     
     def get_bbox_color(self) -> str:
         """Return bbox color (e.g., 'Red', 'Green')."""

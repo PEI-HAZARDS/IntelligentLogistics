@@ -27,6 +27,7 @@ from agentC.src.agentC import AgentC
 # Files to download (name, Google Drive ID, destination folder)
 FILE_NAME = "hazard_plate_model.pt"
 FILE_ID = "1Dx1XS4pALjzP6AN5ryAJXA7sJ4KgH4JD"
+FILE_ID_V2 = "12Y0Knu9J-yLIlKGhowg_iKVCBt59jZwe"
 NEW_DIR = "data"
 
 logger = logging.getLogger("init-AgentC")
@@ -50,7 +51,7 @@ def setup():
     if os.path.exists(dest_path):
         logger.info(f"[init] {FILE_NAME} already exists in {NEW_DIR} — skipping.")
     else:
-        url = f"https://drive.google.com/uc?id={FILE_ID}"
+        url = f"https://drive.google.com/uc?id={FILE_ID_V2}"
         logger.info(f"[init] Downloading {FILE_NAME} to {NEW_DIR}...")
         gdown.download(url, dest_path, quiet=False)
 

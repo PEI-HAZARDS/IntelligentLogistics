@@ -1,6 +1,7 @@
 from shared.src.base_agent import BaseAgent
 from shared.src.plate_classifier import PlateClassifier
 from shared.src.image_storage import ImageStorage
+from shared.src.paddle_ocr import OCR
 
 import os
 from typing import Dict, Any
@@ -41,6 +42,10 @@ class AgentB(BaseAgent):
     def get_agent_name(self) -> str:
         """Return agent identifier."""
         return "AgentB"
+    
+    def initiallize_ocr(self) -> OCR:
+        """Initialize and return OCR instance."""
+        return OCR()
     
     def get_bbox_color(self) -> str:
         """Return bbox color (e.g., 'Red', 'Green')."""

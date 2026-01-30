@@ -92,7 +92,7 @@ class BaseAgent(ABC):
         
         # Initialize models - use provided dependencies or create defaults
         self.yolo = object_detector or ObjectDetector(self.get_yolo_model_path())
-        self.ocr = ocr or OCR()
+        self.ocr = ocr or self.initiallize_ocr()
         self.classifier = classifier or PlateClassifier()
         self.drawer = drawer or BoundingBoxDrawer(color=self.get_bbox_color(), thickness=2, label=self.get_bbox_label())
         self.annotated_frames_storage = annotated_frames_storage or ImageStorage(self.minio_conf, self.get_annotated_frames_bucket())
@@ -145,6 +145,11 @@ class BaseAgent(ABC):
     @abstractmethod
     def get_agent_name(self) -> str:
         """Return agent identifier (e.g., 'AgentB', 'AgentC')."""
+        pass
+    
+    @abstractmethod
+    def initiallize_ocr(self) -> OCR:
+        """Initialize and return OCR instance."""
         pass
     
     @abstractmethod

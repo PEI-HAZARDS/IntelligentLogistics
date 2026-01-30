@@ -28,7 +28,7 @@ class OCR:
     MIN_HEIGHT = 10
     MIN_WIDTH = 20
 
-    def __init__(self):
+    def __init__(self, allowed_chars=None):
         """Initialize PaddleOCR with settings optimized for license plates."""
         self.paddle_ocr = PaddleOCR(
             use_angle_cls=True,           # Enable angle classification for rotated plates
@@ -36,6 +36,8 @@ class OCR:
             use_doc_orientation_classify=False,
             use_doc_unwarping=False,
         )
+        self.allowed_chars = allowed_chars if allowed_chars else 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-'
+        
         logger.info("[PaddleOCR] Initialized with license plate optimizations")
     
     def _to_cv_image(self, image):
@@ -107,13 +109,12 @@ class OCR:
         if not text:
             return ""
         
-        # Allowed characters for license plates
-        allowed_chars = set('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-')
+        # Allowed characters
         
         text = text.upper()
         
         # Filter to allowed characters only
-        filtered = ''.join(c for c in text if c in allowed_chars)
+        filtered = ''.join(c for c in text if c in self.allowed_chars)
         
         return filtered.strip()
 
