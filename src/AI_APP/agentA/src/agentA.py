@@ -147,7 +147,7 @@ class AgentA:
             # Draw detected boxes on the frame (labelled)
             try:
                 frame = self.drawer.draw_box(frame, boxes)
-                self.image_storage.upload_memory_image(frame, f"{truck_id}_{int(time.time())}.jpg")
+                self.image_storage.upload_memory_image(frame, f"{truck_id}_{int(time.time())}.jpg", image_type="temp")
             except Exception as e:
                 logger.exception(f"[AgentA] Error drawing boxes: {e}")
 

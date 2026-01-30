@@ -347,7 +347,7 @@ class BaseAgent(ABC):
         try:
             annotated_frame = frame.copy()
             annotated_frame = self.drawer.draw_box(annotated_frame, boxes)
-            self.annotated_frames_storage.upload_memory_image(annotated_frame, f"{self.truck_id}_{int(time.time())}.jpg")
+            self.annotated_frames_storage.upload_memory_image(annotated_frame, f"{self.truck_id}_{int(time.time())}.jpg", image_type="temp")
         except Exception as e:
             self.logger.exception(f"[{self.agent_name}] Error drawing boxes: {e}")
         
@@ -519,7 +519,7 @@ class BaseAgent(ABC):
         
         try:
             best_crop = self.consensus_algorithm.best_crop
-            crop_url = self.crop_storage.upload_memory_image(best_crop, f"{self.truck_id}_{int(time.time())}.jpg")
+            crop_url = self.crop_storage.upload_memory_image(best_crop, f"{self.truck_id}_{int(time.time())}.jpg", image_type="delivery")
             
             if crop_url:
                 self.logger.info(f"[{self.agent_name}] Crop uploaded: {crop_url}")
@@ -569,7 +569,7 @@ class BaseAgent(ABC):
         if crop is not None:
             # Always upload the returned crop, even if text is N/A
             try:
-                crop_url = self.crop_storage.upload_memory_image(crop, f"{self.truck_id}_{int(time.time())}.jpg")
+                crop_url = self.crop_storage.upload_memory_image(crop, f"{self.truck_id}_{int(time.time())}.jpg", image_type="delivery")
                 self.logger.info(f"[{self.agent_name}] Crop uploaded: {crop_url}")
             except Exception as e:
                 self.logger.exception(f"[{self.agent_name}] Error uploading crop to MinIO: {e}")
