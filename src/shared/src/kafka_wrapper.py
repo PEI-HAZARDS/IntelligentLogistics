@@ -23,7 +23,7 @@ class KafkaProducerWrapper:
         """
         Encodes data as JSON and publishes it.
         """
-        logger.info(f"Producing message to topic {topic}...")
+        logger.debug(f"Producing to {topic}")
         try:
             payload = json.dumps(data).encode("utf-8")
             self.producer.produce(
@@ -35,7 +35,7 @@ class KafkaProducerWrapper:
             )
             self.producer.poll(0) # Trigger callbacks immediately
         except Exception as e:
-            logger.exception(f"Failed to publish to {topic}: {e}")
+            logger.error(f"Publish failed to {topic}: {e}")
 
     def flush(self, timeout=10):
         self.producer.flush(timeout)
@@ -62,10 +62,11 @@ class KafkaConsumerWrapper:
             return None
             
         if msg.error():
-            logger.error(f"Consumer error: {msg.error()}")
+            if msg.error().code() != KafkaError._PARTITION_EOF:
+                logger.error(f"Consumer error: {msg.error()}")
             return None
         
-        logger.info(f"Consumed message from topic {msg.topic()}")
+        logger.debug(f"Consumed message from {msg.topic()}")
         return msg
     
     def consume_typed_message(self, timeout=1.0):
@@ -93,21 +94,19 @@ class KafkaConsumerWrapper:
         """
         cleared_count = 0
         
-        logger.info("Clearing stale messages from queue...")
+        logger.debug("Clearing stale messages...")
         
         while True:
             msg = self.consumer.poll(timeout=0.1)
             if msg is None:
                 break
             if msg.error():
-                logger.error(f"Consumer error while clearing: {msg.error()}")
+                logger.warning(f"Error while clearing: {msg.error()}")
                 continue
             cleared_count += 1
         
         if cleared_count > 0:
-            logger.info(f"Cleared {cleared_count} stale message(s) from queue")
-        else:
-            logger.info("No stale messages found in queue")
+            logger.info(f"Cleared {cleared_count} stale messages")
             
         return cleared_count
     
@@ -120,18 +119,18 @@ class KafkaConsumerWrapper:
             return None, None, None
             
         if msg.error():
-            logger.error(f"Consumer error: {msg.error()}")
+            logger.debug(f"Consumer error: {msg.error()}")
             return None, None, None
             
         try:
             data = json.loads(msg.value())
         except json.JSONDecodeError:
-            logger.warning("Invalid message (JSON). Ignored.")
+            logger.debug("Invalid JSON message, skipped")
             return None, None, None
             
         truck_id = self.extract_truck_id_from_headers(msg.headers())
         if not truck_id:
-            logger.warning("Message missing 'truck_id' header. Ignored.")
+            logger.warning("Missing truck_id header, skipped")
             return None, None, None
             
         return msg.topic(), data, truck_id

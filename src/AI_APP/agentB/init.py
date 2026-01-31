@@ -39,7 +39,7 @@ AGENT_UP = Gauge('agent_up', 'Agent is running', ['agent'])
 
 
 def setup():
-    logger.info("[init] Downloading models from Google Drive")
+    logger.info("Downloading models from Google Drive")
     base_dir = os.path.dirname(__file__)
 
     # Build the full destination directory path
@@ -48,35 +48,35 @@ def setup():
 
     dest_path = os.path.join(dest_dir, FILE_NAME)
     if os.path.exists(dest_path):
-        logger.info(f"[init] {FILE_NAME} already exists in {NEW_DIR} — skipping.")
+        logger.info(f"{FILE_NAME} already exists in {NEW_DIR} — skipping.")
     else:
         url = f"https://drive.google.com/uc?id={FILE_ID}"
-        logger.info(f"[init] Downloading {FILE_NAME} to {NEW_DIR}...")
+        logger.info(f"Downloading {FILE_NAME} to {NEW_DIR}...")
         gdown.download(url, dest_path, quiet=False)
 
-    logger.info("[init] All files ready!")
+    logger.info("All files ready!")
 
 
 def main():
     # Start Prometheus metrics server
-    logger.info(f"[init] Starting Prometheus metrics server on port {METRICS_PORT}")
+    logger.info(f"Starting Prometheus metrics server on port {METRICS_PORT}")
     start_http_server(METRICS_PORT)
     AGENT_UP.labels(agent='agent-b').set(1)
     
     setup()
     
-    logger.info("[init] Creating AgentB instance...")
+    logger.info("Creating AgentB instance...")
     agent = AgentB()
     
     # Reset logging level AFTER AgentB is created
     # PaddleOCR overrides it during OCR() initialization
     logging.getLogger().setLevel(logging.INFO)
     
-    logger.info("[init] AgentB instance created!")
+    logger.info("AgentB instance created!")
     
     # Register signal handler for graceful shutdown
     def signal_handler(sig, frame):
-        logger.info("\n[init] Keyboard interrupt received, stopping agent...")
+        logger.info("\nKeyboard interrupt received, stopping agent...")
         AGENT_UP.labels(agent='agent-b').set(0)
         agent.stop()
         sys.exit(0)
@@ -85,14 +85,14 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
     
     try:
-        logger.info("[init] Starting AgentB main loop...")
+        logger.info("Starting AgentB main loop...")
         agent.loop()
     except KeyboardInterrupt:
-        logger.info("\n[init] Keyboard interrupt received, stopping agent...")
+        logger.info("\nKeyboard interrupt received, stopping agent...")
         AGENT_UP.labels(agent='agent-b').set(0)
         agent.stop()
     except Exception as e:
-        logger.info(f"[init] Unexpected error: {e}")
+        logger.info(f"Unexpected error: {e}")
         AGENT_UP.labels(agent='agent-b').set(0)
         agent.stop()
         raise

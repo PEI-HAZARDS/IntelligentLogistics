@@ -131,7 +131,7 @@ class ImageStorage:
                 stream_size,
                 content_type="image/jpeg"
             )
-            logger.info(f"Uploaded {image_type} image as '{prefixed_name}' to bucket '{self.bucket_name}'")
+            logger.info(f"Uploaded '{prefixed_name}' to bucket '{self.bucket_name}'")
 
             # 4. Generate Link
             return self._generate_presigned_url(prefixed_name)

@@ -1,11 +1,9 @@
-
 """
 PaddleOCR-based License Plate Text Extraction
 
 Optimized for license plate recognition with:
 - Intelligent image resizing for better OCR accuracy
-- Adaptive preprocessing (grayscale, denoising, contrast enhancement)
-- Multiple recognition attempts with fallback strategies
+- Adaptive preprocessing (grayscale, padding)
 """
 
 import logging
@@ -38,78 +36,103 @@ class OCR:
         )
         self.allowed_chars = allowed_chars if allowed_chars else 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-'
         
-        logger.info("[PaddleOCR] Initialized with license plate optimizations")
+        logger.info("Initialized with allowed chars: " + self.allowed_chars)
     
     def _to_cv_image(self, image):
-        """
-        Convert various image formats to OpenCV BGR format.
-        """
+        """Convert various image formats to OpenCV BGR format."""
         if isinstance(image, str):
-            img = cv2.imread(image)
-            return img
+            return cv2.imread(image)
+        
         if isinstance(image, Image.Image):
             arr = np.array(image)
             if arr.ndim == 3:
                 return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
             return arr
+        
         if isinstance(image, np.ndarray):
             return image
+        
         return None
 
-    def _resize_and_pad(self, img, target_height=48):
+    def _resize_and_pad(self, img, target_height=64):
         """
-        Resizes image to a target height while maintaining aspect ratio,
-        and adds padding to assist OCR detection near edges.
+        Resize image to target height while maintaining aspect ratio,
+        and add padding to improve OCR accuracy.
+        
+        Args:
+            img: Input image
+            target_height: Target height for resizing (default: 64)
+            
+        Returns:
+            Resized and padded image
         """
         h, w = img.shape[:2]
         
-        # 1. Scale aspect ratio
+        # Scale to target height while maintaining aspect ratio
         scale = target_height / h
         new_w = int(w * scale)
         
-        # Use Lanczos resampling for better quality upscaling of small images
+        # Use Lanczos resampling for better quality upscaling
         resized = cv2.resize(img, (new_w, target_height), interpolation=cv2.INTER_LANCZOS4)
         
-        # 2. Add Border (Padding)
-        # Deep Learning OCR works better when text doesn't touch edges
-        # We use borderReplicate to extend the background color naturally
+        # Add padding to prevent text from touching edges
         padding = 10
         padded = cv2.copyMakeBorder(
             resized, 
-            top=padding, bottom=padding, left=padding, right=padding, 
+            top=padding, 
+            bottom=padding, 
+            left=padding, 
+            right=padding, 
             borderType=cv2.BORDER_REPLICATE
         )
+        
         return padded
 
     def _preprocess_plate(self, cv_img):
+        """
+        Preprocess license plate image for OCR.
+        
+        Args:
+            cv_img: Input OpenCV image
+            
+        Returns:
+            Preprocessed image ready for OCR
+            
+        Raises:
+            ValueError: If image is None or too small
+        """
         if cv_img is None:
             raise ValueError("Could not convert input to CV image")
         
         h, w = cv_img.shape[:2]
         if h < self.MIN_HEIGHT or w < self.MIN_WIDTH:
-            logger.warning(f"[PaddleOCR] Image too small: {w}x{h}")
+            logger.warning(f"Image too small: {w}x{h}")
             raise ValueError(f"Image too small: {w}x{h}")
 
-        # --- STEP 1: Resize & Pad (Crucial for "Far" plates) ---
-        # We process the resized image from here on
+        # Resize and pad
         processed = self._resize_and_pad(cv_img, target_height=64)
 
-        # --- STEP 2: Grayscale ---
+        # Convert to grayscale
         if len(processed.shape) == 3:
             gray = cv2.cvtColor(processed, cv2.COLOR_BGR2GRAY)
         else:
             gray = processed.copy()
 
-        return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR) 
+        # Convert back to BGR for PaddleOCR
+        return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
     
     def _filter_text(self, text):
         """
-        Filter and clean OCR output for license plate format.
+        Filter and clean OCR output to only allowed characters.
+        
+        Args:
+            text: Raw OCR text
+            
+        Returns:
+            Filtered and cleaned text
         """
         if not text:
             return ""
-        
-        # Allowed characters
         
         text = text.upper()
         
@@ -119,7 +142,7 @@ class OCR:
         return filtered.strip()
 
     def _parse_dict_item(self, item, texts, confidences):
-        """Parse dictionary format result item."""
+        """Parse dictionary format item (new PaddleOCR)."""
         if 'rec_texts' in item and 'rec_scores' in item:
             texts.extend(item['rec_texts'])
             confidences.extend(item['rec_scores'])
@@ -128,10 +151,9 @@ class OCR:
             confidences.append(item['score'])
 
     def _parse_list_item(self, item, texts, confidences):
-        """Parse list/tuple format result item (old format)."""
+        """Parse list/tuple format item (old PaddleOCR)."""
         if len(item) < 2:
             return
-        
         text_data = item[-1]  # Last element is (text, conf)
         if isinstance(text_data, (list, tuple)) and len(text_data) >= 2:
             texts.append(str(text_data[0]))
@@ -140,44 +162,33 @@ class OCR:
             texts.append(text_data)
             confidences.append(0.5)  # Default confidence
 
-    def _parse_result_item(self, item, texts, confidences):
-        """Parse a single result item based on its type."""
-        if isinstance(item, dict):
-            self._parse_dict_item(item, texts, confidences)
-        elif isinstance(item, (list, tuple)):
-            self._parse_list_item(item, texts, confidences)
-
     def _parse_result(self, result):
         """
         Parse PaddleOCR result and extract text and confidence.
         
-        PaddleOCR 3.x returns results in format:
-        [{'rec_texts': [...], 'rec_scores': [...], ...}]
-        or list of detection results with text and scores
+        Args:
+            result: PaddleOCR prediction result
+            
+        Returns:
+            tuple: (text, confidence)
         """
-        if not result:
+        if not result or not isinstance(result, list):
             return "", 0.0
         
         texts = []
         confidences = []
         
-        # Handle different result formats
         try:
-            if isinstance(result, list) and len(result) > 0:
-                for item in result:
-                    self._parse_result_item(item, texts, confidences)
+            for item in result:
+                if isinstance(item, dict):
+                    self._parse_dict_item(item, texts, confidences)
+                elif isinstance(item, (list, tuple)):
+                    self._parse_list_item(item, texts, confidences)
         except Exception as e:
-            logger.debug(f"[PaddleOCR] Error parsing result: {e}")
-            logger.debug(f"[PaddleOCR] Raw result: {result}")
+            logger.debug(f"Error parsing result: {e}")
             return "", 0.0
         
         if not texts:
-            # Try to extract any string from the result
-            try:
-                result_str = str(result)
-                logger.debug(f"[PaddleOCR] Result as string: {result_str[:200]}")
-            except Exception:
-                pass
             return "", 0.0
         
         full_text = " ".join(str(t) for t in texts)
@@ -185,40 +196,12 @@ class OCR:
         
         return full_text, avg_confidence
 
-    def _extract_text_with_mode(self, cv_img):
-        """
-        Single extraction attempt with specified preprocessing mode.
-        """
-        try:
-            processed = self._preprocess_plate(cv_img)
-            
-            # Use predict() method for PaddleOCR 3.x
-            result = self.paddle_ocr.predict(processed)
-            
-            text, conf = self._parse_result(result)
-            
-            # Filter the text
-            text = self._filter_text(text)
-            
-            if text:
-                logger.info(f"[PaddleOCR]: '{text}' (conf={conf:.2f})")
-            else:
-                logger.info("[PaddleOCR]: No text extracted")
-            
-            return text, conf
-            
-        except Exception as e:
-            logger.warning(f"[PaddleOCR] failed: {e}")
-            return "", 0.0
-
     def _extract_text(self, cv_img):
         """
-        Extract text from license plate crop with fallback strategies.
-        
-        Attempts multiple preprocessing strategies and returns the best result.
+        Extract text from license plate crop.
         
         Args:
-            cv_img: OpenCV image of cropped license plate (BGR)
+            cv_img: OpenCV image of cropped license plate (BGR) or path to image
             
         Returns:
             tuple: (text, confidence)
@@ -226,23 +209,32 @@ class OCR:
         cv_img = self._to_cv_image(cv_img)
         
         if cv_img is None:
-            logger.warning("[PaddleOCR] Invalid image input")
+            logger.warning("Invalid image input")
             return "", 0.0
         
         h, w = cv_img.shape[:2]
-        logger.debug(f"[PaddleOCR] Processing image of size {w}x{h}")
+        logger.debug(f"Processing image of size {w}x{h}")
         
-        best_text = ""
-        best_conf = 0.0
-        
-        text, conf = self._extract_text_with_mode(cv_img)
+        try:
+            # Preprocess the image
+            processed = self._preprocess_plate(cv_img)
             
-        if conf > best_conf and text:
-            best_text, best_conf = text, conf
+            # Run OCR
+            result = self.paddle_ocr.predict(processed)
             
-        if best_text:
-            logger.info(f"[PaddleOCR] Best result: '{best_text}' ({best_conf:.2f})")
-        else:
-            logger.warning("[PaddleOCR] No text extracted from image")
-        
-        return best_text, best_conf
+            # Parse results
+            text, conf = self._parse_result(result)
+            
+            # Filter the text
+            text = self._filter_text(text)
+            
+            if text:
+                logger.info(f"Result: '{text}' (conf={conf:.2f})")
+            else:
+                logger.info("Result: No text extracted")
+            
+            return text, conf
+            
+        except Exception as e:
+            logger.warning(f"OCR extraction failed: {e}")
+            return "", 0.0

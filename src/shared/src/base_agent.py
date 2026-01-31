@@ -113,7 +113,7 @@ class BaseAgent(ABC):
         self.init_metrics()
         self.frames_processed = 0
 
-        self.logger.info(f"[{self.agent_name}] Initialized successfully")
+        self.logger.info(f"Initialized {self.agent_name}")
 
     def _load_config(self):
         """Load environment configuration."""
@@ -237,8 +237,7 @@ class BaseAgent(ABC):
     
     def loop(self):
         """Main processing loop."""
-        self.logger.info(
-            f"[{self.agent_name}] Main loop starting… (topic in='{self.get_consume_topic()}')")
+        self.logger.info(f"Listening on '{self.get_consume_topic()}'")
         
         # Clear any stale messages on startup
         self.kafka_consumer.clear_stale_messages()
@@ -253,17 +252,17 @@ class BaseAgent(ABC):
                 self._process_message(msg)
                 
         except KeyboardInterrupt:
-            self.logger.info(f"[{self.agent_name}] Interrupted by user.")
+            self.logger.info("Interrupted by user")
         except KafkaException as e:
-            self.logger.exception(f"[{self.agent_name}/Kafka] Kafka error: {e}")
+            self.logger.error(f"Kafka error: {e}")
         except Exception as e:
-            self.logger.exception(f"[{self.agent_name}] Unexpected error: {e}")
+            self.logger.error(f"Unexpected error: {e}")
         finally:
             self._cleanup_resources()
 
     def stop(self):
         """Gracefully stop agent."""
-        self.logger.info(f"[{self.agent_name}] Stopping agent…")
+        self.logger.info("Stopping agent...")
         self.running = False
 
     def _get_frames(self, num_frames: int = 30):
@@ -273,7 +272,7 @@ class BaseAgent(ABC):
         Args:
             num_frames: Number of frames to capture
         """
-        self.logger.info(f"[{self.agent_name}] Reading {num_frames} frame(s) from RTMP…")
+        self.logger.debug(f"Reading {num_frames} frames")
 
         captured = 0
         while captured < num_frames and self.running:
@@ -282,31 +281,31 @@ class BaseAgent(ABC):
                 if frame is not None:
                     self.frames_queue.put(frame)
                     captured += 1
-                    self.logger.debug(f"[{self.agent_name}] Captured {captured}/{num_frames}.")
+                    self.logger.debug(f"Captured {captured}/{num_frames}")
                 else:
                     time.sleep(0.1)
             
             except Exception as e:
-                self.logger.exception(f"[{self.agent_name}] Error when capturing frame {e}")
+                self.logger.warning(f"Frame capture error: {e}")
                 time.sleep(0.2)
 
     def _get_next_frame(self):
         """Get next frame from queue, capturing more if needed."""
         if self.frames_queue.empty():
-            self.logger.debug(f"[{self.agent_name}] Frames queue is empty, capturing more frames.")
+            self.logger.debug("Queue empty, capturing more frames")
             self._get_frames(5)
         
         if self.frames_queue.empty():
-            self.logger.warning(f"[{self.agent_name}] No frame captured from RTSP.")
+            self.logger.debug("No frame available")
             return None
         
         try:
             frame = self.frames_queue.get_nowait()
-            self.logger.debug(f"[{self.agent_name}] Frame obtained from queue.")
+            self.logger.debug("Frame obtained")
             return frame
         
         except Empty:
-            self.logger.warning(f"[{self.agent_name}] Frames queue is empty.")
+            self.logger.debug("Queue empty")
             time.sleep(0.05)
             return None
 
@@ -314,7 +313,7 @@ class BaseAgent(ABC):
         """Clear all remaining frames from queue."""
         remaining = self.frames_queue.qsize()
         if remaining > 0:
-            self.logger.debug(f"[{self.agent_name}] Clearing {remaining} remaining frames from queue")
+            self.logger.debug(f"Clearing {remaining} frames")
             while not self.frames_queue.empty():
                 try:
                     self.frames_queue.get_nowait()
@@ -327,7 +326,7 @@ class BaseAgent(ABC):
 
     def _run_yolo_detection(self, frame):
         """Run YOLO detection on frame."""
-        self.logger.info(f"[{self.agent_name}] YOLO running…")
+        self.logger.info("Running YOLO detection...")
         
         inference_latency = getattr(self, 'inference_latency', None)
         if inference_latency:
@@ -337,11 +336,11 @@ class BaseAgent(ABC):
             results = self.yolo.detect(frame)
 
         if not results:
-            self.logger.debug(f"[{self.agent_name}] YOLO did not return a result for this frame.")
+            self.logger.debug("No YOLO result")
             return None
 
         if not self.yolo.object_found(results):
-            self.logger.info(f"[{self.agent_name}] No {self.get_object_type()} detected for this frame.")
+            self.logger.info(f"No {self.get_object_type()} detected")
             return None
 
         boxes = self.yolo.get_boxes(results)
@@ -351,7 +350,7 @@ class BaseAgent(ABC):
             annotated_frame = self.drawer.draw_box(annotated_frame, boxes)
             self.annotated_frames_storage.upload_memory_image(annotated_frame, f"{self.truck_id}_{int(time.time())}.jpg", image_type="temp")
         except Exception as e:
-            self.logger.exception(f"[{self.agent_name}] Error drawing boxes: {e}")
+            self.logger.warning(f"Error drawing boxes: {e}")
         
         plates_detected = getattr(self, 'plates_detected', None)
         hazards_detected = getattr(self, 'hazards_detected', None)
@@ -364,7 +363,7 @@ class BaseAgent(ABC):
             for _ in boxes:
                 hazards_detected.inc()
 
-        self.logger.info(f"[{self.agent_name}] {len(boxes)} {self.get_object_type()}(s) detected.")
+        self.logger.info(f"Detected {len(boxes)} {self.get_object_type()}")
         return boxes
 
     def _extract_crop(self, box, frame, box_index: int) -> Optional[Tuple]:
@@ -377,7 +376,7 @@ class BaseAgent(ABC):
         x1, y1, x2, y2, conf = map(float, box)
 
         if conf < self.MIN_DETECTION_CONFIDENCE:
-            self.logger.info(f"[{self.agent_name}] Ignored low confidence box (conf={conf:.2f}).")
+            self.logger.debug(f"Low confidence box ignored ({conf:.2f})")
             return None, None
 
         crop = frame[int(y1):int(y2), int(x1):int(x2)]
@@ -385,7 +384,7 @@ class BaseAgent(ABC):
         if not self.is_valid_detection(crop, conf, box_index):
             return None, None
 
-        self.logger.info(f"[{self.agent_name}] Crop {box_index} accepted")
+        self.logger.debug(f"Crop {box_index} valid")
         return crop, conf
 
     def _process_ocr_result(self, crop, crop_index: int):
@@ -395,14 +394,11 @@ class BaseAgent(ABC):
         Returns:
             (final_text, confidence, best_crop) if consensus reached, else None
         """
-        self.logger.info(f"[{self.agent_name}] OCR extracting text…")
+        self.logger.info("Running OCR")
         text, ocr_conf = self.ocr._extract_text(crop)
 
         if not text or ocr_conf <= 0.0:
-            self.logger.debug(f"[{self.agent_name}] OCR returned no valid text for crop {crop_index}")
             return None
-
-        self.logger.info(f"[{self.agent_name}] OCR: '{text}' (conf={ocr_conf:.2f})")
 
         ocr_confidence = getattr(self, 'ocr_confidence', None)
         if ocr_confidence:
@@ -412,14 +408,13 @@ class BaseAgent(ABC):
         text_normalized = text.upper().replace("-", "")
         self.consensus_algorithm.add_candidate_crop(crop.copy(), text_normalized, ocr_conf, is_fallback=False)
         
-        self.logger.debug(
-            f"[{self.agent_name}] Added candidate crop: '{text_normalized}' (conf={ocr_conf:.2f})")
+        self.logger.debug(f"Candidate: '{text_normalized}' ({ocr_conf:.2f})")
 
         self.consensus_algorithm.add_to_consensus(text_normalized, ocr_conf)
 
         if self.consensus_algorithm.check_full_consensus():
             final_text = self.consensus_algorithm.build_final_text()
-            self.logger.info(f"[{self.agent_name}] Full consensus achieved: '{final_text}'")
+            self.logger.info(f"Consensus: '{final_text}'")
             best_crop = self.consensus_algorithm.select_best_crop(final_text)
             return final_text, 1.0, best_crop
 
@@ -451,10 +446,10 @@ class BaseAgent(ABC):
                     if result:
                         return result
                 except Exception as e:
-                    self.logger.exception(f"[{self.agent_name}] OCR failure: {e}")
+                    self.logger.warning(f"OCR failure: {e}")
 
         except Exception as e:
-            self.logger.exception(f"[{self.agent_name}] Error processing frame: {e}")
+            self.logger.error(f"Frame processing error: {e}")
 
         return None
 
@@ -465,7 +460,7 @@ class BaseAgent(ABC):
         Returns:
             tuple: (text, confidence, crop_image) or (None, None, None)
         """
-        self.logger.info(f"[{self.agent_name}] Starting detection pipeline…")
+        self.logger.info("Starting detection pipeline")
         self.consensus_algorithm.reset()
         self.frames_processed = 0
 
@@ -479,19 +474,16 @@ class BaseAgent(ABC):
                 frames_metric.inc()
             
             self.frames_processed += 1
-            self.logger.debug(
-                f"[{self.agent_name}] Processing frame {self.frames_processed}/{self.MAX_FRAMES}")
+            self.logger.debug(f"Frame {self.frames_processed}/{int(self.MAX_FRAMES)}")
 
             result = self._process_single_frame(frame)
             if result:
                 text, conf, crop = result
-                self.logger.info(f"[{self.agent_name}] Consensus reached: '{text}' (conf={conf:.2f})")
                 self._clear_frames_queue()
                 return text, conf, crop
 
         if self.frames_processed >= self.MAX_FRAMES:
-            self.logger.info(
-                f"[{self.agent_name}] Frame limit reached ({self.MAX_FRAMES}), returning best partial result")
+            self.logger.info(f"Frame limit reached ({int(self.MAX_FRAMES)}), using partial result")
 
         return self.consensus_algorithm.get_best_partial_result(self.get_object_type())
 
@@ -512,13 +504,13 @@ class BaseAgent(ABC):
             crop_url = self.crop_storage.upload_memory_image(best_crop, f"{self.truck_id}_{int(time.time())}.jpg", image_type="delivery")
             
             if crop_url:
-                self.logger.info(f"[{self.agent_name}] Crop uploaded: {crop_url}")
+                self.logger.debug("Crop uploaded")
             else:
-                self.logger.warning(f"[{self.agent_name}] Failed to upload crop to MinIO")
+                self.logger.warning("Crop upload failed")
             
             return crop_url
         except Exception as e:
-            self.logger.exception(f"[{self.agent_name}] Error uploading crop to MinIO: {e}")
+            self.logger.error(f"Crop upload error: {e}")
             return None
     
     def _publish_detection(self, message: Message):
@@ -544,8 +536,7 @@ class BaseAgent(ABC):
         """
         # Set truck_id as instance variable for use throughout the processing cycle
         self.truck_id = self.kafka_consumer.extract_truck_id_from_headers(msg.headers())
-        self.logger.info(
-            f"[{self.agent_name}] Received 'truck-detected' (truckId={self.truck_id}). Starting pipeline…")
+        self.logger.info(f"Processing truck: {self.truck_id}")
 
         # Run detection pipeline and always use the returned crop
         text, confidence, crop = self.process_detection()
@@ -559,15 +550,15 @@ class BaseAgent(ABC):
                     f"{self.truck_id}_{int(time.time())}.jpg", 
                     image_type="delivery"
                 )
-                self.logger.info(f"[{self.agent_name}] Crop uploaded: {crop_url}")
+                self.logger.debug("Crop uploaded")
             except Exception as e:
-                self.logger.exception(f"[{self.agent_name}] Error uploading crop to MinIO: {e}")
+                self.logger.error(f"Crop upload error: {e}")
         else:
-            self.logger.warning(f"[{self.agent_name}] No crop available for upload")
+            self.logger.debug("No crop available")
 
         # Handle text results
         if not text:
-            self.logger.warning(f"[{self.agent_name}] No final text results — using fallback.")
+            self.logger.debug("No text result, using N/A")
             text = "N/A"
             confidence = confidence if confidence is not None else 0.0
             
@@ -607,7 +598,7 @@ class BaseAgent(ABC):
 
     def _cleanup_resources(self):
         """Release all resources gracefully."""
-        self.logger.info(f"[{self.agent_name}] Freeing resources…")
+        self.logger.info("Releasing resources")
         
         self.stream_manager.release()
         self.kafka_producer.flush()

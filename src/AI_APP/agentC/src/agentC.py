@@ -73,7 +73,7 @@ class AgentC(BaseAgent):
         Validate hazard plate detection.
         All detections are accepted (no classification filtering for hazard plates).
         """
-        self.logger.info(f"[AgentC] Crop {box_index} accepted as HAZARD_PLATE")
+        self.logger.debug(f"Crop {box_index} accepted as HAZARD_PLATE")
         self.hazards_detected.inc()
         self.ocr_confidence.observe(confidence)
         return True
@@ -122,7 +122,7 @@ class AgentC(BaseAgent):
             Tuple of (un, kemler)
         """
         parts = text.split(" ")
-        self.logger.info(f"[AgentC] Parts: {parts}")
+        self.logger.debug(f"Parts: {parts}")
         
         if len(parts) == 2:
             kemler = parts[0]

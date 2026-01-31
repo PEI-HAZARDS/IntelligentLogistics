@@ -191,7 +191,7 @@ class ConsensusAlgorithm:
         scored_crops.sort(key=lambda x: (x["similarity"], x["confidence"]), reverse=True)
         
         best = scored_crops[0]
-        self.logger.info(
+        self.logger.debug(
             f"Selected best crop: '{best['text']}' "
             f"(similarity={best['similarity']:.2f}, distance={best['distance']}, "
             f"conf={best['confidence']:.2f}) for final text '{final_text}'"
@@ -243,7 +243,7 @@ class ConsensusAlgorithm:
         
         # Fallback: return best crop based on YOLO confidence with no text
         best_crop = self.select_best_crop("")
-        self.logger.info(
+        self.logger.debug(
             f"No text consensus - using best YOLO detection (conf={self.best_confidence:.2f})")
         
         return "N/A", self.best_confidence, best_crop
