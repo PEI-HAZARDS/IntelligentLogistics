@@ -36,6 +36,7 @@ from shared.src.plate_classifier import PlateClassifier
 from shared.src.bounding_box_drawer import BoundingBoxDrawer
 from shared.src.kafka_wrapper import KafkaProducerWrapper, KafkaConsumerWrapper
 from shared.src.consensus_algorithm import ConsensusAlgorithm
+from shared.src.kafka_protocol import Message
 
 MAX_FRAMES = 40
 
@@ -203,19 +204,20 @@ class BaseAgent(ABC):
         pass
 
     @abstractmethod
-    def build_publish_payload(self, truck_id: str, detection_result: Dict[str, Any], 
-                              confidence: float, crop_url: Optional[str]) -> Dict[str, Any]:
+    def _build_message_for_detection(self, text: str, confidence: float, crop_url: Optional[str]) -> Message:
         """
-        Build Kafka message payload for publishing detection results.
+        Build the appropriate message for this agent's detection result.
+        
+        This method bridges between the generic detection pipeline (which returns text)
+        and the agent-specific message format.
         
         Args:
-            truck_id: Truck identifier
-            detection_result: Dictionary with detection-specific data
+            text: Detected text from OCR
             confidence: Detection confidence
             crop_url: MinIO crop URL
             
         Returns:
-            Dictionary payload to be JSON-encoded
+            Message object appropriate for this agent
         """
         pass
 
@@ -493,18 +495,6 @@ class BaseAgent(ABC):
 
         return self.consensus_algorithm.get_best_partial_result(self.get_object_type())
 
-    def _extract_truck_id(self, msg) -> str:
-        """
-        Extract truckId from message headers.
-        
-        Returns:
-            truckId or generates a new UUID if not found
-        """
-        for k, v in (msg.headers() or []):
-            if k == "truckId" and v is not None:
-                return v.decode() if isinstance(v, (bytes, bytearray)) else str(v)
-        return str(uuid.uuid4())
-
     def _upload_crop_to_storage(self, text: str) -> Optional[str]:
         """
         Upload best crop to MinIO storage.
@@ -530,35 +520,30 @@ class BaseAgent(ABC):
         except Exception as e:
             self.logger.exception(f"[{self.agent_name}] Error uploading crop to MinIO: {e}")
             return None
-
-    def _publish_detection(self, detection_result: Dict[str, Any], 
-                          confidence: float, crop_url: Optional[str]):
+    
+    def _publish_detection(self, message: Message):
         """
         Publish detection event to Kafka.
         
         Uses self.truck_id which is set when receiving a Kafka message.
         
         Args:
-            detection_result: Detection-specific data
-            confidence: Detection confidence
-            crop_url: MinIO crop URL
+            message: Message object to publish
         """
-        timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        
-        payload = self.build_publish_payload(self.truck_id, detection_result, confidence, crop_url)
-        payload["timestamp"] = timestamp
-        
-        self.logger.info(f"[{self.agent_name}] Publishing '{self.get_produce_topic()}' (truckId={self.truck_id}) …")
 
-        self.kafka_producer.produce(self.get_produce_topic(), payload, headers={"truckId": self.truck_id})
-
+        # Send message.to_dict() with truckId in headers
+        self.kafka_producer.produce(
+            topic=self.get_produce_topic(),
+            data=message.to_dict(),
+            headers={"truckId": self.truck_id}
+        )
+    
     def _process_message(self, msg):
         """
         Process single Kafka message and handle detection.
-        Can be overridden by child classes for custom processing logic.
         """
         # Set truck_id as instance variable for use throughout the processing cycle
-        self.truck_id = self._extract_truck_id(msg)
+        self.truck_id = self.kafka_consumer.extract_truck_id_from_headers(msg.headers())
         self.logger.info(
             f"[{self.agent_name}] Received 'truck-detected' (truckId={self.truck_id}). Starting pipeline…")
 
@@ -569,7 +554,11 @@ class BaseAgent(ABC):
         if crop is not None:
             # Always upload the returned crop, even if text is N/A
             try:
-                crop_url = self.crop_storage.upload_memory_image(crop, f"{self.truck_id}_{int(time.time())}.jpg", image_type="delivery")
+                crop_url = self.crop_storage.upload_memory_image(
+                    crop, 
+                    f"{self.truck_id}_{int(time.time())}.jpg", 
+                    image_type="delivery"
+                )
                 self.logger.info(f"[{self.agent_name}] Crop uploaded: {crop_url}")
             except Exception as e:
                 self.logger.exception(f"[{self.agent_name}] Error uploading crop to MinIO: {e}")
@@ -581,12 +570,14 @@ class BaseAgent(ABC):
             self.logger.warning(f"[{self.agent_name}] No final text results — using fallback.")
             text = "N/A"
             confidence = confidence if confidence is not None else 0.0
+            
+        confidence = confidence if confidence is not None else 0.0
 
-        # Parse detection result (can be overridden)
-        detection_result = self._parse_detection_result(text)
+        # Build message based on agent type
+        message = self._build_message_for_detection(text, confidence, crop_url)
 
         # Publish results
-        self._publish_detection(detection_result, confidence, crop_url) # type: ignore
+        self._publish_detection(message)
 
         # Clear frames queue for next detection
         with self.frames_queue.mutex:
@@ -599,15 +590,20 @@ class BaseAgent(ABC):
         Can be overridden by child classes for custom parsing.
         """
         return {"text": text}
-
+    
     def _publish_empty_result(self):
         """
         Publish empty result when detection fails.
         
         Uses self.truck_id which is set when receiving a Kafka message.
-        Can be overridden by child classes.
+        Delegates to _build_message_for_detection to create the appropriate message type.
         """
-        self._publish_detection({"text": "N/A"}, -1, None)
+        message = self._build_message_for_detection(
+            text="N/A",
+            confidence=0.0,
+            crop_url=None
+        )
+        self._publish_detection(message)
 
     def _cleanup_resources(self):
         """Release all resources gracefully."""

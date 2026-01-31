@@ -1,10 +1,11 @@
 from shared.src.base_agent import BaseAgent
+from shared.src.kafka_protocol import LicensePlateResultsMessage, KafkaMessageProto, Message
 from shared.src.plate_classifier import PlateClassifier
 from shared.src.image_storage import ImageStorage
 from shared.src.paddle_ocr import OCR
 
 import os
-from typing import Dict, Any
+from typing import Optional
 from prometheus_client import Counter, Histogram # type: ignore
 
 
@@ -96,14 +97,13 @@ class AgentB(BaseAgent):
         self.plates_detected.inc()
         return True
 
-    def build_publish_payload(self, truck_id: str, detection_result: Dict[str, Any], 
-                              confidence: float, crop_url: str | None) -> Dict[str, Any]:
-        """Build Kafka message payload for license plate results."""
-        return {
-            "licensePlate": detection_result["text"],
-            "confidence": float(confidence if confidence is not None else 0.0),
-            "cropUrl": crop_url
-        }
+    def _build_message_for_detection(self, license_plate: str, confidence: float, crop_url: Optional[str]) -> Message:
+        """Build license plate results message."""
+        return KafkaMessageProto.license_plate_result(
+            license_plate=license_plate,
+            crop_url=crop_url if crop_url else "",
+            confidence=confidence
+        )
 
     def init_metrics(self):
         """Initialize Prometheus metrics for Agent B."""
@@ -125,15 +125,3 @@ class AgentB(BaseAgent):
             'Confidence score of OCR readings',
             buckets=[0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
         )
-
-    # ========================================================================
-    # Agent B specific overrides
-    # ========================================================================
-
-    def _parse_detection_result(self, text: str) -> Dict[str, Any]:
-        """Parse license plate text (simple pass-through)."""
-        return {"text": text}
-
-    def _publish_empty_result(self):
-        """Publish empty result when no license plate detected."""
-        self._publish_detection({"text": "N/A"}, -1, None)

@@ -1,9 +1,10 @@
 from shared.src.base_agent import BaseAgent
 from shared.src.plate_classifier import PlateClassifier
 from shared.src.paddle_ocr import OCR
+from shared.src.kafka_protocol import HazardPlateResultsMessage, KafkaMessageProto, Message
 
 import os
-from typing import Dict, Any
+from typing import Optional
 from prometheus_client import Counter, Histogram # type: ignore
 
 
@@ -77,15 +78,15 @@ class AgentC(BaseAgent):
         self.ocr_confidence.observe(confidence)
         return True
 
-    def build_publish_payload(self, truck_id: str, detection_result: Dict[str, Any], 
-                              confidence: float, crop_url: str | None) -> Dict[str, Any]:
-        """Build Kafka message payload for hazard plate results with UN and Kemler codes."""
-        return {
-            "un": detection_result.get("un", "N/A"),
-            "kemler": detection_result.get("kemler", "N/A"),
-            "confidence": float(confidence if confidence is not None else 0.0),
-            "cropUrl": crop_url
-        }
+    def _build_message_for_detection(self, text: str, confidence: float, crop_url: Optional[str]) -> Message:
+        """Build hazard plate results message with UN and Kemler codes."""
+        un, kemler = self._parse_detection_result(text)
+        return KafkaMessageProto.hazard_plate_result(
+            un=un,
+            kemler=kemler,
+            crop_url=crop_url if crop_url else "",
+            confidence=confidence
+        )
 
     def init_metrics(self):
         """Initialize Prometheus metrics for Agent C."""
@@ -112,10 +113,13 @@ class AgentC(BaseAgent):
     # Agent C specific overrides
     # ========================================================================
 
-    def _parse_detection_result(self, text: str) -> Dict[str, Any]:
+    def _parse_detection_result(self, text: str) -> tuple[str, str]:
         """
         Parse hazard plate text into UN and Kemler codes.
         Expected format: "KEMLER UN" (e.g., "33 1203")
+        
+        Returns:
+            Tuple of (un, kemler)
         """
         parts = text.split(" ")
         self.logger.info(f"[AgentC] Parts: {parts}")
@@ -127,8 +131,4 @@ class AgentC(BaseAgent):
             un = "N/A"
             kemler = "N/A"
         
-        return {"un": un, "kemler": kemler, "text": text}
-
-    def _publish_empty_result(self):
-        """Publish empty result when no hazard plate detected."""
-        self._publish_detection({"un": "N/A", "kemler": "N/A"}, -1, None)
+        return un, kemler

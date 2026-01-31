@@ -3,6 +3,7 @@ from shared.src.object_detector import ObjectDetector
 from shared.src.bounding_box_drawer import BoundingBoxDrawer
 from shared.src.image_storage import ImageStorage
 from shared.src.kafka_wrapper import KafkaProducerWrapper
+from shared.src.kafka_protocol import TruckDetectedMessage, KafkaMessageProto
 import os
 import time
 import uuid
@@ -89,22 +90,6 @@ class AgentA:
         # Start Prometheus metrics server
         # logger.info("[AgentA] Starting Prometheus metrics server on port 8000")
         # start_http_server(8000) - Started in init.py
-
-    def _publish_truck_detected(self, max_conf: float, num_boxes: int, truck_id: Optional[str] = None):
-        """Publishes the 'truck-detected-GATE_ID' event to Kafka."""
-
-        # Generate unique ID and timestamp for the event
-        timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-        # Construct JSON payload
-        payload = {
-            "timestamp": timestamp,
-            "confidence": float(max_conf),
-            "detections": int(num_boxes)
-        }
-
-        # Send asynchronously to Kafka
-        self.kafka_producer.produce(KAFKA_TOPIC, payload, headers={"truckId": truck_id})
     
     def _process_detection(self, frame):
         """
@@ -156,7 +141,13 @@ class AgentA:
             self.detection_confidence.observe(max_conf)
 
             self.last_message_time = now
-            self._publish_truck_detected(max_conf, num_boxes, truck_id)
+            
+            message = KafkaMessageProto.truck_detected(confidence=max_conf, num_detections=num_boxes)
+            self.kafka_producer.produce(
+                topic=KAFKA_TOPIC,
+                data=message.to_dict(),
+                headers={"truck_id": truck_id}
+            )
 
         except Exception as e:
             logger.exception(f"[AgentA] Error preparing Kafka event: {e}")

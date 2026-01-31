@@ -1,6 +1,7 @@
 import json
 import logging
 from confluent_kafka import Producer, Consumer, KafkaError # type: ignore
+from shared.src.kafka_protocol import deserialize_message
 
 logger = logging.getLogger("KafkaWrapper")
 
@@ -66,6 +67,20 @@ class KafkaConsumerWrapper:
         
         logger.info(f"Consumed message from topic {msg.topic()}")
         return msg
+    
+    def consume_typed_message(self, timeout=1.0):
+        """
+        Consumes and deserializes a message into a Message object.
+        Returns (topic, message_obj, truck_id) or (None, None, None).
+        """
+        msg = self.consume_message(timeout)
+        topic, data, truck_id = self.parse_message(msg)
+        
+        if data is None:
+            return None, None, None
+        
+        message_obj = deserialize_message(data)
+        return topic, message_obj, truck_id
 
     def clear_stale_messages(self):
         """
@@ -114,14 +129,14 @@ class KafkaConsumerWrapper:
             logger.warning("Invalid message (JSON). Ignored.")
             return None, None, None
             
-        truck_id = self._extract_truck_id_from_headers(msg.headers())
+        truck_id = self.extract_truck_id_from_headers(msg.headers())
         if not truck_id:
             logger.warning("Message missing 'truck_id' header. Ignored.")
             return None, None, None
             
         return msg.topic(), data, truck_id
 
-    def _extract_truck_id_from_headers(self, headers):
+    def extract_truck_id_from_headers(self, headers):
         """Extract truck_id from message headers. Accepts both 'truck_id' and 'truckId'."""
         if not headers:
             return None
