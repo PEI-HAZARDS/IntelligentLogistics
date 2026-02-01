@@ -47,3 +47,7 @@ def extract_truck_id_from_headers(headers) -> str | None:
         if k == "truckId":
             return v.decode("utf-8") if isinstance(v, bytes) else v
     return None
+
+def euclidean_distance(point1: tuple[float, float], point2: tuple[float, float]) -> float:
+    """Calculate the Euclidean distance between two 2D points."""
+    return ((point1[0] - point2[0]) ** 2 + (point1[1] - point2[1]) ** 2) ** 0.5
