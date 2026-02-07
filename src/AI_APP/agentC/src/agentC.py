@@ -48,13 +48,9 @@ class AgentC(BaseAgent):
         """Return path to hazard plate YOLO model."""
         return "/agentC/data/hazard_plate_model.pt"
 
-    def get_annotated_frames_bucket(self) -> str:
-        """Return bucket name for annotated frames."""
-        return f"hz-annotated-frames-gate-{self.gate_id}"
-
-    def get_crops_bucket(self) -> str:
-        """Return bucket name for crops."""
-        return f"hz-crops-gate-{self.gate_id}"
+    def get_bucket(self) -> str:
+        """Return bucket name for annotated frames and crops."""
+        return f"agentc-{self.gate_id}"
 
     def get_consume_topic(self) -> str:
         """Return Kafka topic to consume truck detection events."""

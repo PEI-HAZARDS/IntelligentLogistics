@@ -37,7 +37,7 @@ MINIO_CONFIG = {
         "secure": False
     }
 
-BUCKET_NAME = f"trk-annotated-frames-gate-{GATE_ID}"
+BUCKET_NAME = f"agenta-{GATE_ID}"
 
 logger = logging.getLogger("AgentA")
 
@@ -132,7 +132,7 @@ class AgentA:
             # Draw detected boxes on the frame (labelled)
             try:
                 frame = self.drawer.draw_box(frame, boxes)
-                self.image_storage.upload_memory_image(frame, f"{truck_id}_{int(time.time())}.jpg", image_type="temp")
+                self.image_storage.upload_memory_image(frame, f"{truck_id}_{int(time.time())}.jpg", image_type="annotated_frames")
             except Exception as e:
                 logger.exception(f"[AgentA] Error drawing boxes: {e}")
 

@@ -37,65 +37,60 @@ class ImageStorage:
     def _set_lifecycle_policies(self):
         """
         Configures automatic deletion policies for different image types:
-        - debug/: 1 day (MinIO minimum, approximates 2 hours)
-        - temp/: 1 day (24 hours)
-        - delivery/: 7 days
-        
-        Note: MinIO evaluates lifecycle rules every 24 hours, so sub-daily 
-        expiration is not precisely controllable. Debug images set to 1 day minimum.
+        - annotated_frames/: 1 day (24 hours)
+        - crops/: 7 days
         """
         try:
             config = LifecycleConfig(
                 [
                     # Debug images: delete after 1 day (MinIO's minimum)
                     Rule(
-                        rule_id="delete-debug-images",
-                        rule_filter=Filter(prefix="debug/"),
-                        status="Enabled",
-                        expiration=Expiration(days=1)
-                    ),
-                    # Temporary processing images: delete after 1 day
-                    Rule(
-                        rule_id="delete-temp-images",
-                        rule_filter=Filter(prefix="temp/"),
+                        rule_id="delete-frame-images",
+                        rule_filter=Filter(prefix="annotated_frames/"),
                         status="Enabled",
                         expiration=Expiration(days=1)
                     ),
                     # Delivery proof images: delete after 7 days
                     Rule(
-                        rule_id="delete-delivery-images",
-                        rule_filter=Filter(prefix="delivery/"),
+                        rule_id="delete-crop-images",
+                        rule_filter=Filter(prefix="crops/"),
+                        status="Enabled",
+                        expiration=Expiration(days=7)
+                    ),
+                    Rule(
+                        rule_id="delete-other-images",
+                        rule_filter=Filter(prefix="other/"),
                         status="Enabled",
                         expiration=Expiration(days=7)
                     )
                 ]
             )
             self.client.set_bucket_lifecycle(self.bucket_name, config)
-            logger.info("Lifecycle policies configured: debug/temp (1 day), delivery (7 days)")
+            logger.info("Lifecycle policies configured: annotated_frames (1 day), crops (7 days)")
         except S3Error as e:
             logger.warning(f"Failed to set lifecycle policies: {e}")
 
-    def upload_memory_image(self, img_array, object_name: str, image_type: str = "temp") -> Optional[str]:
+    def upload_memory_image(self, img_array, object_name: str, image_type: str = "other") -> Optional[str]:
         """
         Encodes a generic OpenCV image to JPEG and uploads to MinIO with automatic cleanup.
         
         Args:
             img_array: OpenCV image array
             object_name: File name (e.g., 'detection_123.jpg')
-            image_type: One of 'debug', 'temp', or 'delivery' (determines retention)
-                - 'debug': ~1 day retention (for debugging/development)
-                - 'temp': 1 day retention (for temporary processing)
-                - 'delivery': 7 days retention (for delivery proofs)
+            image_type: One of 'annotated_frames', 'other', or 'crops' (determines retention)
+                - 'annotated_frames': 1 day retention (for otherorary processing)
+                - 'other': 1 day retention (for otherorary processing)
+                - 'crops': 7 days retention (for delivery proofs)
         
         Returns: 
             Presigned URL or None on failure.
         """
         try:
             # Validate image_type
-            valid_types = ['debug', 'temp', 'delivery']
+            valid_types = ['annotated_frames', 'crops', 'other']
             if image_type not in valid_types:
-                logger.warning(f"Invalid image_type '{image_type}', defaulting to 'temp'")
-                image_type = 'temp'
+                logger.warning(f"Invalid image_type '{image_type}', defaulting to 'other'")
+                image_type = 'other'
             
             # 0. Ensure bucket exists (retry if initial creation failed)
             if not self._ensure_bucket():
@@ -148,7 +143,7 @@ class ImageStorage:
             return None
 
     def _generate_presigned_url(self, object_name: str, expires_days: int = 7) -> str:
-        """Generates a temporary access URL."""
+        """Generates a otherorary access URL."""
         return self.client.get_presigned_url(
             "GET",
             self.bucket_name,

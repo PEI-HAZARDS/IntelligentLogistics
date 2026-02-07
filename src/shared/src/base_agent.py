@@ -96,8 +96,7 @@ class BaseAgent(ABC):
         self.ocr = ocr or self.initiallize_ocr()
         self.classifier = classifier or PlateClassifier()
         self.drawer = drawer or BoundingBoxDrawer(color=self.get_bbox_color(), thickness=2, label=self.get_bbox_label())
-        self.annotated_frames_storage = annotated_frames_storage or ImageStorage(self.minio_conf, self.get_annotated_frames_bucket())
-        self.crop_storage = crop_storage or ImageStorage(self.minio_conf, self.get_crops_bucket())
+        self.image_storage = ImageStorage(self.minio_conf, self.get_bucket())
         self.stream_manager = stream_manager or StreamManager(self.stream_url)
         self.kafka_producer = kafka_producer or KafkaProducerWrapper(self.kafka_bootstrap)
         self.kafka_consumer = kafka_consumer or KafkaConsumerWrapper(self.kafka_bootstrap, f"{self.agent_name.lower()}-group", [self.get_consume_topic()])
@@ -169,13 +168,8 @@ class BaseAgent(ABC):
         pass
 
     @abstractmethod
-    def get_annotated_frames_bucket(self) -> str:
-        """Return bucket name for annotated frames."""
-        pass
-
-    @abstractmethod
-    def get_crops_bucket(self) -> str:
-        """Return bucket name for crops."""
+    def get_bucket(self) -> str:
+        """Return bucket name."""
         pass
 
     @abstractmethod
@@ -348,7 +342,7 @@ class BaseAgent(ABC):
         try:
             annotated_frame = frame.copy()
             annotated_frame = self.drawer.draw_box(annotated_frame, boxes)
-            self.annotated_frames_storage.upload_memory_image(annotated_frame, f"{self.truck_id}_{int(time.time())}.jpg", image_type="temp")
+            self.image_storage.upload_memory_image(annotated_frame, f"{self.truck_id}_{int(time.time())}.jpg", image_type="annotated_frames")
         except Exception as e:
             self.logger.warning(f"Error drawing boxes: {e}")
         
@@ -501,7 +495,7 @@ class BaseAgent(ABC):
         
         try:
             best_crop = self.consensus_algorithm.best_crop
-            crop_url = self.crop_storage.upload_memory_image(best_crop, f"{self.truck_id}_{int(time.time())}.jpg", image_type="delivery")
+            crop_url = self.image_storage.upload_memory_image(best_crop, f"{self.truck_id}_{int(time.time())}.jpg", image_type="crops")
             
             if crop_url:
                 self.logger.debug("Crop uploaded")
@@ -545,10 +539,10 @@ class BaseAgent(ABC):
         if crop is not None:
             # Always upload the returned crop, even if text is N/A
             try:
-                crop_url = self.crop_storage.upload_memory_image(
+                crop_url = self.image_storage.upload_memory_image(
                     crop, 
                     f"{self.truck_id}_{int(time.time())}.jpg", 
-                    image_type="delivery"
+                    image_type="crops"
                 )
                 self.logger.debug("Crop uploaded")
             except Exception as e:
