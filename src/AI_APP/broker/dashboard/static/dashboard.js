@@ -102,6 +102,10 @@ function formatConfidence(conf) {
 }
 
 function formatTime(timestamp) {
+    // If timestamp is seconds (Unix epoch), convert to ms
+    if (typeof timestamp === 'number' && timestamp < 10000000000) {
+        return new Date(timestamp * 1000).toLocaleTimeString();
+    }
     return new Date(timestamp).toLocaleTimeString();
 }
 
@@ -109,45 +113,53 @@ function renderCardContent(msg) {
     const topic = msg.topic;
     const data = msg.data;
 
+    const timestampVal = data.timestamp ? formatTime(data.timestamp) : formatTime(msg.timestamp);
+
     // Truck Detected
     if (topic.includes('truck-detected')) {
         return `
             <div class="card-field">
                 <span class="field-label">Timestamp</span>
-                <span class="field-value">${data.timestamp || formatTime(msg.timestamp)}</span>
+                <span class="field-value">${timestampVal}</span>
             </div>
             <div class="card-field">
                 <span class="field-label">Confidence</span>
                 <span class="field-value confidence">${formatConfidence(data.confidence)}</span>
+            </div>
+            <div class="card-field">
+                <span class="field-label">Detections</span>
+                <span class="field-value">${data.num_detections || 'N/A'}</span>
             </div>
         `;
     }
 
     // License Plate
     if (topic.includes('lp-results')) {
+        // Matches LicensePlateResultsMessage keys: license_plate, crop_url, confidence
         return `
             <div class="card-field">
                 <span class="field-label">Timestamp</span>
-                <span class="field-value">${data.timestamp || formatTime(msg.timestamp)}</span>
+                <span class="field-value">${timestampVal}</span>
             </div>
             <div class="card-field">
                 <span class="field-label">License Plate</span>
-                <span class="field-value plate">${data.licensePlate || 'N/A'}</span>
+                <span class="field-value plate">${data.license_plate || 'N/A'}</span>
             </div>
             <div class="card-field">
                 <span class="field-label">Confidence</span>
                 <span class="field-value confidence">${formatConfidence(data.confidence)}</span>
             </div>
-            ${data.cropUrl ? `<div class="card-field"><span class="field-label">Crop</span><a href="${data.cropUrl}" target="_blank" class="field-value link">View Image</a></div>` : ''}
+            ${data.crop_url ? `<div class="card-field"><span class="field-label">Crop</span><a href="${data.crop_url}" target="_blank" class="field-value link">View Image</a></div>` : ''}
         `;
     }
 
     // Hazard Plate
     if (topic.includes('hz-results')) {
+        // Matches HazardPlateResultsMessage keys: un, kemler, crop_url, confidence
         return `
             <div class="card-field">
                 <span class="field-label">Timestamp</span>
-                <span class="field-value">${data.timestamp || formatTime(msg.timestamp)}</span>
+                <span class="field-value">${timestampVal}</span>
             </div>
             <div class="card-field">
                 <span class="field-label">UN Number</span>
@@ -161,31 +173,39 @@ function renderCardContent(msg) {
                 <span class="field-label">Confidence</span>
                 <span class="field-value confidence">${formatConfidence(data.confidence)}</span>
             </div>
-            ${data.cropUrl ? `<div class="card-field"><span class="field-label">Crop</span><a href="${data.cropUrl}" target="_blank" class="field-value link">View Image</a></div>` : ''}
+            ${data.crop_url ? `<div class="card-field"><span class="field-label">Crop</span><a href="${data.crop_url}" target="_blank" class="field-value link">View Image</a></div>` : ''}
         `;
     }
 
     // Decision
     if (topic.includes('decision')) {
+        // Matches DecisionResultsMessage keys: license_plate, un, kemler, route, decision, 
+        // decision_reason, decision_source, alerts, license_crop_url, hazard_crop_url
         const decisionLower = (data.decision || '').toLowerCase();
-        const decisionClass = decisionLower === 'approved' ? 'approved' :
-            decisionLower === 'rejected' ? 'rejected' : 'pending';
+        const decisionClass = decisionLower.includes('accepted') ? 'approved' :
+            decisionLower.includes('manual') ? 'pending' : 'rejected';
 
         return `
             <div class="card-field">
                 <span class="field-label">Timestamp</span>
-                <span class="field-value">${data.timestamp || formatTime(msg.timestamp)}</span>
+                <span class="field-value">${timestampVal}</span>
             </div>
             <div class="card-field">
                 <span class="field-label">License Plate</span>
-                <span class="field-value plate">${data.licensePlate || 'N/A'}</span>
+                <span class="field-value plate">${data.license_plate || 'N/A'}</span>
             </div>
             <div class="card-field">
                 <span class="field-label">Decision</span>
                 <span class="field-value decision ${decisionClass}">${data.decision || 'PENDING'}</span>
             </div>
-            ${data.UN ? `<div class="card-field full-width"><span class="field-label">UN</span><span class="field-value">${data.UN}</span></div>` : ''}
+            ${data.un ? `<div class="card-field full-width"><span class="field-label">UN</span><span class="field-value">${data.un}</span></div>` : ''}
             ${data.kemler ? `<div class="card-field full-width"><span class="field-label">Kemler</span><span class="field-value">${data.kemler}</span></div>` : ''}
+            ${data.route ? `<div class="card-field full-width"><span class="field-label">Route</span><span class="field-value">${data.route}</span></div>` : ''}
+            ${data.decision_reason ? `<div class="card-field full-width"><span class="field-label">Reason</span><span class="field-value">${data.decision_reason}</span></div>` : ''}
+            ${data.decision_source ? `<div class="card-field full-width"><span class="field-label">Source</span><span class="field-value">${data.decision_source}</span></div>` : ''}
+            ${data.alerts && data.alerts.length > 0 ? `<div class="card-field full-width"><span class="field-label">Alerts</span><span class="field-value">${data.alerts.join(', ')}</span></div>` : ''}
+            ${data.license_crop_url ? `<div class="card-field full-width"><span class="field-label">License Crop</span><a href="${data.license_crop_url}" target="_blank" class="field-value link">View Image</a></div>` : ''}
+            ${data.hazard_crop_url ? `<div class="card-field full-width"><span class="field-label">Hazard Crop</span><a href="${data.hazard_crop_url}" target="_blank" class="field-value link">View Image</a></div>` : ''}
         `;
     }
 
