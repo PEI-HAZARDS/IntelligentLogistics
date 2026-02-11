@@ -27,16 +27,16 @@ class PlateClassifier:
         self.license_plate_colors = [
             # Branco
             ([0, 0, 200], [180, 30, 255]),
-            # Amarelo
-            ([20, 100, 100], [30, 255, 255])
+            # Amarelo (inclui tons amarelados quentes, Hue 15-35)
+            ([15, 80, 80], [35, 255, 255])
         ]
 
         # Laranja/Vermelho (placas de perigo)
         self.hazard_plate_colors = [
-            # Laranja
-            ([10, 100, 100], [20, 255, 255]),
+            # Laranja (Hue 5-15, abaixo do amarelo)
+            ([5, 100, 100], [15, 255, 255]),
             # Vermelho (parte 1)
-            ([0, 100, 100], [10, 255, 255]),
+            ([0, 100, 100], [5, 255, 255]),
             # Vermelho (parte 2)
             ([170, 100, 100], [180, 255, 255])
         ]
@@ -75,8 +75,13 @@ class PlateClassifier:
         # 3. Classificação por Regras
 
         # Matrículas: Largas E cores branco/amarelo
+        # Placas de perigo NUNCA são retangulares largas, por isso
+        # aspect ratio alto é forte indicador de matrícula
         if aspect_ratio >= self.min_aspect_ratio_license:
             if color_score['license'] > color_score['hazard']:
+                return self.LICENSE_PLATE
+            # Mesmo com cor ambígua, forma larga = quase certamente matrícula
+            if color_score['hazard'] <= 0.3:
                 return self.LICENSE_PLATE
 
         # Placas de perigo: Quadradas/Verticais E cores laranja/vermelho
@@ -90,6 +95,10 @@ class PlateClassifier:
 
         if color_score['hazard'] > color_score['license'] * 1.5:
             return self.HAZARD_PLATE
+
+        # Em caso de dúvida, preferir LICENSE_PLATE se forma for larga
+        if aspect_ratio >= self.min_aspect_ratio_license:
+            return self.LICENSE_PLATE
 
         return self.UNKNOWN
 
