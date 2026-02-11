@@ -1,0 +1,54 @@
+# --- PostgreSQL ---
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
+POSTGRES_USER=porto
+POSTGRES_PASSWORD=porto_password
+POSTGRES_DB=porto_logistica
+DATABASE_URL=postgresql://porto:porto_password@postgres:5432/porto_logistica
+
+# --- MongoDB ---
+MONGO_URL=mongodb://admin:admin123@mongo:27017
+MONGO_HOST=mongo
+MONGO_PORT=27017
+MONGO_INITDB_ROOT_USERNAME=admin
+MONGO_INITDB_ROOT_PASSWORD=admin123
+
+# --- Redis ---
+REDIS_HOST=redis
+REDIS_PORT=6379
+
+# --- MinIO ---
+MINIO_ROOT_USER=admin
+MINIO_ROOT_PASSWORD=adminadmin
+MINIO_API_PORT=9000
+MINIO_CONSOLE_PORT=9090
+
+# --- Data Module ---
+DM_API_PREFIX=/api/v1
+DECISION_ENGINE_URL=http://decision-engine:8001
+# OTEL for DM
+OTEL_EXPORTER_OTLP_ENDPOINT=http://10.255.32.132:4317
+# Runtime
+ENVIRONMENT=development
+DEBUG=false
+DEBUG_MODE=false
+TOKEN_EXPIRY_HOURS=24
+
+# --- API Gateway ---
+GW_API_PREFIX=/api
+DATA_MODULE_URL=http://data-module:8000
+STREAM_BASE_URL=http://10.255.32.80:8080
+KAFKA_BOOTSTRAP_SERVERS=10.255.32.143:9092
+KAFKA_DECISION_TOPIC=decision-results-1
+KAFKA_CONSUMER_GROUP=api-gateway-decisions
+GW_ENV=dev
+CORS_ALLOW_ORIGINS=["*"]
+CORS_ALLOW_CREDENTIALS=true
+CORS_ALLOW_METHODS=["*"]
+CORS_ALLOW_HEADERS=["*"]
+
+# --- Decision Engine ---
+KAFKA_BOOTSTRAP=10.255.32.110:9092
+GATE_ID=1
+DE_API_URL=http://data-module:8000/api/v1
+TIME_TOLERANCE_MINUTES=30

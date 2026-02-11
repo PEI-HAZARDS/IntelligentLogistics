@@ -1,0 +1,17 @@
+# Streaming Middleware Environment Variables
+
+# Stream Mode: "camera" (default) or "test"
+STREAM_MODE=test
+
+# Camera Configuration (used when STREAM_MODE=camera)
+CAMERA_IP=10.255.35.86
+RTSP_PORT=554
+STREAM_LOW_PATH=stream2
+STREAM_HIGH_PATH=stream1
+GATE_ID=gate1
+
+# Test Video Configuration (used when STREAM_MODE=test)
+TEST_VIDEO_PATH=/videos/test_video.mp4
+
+# Host volume path for test videos
+TEST_VIDEOS_HOST_PATH=/home/pei_user/streaming_middleware/videos

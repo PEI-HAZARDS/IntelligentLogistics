@@ -154,7 +154,7 @@ http://10.255.32.80:8080/hls/low/gate01.m3u8
 ### 3. Test RTMP with ffplay
 
 ```bash
-ffplay rtmp://10.255.32.80:1935/streams_low/gate01
+ffplay rtmp://10.255.32.80:1935/streams_low/gate1
 ```
 
 ### 4. Health check
