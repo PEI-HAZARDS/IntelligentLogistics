@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   agenta:
     build:
@@ -9,9 +11,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MODELS_PATH=/app/AI_APP/agentA/data
+      - MODELS_PATH=${MODELS_PATH_A}
     env_file:
-      - agentA/.env
+      - .env
     command: ["python", "AI_APP/agentA/init.py"]
 
   agentb:
@@ -24,9 +26,10 @@ services:
     ports:
       - "8001:8001"
     environment:
-      - MODELS_PATH=/app/AI_APP/agentB/data
+      - MODELS_PATH=${MODELS_PATH_B}
+      - BUCKET_NAME=${BUCKET_NAME_LP}
     env_file:
-      - agentB/.env
+      - .env
     command: ["python", "AI_APP/agentB/init.py"]
 
   agentc:
@@ -39,10 +42,12 @@ services:
     ports:
       - "8002:8002"
     environment:
-      - MODELS_PATH=/app/AI_APP/agentC/data
+      - MODELS_PATH=${MODELS_PATH_C}
+      - BUCKET_NAME=${BUCKET_NAME_HZ}
     env_file:
-      - agentC/.env
+      - .env
     command: ["python", "AI_APP/agentC/init.py"]
+    
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     container_name: kafka
@@ -111,4 +116,3 @@ services:
     depends_on:
       - kafka
     restart: unless-stopped
-

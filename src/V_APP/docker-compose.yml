@@ -1,5 +1,6 @@
-services:
+version: '3.8'
 
+services:
   # PostgreSQL database
   postgres:
     image: postgres:15
@@ -56,55 +57,6 @@ services:
     networks:
       - intelligent-logistics
 
-  # Data Module API
-  data-module:
-    build: .
-    container_name: dm_data_module
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      mongo:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    environment:
-      # PostgreSQL
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_HOST=${POSTGRES_HOST}
-      - POSTGRES_PORT=${POSTGRES_PORT}
-      - DATABASE_URL=${DATABASE_URL}
-      # MongoDB
-      - MONGO_URL=${MONGO_URL}
-      - MONGO_HOST=${MONGO_HOST}
-      - MONGO_PORT=${MONGO_PORT}
-      # Redis
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      # External services
-      - DECISION_ENGINE_URL=${DECISION_ENGINE_URL}
-      # OpenTelemetry Tracing
-      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
-      # Runtime
-      - PYTHONUNBUFFERED=1
-      - ENVIRONMENT=${ENVIRONMENT}
-      - DEBUG=${DEBUG}
-      - DEBUG_MODE=${DEBUG_MODE}
-      - TOKEN_EXPIRY_HOURS=${TOKEN_EXPIRY_HOURS}
-      - API_PREFIX=${API_PREFIX}
-    ports:
-      - "8080:8000"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    networks:
-      - intelligent-logistics
-
   # MinIO Object Storage
   minio:
     image: minio/minio:latest
@@ -113,8 +65,8 @@ services:
       - "${MINIO_API_PORT}:9000"
       - "${MINIO_CONSOLE_PORT}:9090"
     environment:
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
       - miniodata:/data
     command: server /data --console-address ":9090"
@@ -127,6 +79,100 @@ services:
     networks:
       - intelligent-logistics
 
+  # Data Module API
+  data-module:
+    build: 
+      context: ..
+      dockerfile: V_APP/Dockerfile
+      target: data_module
+    container_name: dm_data_module
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - DATABASE_URL=${DATABASE_URL}
+      - MONGO_URL=${MONGO_URL}
+      - MONGO_HOST=${MONGO_HOST}
+      - MONGO_PORT=${MONGO_PORT}
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - DECISION_ENGINE_URL=${DECISION_ENGINE_URL}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=${ENVIRONMENT}
+      - DEBUG=${DEBUG}
+      - DEBUG_MODE=${DEBUG_MODE}
+      - TOKEN_EXPIRY_HOURS=${TOKEN_EXPIRY_HOURS}
+      - API_PREFIX=${DM_API_PREFIX}
+    ports:
+      - "8080:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - intelligent-logistics
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ..
+      dockerfile: V_APP/Dockerfile
+      target: api_gateway
+    image: api-gateway:latest
+    container_name: api-gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATA_MODULE_URL=${DATA_MODULE_URL}
+      - STREAM_BASE_URL=${STREAM_BASE_URL}
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+      - KAFKA_DECISION_TOPIC=${KAFKA_DECISION_TOPIC}
+      - KAFKA_CONSUMER_GROUP=${KAFKA_CONSUMER_GROUP}
+      - API_PREFIX=${GW_API_PREFIX}
+      - ENV=${GW_ENV}
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS}
+      - CORS_ALLOW_CREDENTIALS=${CORS_ALLOW_CREDENTIALS}
+      - CORS_ALLOW_METHODS=${CORS_ALLOW_METHODS}
+      - CORS_ALLOW_HEADERS=${CORS_ALLOW_HEADERS}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
+    networks:
+      - intelligent-logistics
+
+  # Decision Engine
+  decision-engine:
+    build:
+      context: ..
+      dockerfile: V_APP/Dockerfile
+      target: decision_engine
+    image: decision-engine:latest
+    container_name: decision-engine
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
+      - GATE_ID=${GATE_ID}
+      - API_URL=${DE_API_URL}
+      - TIME_TOLERANCE_MINUTES=${TIME_TOLERANCE_MINUTES}
+    networks:
+      - intelligent-logistics
+
 volumes:
   pgdata:
   mongodata:
@@ -135,4 +181,3 @@ volumes:
 networks:
   intelligent-logistics:
     driver: bridge
-
