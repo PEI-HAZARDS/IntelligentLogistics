@@ -58,7 +58,7 @@ class AgentA:
         drawer: Optional[BoundingBoxDrawer] = None,
     ):
         # Initialize dependencies (use injected or default)
-        self.yolo = object_detector or ObjectDetector("/agentA/data/truck_model.pt", 7)
+        self.yolo = object_detector or ObjectDetector(os.getenv("MODELS_PATH", "/agentA/data") + "/truck_model.pt", 7)
         self.drawer = drawer or BoundingBoxDrawer(color="green", thickness=2, label="truck")
         self.image_storage = image_storage or ImageStorage(MINIO_CONFIG, BUCKET_NAME)
         self.stream_manager = stream_manager or StreamManager(STREAM_LOW)

@@ -58,7 +58,7 @@ class AgentB(BaseAgent):
 
     def get_yolo_model_path(self) -> str:
         """Return path to license plate YOLO model."""
-        return "/agentB/data/license_plate_model.pt"
+        return os.getenv("MODELS_PATH", "/agentB/data") + "/license_plate_model.pt"
 
     def get_bucket(self) -> str:
         """Return bucket name for annotated frames and crops."""

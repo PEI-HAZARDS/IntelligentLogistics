@@ -46,7 +46,7 @@ class AgentC(BaseAgent):
 
     def get_yolo_model_path(self) -> str:
         """Return path to hazard plate YOLO model."""
-        return "/agentC/data/hazard_plate_model.pt"
+        return os.getenv("MODELS_PATH", "/agentC/data") + "/hazard_plate_model.pt"
 
     def get_bucket(self) -> str:
         """Return bucket name for annotated frames and crops."""
