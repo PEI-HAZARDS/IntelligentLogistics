@@ -1,8 +1,28 @@
 """
-Integration test: all crops in src/crops/ are license plates.
-Validates that PlateClassifier does not misclassify any as HAZARD_PLATE.
+Integration test: validate PlateClassifier against real crop images.
 
-Run: cd src/shared && python -m pytest tests/plate_classifier_integration_test.py -v
+Setup (one-time):
+    conda create -n plate_test python=3.11 opencv numpy pytest -y
+
+Run from: cd src/shared
+
+Usage:
+    # Test license plates (default, uses src/crops/)
+    conda run -n plate_test python -m pytest tests/plate_classifier_integration_test.py -v -s
+
+    # Test license plates from custom directory
+    conda run -n plate_test python -m pytest tests/plate_classifier_integration_test.py -v -s \
+        --crops-dir ../licence_plate_crops
+
+    # Test hazard plates
+    conda run -n plate_test python -m pytest tests/plate_classifier_integration_test.py -v -s \
+        --plate-type hazard_plate --crops-dir ../hazard_plate_crops
+
+Cleanup:
+    conda env remove -n plate_test
+
+Datasets:
+    https://www.kaggle.com/datasets/abdelhamidzakaria/european-license-plates-dataset?resource=download
 """
 
 import cv2
@@ -11,8 +31,11 @@ from pathlib import Path
 
 from plate_classifier import PlateClassifier
 
-CROPS_DIR = Path(__file__).resolve().parents[2] / "crops"
 
+
+# =============================================================================
+# Fixtures
+# =============================================================================
 
 @pytest.fixture
 def classifier():
@@ -20,28 +43,68 @@ def classifier():
 
 
 @pytest.fixture
-def crop_files():
-    if not CROPS_DIR.exists():
-        pytest.skip(f"Crops directory not found: {CROPS_DIR}")
-    files = sorted(f for f in CROPS_DIR.iterdir() if f.suffix.lower() in (".jpg", ".jpeg", ".png"))
+def expected_type(request):
+    return request.config.getoption("--plate-type")
+
+
+@pytest.fixture
+def crop_files(request):
+    crops_dir = request.config.getoption("--crops-dir")
+    if crops_dir:
+        crops_dir = Path(crops_dir)
+    else:
+        crops_dir = Path(__file__).resolve().parents[2] / "crops"
+
+    if not crops_dir.exists():
+        pytest.skip(f"Crops directory not found: {crops_dir}")
+
+    files = sorted(f for f in crops_dir.iterdir() if f.suffix.lower() in (".jpg", ".jpeg", ".png"))
     if not files:
         pytest.skip("No crop images found")
+
     return files
 
 
-def test_all_crops_are_license_plates(classifier, crop_files):
-    """Every image in src/crops/ should be classified as LICENSE_PLATE."""
+# =============================================================================
+# Test
+# =============================================================================
+
+def test_classify_all_crops(classifier, crop_files, expected_type):
+    """Every image in the crops directory should match the expected plate type."""
+    total = 0
+    correct = 0
     failed = []
 
     for f in crop_files:
         img = cv2.imread(str(f))
         if img is None:
             continue
+
+        total += 1
         h, w = img.shape[:2]
         result = classifier.classify(img)
-        if result != PlateClassifier.LICENSE_PLATE:
+
+        if result == expected_type:
+            correct += 1
+        else:
             failed.append(f"{f.name}  AR={w/h:.2f}  got={result}")
 
-    assert len(failed) == 0, (
-        f"{len(failed)} crops misclassified:\n" + "\n".join(failed)
-    )
+    # --- Summary ---
+    wrong = total - correct
+    accuracy = (correct / total * 100) if total > 0 else 0
+
+    print(f"\n{'=' * 50}")
+    print(f"  Expected type : {expected_type}")
+    print(f"  Total crops   : {total}")
+    print(f"  Correct       : {correct}")
+    print(f"  Wrong         : {wrong}")
+    print(f"  Accuracy      : {accuracy:.1f}%")
+    print(f"{'=' * 50}")
+
+    if failed:
+        print(f"\n  Misclassified:")
+        for line in failed:
+            print(f"    ✗ {line}")
+        print()
+
+    assert wrong == 0, f"{wrong}/{total} crops misclassified (see above)"
