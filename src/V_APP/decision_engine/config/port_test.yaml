@@ -1,0 +1,218 @@
+# =============================================================================
+# Port Test Configuration
+# =============================================================================
+# Simplified port configuration for testing purposes
+
+port_id: "porto_test"
+name: "Test Port"
+version: "1.0"
+coordinate_system: "local"
+scale_factor: 10.0  # 1 unit = 10 meters
+
+# =============================================================================
+# NODES
+# =============================================================================
+
+nodes:
+  # Gates (Port Entrances)
+  - id: "gate_main"
+    x: 0
+    y: 10
+    type: "GATE"
+    name: "Main Gate"
+    metadata:
+      has_weighbridge: true
+      
+  - id: "gate_hazmat"
+    x: 0
+    y: 2
+    type: "GATE"
+    name: "Hazmat Gate"
+    metadata:
+      hazmat_certified: true
+
+  # Inspection
+  - id: "customs"
+    x: 4
+    y: 10
+    type: "INSPECTION_ZONE"
+    name: "Customs"
+    
+  - id: "weigh_station"
+    x: 4
+    y: 6
+    type: "WEIGH_STATION"
+    name: "Weighbridge"
+
+  # Intersections
+  - id: "int_entry"
+    x: 6
+    y: 6
+    type: "INTERSECTION"
+    name: "Entry Junction"
+    
+  - id: "int_central"
+    x: 10
+    y: 6
+    type: "INTERSECTION"
+    name: "Central Junction"
+    
+  - id: "int_north"
+    x: 10
+    y: 10
+    type: "INTERSECTION"
+    name: "North Junction"
+    
+  - id: "int_south"
+    x: 10
+    y: 2
+    type: "INTERSECTION"
+    name: "South Junction"
+
+  # Terminals
+  - id: "terminal_containers"
+    x: 14
+    y: 10
+    type: "TERMINAL"
+    name: "Container Terminal"
+    
+  - id: "terminal_bulk"
+    x: 14
+    y: 6
+    type: "TERMINAL"
+    name: "Bulk Terminal"
+    
+  - id: "zona_hazmat"
+    x: 14
+    y: 2
+    type: "HAZMAT_STORAGE"
+    name: "Hazmat Zone"
+
+  # Docks
+  - id: "dock_1"
+    x: 18
+    y: 12
+    type: "DOCK"
+    name: "Dock 1 - Containers"
+    
+  - id: "dock_2"
+    x: 18
+    y: 8
+    type: "DOCK"
+    name: "Dock 2 - General"
+    
+  - id: "dock_3"
+    x: 18
+    y: 4
+    type: "DOCK"
+    name: "Dock 3 - Bulk"
+    
+  - id: "dock_hazmat"
+    x: 18
+    y: 0
+    type: "DOCK"
+    name: "Dock Hazmat"
+    metadata:
+      hazmat_certified: true
+
+# =============================================================================
+# EDGES
+# =============================================================================
+
+edges:
+  # Gate access
+  - from: "gate_main"
+    to: "customs"
+    bidirectional: true
+    speed_limit: 15
+    
+  - from: "customs"
+    to: "weigh_station"
+    bidirectional: false
+    speed_limit: 10
+    
+  - from: "weigh_station"
+    to: "int_entry"
+    bidirectional: true
+    speed_limit: 20
+    
+  - from: "gate_hazmat"
+    to: "int_south"
+    bidirectional: true
+    speed_limit: 15
+
+  # Central axis
+  - from: "int_entry"
+    to: "int_central"
+    bidirectional: true
+    speed_limit: 30
+    lanes: 2
+    
+  - from: "int_central"
+    to: "int_north"
+    bidirectional: true
+    speed_limit: 30
+    
+  - from: "int_central"
+    to: "int_south"
+    bidirectional: true
+    speed_limit: 30
+
+  # Terminal access
+  - from: "int_north"
+    to: "terminal_containers"
+    bidirectional: true
+    speed_limit: 20
+    
+  - from: "int_central"
+    to: "terminal_bulk"
+    bidirectional: true
+    speed_limit: 20
+    
+  - from: "int_south"
+    to: "zona_hazmat"
+    bidirectional: true
+    speed_limit: 15
+    restrictions:
+      - type: "CARGO_PROHIBITED"
+        affected_cargo: ["GENERAL", "REFRIGERATED"]
+
+  # Dock access
+  - from: "terminal_containers"
+    to: "dock_1"
+    bidirectional: true
+    speed_limit: 10
+    restrictions:
+      - type: "CARGO_PROHIBITED"
+        affected_cargo: ["CLASS_1_EXPLOSIVES", "CLASS_3_FLAMMABLE", "CLASS_7_RADIOACTIVE"]
+    
+  - from: "terminal_containers"
+    to: "dock_2"
+    bidirectional: true
+    speed_limit: 10
+    
+  - from: "terminal_bulk"
+    to: "dock_3"
+    bidirectional: true
+    speed_limit: 10
+    
+  - from: "zona_hazmat"
+    to: "dock_hazmat"
+    bidirectional: true
+    speed_limit: 10
+
+# =============================================================================
+# ZONES (for bulk condition updates)
+# =============================================================================
+zones:
+  north_zone:
+    - "int_north->terminal_containers"
+    - "terminal_containers->int_north"
+    - "terminal_containers->dock_1"
+    - "dock_1->terminal_containers"
+    
+  hazmat_zone:
+    - "int_south->zona_hazmat"
+    - "zona_hazmat->int_south"
+    - "zona_hazmat->dock_hazmat"
+    - "dock_hazmat->zona_hazmat"
