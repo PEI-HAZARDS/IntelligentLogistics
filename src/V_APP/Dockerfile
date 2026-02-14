@@ -48,3 +48,11 @@ COPY shared/ ./shared/
 COPY V_APP/decision_engine/init.py ./
 COPY V_APP/decision_engine/tests/ ./tests/
 CMD ["python", "init.py"]
+
+# --- 5. V_Gateway Stage ---
+FROM base as v_gateway
+WORKDIR /app
+ENV PYTHONPATH=/app
+COPY V_APP/gateway/ ./V_APP/gateway/
+COPY shared/ ./shared/
+CMD ["python", "-m", "V_APP.gateway"]

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   agenta:
     build:
@@ -47,7 +45,24 @@ services:
     env_file:
       - .env
     command: ["python", "AI_APP/agentC/init.py"]
-    
+
+  ai-gateway:
+    build:
+      context: ..
+      dockerfile: AI_APP/Dockerfile
+    image: ai-gateway:latest
+    container_name: ai-gateway
+    restart: unless-stopped
+    ports:
+      - "8003:8003"
+    environment:
+      - GATEWAY_PORT=8003
+    env_file:
+      - .env
+    depends_on:
+      - kafka
+    command: ["python", "-m", "AI_APP.gateway"]
+
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     container_name: kafka
@@ -71,12 +86,41 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       # Auto-create topics for development
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       # Cluster ID for KRaft
       CLUSTER_ID: "5L6g3nShT-eMCtK--X86sw"
       # Log dirs
       KAFKA_LOG_DIRS: "/tmp/kraft-combined-logs"
     
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: kafka-init
+    depends_on:
+      - kafka
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        echo "Waiting for Kafka to be ready..."
+        cub kafka-ready -b kafka:29092 1 60
+
+        echo "Creating topics..."
+        for TOPIC in \
+          truck-detected-${GATE_ID} \
+          lp-results-${GATE_ID} \
+          hz-results-${GATE_ID} \
+          decision-results-${GATE_ID}; do
+          kafka-topics --create --if-not-exists \
+            --bootstrap-server kafka:29092 \
+            --partitions 1 \
+            --replication-factor 1 \
+            --topic "$$TOPIC"
+        done
+
+        echo "All topics created."
+    env_file:
+      - .env
+    restart: "no"
+
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
