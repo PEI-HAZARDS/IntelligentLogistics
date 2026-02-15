@@ -116,7 +116,7 @@ class BaseAgent(ABC):
 
     def _load_config(self):
         """Load environment configuration."""
-        nginx_host = os.getenv("NGINX_RTMP_HOST", "10.255.32.80")
+        nginx_host = os.getenv("NGINX_RTMP_HOST", "10.255.32.56")
         nginx_port = os.getenv("NGINX_RTMP_PORT", "1935")
         gate_id = os.getenv("GATE_ID", "1")
         

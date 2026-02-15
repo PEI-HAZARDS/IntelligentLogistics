@@ -1,5 +1,5 @@
 # Promtail Configuration for Remote VMs
-# Collects Docker container logs and sends to Loki on Network_APP VM
+# Collects Docker container logs and sends to Loki
 
 server:
   http_listen_port: 9080
@@ -9,7 +9,7 @@ positions:
   filename: /tmp/positions.yaml
 
 clients:
-  - url: http://${LOKI_URL:-10.255.32.132}:3100/loki/api/v1/push
+  - url: http://10.255.32.132:3100/loki/api/v1/push
 
 scrape_configs:
   # Docker container logs via Docker socket
@@ -32,10 +32,6 @@ scrape_configs:
       - action: replace
         replacement: '${HOSTNAME}'
         target_label: 'host'
-      # Add VM name label for filtering in Grafana
-      - action: replace
-        replacement: '${VM_NAME:-unknown}'
-        target_label: 'vm_name'
     pipeline_stages:
       - json:
           expressions:

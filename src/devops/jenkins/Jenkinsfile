@@ -46,7 +46,7 @@ pipeline {
         booleanParam(name: 'AGENT_A', defaultValue: false, description: 'Agent A (10.255.32.134)')
         booleanParam(name: 'AGENT_B', defaultValue: false, description: 'Agent B (10.255.32.32)')
         booleanParam(name: 'AGENT_C', defaultValue: false, description: 'Agent C (10.255.32.128)')
-        booleanParam(name: 'STREAMING', defaultValue: false, description: 'Streaming (10.255.32.80)')
+        booleanParam(name: 'STREAMING', defaultValue: false, description: 'Streaming (10.255.32.56)')
         booleanParam(name: 'KAFKA', defaultValue: false, description: 'Kafka (10.255.32.143)')
         booleanParam(name: 'DATA_MODULE', defaultValue: false, description: 'Data Module (10.255.32.82)')
         booleanParam(name: 'DECISION_ENGINE', defaultValue: false, description: 'Decision Engine (10.255.32.104)')
@@ -80,7 +80,7 @@ pipeline {
         AGENTA_IP = '10.255.32.134'
         AGENTB_IP = '10.255.32.32'
         AGENTC_IP = '10.255.32.128'
-        STREAMING_IP = '10.255.32.80'
+        STREAMING_IP = '10.255.32.56'
         KAFKA_IP = '10.255.32.143'
         DATA_MODULE_IP = '10.255.32.82'
         DECISION_ENGINE_IP = '10.255.32.104'
