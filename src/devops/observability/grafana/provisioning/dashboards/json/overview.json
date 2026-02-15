@@ -113,7 +113,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "up{job=\"api-gateway\"}",
+          "expr": "up{job=\"api-gateway\", vm=\"V_APP\"}",
           "refId": "A"
         }
       ],
@@ -198,7 +198,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "up{job=\"data-module\"}",
+          "expr": "up{job=\"data-module\", vm=\"V_APP\"}",
           "refId": "A"
         }
       ],
@@ -283,7 +283,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "up{job=\"decision-engine\"}",
+          "expr": "up{job=\"decision-engine\", vm=\"V_APP\"}",
           "refId": "A"
         }
       ],
@@ -368,7 +368,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "up{job=\"agent-a\"}",
+          "expr": "up{job=\"agent-a\", vm=\"IA_APP\"}",
           "refId": "A"
         }
       ],
@@ -453,7 +453,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "up{job=\"agent-b\"}",
+          "expr": "up{job=\"agent-b\", vm=\"IA_APP\"}",
           "refId": "A"
         }
       ],
@@ -538,7 +538,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "up{job=\"agent-c\"}",
+          "expr": "up{job=\"agent-c\", vm=\"IA_APP\"}",
           "refId": "A"
         }
       ],
@@ -623,7 +623,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "up{job=\"kafka\"}",
+          "expr": "up{job=\"kafka\", vm=\"IA_APP\"}",
           "refId": "A"
         }
       ],
@@ -706,7 +706,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
           "refId": "A"
         }
       ],
@@ -776,7 +776,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+          "expr": "(1 - (node_memory_MemAvailable_bytes{vm=\"Jenkins\"} / node_memory_MemTotal_bytes{vm=\"Jenkins\"})) * 100",
           "refId": "A"
         }
       ],
@@ -846,7 +846,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(1 - (node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"})) * 100",
+          "expr": "(1 - (node_filesystem_avail_bytes{mountpoint=\"/\", vm=\"Jenkins\"} / node_filesystem_size_bytes{mountpoint=\"/\", vm=\"Jenkins\"})) * 100",
           "refId": "A"
         }
       ],
@@ -933,7 +933,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(node_network_receive_bytes_total[5m])",
+          "expr": "rate(node_network_receive_bytes_total{vm=\"Jenkins\"}[5m])",
           "legendFormat": "Received",
           "refId": "A"
         },
@@ -942,7 +942,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(node_network_transmit_bytes_total[5m])",
+          "expr": "rate(node_network_transmit_bytes_total{vm=\"Jenkins\"}[5m])",
           "legendFormat": "Transmitted",
           "refId": "B"
         }

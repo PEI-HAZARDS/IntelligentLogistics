@@ -28,80 +28,107 @@ scrape_configs:
       - targets: ['localhost:9090']
 
   # =============================================================================
-  # NODE EXPORTER - Host Metrics (Jenkins VM)
+  # NODE EXPORTER - Jenkins VM (Observability + CI/CD)
   # =============================================================================
-  - job_name: 'node-exporter'
+  - job_name: 'node-exporter-jenkins'
     static_configs:
       - targets: ['node-exporter:9100']
         labels:
           instance: 'jenkins-vm'
+          vm: 'Jenkins'
 
   # =============================================================================
-  # DATA MODULE (PostgreSQL, MongoDB, Redis, MinIO, Data Module API)
+  # NODE EXPORTER - IA_APP VM (10.255.32.110)
+  # =============================================================================
+  - job_name: 'node-exporter-ia-app'
+    static_configs:
+      - targets: ['10.255.32.110:9100']
+        labels:
+          instance: 'ia-app-vm'
+          vm: 'IA_APP'
+
+  # =============================================================================
+  # NODE EXPORTER - V_APP VM (10.255.32.70)
+  # =============================================================================
+  - job_name: 'node-exporter-v-app'
+    static_configs:
+      - targets: ['10.255.32.70:9100']
+        labels:
+          instance: 'v-app-vm'
+          vm: 'V_APP'
+
+  # =============================================================================
+  # DATA MODULE - V_APP VM (10.255.32.70)
   # =============================================================================
   - job_name: 'data-module'
     metrics_path: /metrics
     static_configs:
-      - targets: ['10.255.32.82:8080']
+      - targets: ['10.255.32.70:8080']
         labels:
           service: 'data-module'
+          vm: 'V_APP'
 
   # =============================================================================
-  # API GATEWAY
+  # API GATEWAY - V_APP VM (10.255.32.70)
   # =============================================================================
   - job_name: 'api-gateway'
     metrics_path: /metrics
     static_configs:
-      - targets: ['10.255.32.100:8000']
+      - targets: ['10.255.32.70:8000']
         labels:
           service: 'api-gateway'
+          vm: 'V_APP'
 
   # =============================================================================
-  # ML AGENTS
+  # DECISION ENGINE - V_APP VM (10.255.32.70)
+  # =============================================================================
+  - job_name: 'decision-engine'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.70:8001']
+        labels:
+          service: 'decision-engine'
+          vm: 'V_APP'
+
+  # =============================================================================
+  # ML AGENTS - IA_APP VM (10.255.32.110)
   # =============================================================================
   - job_name: 'agent-a'
     metrics_path: /metrics
     scrape_interval: 30s
     static_configs:
-      - targets: ['10.255.32.134:8000']
+      - targets: ['10.255.32.110:8000']
         labels:
           service: 'agent-a'
           type: 'ml-agent'
+          vm: 'IA_APP'
 
   - job_name: 'agent-b'
     metrics_path: /metrics
     scrape_interval: 30s
     static_configs:
-      - targets: ['10.255.32.32:8000']
+      - targets: ['10.255.32.110:8001']
         labels:
           service: 'agent-b'
           type: 'ml-agent'
+          vm: 'IA_APP'
 
   - job_name: 'agent-c'
     metrics_path: /metrics
     scrape_interval: 30s
     static_configs:
-      - targets: ['10.255.32.128:8000']
+      - targets: ['10.255.32.110:8002']
         labels:
           service: 'agent-c'
           type: 'ml-agent'
+          vm: 'IA_APP'
 
   # =============================================================================
-  # DECISION ENGINE
-  # =============================================================================
-  - job_name: 'decision-engine'
-    metrics_path: /metrics
-    static_configs:
-      - targets: ['10.255.32.104:8001']
-        labels:
-          service: 'decision-engine'
-
-  # =============================================================================
-  # KAFKA (via kafka-exporter)
+  # KAFKA EXPORTER - IA_APP VM (10.255.32.110)
   # =============================================================================
   - job_name: 'kafka'
     static_configs:
-      - targets: ['10.255.32.143:9308']
+      - targets: ['10.255.32.110:9308']
         labels:
           service: 'kafka'
-
+          vm: 'IA_APP'

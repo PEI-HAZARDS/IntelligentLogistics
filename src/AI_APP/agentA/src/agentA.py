@@ -18,7 +18,7 @@ from prometheus_client import start_http_server, Counter, Histogram, Gauge #type
 # --- Configuration ---
 # Load environment variables or fallback to default network settings
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
-NGINX_RTMP_HOST = os.getenv("NGINX_RTMP_HOST", "10.255.32.80")
+NGINX_RTMP_HOST = os.getenv("NGINX_RTMP_HOST", "10.255.32.56")
 NGINX_RTMP_PORT = os.getenv("NGINX_RTMP_PORT", "1935")
 GATE_ID = os.getenv("GATE_ID", "1")
 STREAM_LOW = f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_low/gate{GATE_ID}"

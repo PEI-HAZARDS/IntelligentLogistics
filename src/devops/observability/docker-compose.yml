@@ -60,6 +60,10 @@ services:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
+      # Embedding support for manager dashboard iframes
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - grafana_data:/var/lib/grafana
@@ -75,7 +79,7 @@ services:
     restart: unless-stopped
     command: -config.file=/etc/loki/loki-config.yml
     ports:
-      - "3100:3100"
+      - "0.0.0.0:3100:3100"
     volumes:
       - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
       - loki_data:/loki
@@ -129,9 +133,9 @@ services:
     user: root
     command: ["-config.file=/etc/tempo/tempo-config.yml"]
     ports:
-      - "3200:3200"   # Tempo API
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
+      - "3200:3200"           # Tempo API
+      - "0.0.0.0:4317:4317"   # OTLP gRPC (remote ingest)
+      - "0.0.0.0:4318:4318"   # OTLP HTTP (remote ingest)
     volumes:
       - ./tempo/tempo-config.yml:/etc/tempo/tempo-config.yml:ro
       - tempo_data:/tmp/tempo

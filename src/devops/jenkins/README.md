@@ -50,7 +50,7 @@ Jenkins VM (10.255.32.132)
     ├── SSH (Paralelo) ──> Agent A (10.255.32.134)
     ├── SSH (Paralelo) ──> Agent B (10.255.32.32)
     ├── SSH (Paralelo) ──> Agent C (10.255.32.128)
-    ├── SSH (Paralelo) ──> Streaming (10.255.32.80)
+    ├── SSH (Paralelo) ──> Streaming (10.255.32.56)
     ├── SSH (Paralelo) ──> Kafka (10.255.32.143)
     ├── SSH (Paralelo) ──> Data Module (10.255.32.82)
     ├── SSH (Paralelo) ──> Decision Engine (10.255.32.104)
@@ -110,7 +110,7 @@ Jenkins VM (10.255.32.132)
 | `AGENT_A`         | Agent A         | 10.255.32.134 | Truck Detection                        |
 | `AGENT_B`         | Agent B         | 10.255.32.32  | License Plate OCR                      |
 | `AGENT_C`         | Agent C         | 10.255.32.128 | Hazard Detection                       |
-| `STREAMING`       | Streaming       | 10.255.32.80  | Nginx RTMP                             |
+| `STREAMING`       | Streaming       | 10.255.32.56  | Nginx RTMP                             |
 | `KAFKA`           | Kafka           | 10.255.32.143 | Zookeeper + Kafka + Kafka UI           |
 | `DATA_MODULE`     | Data Module     | 10.255.32.82  | Postgres + Mongo + Redis + MinIO + App |
 | `DECISION_ENGINE` | Decision Engine | 10.255.32.104 | Decision Logic                         |
