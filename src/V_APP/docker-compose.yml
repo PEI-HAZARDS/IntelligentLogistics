@@ -149,6 +149,11 @@ services:
       - CORS_ALLOW_METHODS=${CORS_ALLOW_METHODS}
       - CORS_ALLOW_HEADERS=${CORS_ALLOW_HEADERS}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      data-module:
+        condition: service_healthy
     networks:
       - intelligent-logistics
 
@@ -168,6 +173,9 @@ services:
       - GATE_ID=${GATE_ID}
       - API_URL=${DE_API_URL}
       - TIME_TOLERANCE_MINUTES=${TIME_TOLERANCE_MINUTES}
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
     networks:
       - intelligent-logistics
 
@@ -244,6 +252,9 @@ services:
       - GATEWAY_PORT=8003
       - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
       - GATE_ID=${GATE_ID}
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
     networks:
       - intelligent-logistics
 
