@@ -4,7 +4,7 @@
   },
   "editable": true,
   "fiscalYearStartMonth": 0,
-  "graphTooltip": 0,
+  "graphTooltip": 1,
   "id": null,
   "links": [],
   "panels": [
@@ -62,7 +62,7 @@
         }
       },
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 8,
         "x": 0,
         "y": 1
@@ -75,15 +75,16 @@
           "calcs": [
             "lastNotNull"
           ]
-        }
+        },
+        "textMode": "auto"
       },
       "targets": [
         {
-          "expr": "up{job=\"agent-a\"}",
+          "expr": "up{job=\"agent-a\", vm=\"IA_APP\"}",
           "refId": "A"
         }
       ],
-      "title": "Agent A (Container Detection)",
+      "title": "\ud83d\udce6 Agent A (Container Detection)",
       "type": "stat"
     },
     {
@@ -127,7 +128,7 @@
         }
       },
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 8,
         "x": 8,
         "y": 1
@@ -140,15 +141,16 @@
           "calcs": [
             "lastNotNull"
           ]
-        }
+        },
+        "textMode": "auto"
       },
       "targets": [
         {
-          "expr": "up{job=\"agent-b\"}",
+          "expr": "up{job=\"agent-b\", vm=\"IA_APP\"}",
           "refId": "A"
         }
       ],
-      "title": "Agent B (License Plate)",
+      "title": "\ud83d\ude97 Agent B (License Plate)",
       "type": "stat"
     },
     {
@@ -192,7 +194,7 @@
         }
       },
       "gridPos": {
-        "h": 4,
+        "h": 3,
         "w": 8,
         "x": 16,
         "y": 1
@@ -205,15 +207,163 @@
           "calcs": [
             "lastNotNull"
           ]
-        }
+        },
+        "textMode": "auto"
       },
       "targets": [
         {
-          "expr": "up{job=\"agent-c\"}",
+          "expr": "up{job=\"agent-c\", vm=\"IA_APP\"}",
           "refId": "A"
         }
       ],
-      "title": "Agent C (Hazards)",
+      "title": "\u2622\ufe0f Agent C (Hazards)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 8,
+        "x": 0,
+        "y": 4
+      },
+      "id": 20,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "agent_messages_processed_total{agent=\"agent-a\", status=\"success\"}",
+          "legendFormat": "Processed",
+          "refId": "A"
+        }
+      ],
+      "title": "Agent A - Messages Processed",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 8,
+        "x": 8,
+        "y": 4
+      },
+      "id": 21,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "agent_messages_processed_total{agent=\"agent-b\", status=\"success\"}",
+          "legendFormat": "Processed",
+          "refId": "A"
+        }
+      ],
+      "title": "Agent B - Messages Processed",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 8,
+        "x": 16,
+        "y": 4
+      },
+      "id": 22,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "agent_messages_processed_total{agent=\"agent-c\", status=\"success\"}",
+          "legendFormat": "Processed",
+          "refId": "A"
+        }
+      ],
+      "title": "Agent C - Messages Processed",
       "type": "stat"
     },
     {
@@ -222,11 +372,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 5
+        "y": 7
       },
       "id": 5,
       "panels": [],
-      "title": "\ud83d\udcca Inference Metrics",
+      "title": "\ud83d\udcca Inference Rate & Latency",
       "type": "row"
     },
     {
@@ -239,20 +389,21 @@
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 20,
-            "lineWidth": 2
+            "lineWidth": 2,
+            "gradientMode": "scheme"
           }
         }
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 8,
         "x": 0,
-        "y": 6
+        "y": 8
       },
       "id": 6,
       "options": {
         "legend": {
-          "displayMode": "table",
+          "displayMode": "list",
           "placement": "bottom"
         }
       },
@@ -276,20 +427,21 @@
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 20,
-            "lineWidth": 2
+            "lineWidth": 2,
+            "gradientMode": "scheme"
           }
         }
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 8,
         "x": 8,
-        "y": 6
+        "y": 8
       },
       "id": 7,
       "options": {
         "legend": {
-          "displayMode": "table",
+          "displayMode": "list",
           "placement": "bottom"
         }
       },
@@ -313,20 +465,21 @@
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 20,
-            "lineWidth": 2
+            "lineWidth": 2,
+            "gradientMode": "scheme"
           }
         }
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 8,
         "x": 16,
-        "y": 6
+        "y": 8
       },
       "id": 8,
       "options": {
         "legend": {
-          "displayMode": "table",
+          "displayMode": "list",
           "placement": "bottom"
         }
       },
@@ -341,19 +494,6 @@
       "type": "timeseries"
     },
     {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 14
-      },
-      "id": 9,
-      "panels": [],
-      "title": "\u23f1\ufe0f Inference Latency",
-      "type": "row"
-    },
-    {
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -363,13 +503,14 @@
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 20,
-            "lineWidth": 2
+            "lineWidth": 2,
+            "gradientMode": "scheme"
           },
           "unit": "ms"
         }
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 8,
         "x": 0,
         "y": 15
@@ -377,23 +518,23 @@
       "id": 10,
       "options": {
         "legend": {
-          "displayMode": "table",
+          "displayMode": "list",
           "placement": "bottom"
         }
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(inference_duration_seconds_bucket{job=\"agent-a\"}[5m])) by (le)) * 1000",
+          "expr": "histogram_quantile(0.50, sum(rate(agent_inference_seconds_bucket{agent=\"agent-a\"}[5m])) by (le)) * 1000",
           "legendFormat": "P50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(inference_duration_seconds_bucket{job=\"agent-a\"}[5m])) by (le)) * 1000",
+          "expr": "histogram_quantile(0.95, sum(rate(agent_inference_seconds_bucket{agent=\"agent-a\"}[5m])) by (le)) * 1000",
           "legendFormat": "P95",
           "refId": "B"
         }
       ],
-      "title": "Agent A - Latency",
+      "title": "Agent A - Latency (ms)",
       "type": "timeseries"
     },
     {
@@ -406,13 +547,14 @@
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 20,
-            "lineWidth": 2
+            "lineWidth": 2,
+            "gradientMode": "scheme"
           },
           "unit": "ms"
         }
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 8,
         "x": 8,
         "y": 15
@@ -420,23 +562,23 @@
       "id": 11,
       "options": {
         "legend": {
-          "displayMode": "table",
+          "displayMode": "list",
           "placement": "bottom"
         }
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(inference_duration_seconds_bucket{job=\"agent-b\"}[5m])) by (le)) * 1000",
+          "expr": "histogram_quantile(0.50, sum(rate(agent_inference_seconds_bucket{agent=\"agent-b\"}[5m])) by (le)) * 1000",
           "legendFormat": "P50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(inference_duration_seconds_bucket{job=\"agent-b\"}[5m])) by (le)) * 1000",
+          "expr": "histogram_quantile(0.95, sum(rate(agent_inference_seconds_bucket{agent=\"agent-b\"}[5m])) by (le)) * 1000",
           "legendFormat": "P95",
           "refId": "B"
         }
       ],
-      "title": "Agent B - Latency",
+      "title": "Agent B - Latency (ms)",
       "type": "timeseries"
     },
     {
@@ -449,13 +591,14 @@
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 20,
-            "lineWidth": 2
+            "lineWidth": 2,
+            "gradientMode": "scheme"
           },
           "unit": "ms"
         }
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 8,
         "x": 16,
         "y": 15
@@ -463,23 +606,23 @@
       "id": 12,
       "options": {
         "legend": {
-          "displayMode": "table",
+          "displayMode": "list",
           "placement": "bottom"
         }
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(inference_duration_seconds_bucket{job=\"agent-c\"}[5m])) by (le)) * 1000",
+          "expr": "histogram_quantile(0.50, sum(rate(agent_inference_seconds_bucket{agent=\"agent-c\"}[5m])) by (le)) * 1000",
           "legendFormat": "P50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(inference_duration_seconds_bucket{job=\"agent-c\"}[5m])) by (le)) * 1000",
+          "expr": "histogram_quantile(0.95, sum(rate(agent_inference_seconds_bucket{agent=\"agent-c\"}[5m])) by (le)) * 1000",
           "legendFormat": "P95",
           "refId": "B"
         }
       ],
-      "title": "Agent C - Latency",
+      "title": "Agent C - Latency (ms)",
       "type": "timeseries"
     },
     {
@@ -488,7 +631,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 23
+        "y": 22
       },
       "id": 13,
       "panels": [],
@@ -505,15 +648,16 @@
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 20,
-            "lineWidth": 2
+            "lineWidth": 2,
+            "gradientMode": "scheme"
           }
         }
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 12,
         "x": 0,
-        "y": 24
+        "y": 23
       },
       "id": 14,
       "options": {
@@ -542,16 +686,17 @@
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 20,
-            "lineWidth": 2
+            "lineWidth": 2,
+            "gradientMode": "scheme"
           },
           "unit": "percent"
         }
       },
       "gridPos": {
-        "h": 8,
+        "h": 7,
         "w": 12,
         "x": 12,
-        "y": 24
+        "y": 23
       },
       "id": 15,
       "options": {
@@ -576,11 +721,11 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 32
+        "y": 30
       },
       "id": 16,
       "panels": [],
-      "title": "\ud83d\udccb Logs",
+      "title": "\ud83d\udccb Agent Logs",
       "type": "row"
     },
     {
@@ -590,11 +735,11 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 24,
+        "w": 8,
         "x": 0,
-        "y": 33
+        "y": 31
       },
-      "id": 17,
+      "id": 30,
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
@@ -603,7 +748,7 @@
         "showLabels": false,
         "showTime": true,
         "sortOrder": "Descending",
-        "wrapLogMessage": false
+        "wrapLogMessage": true
       },
       "targets": [
         {
@@ -611,11 +756,81 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{container=~\".*agent.*\"}",
+          "expr": "{container=\"agenta\"}",
           "refId": "A"
         }
       ],
-      "title": "ML Agents Logs",
+      "title": "\ud83d\udce6 Agent A Logs",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 31
+      },
+      "id": 31,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{container=\"agentb\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "\ud83d\ude97 Agent B Logs",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 31
+      },
+      "id": 32,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{container=\"agentc\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "\u2622\ufe0f Agent C Logs",
       "type": "logs"
     }
   ],
@@ -625,8 +840,7 @@
   "tags": [
     "intelligent-logistics",
     "agents",
-    "ml",
-    "microservice"
+    "ml"
   ],
   "templating": {
     "list": []
@@ -637,5 +851,5 @@
   },
   "title": "IntelligentLogistics - ML Agents",
   "uid": "il-ml-agents",
-  "version": 1
+  "version": 100
 }

@@ -26,6 +26,7 @@ services:
     environment:
       - MODELS_PATH=${MODELS_PATH_B}
       - BUCKET_NAME=${BUCKET_NAME_LP}
+      - METRICS_PORT=8001
     env_file:
       - .env
     command: ["python", "AI_APP/agentB/init.py"]
@@ -42,6 +43,7 @@ services:
     environment:
       - MODELS_PATH=${MODELS_PATH_C}
       - BUCKET_NAME=${BUCKET_NAME_HZ}
+      - METRICS_PORT=8002
     env_file:
       - .env
     command: ["python", "AI_APP/agentC/init.py"]
@@ -189,6 +191,6 @@ services:
       - VM_NAME=IA_APP
       - LOKI_URL=10.255.32.132
     volumes:
-      - ../devops/promtail-remote/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - ./promtail-config.yml:/etc/promtail/promtail-config.yml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
