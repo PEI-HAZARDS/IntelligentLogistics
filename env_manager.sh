@@ -42,15 +42,9 @@ DEFAULT_BACKUP_DIR="$PROJECT_ROOT/.env_backup"
 # .env locations relative to src/
 ENV_LOCATIONS=(
     # Favor adicionar os .env aqui! Sempre que meterem algo novo
-    "AI_APP/agentA/.env"
-    "AI_APP/agentB/.env"
-    "AI_APP/agentC/.env"
-    "AI_APP/broker/.env"
-    "V_APP/api_gateway/.env"
-    "V_APP/Data_Module/.env"
-    "V_APP/decision_engine/.env"
+    "AI_APP/.env"
+    "V_APP/.env"
     "devops/observability/.env"
-    "devops/promtail-remote/.env"
     "streaming_middleware/.env"
 )
 
