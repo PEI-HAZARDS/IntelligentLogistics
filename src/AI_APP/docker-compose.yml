@@ -12,6 +12,9 @@ services:
       - MODELS_PATH=${MODELS_PATH_A}
     env_file:
       - .env
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
     command: ["python", "AI_APP/agentA/init.py"]
 
   agentb:
@@ -29,6 +32,9 @@ services:
       - METRICS_PORT=8001
     env_file:
       - .env
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
     command: ["python", "AI_APP/agentB/init.py"]
 
   agentc:
@@ -46,6 +52,9 @@ services:
       - METRICS_PORT=8002
     env_file:
       - .env
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
     command: ["python", "AI_APP/agentC/init.py"]
 
   ai-gateway:
@@ -62,7 +71,8 @@ services:
     env_file:
       - .env
     depends_on:
-      - kafka
+      kafka-init:
+        condition: service_completed_successfully
     command: ["python", "-m", "AI_APP.gateway"]
 
   kafka:
