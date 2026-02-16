@@ -29,7 +29,7 @@ services:
     environment:
       - MODELS_PATH=${MODELS_PATH_B}
       - BUCKET_NAME=${BUCKET_NAME_LP}
-      - METRICS_PORT=8001
+      - METRICS_PORT=${METRICS_PORT_B:-8001}
     env_file:
       - .env
     depends_on:
@@ -49,7 +49,7 @@ services:
     environment:
       - MODELS_PATH=${MODELS_PATH_C}
       - BUCKET_NAME=${BUCKET_NAME_HZ}
-      - METRICS_PORT=8002
+      - METRICS_PORT=${METRICS_PORT_C:-8002}
     env_file:
       - .env
     depends_on:
@@ -196,11 +196,11 @@ services:
     image: grafana/promtail:latest
     container_name: promtail
     restart: unless-stopped
-    command: -config.file=/etc/promtail/promtail-config.yml
+    command: -config.file=/etc/promtail/promtail-config.yml -config.expand-env=true
     environment:
       - VM_NAME=IA_APP
       - LOKI_URL=10.255.32.132
     volumes:
-      - ./promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /home/pei_user/IA_APP/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro

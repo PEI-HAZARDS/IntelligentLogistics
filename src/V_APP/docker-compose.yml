@@ -281,12 +281,12 @@ services:
     image: grafana/promtail:latest
     container_name: promtail
     restart: unless-stopped
-    command: -config.file=/etc/promtail/promtail-config.yml
+    command: -config.file=/etc/promtail/promtail-config.yml -config.expand-env=true
     environment:
       - VM_NAME=V_APP
       - LOKI_URL=10.255.32.132
     volumes:
-      - ./promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /home/pei_user/V_APP/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
 

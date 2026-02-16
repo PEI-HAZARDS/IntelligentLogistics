@@ -14,6 +14,7 @@ httpx
 
 # Prometheus metrics
 prometheus_client
+prometheus-fastapi-instrumentator
 pillow==12.0.0
 numpy
 minio
