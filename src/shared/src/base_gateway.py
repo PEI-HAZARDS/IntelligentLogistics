@@ -6,6 +6,7 @@ from typing import Optional
 import httpx  # type: ignore
 import uvicorn  # type: ignore
 from fastapi import FastAPI, Request  # type: ignore
+from prometheus_fastapi_instrumentator import Instrumentator  # type: ignore
 from shared.src.kafka_wrapper import KafkaConsumerWrapper, KafkaProducerWrapper
 from shared.src.kafka_protocol import Message, deserialize_message
 
@@ -139,6 +140,9 @@ class BaseGateway(ABC):
 
             self.kafka_producer.flush()
             return {"status": "ok", "message": f"Message produced to '{topic}'"}
+
+        # Prometheus metrics at /metrics
+        Instrumentator().instrument(app).expose(app)
 
         return app
 
