@@ -92,6 +92,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -114,6 +116,8 @@ services:
       - DEBUG_MODE=${DEBUG_MODE}
       - TOKEN_EXPIRY_HOURS=${TOKEN_EXPIRY_HOURS}
       - API_PREFIX=${DM_API_PREFIX}
+      - KAFKA_BOOTSTRAP=kafka:29092
+      - GATE_ID=${GATE_ID}
     ports:
       - "8080:8000"
     healthcheck:
@@ -222,7 +226,9 @@ services:
           truck-detected-${GATE_ID} \
           lp-results-${GATE_ID} \
           hz-results-${GATE_ID} \
-          decision-results-${GATE_ID}; do
+          decision-results-${GATE_ID} \
+          agent-decision-${GATE_ID} \
+          operator-decision-${GATE_ID}; do
           kafka-topics --create --if-not-exists \
             --bootstrap-server kafka:29092 \
             --partitions 1 \

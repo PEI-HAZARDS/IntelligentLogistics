@@ -14,9 +14,9 @@ from decision_engine.src.database_client import DatabaseClient
 from enum import Enum
 
 
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.143:9092")
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "10.255.32.70:9092")
 GATE_ID = os.getenv("GATE_ID", "1")
-KAFKA_PRODUCE_TOPIC = f"decision-results-{GATE_ID}"
+KAFKA_PRODUCE_TOPIC = f"agent-decision-{GATE_ID}"
 KAFKA_CONSUME_TOPIC_LP = f"lp-results-{GATE_ID}"
 KAFKA_CONSUME_TOPIC_HZ = f"hz-results-{GATE_ID}"
 API_URL = os.getenv("API_URL", "http://localhost:8080/api/v1")

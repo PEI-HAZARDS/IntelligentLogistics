@@ -24,9 +24,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # --- 2. Data Module Stage ---
 FROM base as data_module
 WORKDIR /app
+ENV PYTHONPATH=/app
 COPY V_APP/Data_Module/entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
 COPY V_APP/Data_Module/ .
+COPY shared/ ./shared/
 ENTRYPOINT ["/app/entrypoint.sh"]
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8000/api/v1/health || exit 1

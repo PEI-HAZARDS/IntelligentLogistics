@@ -10,10 +10,13 @@ Responsibilities:
 
 import json
 import time
+import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime as dt, timezone
 from db.mongo import detections_collection, events_collection
 from db.redis import redis_client
+
+logger = logging.getLogger("decision_service")
 
 
 # ==================== CONFIGURATION ====================
@@ -309,5 +312,92 @@ def query_appointments_for_decision(time_frame: int, gate_id: int) -> Dict[str, 
             "candidates": candidates,
             "message": f"Found {len(candidates)} candidate appointment(s)" if candidates else "No appointments found"
         }
+    finally:
+        db.close()
+
+
+# ==================== KAFKA CONSUMER HELPERS ====================
+
+def persist_decision_event_from_kafka(decision_data: Dict[str, Any]) -> str:
+    """
+    Adapter function for Kafka consumer to persist decision events.
+    Transforms Kafka message structure to decision_service format.
+    """
+    license_plate = decision_data.get("license_plate", "UNKNOWN")
+    gate_id = decision_data.get("gate_id", 1) 
+    appointment_id = decision_data.get("appointment_id")
+    decision = decision_data.get("decision", "UNKNOWN")
+    
+    # Build decision_data structure
+    kafka_decision_data = {
+        "agent_decision": decision_data.get("agent_decision"),
+        "agent_decision_reason": decision_data.get("agent_decision_reason"),
+        "operator_decision": decision_data.get("operator_decision"),
+        "operator_decision_reason": decision_data.get("operator_decision_reason"),
+        "decision_source": decision_data.get("decision_source", "unknown"),
+        "processed_at": decision_data.get("processed_at"),
+        "truck_id": decision_data.get("truck_id"),
+        "un": decision_data.get("un"),
+        "kemler": decision_data.get("kemler"),
+        "alerts": decision_data.get("alerts", []),
+        "route": decision_data.get("route", ""),
+        "license_crop_url": decision_data.get("license_crop_url"),
+        "hazard_crop_url": decision_data.get("hazard_crop_url"),
+    }
+    
+    return persist_decision_event(
+        license_plate=license_plate,
+        gate_id=gate_id,
+        appointment_id=appointment_id,
+        decision=decision,
+        decision_data=kafka_decision_data
+    )
+
+
+def update_appointment_after_decision(
+    license_plate: str,
+    gate_id: int,
+    decision_data: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
+    """
+    Updates appointment status after an ACCEPTED decision.
+    Searches for appointment by license plate and updates to 'in_transit'.
+    """
+    from db.postgres import SessionLocal
+    from models.sql_models import Appointment
+    
+    db = SessionLocal()
+    try:
+        # Find appointment by license plate and gate
+        # Status 'in_transit' is the initial state (no 'scheduled' or 'pending' in enum)
+        appointment = db.query(Appointment).filter(
+            Appointment.truck_license_plate == license_plate,
+            Appointment.gate_in_id == gate_id,
+            Appointment.status == 'in_transit'
+        ).first()
+        
+        if not appointment:
+            logger.warning(f"No appointment found for license_plate={license_plate}, gate_id={gate_id}")
+            return None
+        
+        # Update to in_process (truck arriving)
+        old_status = appointment.status
+        appointment.status = 'in_process'
+        
+        db.commit()
+        db.refresh(appointment)
+        
+        logger.info(f"Appointment {appointment.id} updated: {old_status} -> in_process")
+        
+        return {
+            "appointment_id": appointment.id,
+            "old_status": old_status,
+            "new_status": 'in_process'
+        }
+    
+    except Exception as e:
+        logger.error(f"Error updating appointment: {e}", exc_info=True)
+        db.rollback()
+        return None
     finally:
         db.close()

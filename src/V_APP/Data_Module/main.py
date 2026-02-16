@@ -22,6 +22,9 @@ from routes.driver import router as drivers_router
 from routes.alerts import router as alerts_router
 from routes.worker import router as workers_router
 
+# Kafka decision consumer
+from services.kafka_decision_consumer import decision_consumer
+
 # DB / infra imports used for startup checks
 from db.postgres import engine, SessionLocal
 from models.sql_models import Base, Appointment
@@ -107,10 +110,24 @@ async def lifespan(app: FastAPI):
     if _ready["postgres"]:
         _scheduler_task = asyncio.create_task(update_delayed_appointments())
         logger.info("Background scheduler started for delayed appointments.")
+    
+    # 5) Start Kafka decision consumer
+    try:
+        await decision_consumer.start()
+        logger.info("Kafka decision consumer started.")
+    except Exception as e:
+        logger.exception("Failed to start Kafka decision consumer: %s", e)
 
     yield  # Application runs
 
     # ===== SHUTDOWN =====
+    # Stop Kafka consumer
+    try:
+        await decision_consumer.stop()
+        logger.info("Kafka decision consumer stopped.")
+    except Exception:
+        logger.exception("Error stopping Kafka decision consumer.")
+    
     # Stop scheduler
     if _scheduler_task:
         _scheduler_task.cancel()
