@@ -117,14 +117,20 @@ class DecisionEngine:
         
         # Extract data directly from message objects
         license_plate = lp_msg.license_plate
-        un_number = hz_msg.un
-        kemler_code = hz_msg.kemler
+        raw_un = hz_msg.un
+        raw_kemler = hz_msg.kemler
+        
+        # Enrich codes with human-readable descriptions (e.g. "1202: Petroleum gases")
+        un_desc = self._get_un_description(raw_un) if raw_un else None
+        kemler_desc = self._get_kemler_description(raw_kemler) if raw_kemler else None
+        un_number = f"{raw_un}: {un_desc}" if un_desc and raw_un else raw_un
+        kemler_code = f"{raw_kemler}: {kemler_desc}" if kemler_desc and raw_kemler else raw_kemler
         
         logger.info(
             f"Extracted data: "
             f"License Plate: '{license_plate}' "
-            f"UN Number: '{un_number}' "
-            f"Kemler Code: '{kemler_code}' "
+            f"UN: '{un_number}' "
+            f"Kemler: '{kemler_code}' "
         )
         
         decision = ""
