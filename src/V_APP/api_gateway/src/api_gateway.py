@@ -132,6 +132,7 @@ class APIGateway:
         app.state.ws_manager = self.ws_manager
         app.state.data_module_url = self.DATA_MODULE_URL
         app.state.stream_base_url = self.STREAM_BASE_URL
+        app.state.gate_id = self.gate_ids
 
         # ----------------------
         # CORS
