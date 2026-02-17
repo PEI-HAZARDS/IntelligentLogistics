@@ -4,7 +4,7 @@ from shared.src.kafka_protocol import Message
 
 class V_Gateway(BaseGateway):
     def get_topics_consume(self) -> list[str]:
-        return [f"decision-results-{self.gate_id}"]
+        return [f"agent-decision-{self.gate_id}"]
 
     def get_gateway_name(self) -> str:
         return "V_Gateway"

@@ -143,21 +143,32 @@ services:
     environment:
       - DATA_MODULE_URL=${DATA_MODULE_URL}
       - STREAM_BASE_URL=${STREAM_BASE_URL}
-      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+      - KAFKA_BOOTSTRAP=kafka:29092
+      - CONSUME_TOPIC=decision-results-${GATE_ID}
+      - PRODUCE_TOPIC=operator-decision-${GATE_ID}
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - KAFKA_DECISION_TOPIC=${KAFKA_DECISION_TOPIC}
       - KAFKA_CONSUMER_GROUP=${KAFKA_CONSUMER_GROUP}
-      - API_PREFIX=${GW_API_PREFIX}
-      - ENV=${GW_ENV}
+      - GW_API_PREFIX=${GW_API_PREFIX}
+      - GW_ENV=${GW_ENV}
+      - GATE_ID=${GATE_ID}
       - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS}
       - CORS_ALLOW_CREDENTIALS=${CORS_ALLOW_CREDENTIALS}
       - CORS_ALLOW_METHODS=${CORS_ALLOW_METHODS}
       - CORS_ALLOW_HEADERS=${CORS_ALLOW_HEADERS}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
+      - PYTHONUNBUFFERED=1
     depends_on:
       kafka-init:
         condition: service_completed_successfully
       data-module:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     networks:
       - intelligent-logistics
 

@@ -1,11 +1,19 @@
+import os
+
 import httpx
 from typing import Any, Dict, Optional
 
 from fastapi import HTTPException, status
 
-from config import settings
-
 API_V1_PREFIX = "/api/v1"
+
+# Read Data Module URL directly from env (same var used by api_gateway.py)
+_data_module_url: str = os.getenv("DATA_MODULE_URL", "http://data-module:8000")
+
+
+def _get_data_module_url() -> str:
+    """Return the Data Module base URL."""
+    return _data_module_url
 
 
 def _build_url(path: str) -> str:
@@ -14,12 +22,12 @@ def _build_url(path: str) -> str:
 
     - Garante que o path começa por "/"
     - Preenche o prefixo "/api/v1"
-    - Junta com o BASE_URL vindo das settings
+    - Junta com o BASE_URL vindo do env
     """
     if not path.startswith("/"):
         path = "/" + path
-    # path aqui é algo tipo "/arrivals/1/pending"
-    return f"{settings.DATA_MODULE_URL.rstrip('/')}{API_V1_PREFIX}{path}"
+    base = _get_data_module_url()
+    return f"{base.rstrip('/')}{API_V1_PREFIX}{path}"
 
 
 async def _request(

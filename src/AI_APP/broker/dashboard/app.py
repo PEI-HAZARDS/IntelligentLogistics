@@ -32,7 +32,8 @@ TOPICS = [
     f"truck-detected-{GATE_ID}",
     f"lp-results-{GATE_ID}",
     f"hz-results-{GATE_ID}",
-    f"decision-results-{GATE_ID}",
+    f"agent-decision-{GATE_ID}",
+    f"operator-decision-{GATE_ID}",
 ]
 
 # Topic display names and colors
@@ -40,7 +41,8 @@ TOPIC_CONFIG = {
     f"truck-detected-{GATE_ID}": {"name": "🚛 Truck Detected", "color": "#3498db", "order": 1},
     f"lp-results-{GATE_ID}": {"name": "📋 License Plate", "color": "#2ecc71", "order": 2},
     f"hz-results-{GATE_ID}": {"name": "⚠️ Hazard Plate", "color": "#f39c12", "order": 3},
-    f"decision-results-{GATE_ID}": {"name": "✅ Decision", "color": "#9b59b6", "order": 4},
+    f"agent-decision-{GATE_ID}": {"name": "✅ Agent Decision", "color": "#9b59b6", "order": 4},
+    f"operator-decision-{GATE_ID}": {"name": "✅ Operartor Decision", "color": "#932ab2", "order": 5},
 }
 
 logging.basicConfig(level=logging.INFO)

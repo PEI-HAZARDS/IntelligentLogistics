@@ -1,11 +1,12 @@
 from collections import defaultdict
 from typing import Dict, Set
+import logging
 
-from fastapi import WebSocket
-from loguru import logger
+from fastapi import WebSocket # type: ignore
 
+logger = logging.getLogger("websocket_manager")
 
-class DecisionsHub:
+class WebSocketManager:
     """
     Mantém uma lista de WebSockets ligados ao Gateway para receber
     notificações em tempo real.
@@ -58,7 +59,3 @@ class DecisionsHub:
                 # Se der erro ao enviar, desligar o websocket
                 logger.error(f"[Hub] Failed to send to WebSocket: {e}")
                 self.disconnect(gate_id, ws)
-
-
-# Instância global usada pelo resto do gateway
-decisions_hub = DecisionsHub()

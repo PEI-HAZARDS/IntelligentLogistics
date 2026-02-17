@@ -11,7 +11,7 @@ class AI_Gateway(BaseGateway):
 
     def get_topics_produce(self) -> dict[str, str]:
         return {
-            "decision_results": f"decision-results-{self.gate_id}"
+            "decision_results": f"agent-decision-{self.gate_id}"
         }
 
     def get_recievers(self) -> list[str]:
