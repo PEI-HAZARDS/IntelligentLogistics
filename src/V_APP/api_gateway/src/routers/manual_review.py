@@ -30,6 +30,7 @@ async def produce_manual_review(
     decision: str = Query(..., description="Decision: approved or rejected"),
     decision_reason: str = Query(..., description="Reason for the decision"),
     decision_source: str = Query("operator", description="Source of the decision"),
+    truck_id: Optional[str] = Query(None, description="ID of the truck, if available"),
 ):
     """
     Propagate a manual decision to kafka, which will be consumed by the Data Module and stored in the database.
@@ -48,15 +49,24 @@ async def produce_manual_review(
     )
     
     logger.info(f"Propagating manual review decision for {license_plate}: {decision} (reason: {decision_reason})")
-
-    kafka_producer.produce(
-        topic=produce_topic,
-        data=msg.to_dict(),
-        key=license_plate,
-    )
+    
+    if truck_id is not None:
+        kafka_producer.produce(
+            topic=produce_topic,
+            data=msg.to_dict(),
+            headers={"truckId": truck_id}
+        )
+    else:
+        kafka_producer.produce(
+            topic=produce_topic,
+            data=msg.to_dict(),
+        )
 
     # Broadcast the decision to connected WebSocket clients
-    await ws_manager.broadcast_to_gate(gate_id, msg.to_dict())
+    ws_payload = msg.to_dict()
+    ws_payload["truck_id"] = truck_id
+    
+    await ws_manager.broadcast_to_gate(gate_id, ws_payload)
     logger.info(f"Manual review decision broadcast via WebSocket for gate '{gate_id}'")
 
     return {"status": decision, "message": f"Decision '{decision}' propagated"}

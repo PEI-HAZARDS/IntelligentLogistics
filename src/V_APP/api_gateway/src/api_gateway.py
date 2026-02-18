@@ -101,11 +101,15 @@ class APIGateway:
                 if typed_message is None:
                     logger.warning(f"Could not deserialize message from topic '{topic}'")
                     continue
+                
+                payload = typed_message.to_dict()
+                payload["truck_id"] = truck_id  # ensure truck_id is always present
+            
             
                 # Forward the processed message to all receiver gateways
                 # Must schedule on the main event loop (where WebSockets live)
                 future = asyncio.run_coroutine_threadsafe(
-                    self.ws_manager.broadcast_to_gate(self.gate_ids, typed_message.to_dict()),
+                    self.ws_manager.broadcast_to_gate(self.gate_ids, payload),
                     self._loop,
                 )
                 future.result(timeout=5)  # wait up to 5s for the broadcast
