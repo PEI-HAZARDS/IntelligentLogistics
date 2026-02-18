@@ -175,12 +175,16 @@ app.add_middleware(
 # alerts: /alerts
 # workers: /workers
 # events: /events (legacy)
+# statistics: /statistics (NEW - Phase 2)
+from routes.statistics import router as statistics_router
+
 app.include_router(arrivals_router, prefix="/api/v1")
 app.include_router(events_router, prefix="/api/v1")
 app.include_router(decisions_router, prefix="/api/v1")
 app.include_router(drivers_router, prefix="/api/v1")
 app.include_router(alerts_router, prefix="/api/v1")
 app.include_router(workers_router, prefix="/api/v1")
+app.include_router(statistics_router, prefix="/api/v1")  # NEW - Phase 2
 
 
 @app.get("/api/v1/health")
