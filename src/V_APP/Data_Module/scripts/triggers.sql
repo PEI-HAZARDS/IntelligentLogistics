@@ -140,6 +140,19 @@ CREATE TRIGGER trg_alert_timestamp
 -- Generates unique arrival_id in format PRT-XXXX if not provided
 -- ============================================================
 
+CREATE SEQUENCE IF NOT EXISTS appointment_arrival_seq START 1;
+
+SELECT setval(
+    'appointment_arrival_seq',
+    COALESCE(
+        (SELECT MAX(CAST(SUBSTRING(arrival_id FROM 'PRT-([0-9]+)') AS INTEGER))
+         FROM appointment
+         WHERE arrival_id LIKE 'PRT-%'),
+        0
+    ),
+    true
+);
+
 CREATE OR REPLACE FUNCTION fn_generate_arrival_id()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -147,15 +160,7 @@ DECLARE
     seq_num INTEGER;
 BEGIN
     IF COALESCE(NEW.arrival_id, '') = '' THEN
-        -- Get next sequence number based on existing max
-        SELECT COALESCE(
-            MAX(CAST(SUBSTRING(arrival_id FROM 'PRT-([0-9]+)') AS INTEGER)),
-            0
-        ) + 1 INTO seq_num
-        FROM appointment
-        WHERE arrival_id LIKE 'PRT-%';
-        
-        -- Format as PRT-XXXX (4 digits, zero-padded)
+        seq_num := nextval('appointment_arrival_seq');
         new_id := 'PRT-' || LPAD(seq_num::TEXT, 4, '0');
         NEW.arrival_id := new_id;
     END IF;
