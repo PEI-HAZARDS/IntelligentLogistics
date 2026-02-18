@@ -101,6 +101,7 @@ class DecisionCorrelator:
             "decision": operator_data.get("decision"),  # Final decision is operator's
             "decision_reason": operator_data.get("decision_reason", ""),
             "decision_source": "operator",
+            "license_plate": operator_data.get("license_plate"),
             "processed_at": datetime.now(timezone.utc).isoformat()
         })
         return final_decision
@@ -222,15 +223,21 @@ class KafkaDecisionConsumer:
             # Update appointment in PostgreSQL if decision is ACCEPTED
             decision_status = decision_data.get("decision")
             if decision_status == "ACCEPTED":
-                await asyncio.get_event_loop().run_in_executor(
+                result = await asyncio.get_event_loop().run_in_executor(
                     None,
                     update_appointment_after_decision,
                     license_plate,
                     gate_id,
                     decision_data
                 )
-                logger.info(f"Appointment updated for license_plate={license_plate}")
-        
+                if result:
+                    logger.info(f"Appointment updated for license_plate={license_plate}: {result['old_status']} -> {result['new_status']}")
+                else:
+                    logger.warning(f"Failed to update appointment for license_plate={license_plate}")
+
+            else:
+                logger.info(f"Wrong format status for operator decision: {decision_status} for truck_id={truck_id}")
+                    
         except Exception as e:
             logger.error(f"Error persisting decision for truck_id={truck_id}: {e}", exc_info=True)
 
