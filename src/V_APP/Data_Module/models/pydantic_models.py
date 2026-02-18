@@ -69,6 +69,8 @@ class TerminalBase(BaseModel):
     longitude: Optional[Decimal] = None
     hazmat_approved: bool = False
 
+    model_config = {"json_encoders": {Decimal: float}}
+
 
 class TerminalCreate(TerminalBase):
     pass
@@ -77,7 +79,7 @@ class TerminalCreate(TerminalBase):
 class Terminal(TerminalBase):
     id: int
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "json_encoders": {Decimal: float}}
 
 
 # ==========================
@@ -91,6 +93,8 @@ class DockBase(BaseModel):
     longitude: Optional[Decimal] = None
     current_usage: OperationalStatusEnum = OperationalStatusEnum.operational
 
+    model_config = {"json_encoders": {Decimal: float}}
+
 
 class DockCreate(DockBase):
     pass
@@ -99,7 +103,7 @@ class DockCreate(DockBase):
 class Dock(DockBase):
     terminal: Optional[Terminal] = None
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "json_encoders": {Decimal: float}}
 
 
 # ==========================
@@ -111,6 +115,8 @@ class GateBase(BaseModel):
     latitude: Optional[Decimal] = None
     longitude: Optional[Decimal] = None
 
+    model_config = {"json_encoders": {Decimal: float}}
+
 
 class GateCreate(GateBase):
     pass
@@ -119,7 +125,7 @@ class GateCreate(GateBase):
 class Gate(GateBase):
     id: int
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "json_encoders": {Decimal: float}}
 
 
 # ==========================
@@ -291,7 +297,7 @@ class CargoInBooking(BaseModel):
     description: Optional[str] = None
     id: int
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "json_encoders": {Decimal: float}}
 
 
 class Booking(BookingBase):
@@ -312,6 +318,8 @@ class CargoBase(BaseModel):
     state: PhysicalStateEnum
     description: Optional[str] = None
 
+    model_config = {"json_encoders": {Decimal: float}}
+
 
 class CargoCreate(CargoBase):
     pass
@@ -321,7 +329,7 @@ class Cargo(CargoBase):
     id: int
     booking: Optional[Booking] = None
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "json_encoders": {Decimal: float}}
 
 
 # ==========================

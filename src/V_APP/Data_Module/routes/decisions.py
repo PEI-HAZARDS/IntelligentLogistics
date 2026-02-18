@@ -7,7 +7,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, status, Body, Query, Path
 from bson.objectid import ObjectId
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from db.mongo import events_collection
 from services.decision_service import (
@@ -23,16 +23,30 @@ router = APIRouter(prefix="/decisions", tags=["Decisions"])
 
 # ==================== PYDANTIC MODELS ====================
 
+from models.pydantic_models import AppointmentStatusEnum, DeliveryStatusEnum
+
+
 class DecisionIncomingRequest(BaseModel):
     """Request from Decision Engine to process a decision."""
     license_plate: str
     gate_id: int
     appointment_id: int
     decision: str  # "approved", "rejected", "manual_review"
-    status: str  # "approved", "canceled", etc.
+    appointment_status: Optional[AppointmentStatusEnum] = None
+    delivery_state: Optional[DeliveryStatusEnum] = None
+    status: Optional[AppointmentStatusEnum] = None
+    state: Optional[DeliveryStatusEnum] = None
     notes: Optional[str] = None
     alerts: Optional[List[Dict[str, Any]]] = None
     extra_data: Optional[Dict[str, Any]] = None
+
+    @model_validator(mode="after")
+    def normalize_fields(self):
+        if self.appointment_status is None and self.status is not None:
+            self.appointment_status = self.status
+        if self.delivery_state is None and self.state is not None:
+            self.delivery_state = self.state
+        return self
 
 
 class DetectionEventRequest(BaseModel):
@@ -86,12 +100,19 @@ def process_decision(request: DecisionIncomingRequest):
         "alerts": [{"type": "hazmat", "severity": 3, "description": "UN 1203"}]
     }
     """
+    if request.appointment_status is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="appointment_status is required (or legacy status)",
+        )
+
     result = process_incoming_decision(
         license_plate=request.license_plate,
         gate_id=request.gate_id,
         appointment_id=request.appointment_id,
         decision=request.decision,
-        status=request.status,
+        appointment_status=request.appointment_status,
+        delivery_state=request.delivery_state,
         alerts=request.alerts,
         notes=request.notes,
         extra_data=request.extra_data
@@ -250,7 +271,8 @@ def manual_review(
         gate_id=gate_id or 0,
         appointment_id=appointment_id,
         decision=decision,
-        status=new_status,
+        appointment_status=new_status,
+        delivery_state=None,
         notes=f"[MANUAL REVIEW] {notes or ''}",
         extra_data={"manual_review": True}
     )

@@ -26,6 +26,7 @@ from services.arrival_service import (
 )
 from models.sql_models import ShiftType
 from db.postgres import get_db
+from utils.shift_utils import parse_shift_type
 
 router = APIRouter(prefix="/arrivals", tags=["Arrivals"])
 
@@ -57,11 +58,18 @@ def list_arrivals(
     Lists appointments with optional filters.
     Used by operator frontend to list daily arrivals.
     """
+    parsed_shift_type = None
+    if shift_type:
+        try:
+            parsed_shift_type = parse_shift_type(shift_type)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
     appointments = get_all_appointments(
         db, skip=skip, limit=limit,
         gate_id=gate_id,
         shift_gate_id=shift_gate_id,
-        shift_type=shift_type,
+        shift_type=parsed_shift_type,
         shift_date=shift_date,
         status=status,
         scheduled_date=scheduled_date
@@ -139,10 +147,17 @@ def query_arrivals_by_license_plate(
     Query appointments by license plate.
     Used by Decision Engine to find candidate arrivals.
     """
+    parsed_shift_type = None
+    if shift_type:
+        try:
+            parsed_shift_type = parse_shift_type(shift_type)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
     appointments = get_appointments_by_license_plate(
         db, license_plate=license_plate,
         shift_gate_id=shift_gate_id,
-        shift_type=shift_type,
+        shift_type=parsed_shift_type,
         shift_date=shift_date,
         status=status,
         scheduled_date=scheduled_date
@@ -215,14 +230,10 @@ def create_visit(
     Called when appointment starts execution.
     Uses composite FK to Shift.
     """
-    # Convert shift_type string to enum
     try:
-        shift_type_enum = ShiftType[request.shift_type]
-    except KeyError:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid shift_type. Must be one of: MORNING, AFTERNOON, NIGHT"
-        )
+        shift_type_enum = parse_shift_type(request.shift_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     
     visit = create_visit_for_appointment(
         db, 

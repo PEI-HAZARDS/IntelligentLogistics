@@ -11,13 +11,21 @@ from sqlalchemy import func, and_, or_
 from models.sql_models import Appointment, Visit, Shift, Cargo, Booking, Gate, ShiftType
 
 
+def ensure_arrival_id(db: Session, appointment: Appointment) -> Appointment:
+    if appointment.arrival_id:
+        return appointment
+
+    db.refresh(appointment)
+    return appointment
+
+
 def get_all_appointments(
     db: Session,
     skip: int = 0,
     limit: int = 100,
     gate_id: Optional[int] = None,
     shift_gate_id: Optional[int] = None,
-    shift_type: Optional[str] = None,
+    shift_type: Optional[ShiftType] = None,
     shift_date: Optional[date] = None,
     status: Optional[str] = None,
     scheduled_date: Optional[date] = None
@@ -42,12 +50,19 @@ def get_all_appointments(
     if scheduled_date:
         query = query.filter(func.date(Appointment.scheduled_start_time) == scheduled_date)
     
-    return query.order_by(Appointment.scheduled_start_time.asc()).offset(skip).limit(limit).all()
+    appointments = query.order_by(Appointment.scheduled_start_time.asc()).offset(skip).limit(limit).all()
+    for appointment in appointments:
+        if appointment.arrival_id is None:
+            ensure_arrival_id(db, appointment)
+    return appointments
 
 
 def get_appointment_by_id(db: Session, appointment_id: int) -> Optional[Appointment]:
     """Gets a specific appointment by ID."""
-    return db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if appointment and appointment.arrival_id is None:
+        ensure_arrival_id(db, appointment)
+    return appointment
 
 
 def get_appointment_by_arrival_id(db: Session, arrival_id: str) -> Optional[Appointment]:
@@ -59,7 +74,7 @@ def get_appointments_by_license_plate(
     db: Session,
     license_plate: str,
     shift_gate_id: Optional[int] = None,
-    shift_type: Optional[str] = None,
+    shift_type: Optional[ShiftType] = None,
     shift_date: Optional[date] = None,
     status: Optional[str] = None,
     scheduled_date: Optional[date] = None
@@ -84,7 +99,11 @@ def get_appointments_by_license_plate(
         # Default: filter by today
         query = query.filter(func.date(Appointment.scheduled_start_time) == date.today())
     
-    return query.order_by(Appointment.scheduled_start_time.asc()).all()
+    appointments = query.order_by(Appointment.scheduled_start_time.asc()).all()
+    for appointment in appointments:
+        if appointment.arrival_id is None:
+            ensure_arrival_id(db, appointment)
+    return appointments
 
 
 def get_appointments_for_decision(
@@ -126,6 +145,9 @@ def get_appointments_for_decision(
     )
     
     appointments = query.order_by(Appointment.scheduled_start_time.asc()).all()
+    for appointment in appointments:
+        if appointment.arrival_id is None:
+            ensure_arrival_id(db, appointment)
     
     # Format response with extra info
     result = []
@@ -220,6 +242,9 @@ def update_appointment_status(
     
     db.commit()
     db.refresh(appointment)
+
+    if appointment.arrival_id is None:
+        ensure_arrival_id(db, appointment)
     
     return appointment
 
@@ -324,6 +349,9 @@ def update_appointment_from_decision(
     
     db.commit()
     db.refresh(appointment)
+
+    if appointment.arrival_id is None:
+        ensure_arrival_id(db, appointment)
     
     # Create alerts if present (delegate to alert_service)
     if "alerts" in decision_payload and decision_payload["alerts"]:
@@ -354,7 +382,7 @@ def get_next_appointments(
         else_=1
     )
     
-    return db.query(Appointment).filter(
+    appointments = db.query(Appointment).filter(
         Appointment.gate_in_id == gate_id,
         func.date(Appointment.scheduled_start_time) == today,
         Appointment.status.in_(['in_transit', 'delayed'])
@@ -362,3 +390,9 @@ def get_next_appointments(
         status_priority,  # delayed first
         Appointment.scheduled_start_time.asc()  # then by scheduled time
     ).limit(limit).all()
+
+    for appointment in appointments:
+        if appointment.arrival_id is None:
+            ensure_arrival_id(db, appointment)
+
+    return appointments
