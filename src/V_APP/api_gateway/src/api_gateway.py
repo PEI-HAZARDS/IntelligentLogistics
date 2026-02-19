@@ -98,15 +98,20 @@ class APIGateway:
                     continue
 
                 # Deserialize into a typed Message
-                typed_message = deserialize_message(data)
-                if typed_message is None:
-                    logger.warning(f"Could not deserialize message from topic '{topic}'")
+                try:
+                    typed_message = deserialize_message(data)
+                except ValueError as e:
+                    logger.warning(f"Could not deserialize message from topic '{topic}': {e}")
                     continue
+                
+                payload = typed_message.to_dict()
+                payload["truck_id"] = truck_id  # ensure truck_id is always present
+            
             
                 # Forward the processed message to all receiver gateways
                 # Must schedule on the main event loop (where WebSockets live)
                 future = asyncio.run_coroutine_threadsafe(
-                    self.ws_manager.broadcast_to_gate(self.gate_ids, typed_message.to_dict()),
+                    self.ws_manager.broadcast_to_gate(self.gate_ids, payload),
                     self._loop,
                 )
                 future.result(timeout=5)  # wait up to 5s for the broadcast
@@ -133,6 +138,7 @@ class APIGateway:
         app.state.ws_manager = self.ws_manager
         app.state.data_module_url = self.DATA_MODULE_URL
         app.state.stream_base_url = self.STREAM_BASE_URL
+        app.state.gate_id = self.gate_ids
 
         # ----------------------
         # CORS

@@ -88,7 +88,7 @@ class AgentA:
         )
         
         # Start Prometheus metrics server
-        # logger.info("[AgentA] Starting Prometheus metrics server on port 8000")
+        # logger.info("Starting Prometheus metrics server on port 8000")
         # start_http_server(8000) - Started in init.py
     
     def _process_detection(self, frame):
@@ -99,19 +99,19 @@ class AgentA:
             frame: Video frame to process
         """
         # Run YOLO inference
-        logger.debug("[AgentA] Frame captured, running truck detection…")
+        logger.debug("Frame captured, running truck detection…")
         with self.inference_latency.time():
             results = self.yolo.detect(frame)
         
         self.frames_processed.inc()
 
         if results is None:
-            logger.warning("[AgentA] YOLO model returned no results (None).")
+            logger.warning("YOLO model returned no results (None).")
             return
 
         # Check for positive detection
         if not self.yolo.object_found(results):
-            logger.debug("[AgentA] No truck detected in this frame.")
+            logger.debug("No truck detected in this frame.")
             return
         
         now = time.time()
@@ -120,7 +120,7 @@ class AgentA:
 
         # Check throttling interval (Debounce)
         if elapsed < MESSAGE_INTERVAL:
-            logger.info(f"[AgentA] Truck detected, but waiting {MESSAGE_INTERVAL - elapsed:.1f}s before next message.")
+            logger.info(f"Truck detected, but waiting {MESSAGE_INTERVAL - elapsed:.1f}s before next message.")
             return
 
         # Extract stats and publish to Kafka
@@ -134,7 +134,7 @@ class AgentA:
                 frame = self.drawer.draw_box(frame, boxes)
                 self.image_storage.upload_memory_image(frame, f"{truck_id}_{int(time.time())}.jpg", image_type="annotated_frames")
             except Exception as e:
-                logger.exception(f"[AgentA] Error drawing boxes: {e}")
+                logger.exception(f"Error drawing boxes: {e}")
 
             # Record metrics
             self.trucks_detected.inc(num_boxes)
@@ -150,12 +150,12 @@ class AgentA:
             )
 
         except Exception as e:
-            logger.exception(f"[AgentA] Error preparing Kafka event: {e}")
+            logger.exception(f"Error preparing Kafka event: {e}")
 
     def _loop(self):
         """Main loop for Agent A."""
 
-        logger.info(f"[AgentA] Starting Agent A main loop (stream={STREAM_LOW}, kafka bootstrap={KAFKA_BOOTSTRAP}) …")
+        logger.info(f"Starting Agent A main loop (stream={STREAM_LOW}, kafka bootstrap={KAFKA_BOOTSTRAP}) …")
 
         # Main processing cycle
         while self.running:
@@ -170,7 +170,7 @@ class AgentA:
                 self._process_detection(frame)
 
             except Exception as e:
-                logger.exception(f"[AgentA] Exception during detection loop: {e}")
+                logger.exception(f"Exception during detection loop: {e}")
                 time.sleep(1)
 
         # Cleanup: Release resources
@@ -180,5 +180,5 @@ class AgentA:
     def stop(self):
         """Gracefully stop Agent A."""
 
-        logger.info("[AgentA] Stopping Agent A…")
+        logger.info("Stopping Agent A…")
         self.running = False

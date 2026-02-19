@@ -1,65 +1,74 @@
 import json
 import time
-from typing import Optional, List, Dict, Any
+from abc import ABC, abstractmethod
+from typing import Optional, List
 import logging
 
 logger = logging.getLogger("protocol")
 
 
-class Message:
-    """Base Message Type"""
+class Message(ABC):
+    """Base Message Type. Subclasses must implement to_dict() and from_dict()."""
 
-    MESSAGE_TYPE = "base"  # Override in subclasses
+    MESSAGE_TYPE: Optional[str] = None  # Must be overridden in subclasses
 
-    def __init__(self) -> None:
-        self.timestamp = int(time.time())
+    def __init__(self, timestamp: Optional[int] = None) -> None:
+        self.timestamp = timestamp if timestamp is not None else int(time.time() * 1000)
 
-    def to_dict(self) -> dict:
-        raise NotImplementedError("Subclasses must implement to_dict()")
+    @abstractmethod
+    def to_dict(self) -> dict: ...
 
     def to_json(self) -> str:
-        """Convenience method for JSON serialization"""
+        """Convenience method for JSON serialization."""
         return json.dumps(self.to_dict())
 
     @classmethod
-    def from_dict(cls, data: dict):
-        """Deserialize from dictionary - override in subclasses"""
-        raise NotImplementedError("Subclasses must implement from_dict()")
+    @abstractmethod
+    def from_dict(cls, data: dict) -> "Message": ...
 
 
 class TruckDetectedMessage(Message):
-    """Message to signal truck detection"""
+    """Message to signal truck detection."""
 
     MESSAGE_TYPE = "truck_detected"
 
-    def __init__(self, confidence: float, num_detections: int) -> None:
-        super().__init__()
+    def __init__(self, confidence: float, num_detections: int, timestamp: Optional[int] = None) -> None:
+        super().__init__(timestamp)
         self.confidence = confidence
         self.num_detections = num_detections
 
     def to_dict(self) -> dict:
         return {
-            "message_type": self.MESSAGE_TYPE,  # Added for deserialization
+            "message_type": self.MESSAGE_TYPE,
             "timestamp": self.timestamp,
             "confidence": self.confidence,
             "num_detections": self.num_detections,
         }
 
     @classmethod
-    def from_dict(cls, data: dict):
-        """Reconstruct message from dict (excluding timestamp)"""
-        msg = cls(confidence=data["confidence"], num_detections=data["num_detections"])
-        msg.timestamp = data.get("timestamp", msg.timestamp)
-        return msg
+    def from_dict(cls, data: dict) -> "TruckDetectedMessage":
+        """Reconstruct message from dict.
+
+        Raises:
+            ValueError: If a required field is missing.
+        """
+        try:
+            return cls(
+                confidence=data["confidence"],
+                num_detections=data["num_detections"],
+                timestamp=data.get("timestamp"),
+            )
+        except KeyError as e:
+            raise ValueError(f"Missing required field {e} in {cls.MESSAGE_TYPE} message") from e
 
 
 class LicensePlateResultsMessage(Message):
-    """Message to send license plate results"""
+    """Message to send license plate results."""
 
     MESSAGE_TYPE = "license_plate_results"
 
-    def __init__(self, license_plate: str, crop_url: str, confidence: float) -> None:
-        super().__init__()
+    def __init__(self, license_plate: str, crop_url: str, confidence: float, timestamp: Optional[int] = None) -> None:
+        super().__init__(timestamp)
         self.confidence = confidence
         self.license_plate = license_plate
         self.crop_url = crop_url
@@ -74,23 +83,28 @@ class LicensePlateResultsMessage(Message):
         }
 
     @classmethod
-    def from_dict(cls, data: dict):
-        msg = cls(
-            license_plate=data["license_plate"],
-            crop_url=data["crop_url"],
-            confidence=data["confidence"],
-        )
-        msg.timestamp = data.get("timestamp", msg.timestamp)
-        return msg
+    def from_dict(cls, data: dict) -> "LicensePlateResultsMessage":
+        """Raises:
+            ValueError: If a required field is missing.
+        """
+        try:
+            return cls(
+                license_plate=data["license_plate"],
+                crop_url=data["crop_url"],
+                confidence=data["confidence"],
+                timestamp=data.get("timestamp"),
+            )
+        except KeyError as e:
+            raise ValueError(f"Missing required field {e} in {cls.MESSAGE_TYPE} message") from e
 
 
 class HazardPlateResultsMessage(Message):
-    """Message to send hazard plate results"""
+    """Message to send hazard plate results."""
 
     MESSAGE_TYPE = "hazard_plate_results"
 
-    def __init__(self, un: str, kemler: str, crop_url: str, confidence: float) -> None:
-        super().__init__()
+    def __init__(self, un: str, kemler: str, crop_url: str, confidence: float, timestamp: Optional[int] = None) -> None:
+        super().__init__(timestamp)
         self.un = un
         self.kemler = kemler
         self.confidence = confidence
@@ -107,19 +121,24 @@ class HazardPlateResultsMessage(Message):
         }
 
     @classmethod
-    def from_dict(cls, data: dict):
-        msg = cls(
-            un=data["un"],
-            kemler=data["kemler"],
-            crop_url=data["crop_url"],
-            confidence=data["confidence"],
-        )
-        msg.timestamp = data.get("timestamp", msg.timestamp)
-        return msg
+    def from_dict(cls, data: dict) -> "HazardPlateResultsMessage":
+        """Raises:
+            ValueError: If a required field is missing.
+        """
+        try:
+            return cls(
+                un=data["un"],
+                kemler=data["kemler"],
+                crop_url=data["crop_url"],
+                confidence=data["confidence"],
+                timestamp=data.get("timestamp"),
+            )
+        except KeyError as e:
+            raise ValueError(f"Missing required field {e} in {cls.MESSAGE_TYPE} message") from e
 
 
 class DecisionResultsMessage(Message):
-    """Message to send decision results"""
+    """Message to send decision results."""
 
     MESSAGE_TYPE = "decision_results"
 
@@ -135,8 +154,9 @@ class DecisionResultsMessage(Message):
         decision: str,
         decision_reason: str,
         decision_source: str,
+        timestamp: Optional[int] = None,
     ) -> None:
-        super().__init__()
+        super().__init__(timestamp)
         self.license_plate = license_plate
         self.license_crop_url = license_crop_url
         self.un = un
@@ -165,21 +185,26 @@ class DecisionResultsMessage(Message):
         }
 
     @classmethod
-    def from_dict(cls, data: dict):
-        msg = cls(
-            license_plate=data["license_plate"],
-            license_crop_url=data["license_crop_url"],
-            un=data["un"],
-            kemler=data["kemler"],
-            hazard_crop_url=data["hazard_crop_url"],
-            alerts=data["alerts"],
-            route=data["route"],
-            decision=data["decision"],
-            decision_reason=data["decision_reason"],
-            decision_source=data["decision_source"],
-        )
-        msg.timestamp = data.get("timestamp", msg.timestamp)
-        return msg
+    def from_dict(cls, data: dict) -> "DecisionResultsMessage":
+        """Raises:
+            ValueError: If a required field is missing.
+        """
+        try:
+            return cls(
+                license_plate=data["license_plate"],
+                license_crop_url=data["license_crop_url"],
+                un=data["un"],
+                kemler=data["kemler"],
+                hazard_crop_url=data["hazard_crop_url"],
+                alerts=data["alerts"],
+                route=data["route"],
+                decision=data["decision"],
+                decision_reason=data["decision_reason"],
+                decision_source=data["decision_source"],
+                timestamp=data.get("timestamp"),
+            )
+        except KeyError as e:
+            raise ValueError(f"Missing required field {e} in {cls.MESSAGE_TYPE} message") from e
 
 
 # Message factory for deserialization
@@ -191,15 +216,17 @@ MESSAGE_TYPES = {
 }
 
 
-def deserialize_message(data: dict) -> Optional[Message]:
-    """Deserialize a message from a dictionary"""
+def deserialize_message(data: dict) -> Message:
+    """Deserialize a message from a dictionary.
+
+    Raises:
+        ValueError: If the message_type is missing, unknown, or required fields are absent.
+    """
     message_type = data.get("message_type")
     if message_type not in MESSAGE_TYPES:
-        logger.warning(f"Unknown message type: {message_type}")
-        return None
+        raise ValueError(f"Unknown or missing message_type: '{message_type}'")
 
-    message_class = MESSAGE_TYPES[message_type]
-    return message_class.from_dict(data)
+    return MESSAGE_TYPES[message_type].from_dict(data)
 
 
 class KafkaMessageProto:

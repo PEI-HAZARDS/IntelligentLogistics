@@ -619,12 +619,16 @@ def update_appointment_after_decision(
         appointment = db.query(Appointment).filter(
             Appointment.truck_license_plate == license_plate,
             Appointment.gate_in_id == gate_id,
-            Appointment.status == 'in_transit'
+            Appointment.status.in_(['in_transit', 'delayed'])
         ).first()
         
+
         if not appointment:
             logger.warning(f"No appointment found for license_plate={license_plate}, gate_id={gate_id}")
             return None
+        else:
+            logger.info(f"Appointment found for license_plate={license_plate}, gate_id={gate_id}, appointment_status={appointment.status}")
+
         
         # Build decision payload for canonical update
         decision_payload = {

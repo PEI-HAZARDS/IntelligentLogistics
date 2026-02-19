@@ -26,3 +26,8 @@ def get_data_module_url(request: Request) -> str:
 def get_ws_manager(request: Request) -> WebSocketManager:
     """FastAPI dependency — retrieves the WebSocketManager from app.state."""
     return request.app.state.ws_manager
+
+
+def get_gate_id(request: Request) -> str:
+    """FastAPI dependency — retrieves the gate ID from app.state."""
+    return request.app.state.gate_id

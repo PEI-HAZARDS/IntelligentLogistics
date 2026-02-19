@@ -313,18 +313,16 @@ class TestUploadMemoryImage:
 
     @patch("image_storage.cv2")
     def test_upload_handles_max_retry_error(self, mock_cv2, storage_config, sample_image):
-        """Handles MaxRetryError by name checking."""
+        """Handles MaxRetryError gracefully."""
         # Arrange
+        from urllib3.exceptions import MaxRetryError
+
         with patch("image_storage.Minio") as MockMinio:
             mock_client = MagicMock()
             MockMinio.return_value = mock_client
             mock_client.bucket_exists.return_value = True
             
-            # Create exception with __class__.__name__ = "MaxRetryError"
-            class MaxRetryError(Exception):
-                pass
-            
-            mock_client.put_object.side_effect = MaxRetryError("Max retries exceeded")
+            mock_client.put_object.side_effect = MaxRetryError(None, None, "Max retries exceeded")
             mock_cv2.imencode.return_value = (True, np.array([1, 2, 3], dtype=np.uint8))
             
             storage = ImageStorage(storage_config, "test-bucket")
