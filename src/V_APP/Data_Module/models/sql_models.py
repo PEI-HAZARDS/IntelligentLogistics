@@ -262,6 +262,7 @@ class Appointment(Base):
     # Status
     status = Column(appointment_status_enum, default='in_transit')
     notes = Column(Text)
+    highway_infraction = Column(Boolean, default=False)  # Hazmat truck on restricted highway route
     
     # Relationships
     booking = relationship("Booking", back_populates="appointments")
@@ -408,6 +409,7 @@ class Alert(Base):
     
     id = Column(Integer, primary_key=True)
     visit_id = Column(Integer, ForeignKey('visit.appointment_id'))
+    appointment_id = Column(Integer, ForeignKey('appointment.id'))  # Direct FK to appointment (alerts can pre-exist visits)
     timestamp = Column(TIMESTAMP, server_default=func.now())
     image_url = Column(Text)
     type = Column(type_alert_enum, default='generic')
@@ -415,4 +417,5 @@ class Alert(Base):
 
     # Relationships
     visit = relationship("Visit", back_populates="alerts")
+    appointment = relationship("Appointment")
     history_entries = relationship("ShiftAlertHistory", back_populates="alert")

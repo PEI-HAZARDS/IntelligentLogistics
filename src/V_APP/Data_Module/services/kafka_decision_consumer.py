@@ -28,11 +28,15 @@ GATE_ID = os.getenv("GATE_ID", "1")
 class DecisionCorrelator:
     """
     Manages correlation between agent and operator decisions.
-    Stores pending MANUAL_REVIEW decisions until operator decision arrives.
+    Uses Redis to persist pending MANUAL_REVIEW decisions — survives container restarts.
     """
     
+    PENDING_KEY_PREFIX = "pending_review:"
+    PENDING_TTL = 1800  # 30 minutes
+    
     def __init__(self):
-        self.pending_manual_reviews: Dict[str, Dict[str, Any]] = {}  # {truck_id: agent_decision_data}
+        from db.redis import redis_client
+        self.redis = redis_client
         
     def process_agent_decision(self, truck_id: str, decision_data: dict) -> Optional[dict]:
         """
@@ -49,8 +53,12 @@ class DecisionCorrelator:
             return self._build_final_decision(decision_data, source="agent")
         
         elif decision_status == "MANUAL_REVIEW":
-            logger.info(f"Agent MANUAL_REVIEW for truck_id={truck_id}, waiting for operator decision.")
-            self.pending_manual_reviews[truck_id] = decision_data
+            logger.info(f"Agent MANUAL_REVIEW for truck_id={truck_id}, storing in Redis.")
+            try:
+                key = f"{self.PENDING_KEY_PREFIX}{truck_id}"
+                self.redis.setex(key, self.PENDING_TTL, json.dumps(decision_data, default=str))
+            except Exception as e:
+                logger.error(f"Failed to store pending review in Redis for truck_id={truck_id}: {e}")
             return None
         
         else:
@@ -65,8 +73,16 @@ class DecisionCorrelator:
         - dict: Final decision to persist (combines agent + operator data)
         - None: No pending agent decision found
         """
-        # Check if there's a pending agent decision
-        agent_data = self.pending_manual_reviews.pop(truck_id, None)
+        # Check Redis for pending agent decision
+        agent_data = None
+        try:
+            key = f"{self.PENDING_KEY_PREFIX}{truck_id}"
+            raw = self.redis.get(key)
+            if raw:
+                agent_data = json.loads(raw)
+                self.redis.delete(key)
+        except Exception as e:
+            logger.error(f"Failed to retrieve pending review from Redis for truck_id={truck_id}: {e}")
         
         if not agent_data:
             logger.warning(f"Received operator decision for truck_id={truck_id} but no pending agent decision found.")
@@ -206,9 +222,10 @@ class KafkaDecisionConsumer:
         try:
             logger.info(f"Persisting final decision for truck_id={truck_id}")
             
-            # Extract key data
+            # Extract key data from enriched payload (with fallbacks)
             license_plate = decision_data.get("license_plate")
-            gate_id = int(GATE_ID)
+            gate_id = decision_data.get("gate_id", int(GATE_ID))
+            appointment_id = decision_data.get("appointment_id")
             
             # Persist event to MongoDB
             event_id = await asyncio.get_event_loop().run_in_executor(
@@ -229,7 +246,7 @@ class KafkaDecisionConsumer:
                     gate_id,
                     decision_data
                 )
-                logger.info(f"Appointment updated for license_plate={license_plate}")
+                logger.info(f"Appointment updated for license_plate={license_plate}, gate_id={gate_id}")
         
         except Exception as e:
             logger.error(f"Error persisting decision for truck_id={truck_id}: {e}", exc_info=True)

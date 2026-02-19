@@ -296,6 +296,22 @@ async def list_arrivals_by_gate_shift(
 
 
 # -------------------------------
+# PATCH: /api/arrivals/{appointment_id}/highway-infraction
+# Manager-only: Flag appointment as highway infraction
+# -------------------------------
+@router.patch("/arrivals/{appointment_id}/highway-infraction")
+async def flag_highway_infraction(
+    appointment_id: int = Path(..., description="Appointment ID"),
+):
+    """
+    Flag an appointment as highway infraction.
+    Called when hazmat truck detected on restricted highway route.
+    Should only be triggered by logistics manager or automated detection.
+    """
+    return await internal_client.patch(f"/arrivals/{appointment_id}/highway-infraction")
+
+
+# -------------------------------
 # PATCH: /api/arrivals/{appointment_id}/status
 # -------------------------------
 class AppointmentStatusUpdate(BaseModel):

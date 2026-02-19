@@ -27,6 +27,7 @@ from routers import (
     stream,
     realtime,   # WebSockets para decisões em tempo real
     workers,    # Operators and Managers
+    statistics, # Statistics proxy for manager dashboard
 )
 
 logger = logging.getLogger("APIGateway")
@@ -153,6 +154,7 @@ class APIGateway:
         app.include_router(drivers.router, prefix=self.API_PREFIX)
         app.include_router(stream.router, prefix=self.API_PREFIX)
         app.include_router(workers.router, prefix=self.API_PREFIX)
+        app.include_router(statistics.router, prefix=self.API_PREFIX)
 
         # ----------------------
         # Router WebSocket

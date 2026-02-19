@@ -5,11 +5,13 @@ Consumed by: Decision Engine (microservice), Operator frontend.
 
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, status, Body, Query, Path
+from fastapi import APIRouter, HTTPException, status, Body, Query, Path, Depends
+from sqlalchemy.orm import Session
 from bson.objectid import ObjectId
 from pydantic import BaseModel, model_validator
 
 from db.mongo import events_collection
+from db.postgres import get_db
 from services.decision_service import (
     process_incoming_decision,
     query_appointments_for_decision,
@@ -241,48 +243,73 @@ def manual_review(
     appointment_id: int = Path(..., description="Appointment ID"),
     decision: str = Query(..., description="Decision: approved, rejected"),
     notes: Optional[str] = Query(None, description="Operator notes"),
-    gate_id: Optional[int] = Query(None, description="Gate ID for visit creation")
+    gate_id: Optional[int] = Query(None, description="Gate ID for visit creation"),
+    db: Session = Depends(get_db)
 ):
     """
     Endpoint for operator manual review.
     Used when Decision Engine cannot decide automatically.
     
+    Uses a single DB session for atomicity — if visit creation fails,
+    the entire transaction is rolled back.
+    
     When approved:
-    - Updates Appointment.status to 'in_transit' (confirmed arrival)
+    - Updates Appointment.status to 'in_process' (confirmed arrival)
     - Creates Visit with state='unloading' if gate_id provided
     
     When rejected:
     - Updates Appointment.status to 'canceled'
     """
-    from db.postgres import SessionLocal
-    from services.arrival_service import create_visit_for_appointment
+    from services.arrival_service import create_visit_for_appointment, update_appointment_from_decision
     from models.sql_models import ShiftType
     from datetime import date
     
     # Map decision to appointment status
     if decision == "approved":
-        new_status = "in_process"  # Truck at gate, being processed/unloading
+        new_status = "in_process"
     else:
         new_status = "canceled"
     
-    # Process decision (updates Appointment)
-    result = process_incoming_decision(
-        license_plate="MANUAL",  # Manual review indicator
-        gate_id=gate_id or 0,
-        appointment_id=appointment_id,
-        decision=decision,
-        appointment_status=new_status,
-        delivery_state=None,
-        notes=f"[MANUAL REVIEW] {notes or ''}",
-        extra_data={"manual_review": True}
-    )
+    # Build decision payload for update_appointment_from_decision
+    decision_payload = {
+        "decision": decision,
+        "status": new_status,
+        "notes": f"[MANUAL REVIEW] {notes or ''}",
+        "manual_review": True,
+    }
     
-    # If approved and gate_id provided, create Visit with 'unloading' state
+    # Update appointment via canonical function (single session)
+    appointment = update_appointment_from_decision(db, appointment_id, decision_payload)
+    
+    result = {
+        "status": "ok",
+        "appointment_id": appointment_id,
+        "decision": decision,
+        "new_status": new_status,
+    }
+    
+    if not appointment:
+        result["warning"] = "Appointment not found"
+        return result
+    
+    # Also persist to MongoDB for audit trail
+    try:
+        process_incoming_decision(
+            license_plate=appointment.truck_license_plate or "MANUAL",
+            gate_id=gate_id or 0,
+            appointment_id=appointment_id,
+            decision=decision,
+            appointment_status=new_status,
+            delivery_state=None,
+            notes=f"[MANUAL REVIEW] {notes or ''}",
+            extra_data={"manual_review": True}
+        )
+    except Exception as e:
+        logger.warning(f"MongoDB audit persistence failed for manual review: {e}")
+    
+    # If approved and gate_id provided, create Visit with 'unloading' state (same session)
     if decision == "approved" and gate_id:
-        db = SessionLocal()
         try:
-            # Determine current shift type based on time
-            from datetime import datetime
             hour = datetime.now().hour
             if 6 <= hour < 14:
                 shift_type = ShiftType.MORNING
@@ -303,8 +330,6 @@ def manual_review(
                 result["visit_state"] = "unloading"
         except Exception as e:
             result["visit_error"] = str(e)
-        finally:
-            db.close()
     
     return result
 

@@ -333,16 +333,34 @@ def get_detection_events(
     event_type: Optional[str] = None,
     limit: int = 100
 ) -> List[Dict[str, Any]]:
-    """Queries detection events from MongoDB."""
+    """Queries detection events from MongoDB (Phase 2 collections with legacy fallback)."""
+    # Phase 2 query (agent_detections_collection)
     query = {}
     if license_plate:
-        query["license_plate"] = license_plate
+        query["detection_data.license_plate"] = license_plate
     if gate_id:
         query["gate_id"] = gate_id
     if event_type:
-        query["type"] = event_type
+        query["detection_data.type"] = event_type
     
-    cursor = detections_collection.find(query).sort("created_at", -1).limit(limit)
+    try:
+        cursor = agent_detections_collection.find(query).sort("created_at", -1).limit(limit)
+        results = list(cursor)
+        if results:
+            return results
+    except Exception as e:
+        logger.warning(f"Phase 2 detection query failed, falling back to legacy: {e}")
+    
+    # Legacy fallback
+    legacy_query = {}
+    if license_plate:
+        legacy_query["license_plate"] = license_plate
+    if gate_id:
+        legacy_query["gate_id"] = gate_id
+    if event_type:
+        legacy_query["type"] = event_type
+    
+    cursor = detections_collection.find(legacy_query).sort("created_at", -1).limit(limit)
     return list(cursor)
 
 
@@ -352,16 +370,34 @@ def get_decision_events(
     decision: Optional[str] = None,
     limit: int = 100
 ) -> List[Dict[str, Any]]:
-    """Queries decision events from MongoDB."""
-    query = {"type": "decision"}
+    """Queries decision events from MongoDB (Phase 2 collections with legacy fallback)."""
+    # Phase 2 query (decision_events_collection)
+    query = {}
     if license_plate:
-        query["license_plate"] = license_plate
+        query["agent_detections.license_plate_detection.license_plate"] = license_plate
     if gate_id:
         query["gate_id"] = gate_id
     if decision:
-        query["decision"] = decision
+        query["final_decision"] = decision
     
-    cursor = events_collection.find(query).sort("created_at", -1).limit(limit)
+    try:
+        cursor = decision_events_collection.find(query).sort("created_at", -1).limit(limit)
+        results = list(cursor)
+        if results:
+            return results
+    except Exception as e:
+        logger.warning(f"Phase 2 decision query failed, falling back to legacy: {e}")
+    
+    # Legacy fallback
+    legacy_query = {"type": "decision"}
+    if license_plate:
+        legacy_query["license_plate"] = license_plate
+    if gate_id:
+        legacy_query["gate_id"] = gate_id
+    if decision:
+        legacy_query["decision"] = decision
+    
+    cursor = events_collection.find(legacy_query).sort("created_at", -1).limit(limit)
     return list(cursor)
 
 
@@ -465,7 +501,7 @@ def process_incoming_decision(
             "status": "processed",
             "decision": decision,
             "appointment_id": appointment_id,
-            "new_status": status,
+            "new_status": appointment_status,
             "event_id": event_id
         }
         cache_decision_result(license_plate, gate_id, ts, result)
@@ -476,7 +512,7 @@ def process_incoming_decision(
                 "appointment_id": appointment_id,
                 "license_plate": license_plate,
                 "driver_name": getattr(appointment.driver, 'name', 'Unknown') if appointment.driver else 'Unknown',
-                "status": status,
+                "status": appointment_status,
                 "scheduled_start": appointment.scheduled_start_time.isoformat() if appointment.scheduled_start_time else None,
                 "gate_id": gate_id
             })
@@ -567,15 +603,19 @@ def update_appointment_after_decision(
 ) -> Optional[Dict[str, Any]]:
     """
     Updates appointment status after an ACCEPTED decision.
-    Searches for appointment by license plate and updates to 'in_transit'.
+    Delegates to update_appointment_from_decision for consistency
+    (alerts, notes, ensure_arrival_id all handled in one place).
+    
+    Also auto-triggers highway_infraction if gate metadata indicates
+    a restricted highway gate.
     """
     from db.postgres import SessionLocal
     from models.sql_models import Appointment
+    from services.arrival_service import update_appointment_from_decision
     
     db = SessionLocal()
     try:
         # Find appointment by license plate and gate
-        # Status 'in_transit' is the initial state (no 'scheduled' or 'pending' in enum)
         appointment = db.query(Appointment).filter(
             Appointment.truck_license_plate == license_plate,
             Appointment.gate_in_id == gate_id,
@@ -586,19 +626,36 @@ def update_appointment_after_decision(
             logger.warning(f"No appointment found for license_plate={license_plate}, gate_id={gate_id}")
             return None
         
-        # Update to in_process (truck arriving)
-        old_status = appointment.status
-        appointment.status = 'in_process'
+        # Build decision payload for canonical update
+        decision_payload = {
+            "decision": decision_data.get("decision", "ACCEPTED"),
+            "status": "in_process",
+            "notes": decision_data.get("decision_reason", ""),
+            "alerts": decision_data.get("alerts", []),
+        }
         
-        db.commit()
-        db.refresh(appointment)
+        # Delegate to canonical update (handles alerts, notes, ensure_arrival_id)
+        updated = update_appointment_from_decision(db, appointment.id, decision_payload)
         
-        logger.info(f"Appointment {appointment.id} updated: {old_status} -> in_process")
+        if not updated:
+            return None
+        
+        # Fix 6: Auto-trigger highway_infraction based on gate metadata
+        gate_type = decision_data.get("gate_type", "")
+        if gate_type == "highway_restricted" and not updated.highway_infraction:
+            updated.highway_infraction = True
+            db.commit()
+            db.refresh(updated)
+            logger.info(f"Highway infraction auto-flagged for appointment {updated.id} (gate_type=highway_restricted)")
+        
+        old_status = "in_transit"
+        logger.info(f"Appointment {updated.id} updated: {old_status} -> in_process")
         
         return {
-            "appointment_id": appointment.id,
+            "appointment_id": updated.id,
             "old_status": old_status,
-            "new_status": 'in_process'
+            "new_status": 'in_process',
+            "highway_infraction": updated.highway_infraction,
         }
     
     except Exception as e:

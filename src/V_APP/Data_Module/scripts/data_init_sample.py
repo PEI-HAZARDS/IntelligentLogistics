@@ -287,7 +287,8 @@ def init_simple_data(db: Session):
                 scheduled_start_time=scheduled_time,
                 expected_duration=45,
                 status="in_transit",  # ALL in_transit for demo flow
-                notes=f"HAZMAT: {desc}" if is_hazmat else f"Cargo: {desc}"
+                notes=f"HAZMAT: {desc}" if is_hazmat else f"Cargo: {desc}",
+                highway_infraction=(i < 2)  # First 2 hazmat trucks flagged as highway infraction
             )
             db.add(appt)
             db.flush()

@@ -166,6 +166,27 @@ def query_arrivals_by_license_plate(
 
 
 
+# ==================== HIGHWAY INFRACTION ====================
+
+@router.patch("/{appointment_id}/highway-infraction", response_model=Appointment)
+def flag_highway_infraction(
+    appointment_id: int = Path(..., description="Appointment ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    Flag an appointment as highway infraction.
+    Hazmat truck detected on restricted highway route before port entry.
+    """
+    from models.sql_models import Appointment as AppointmentModel
+    appt = db.query(AppointmentModel).filter(AppointmentModel.id == appointment_id).first()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    appt.highway_infraction = True
+    db.commit()
+    db.refresh(appt)
+    return Appointment.model_validate(appt)
+
+
 # ==================== UPDATE ENDPOINTS ====================
 
 @router.patch("/{appointment_id}/status", response_model=Appointment)

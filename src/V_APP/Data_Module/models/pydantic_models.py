@@ -347,6 +347,7 @@ class AppointmentBase(BaseModel):
     expected_duration: Optional[int] = None  # Duration in minutes
     status: AppointmentStatusEnum = AppointmentStatusEnum.in_transit
     notes: Optional[str] = None
+    highway_infraction: bool = False
 
 
 class AppointmentCreate(AppointmentBase):
@@ -397,6 +398,7 @@ class Visit(VisitBase):
 
 class AlertBase(BaseModel):
     visit_id: Optional[int] = None
+    appointment_id: Optional[int] = None
     type: TypeAlertEnum = TypeAlertEnum.generic
     description: Optional[str] = None
     image_url: Optional[str] = None

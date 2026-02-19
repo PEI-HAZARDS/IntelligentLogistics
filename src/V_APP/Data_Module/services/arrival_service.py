@@ -6,9 +6,9 @@ Used by: Operator frontend, Decision Engine, Driver app.
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date, time, timedelta
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_
+from sqlalchemy import func, and_, or_, case, Integer
 
-from models.sql_models import Appointment, Visit, Shift, Cargo, Booking, Gate, ShiftType
+from models.sql_models import Appointment, Visit, Shift, Cargo, Booking, Gate, ShiftType, Company, Driver
 
 
 def ensure_arrival_id(db: Session, appointment: Appointment) -> Appointment:
@@ -173,6 +173,7 @@ def get_appointments_for_decision(
             "shift_date": current_shift.date.isoformat() if current_shift else None,
             "scheduled_time": a.scheduled_start_time.isoformat() if a.scheduled_start_time else None,
             "status": a.status,
+            "highway_infraction": a.highway_infraction,
             "cargo": cargo,
             "booking": {
                 "reference": a.booking.reference,
@@ -396,3 +397,97 @@ def get_next_appointments(
             ensure_arrival_id(db, appointment)
 
     return appointments
+
+
+def get_transport_stats_by_company(
+    db: Session,
+    target_date: Optional[date] = None,
+    days: int = 30,
+) -> List[Dict[str, Any]]:
+    """
+    Aggregates per-company KPIs by joining Appointment -> Driver -> Company + Visit.
+    Uses count(distinct) to avoid inflation from LEFT JOIN.
+    """
+    end_date = target_date or date.today()
+    start_date = end_date - timedelta(days=days)
+
+    rows = (
+        db.query(
+            Company.nif,
+            Company.name,
+            # Defensive: count distinct to avoid inflation from LEFT JOIN
+            func.count(func.distinct(Appointment.id)).label("ops_count"),
+            func.avg(
+                func.extract('epoch', Visit.out_time) - func.extract('epoch', Visit.entry_time)
+            ).label("avg_duration_seconds"),
+            # Avg wait: only count positive waits (truck arrived after scheduled time)
+            func.avg(
+                case(
+                    (
+                        func.extract('epoch', Visit.entry_time) > func.extract('epoch', Appointment.scheduled_start_time),
+                        func.extract('epoch', Visit.entry_time) - func.extract('epoch', Appointment.scheduled_start_time),
+                    ),
+                    else_=None,
+                )
+            ).label("avg_wait_seconds"),
+            func.sum(
+                case(
+                    (Appointment.status == 'completed', 1),
+                    else_=0
+                )
+            ).label("completed_count"),
+        )
+        .join(Driver, Appointment.driver_license == Driver.drivers_license)
+        .join(Company, Driver.company_nif == Company.nif)
+        .outerjoin(Visit, Visit.appointment_id == Appointment.id)
+        .filter(
+            func.date(Appointment.scheduled_start_time) >= start_date,
+            func.date(Appointment.scheduled_start_time) <= end_date,
+        )
+        .group_by(Company.nif, Company.name)
+        .all()
+    )
+
+    results = []
+    for nif, name, ops_count, avg_dur, avg_wait, completed in rows:
+        avg_unloading = round(abs(avg_dur or 0) / 60, 1)
+        avg_waiting = round((avg_wait or 0) / 60, 1)
+        sla_rate = round((completed or 0) / ops_count * 100, 1) if ops_count > 0 else 0
+
+        results.append({
+            "companyName": name,
+            "companyNif": nif,
+            "avgUnloadingTime": avg_unloading,
+            "avgWaitingTime": avg_waiting,
+            "operationsCount": ops_count,
+            "slaAttendedRate": sla_rate,
+        })
+
+    return sorted(results, key=lambda x: x["operationsCount"], reverse=True)
+
+
+def get_avg_permanence_minutes(
+    db: Session,
+    target_date: Optional[date] = None,
+) -> float:
+    """
+    Calculates average visit permanence in minutes from entry_time to out_time.
+    Only includes completed visits (where both times are set).
+    """
+    query = (
+        db.query(
+            func.avg(
+                func.extract('epoch', Visit.out_time) - func.extract('epoch', Visit.entry_time)
+            )
+        )
+        .filter(
+            Visit.entry_time.isnot(None),
+            Visit.out_time.isnot(None),
+        )
+    )
+
+    if target_date:
+        query = query.filter(func.date(Visit.entry_time) == target_date)
+
+    result = query.scalar()
+    return round(abs(result or 0) / 60, 1)
