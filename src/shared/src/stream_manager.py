@@ -22,7 +22,7 @@ class StreamManager:
         self.running = True
 
         # The update thread will handle the initial connection.
-        logger.info(f"[StreamManager] Initialized for: {url}")
+        logger.info(f"Initialized for: {url}")
 
         # Thread in parallel to read stream continuously
         self.thread = threading.Thread(target=self.update, daemon=True)
@@ -38,33 +38,33 @@ class StreamManager:
                 break
 
             try:
-                logger.info(f"[StreamManager] Connection attempt {attempt}/{self.max_retries} to: {self.url}")
+                logger.info(f"Connection attempt {attempt}/{self.max_retries} to: {self.url}")
                 
                 # Initialize capture
                 cap = cv2.VideoCapture(self.url, cv2.CAP_FFMPEG)
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1) # Low latency setting
 
                 if cap.isOpened():
-                    logger.info("[StreamManager] Stream connected successfully.")
+                    logger.info("Stream connected successfully.")
                     return cap
                 else:
-                    logger.warning(f"[StreamManager] Failed to open stream (attempt {attempt}).")
+                    logger.warning(f"Failed to open stream (attempt {attempt}).")
             
             except Exception as e:
-                logger.error(f"[StreamManager] Error during connection: {e}")
+                logger.error(f"Error during connection: {e}")
 
             # Wait before retry (if not cancelled)
             if attempt < self.max_retries and self.running:
                 time.sleep(self.retry_delay)
         
-        logger.error("[StreamManager] Max retries reached. Stream is unreachable.")
+        logger.error("Max retries reached. Stream is unreachable.")
         return None
 
     def _reconnect(self):
         """
         Internal method: Releases current resources and attempts to reconnect.
         """
-        logger.warning("[StreamManager] Stream lost. Attempting to reconnect...")
+        logger.warning("Stream lost. Attempting to reconnect...")
         
         # 1. Release old resource
         if self.cap:
@@ -107,7 +107,7 @@ class StreamManager:
                     )
 
             except Exception as e:
-                logger.exception(f"[StreamManager] Unexpected error in read loop: {e}")
+                logger.exception(f"Unexpected error in read loop: {e}")
                 self._reconnect()
 
     def _ensure_connection_active(self):
@@ -129,7 +129,7 @@ class StreamManager:
         """
         new_count = current_failures + 1
         logger.warning(
-            f"[StreamManager] Frame read failed ({new_count}/{max_failures})")
+            f"Frame read failed ({new_count}/{max_failures})")
 
         if new_count >= max_failures:
             self._reconnect()
@@ -150,7 +150,7 @@ class StreamManager:
 
     def release(self):
         """Releases resources and stops thread"""
-        logger.info(f"[StreamManager] Stopping stream manager: {self.url}")
+        logger.info(f"Stopping stream manager: {self.url}")
         self.running = False
         
         # Wait briefly for thread to notice
@@ -158,4 +158,5 @@ class StreamManager:
         
         if self.cap:
             self.cap.release()
-        logger.info("[StreamManager] Stopped.")
+            
+        logger.info("Stopped.")

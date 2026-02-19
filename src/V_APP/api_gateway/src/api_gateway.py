@@ -97,9 +97,10 @@ class APIGateway:
                     continue
 
                 # Deserialize into a typed Message
-                typed_message = deserialize_message(data)
-                if typed_message is None:
-                    logger.warning(f"Could not deserialize message from topic '{topic}'")
+                try:
+                    typed_message = deserialize_message(data)
+                except ValueError as e:
+                    logger.warning(f"Could not deserialize message from topic '{topic}': {e}")
                     continue
                 
                 payload = typed_message.to_dict()

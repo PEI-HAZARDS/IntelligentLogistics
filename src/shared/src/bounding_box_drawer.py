@@ -1,44 +1,71 @@
-from logging import getLogger
+import logging
 import cv2
-from typing import List, Tuple, Any
+import numpy as np
+from typing import List, Tuple, Union
 
+logger = logging.getLogger("BoundingBoxDrawer")
+
+# A box is either (x1, y1, x2, y2) or (x1, y1, x2, y2, confidence)
+Box = Union[
+    Tuple[float, float, float, float],
+    Tuple[float, float, float, float, float],
+]
 
 class BoundingBoxDrawer:
+    """Draws bounding boxes and labels on images using OpenCV."""
+
+    # BGR color lookup for common color names
+    _COLOR_MAP = {
+        "red": (0, 0, 255),
+        "orange": (0, 165, 255),
+        "green": (0, 255, 0),
+        "blue": (255, 0, 0),
+        "white": (255, 255, 255),
+        "black": (0, 0, 0),
+        "yellow": (0, 255, 255),
+    }
+
+    # Sum of BGR channels; below this threshold -> white text, above -> black text
+    _DARK_BG_THRESHOLD = 400
+
     def __init__(self, color: str = "black", thickness: int = 1, label: str = ""):
+        """Initialize the drawer.
+
+        Args:
+            color: Color name for boxes (e.g. 'red', 'green'). Falls back to black if unknown.
+            thickness: Line thickness in pixels. Must be >= 1.
+            label: Optional label text to draw alongside each box.
+
+        Raises:
+            ValueError: If thickness < 1.
+        """
+        if thickness < 1:
+            raise ValueError(f"thickness must be >= 1, got {thickness}")
+
+        if color.lower() not in self._COLOR_MAP:
+            logger.warning(f"Unknown color '{color}', defaulting to black")
+            color = "black"
+
         self.color = color
         self.thickness = thickness
         self.label = label
-        self.logger = getLogger("BoundingBoxDrawer")
 
-        # Map simple color names to BGR tuples for OpenCV
-        self._color_map = {
-            "red": (0, 0, 255),
-            "orange": (0, 165, 255),
-            "green": (0, 255, 0),
-            "blue": (255, 0, 0),
-            "white": (255, 255, 255),
-            "black": (0, 0, 0),
-            "yellow": (0, 255, 255),
-        }
+    def _bgr(self) -> Tuple[int, int, int]:
+        """Return the BGR tuple for the configured color."""
+        return self._COLOR_MAP.get(self.color.lower(), (0, 0, 0))
 
-    def _bgr(self):
-        return self._color_map.get(self.color.lower(), (0, 0, 0))
+    def draw_box(self, frame: np.ndarray, boxes: List[Box]) -> np.ndarray:
+        """Draw boxes (and optional labels) on an image.
 
-    def draw_box(self, frame: Any, boxes: List[Tuple[float, float, float, float, float]]):
-        """
-        Draw boxes (and labels) on the provided image/frame using OpenCV.
-
-        Parameters:
-        - frame: The image/frame (numpy array) to draw on
-        - boxes: Iterable of boxes. Each box can be either:
-            - (x1, y1, x2, y2)
-            - (x1, y1, x2, y2, conf)
+        Args:
+            frame: The image (numpy array, HWC, BGR) to draw on.
+            boxes: List of bounding boxes. Each box is either
+                   (x1, y1, x2, y2) or (x1, y1, x2, y2, confidence).
 
         Returns:
-        - The same frame object with drawings applied.
+            The same frame with drawings applied (modified in-place).
         """
-
-        self.logger.debug(f"Drawing {len(boxes)} boxes with color {self.color} and thickness {self.thickness}") 
+        logger.debug(f"Drawing {len(boxes)} boxes with color {self.color} and thickness {self.thickness}")
 
         color = self._bgr()
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -65,24 +92,49 @@ class BoundingBoxDrawer:
                 if label_text:
                     self._draw_label(frame, x1_i, y1_i, label_text, color, font, font_scale, text_thickness)
 
-            except Exception:
-                # If drawing fails for a box, skip it but continue drawing others
+            except Exception as e:
+                logger.warning(f"Skipping box {i}: {e}")
                 continue
 
-        # Return the modified frame so callers receive the updated image
         return frame
 
-    def _draw_label(self, frame: Any, x1_i: int, y1_i: int, label_text: str, color: Tuple[int, int, int], font: int = cv2.FONT_HERSHEY_SIMPLEX, font_scale: float = 0.5, text_thickness: int = 1):
-        """Draw label background and text for a single box."""
+    def _draw_label(
+        self,
+        frame: np.ndarray,
+        x1_i: int,
+        y1_i: int,
+        label_text: str,
+        color: Tuple[int, int, int],
+        font: int = cv2.FONT_HERSHEY_SIMPLEX,
+        font_scale: float = 0.5,
+        text_thickness: int = 1,
+    ) -> None:
+        """Draw a label background rectangle and text for a single box.
 
-        self.logger.debug(f"Drawing label '{label_text}' at ({x1_i}, {y1_i})")
+        The label is placed above the box by default. If there is not enough
+        room at the top of the image it is placed below instead.  Horizontal
+        position is clamped so the label does not overflow the right edge.
+
+        Args:
+            frame: Image array to draw on (modified in-place).
+            x1_i: Left x-coordinate of the bounding box (int pixels).
+            y1_i: Top y-coordinate of the bounding box (int pixels).
+            label_text: Text string to render.
+            color: BGR background color for the label rectangle.
+            font: OpenCV font constant.
+            font_scale: Font scale factor.
+            text_thickness: Thickness of the rendered text.
+        """
+        logger.debug(f"Drawing label '{label_text}' at ({x1_i}, {y1_i})")
 
         (tw, th), _ = cv2.getTextSize(label_text, font, font_scale, text_thickness)
 
         # Image dimensions
         try:
             img_h, img_w = frame.shape[:2]
-        except Exception:
+            
+        except AttributeError:
+            logger.warning("Frame has no 'shape' attribute — skipping bounds checks")
             img_h, img_w = None, None
 
         pad = 6
@@ -113,7 +165,5 @@ class BoundingBoxDrawer:
         if img_h is not None:
             text_y = max(text_y, th)  # make sure text baseline is visible
 
-        text_color = (255, 255, 255) if sum(color) < 400 else (0, 0, 0)
+        text_color = (255, 255, 255) if sum(color) < self._DARK_BG_THRESHOLD else (0, 0, 0)
         cv2.putText(frame, label_text, (text_x, text_y), font, font_scale, text_color, text_thickness, cv2.LINE_AA)
-
-        return frame

@@ -92,10 +92,11 @@ class TestKafkaProducerWrapper:
             # Assert
             mock_producer.poll.assert_called_once_with(0)
 
-    def test_produce_handles_exception(self):
-        """Produce handles exception gracefully."""
+    def test_produce_raises_on_kafka_exception(self):
+        """Produce raises KafkaException when broker call fails."""
         # Arrange
-        with patch("kafka_wrapper.Producer") as MockProducer:
+        with patch("kafka_wrapper.Producer") as MockProducer, \
+             patch("kafka_wrapper.KafkaException", Exception):
             mock_producer = MagicMock()
             MockProducer.return_value = mock_producer
             mock_producer.produce.side_effect = Exception("Kafka error")
@@ -103,10 +104,23 @@ class TestKafkaProducerWrapper:
             from kafka_wrapper import KafkaProducerWrapper
             wrapper = KafkaProducerWrapper("localhost:9092")
 
-            # Act - should not raise
-            wrapper.produce("topic", {"test": "data"})
+            # Act & Assert
+            with pytest.raises(Exception):
+                wrapper.produce("topic", {"test": "data"})
 
-            # Assert - no exception raised
+    def test_produce_raises_on_non_serializable_data(self):
+        """Produce raises TypeError when data is not JSON-serializable."""
+        # Arrange
+        with patch("kafka_wrapper.Producer") as MockProducer:
+            mock_producer = MagicMock()
+            MockProducer.return_value = mock_producer
+
+            from kafka_wrapper import KafkaProducerWrapper
+            wrapper = KafkaProducerWrapper("localhost:9092")
+
+            # Act & Assert
+            with pytest.raises(TypeError):
+                wrapper.produce("topic", {"bad": object()})  # object() is not serializable
 
     def test_flush_calls_producer_flush(self):
         """Flush method calls producer flush with timeout."""

@@ -114,10 +114,11 @@ class BaseGateway(ABC):
             # Extract truck_id from HTTP header (mirrors Kafka header convention)
             truck_id = request.headers.get("X-Truck-ID")
 
-            message = deserialize_message(payload)
-            if message is None:
-                self.logger.warning(f"Unknown or invalid message type in payload: {payload}")
-                return {"status": "error", "detail": "Unknown message type"}
+            try:
+                message = deserialize_message(payload)
+            except ValueError as e:
+                self.logger.warning(f"Invalid message in payload: {e}")
+                return {"status": "error", "detail": str(e)}
 
             # Build Kafka headers with truck_id if present
             headers = {"truck_id": truck_id} if truck_id else None
@@ -193,9 +194,10 @@ class BaseGateway(ABC):
                     continue
 
                 # Deserialize into a typed Message
-                typed_message = deserialize_message(data)
-                if typed_message is None:
-                    self.logger.warning(f"Could not deserialize message from topic '{topic}'")
+                try:
+                    typed_message = deserialize_message(data)
+                except ValueError as e:
+                    self.logger.warning(f"Could not deserialize message from topic '{topic}': {e}")
                     continue
 
                 # Let the subclass pre-process / transform the message

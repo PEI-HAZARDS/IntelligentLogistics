@@ -134,17 +134,6 @@ services:
       - .env
     restart: "no"
 
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: kafka-ui
-    ports:
-      - "8090:8080"
-    environment:
-      - KAFKA_CLUSTERS_0_NAME=local
-      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:29092
-    depends_on:
-      - kafka
-
   kafka-dashboard:
     build: ./broker/dashboard
     container_name: kafka-dashboard
@@ -155,11 +144,24 @@ services:
       - GATE_ID=1
     depends_on:
       - kafka
-      - kafka-ui
       - kafka-exporter
       - agenta
       - agentb
       - agentc
+    restart: unless-stopped
+
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:latest
+    ports:
+      - "9090:8080"
+    environment:
+      KAFKA_BROKERS: kafka:29092
+    depends_on:
+    - kafka
+    - kafka-exporter
+    - agenta
+    - agentb
+    - agentc
     restart: unless-stopped
 
   # Prometheus exporter for Kafka metrics
