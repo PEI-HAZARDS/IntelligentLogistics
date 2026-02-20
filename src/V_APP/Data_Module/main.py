@@ -21,6 +21,7 @@ from routes.decisions import router as decisions_router
 from routes.driver import router as drivers_router
 from routes.alerts import router as alerts_router
 from routes.worker import router as workers_router
+from routes.notifications import router as notifications_router
 
 # Kafka decision consumer
 from services.kafka_decision_consumer import decision_consumer
@@ -184,7 +185,8 @@ app.include_router(decisions_router, prefix="/api/v1")
 app.include_router(drivers_router, prefix="/api/v1")
 app.include_router(alerts_router, prefix="/api/v1")
 app.include_router(workers_router, prefix="/api/v1")
-app.include_router(statistics_router, prefix="/api/v1")  # NEW - Phase 2
+app.include_router(statistics_router, prefix="/api/v1")  # Phase 2
+app.include_router(notifications_router, prefix="/api/v1")  # Phase 2
 
 
 @app.get("/api/v1/health")

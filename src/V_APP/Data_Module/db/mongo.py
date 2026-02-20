@@ -38,6 +38,9 @@ decision_events_collection = db["decision_events"]
 statistics_hourly_collection = db["statistics_hourly"]
 cache_metadata_collection = db["cache_metadata"]
 
+# Operator UI notifications (persistent, replaces localStorage)
+notifications_collection = db["notifications"]
+
 
 # ==================== INDEX CREATION ====================
 
@@ -48,6 +51,17 @@ def create_indexes():
     """
     
     logger.info("Creating MongoDB indexes...")
+
+    # ===== notifications indexes =====
+    notifications_collection.create_index(
+        [("gate_id", ASCENDING), ("created_at", DESCENDING)],
+        name="idx_notif_gate_created"
+    )
+    notifications_collection.create_index(
+        [("gate_id", ASCENDING), ("read", ASCENDING)],
+        name="idx_notif_gate_read"
+    )
+    logger.info("✓ Created notifications indexes")
     
     # Legacy index
     detections_collection.create_index(
