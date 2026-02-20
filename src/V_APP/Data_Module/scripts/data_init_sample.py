@@ -117,7 +117,7 @@ def init_simple_data(db: Session):
         manager = Worker(
             num_worker="MGR001",
             name="João Silva",
-            email="joao.silva@porto.pt",
+            email="manager@example.pt",
             phone="910000001",
             password_hash=pwd_context.hash("password123"),
             active=True
@@ -312,7 +312,7 @@ def init_simple_data(db: Session):
 │  │ Email                   │ Password    │ Role       │             │
 │  ├─────────────────────────┼─────────────┼────────────┤             │
 │  │ worker@porto.pt         │ password123 │ Operator   │             │
-│  │ joao.silva@porto.pt     │ password123 │ Manager    │             │
+│  │ manager@example.pt      │ password123 │ Manager    │             │
 │  └─────────────────────────┴─────────────┴────────────┘             │
 │                                                                      │
 │  MOBILE APP (Driver):                                                │
