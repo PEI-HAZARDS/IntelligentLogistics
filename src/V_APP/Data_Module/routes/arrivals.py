@@ -123,13 +123,14 @@ def get_arrivals_stats(
 def get_upcoming_arrivals(
     gate_id: int = Path(..., description="Gate ID"),
     limit: int = Query(5, ge=1, le=20, description="Number of arrivals"),
+    status: Optional[str] = Query(None, description="Filter by status"),
     db: Session = Depends(get_db)
 ):
     """
     Next scheduled arrivals for a gate.
     Used in operator's sidebar panel.
     """
-    appointments = get_next_appointments(db, gate_id=gate_id, limit=limit)
+    appointments = get_next_appointments(db, gate_id=gate_id, limit=limit, status=status)
     return [Appointment.model_validate(a) for a in appointments]
 
 

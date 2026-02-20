@@ -401,7 +401,8 @@ def update_appointment_from_decision(
 def get_next_appointments(
     db: Session,
     gate_id: int,
-    limit: int = 5
+    limit: int = 5,
+    status: Optional[str] = None,
 ) -> List[Appointment]:
     """
     Gets next scheduled appointments (used in operator's sidebar).
@@ -419,10 +420,18 @@ def get_next_appointments(
         else_=1
     )
     
-    appointments = db.query(Appointment).filter(
+    base_filters = [
         Appointment.gate_in_id == gate_id,
         func.date(Appointment.scheduled_start_time) == today,
-        Appointment.status.in_(['in_transit', 'delayed'])
+    ]
+
+    if status:
+        base_filters.append(Appointment.status == status)
+    else:
+        base_filters.append(Appointment.status.in_(['in_transit', 'delayed']))
+
+    appointments = db.query(Appointment).filter(
+        *base_filters
     ).order_by(
         status_priority,  # delayed first
         Appointment.scheduled_start_time.asc()  # then by scheduled time
