@@ -17,7 +17,7 @@ class BaseGateway(ABC):
 
     A gateway bridges two or more applications by:
       1. Consuming messages from the LOCAL Kafka broker
-      2. Forwarding (POST) those messages to RECEIVER gateways (the other app)
+      2. Forwarding (POST) those messages to RECEIVER gateways (the other(s) app)
       3. Receiving messages (POST) from other gateways and producing them to the LOCAL Kafka broker
 
     Architecture (two threads):

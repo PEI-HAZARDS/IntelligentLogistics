@@ -389,7 +389,7 @@ class BaseAgent(ABC):
             (final_text, confidence, best_crop) if consensus reached, else None
         """
         self.logger.info("Running OCR")
-        text, ocr_conf = self.ocr._extract_text(crop)
+        text, ocr_conf = self.ocr.extract_text(crop)
 
         if not text or ocr_conf <= 0.0:
             return None

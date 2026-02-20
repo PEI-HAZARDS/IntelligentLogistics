@@ -85,11 +85,11 @@ class AgentB(BaseAgent):
 
         if classification == PlateClassifier.HAZARD_PLATE:
             self.logger.info(
-                f"[AgentB] Crop {box_index} rejected as {classification}, "
+                f"Crop {box_index} rejected as {classification}, "
                 "uploading to MinIO for analysis.")
             return False
 
-        self.logger.info(f"[AgentB] Crop {box_index} accepted as LICENSE_PLATE")
+        self.logger.info(f"Crop {box_index} accepted as LICENSE_PLATE")
         self.plates_detected.inc()
         return True
 

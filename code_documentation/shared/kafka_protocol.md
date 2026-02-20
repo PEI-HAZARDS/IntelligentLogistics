@@ -440,7 +440,7 @@ pytest src/shared/tests/kafka_wrapper_unit_test.py
 
 ## Known Issues / TODOs
 
-> N/A
+> Add topics name Enum/factory so every consumer/producer can easily get the correct necessary topics.
 
 ---
 

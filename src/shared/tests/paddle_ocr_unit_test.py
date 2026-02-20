@@ -127,18 +127,16 @@ class TestToCvImage:
             # Assert
             assert result is not None
 
-    def test_unsupported_type_returns_none(self):
-        """Unsupported type returns None."""
+    def test_unsupported_type_raises_type_error(self):
+        """Unsupported type raises TypeError."""
         # Arrange
         with patch("paddle_ocr.PaddleOCR"):
             from paddle_ocr import OCR
             ocr = OCR()
 
-            # Act
-            result = ocr._to_cv_image(12345)  # Integer, not an image
-
-            # Assert
-            assert result is None
+            # Act & Assert
+            with pytest.raises(TypeError, match="Unsupported image type"):
+                ocr._to_cv_image(12345)  # Integer, not an image
 
 
 # =============================================================================
@@ -436,7 +434,7 @@ class TestParseResult:
 
 
 # =============================================================================
-# Tests for _extract_text
+# Tests for extract_text
 # =============================================================================
 
 class TestExtractText:
@@ -450,7 +448,7 @@ class TestExtractText:
             ocr = OCR()
 
             # Act
-            text, conf = ocr._extract_text(None)
+            text, conf = ocr.extract_text(None)
 
             # Assert
             assert text == ""
@@ -478,7 +476,7 @@ class TestExtractText:
                 ocr = OCR()
 
                 # Act
-                text, conf = ocr._extract_text(sample_cv_image)
+                text, conf = ocr.extract_text(sample_cv_image)
 
                 # Assert
                 assert text == "ABC123"
@@ -492,7 +490,7 @@ class TestExtractText:
             ocr = OCR()
 
             # Act - small image should fail preprocessing
-            text, conf = ocr._extract_text(small_image)
+            text, conf = ocr.extract_text(small_image)
 
             # Assert
             assert text == ""
