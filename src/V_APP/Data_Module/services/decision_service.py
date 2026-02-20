@@ -24,6 +24,7 @@ from db.mongo import (
     validate_agent_detection_schema,
     validate_decision_event_schema
 )
+from services.notification_service import create_notification
 
 # Redis operations
 from db.redis import (
@@ -431,7 +432,42 @@ def process_incoming_decision(
     from services.arrival_service import update_appointment_from_decision, update_visit_status
     
     ts = time.time()
-    
+
+    # ------------------------------------------------------------------ #
+    # UNMATCHED TRUCK — no appointment found by the Decision Engine        #
+    # Skip PostgreSQL update; persist the full decision to MongoDB so the  #
+    # event is never lost and is visible in the operator interface.        #
+    # ------------------------------------------------------------------ #
+    if appointment_id is None:
+        logger.info(
+            f"[process_incoming_decision] No appointment for plate={license_plate} "
+            f"gate={gate_id} decision={decision} — persisting to MongoDB only"
+        )
+        event_id = persist_decision_event(
+            license_plate=license_plate,
+            gate_id=gate_id,
+            appointment_id=None,
+            decision=decision,
+            decision_data={
+                "reason": "no_appointment_found",
+                "decision_source": (extra_data or {}).get("decision_source", "automated"),
+                "decision_reason": (extra_data or {}).get("decision_reason", "unknown"),
+                "alerts": alerts or [],
+                "notes": notes,
+                **(extra_data or {}),
+            },
+        )
+        increment_counter(gate_id, "decisions:unmatched")
+        increment_counter(gate_id, f"decisions:{decision.lower()}")
+        return {
+            "status": "persisted_unmatched",
+            "decision": decision,
+            "license_plate": license_plate,
+            "gate_id": gate_id,
+            "event_id": event_id,
+            "reason": "no_appointment_found",
+        }
+
     # 1. Check duplicate
     if is_duplicate_and_mark(license_plate, gate_id, ts):
         return {
@@ -522,9 +558,41 @@ def process_incoming_decision(
         
         # 8. Increment real-time metrics
         increment_counter(gate_id, "decisions:processed")
-        
+
+        # 9. Persist operator notification when alerts are present
+        if alerts:
+            for alert in alerts:
+                alert_type = alert.get("type", "")
+                if alert_type == "highway_infraction":
+                    title = "Highway Infraction"
+                    ntype = "danger"
+                elif alert_type == "manual_review":
+                    title = "Manual Review Needed"
+                    ntype = "warning"
+                else:
+                    title = "Vehicle Approved"
+                    ntype = "info"
+                create_notification(
+                    gate_id=gate_id,
+                    title=title,
+                    message=alert.get("message", f"Alert for {license_plate}"),
+                    notification_type=ntype,
+                    appointment_id=appointment_id,
+                    license_plate=license_plate,
+                    extra={"alert_type": alert_type},
+                )
+        elif decision == "approved":
+            create_notification(
+                gate_id=gate_id,
+                title="Vehicle Approved",
+                message=f"Truck {license_plate} approved for entry.",
+                notification_type="info",
+                appointment_id=appointment_id,
+                license_plate=license_plate,
+            )
+
         return result
-        
+
     finally:
         db.close()
 

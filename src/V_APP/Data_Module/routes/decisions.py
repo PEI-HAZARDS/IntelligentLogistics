@@ -32,7 +32,7 @@ class DecisionIncomingRequest(BaseModel):
     """Request from Decision Engine to process a decision."""
     license_plate: str
     gate_id: int
-    appointment_id: int
+    appointment_id: Optional[int] = None   # None when no matching appointment exists
     decision: str  # "approved", "rejected", "manual_review"
     appointment_status: Optional[AppointmentStatusEnum] = None
     delivery_state: Optional[DeliveryStatusEnum] = None
@@ -83,26 +83,11 @@ class EventResponse(BaseModel):
 def process_decision(request: DecisionIncomingRequest):
     """
     Main endpoint for Decision Engine to send decisions.
-    
-    Flow:
-    1. Check duplicate (Redis)
-    2. Update appointment in PostgreSQL
-    3. Create alerts if needed
-    4. Persist event in MongoDB
-    5. Cache result in Redis
-    
-    Expected payload:
-    {
-        "license_plate": "XX-XX-XX",
-        "gate_id": 1,
-        "appointment_id": 123,
-        "decision": "approved",
-        "status": "approved",
-        "notes": "Automatically approved",
-        "alerts": [{"type": "hazmat", "severity": 3, "description": "UN 1203"}]
-    }
+
+    When appointment_id is None the truck has no matching appointment —
+    the decision (MANUAL_REVIEW / REJECTED) is still fully persisted to MongoDB.
     """
-    if request.appointment_status is None:
+    if request.appointment_status is None and request.appointment_id is not None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="appointment_status is required (or legacy status)",
@@ -117,9 +102,9 @@ def process_decision(request: DecisionIncomingRequest):
         delivery_state=request.delivery_state,
         alerts=request.alerts,
         notes=request.notes,
-        extra_data=request.extra_data
+        extra_data=request.extra_data,
     )
-    
+
     return result
 
 

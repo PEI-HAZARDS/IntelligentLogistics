@@ -19,6 +19,7 @@ import json
 
 from shared.src.kafka_wrapper import KafkaConsumerWrapper
 from services.decision_service import persist_decision_event_from_kafka, update_appointment_after_decision
+from services.notification_service import create_notification
 
 logger = logging.getLogger("kafka_decision_consumer")
 
@@ -191,6 +192,14 @@ class KafkaDecisionConsumer:
                             break
                 
                 if not truck_id:
+                    # Bug fix 1: try extracting truck_id from the payload body before discarding
+                    try:
+                        body_preview = json.loads(msg.value().decode("utf-8"))
+                        truck_id = body_preview.get("truck_id") or body_preview.get("truckId")
+                    except Exception:
+                        pass
+
+                if not truck_id:
                     logger.warning(f"Message from {topic} has no truckId header, skipping")
                     continue
                 
@@ -237,9 +246,9 @@ class KafkaDecisionConsumer:
             
             logger.info(f"Decision event persisted with id={event_id}")
             
-            # Update appointment in PostgreSQL if decision is ACCEPTED
-            decision_status = decision_data.get("decision")
-            if decision_status == "ACCEPTED":
+            # Update appointment in PostgreSQL if decision is ACCEPTED or approved
+            decision_status = decision_data.get("decision", "").upper()
+            if decision_status in ("ACCEPTED", "APPROVED"):
                 result = await asyncio.get_event_loop().run_in_executor(
                     None,
                     update_appointment_after_decision,
@@ -249,11 +258,43 @@ class KafkaDecisionConsumer:
                 )
                 if result:
                     logger.info(f"Appointment updated for license_plate={license_plate}: {result['old_status']} -> {result['new_status']}")
+
+                    # Bug fix 3: create notification via Kafka path (mirrors HTTP path)
+                    alerts = decision_data.get("alerts") or []
+                    try:
+                        if alerts:
+                            for alert in alerts:
+                                alert_type = alert if isinstance(alert, str) else alert.get("type", "")
+                                if alert_type in ("highway_infraction", "highway"):
+                                    title, ntype = "Highway Infraction", "danger"
+                                elif alert_type == "manual_review":
+                                    title, ntype = "Manual Review Needed", "warning"
+                                else:
+                                    title, ntype = "Vehicle Alert", "warning"
+                                create_notification(
+                                    gate_id=gate_id,
+                                    title=title,
+                                    message=f"Alert for {license_plate}: {alert_type}",
+                                    notification_type=ntype,
+                                    appointment_id=appointment_id,
+                                    license_plate=license_plate,
+                                )
+                        else:
+                            create_notification(
+                                gate_id=gate_id,
+                                title="Vehicle Approved",
+                                message=f"Truck {license_plate} approved for entry.",
+                                notification_type="info",
+                                appointment_id=appointment_id,
+                                license_plate=license_plate,
+                            )
+                    except Exception as notif_err:
+                        logger.warning(f"Failed to create notification for truck={license_plate}: {notif_err}")
                 else:
                     logger.warning(f"Failed to update appointment for license_plate={license_plate}")
 
             else:
-                logger.info(f"Wrong format status for operator decision: {decision_status} for truck_id={truck_id}")
+                logger.info(f"Decision status '{decision_data.get('decision')}' — no appointment update needed")
                     
         except Exception as e:
             logger.error(f"Error persisting decision for truck_id={truck_id}: {e}", exc_info=True)

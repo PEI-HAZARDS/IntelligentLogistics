@@ -19,6 +19,26 @@ def ensure_arrival_id(db: Session, appointment: Appointment) -> Appointment:
     return appointment
 
 
+def _apply_appointment_filters(query, gate_id, shift_gate_id, shift_type, shift_date, status, scheduled_date, search):
+    """Applies common filters to a query — shared by list and count helpers."""
+    if gate_id:
+        query = query.filter(Appointment.gate_in_id == gate_id)
+    if shift_gate_id and shift_type and shift_date:
+        query = query.join(Visit, isouter=True).filter(
+            Visit.shift_gate_id == shift_gate_id,
+            Visit.shift_type == shift_type,
+            Visit.shift_date == shift_date
+        )
+    if status:
+        query = query.filter(Appointment.status == status)
+    if scheduled_date:
+        query = query.filter(func.date(Appointment.scheduled_start_time) == scheduled_date)
+    if search:
+        term = f"%{search.upper()}%"
+        query = query.filter(func.upper(Appointment.truck_license_plate).like(term))
+    return query
+
+
 def get_all_appointments(
     db: Session,
     skip: int = 0,
@@ -28,33 +48,40 @@ def get_all_appointments(
     shift_type: Optional[ShiftType] = None,
     shift_date: Optional[date] = None,
     status: Optional[str] = None,
-    scheduled_date: Optional[date] = None
+    scheduled_date: Optional[date] = None,
+    search: Optional[str] = None,
 ) -> List[Appointment]:
     """
     Gets appointments with optional filters.
     Used by operator frontend to list arrivals.
     """
     query = db.query(Appointment)
-    
-    if gate_id:
-        query = query.filter(Appointment.gate_in_id == gate_id)
-    if shift_gate_id and shift_type and shift_date:
-        # Filter by visits that have this shift (composite FK)
-        query = query.join(Visit).filter(
-            Visit.shift_gate_id == shift_gate_id,
-            Visit.shift_type == shift_type,
-            Visit.shift_date == shift_date
-        )
-    if status:
-        query = query.filter(Appointment.status == status)
-    if scheduled_date:
-        query = query.filter(func.date(Appointment.scheduled_start_time) == scheduled_date)
-    
+    query = _apply_appointment_filters(
+        query, gate_id, shift_gate_id, shift_type, shift_date, status, scheduled_date, search
+    )
     appointments = query.order_by(Appointment.scheduled_start_time.asc()).offset(skip).limit(limit).all()
     for appointment in appointments:
         if appointment.arrival_id is None:
             ensure_arrival_id(db, appointment)
     return appointments
+
+
+def count_all_appointments(
+    db: Session,
+    gate_id: Optional[int] = None,
+    shift_gate_id: Optional[int] = None,
+    shift_type: Optional[ShiftType] = None,
+    shift_date: Optional[date] = None,
+    status: Optional[str] = None,
+    scheduled_date: Optional[date] = None,
+    search: Optional[str] = None,
+) -> int:
+    """Returns total count matching the same filters as get_all_appointments."""
+    query = db.query(func.count(Appointment.id))
+    query = _apply_appointment_filters(
+        query, gate_id, shift_gate_id, shift_type, shift_date, status, scheduled_date, search
+    )
+    return query.scalar() or 0
 
 
 def get_appointment_by_id(db: Session, appointment_id: int) -> Optional[Appointment]:
@@ -195,28 +222,37 @@ def get_appointments_count_by_status(
     """
     date_filter = target_date or date.today()
     
-    query = db.query(
+    base_filter = [func.date(Appointment.scheduled_start_time) == date_filter]
+    if gate_id:
+        base_filter.append(Appointment.gate_in_id == gate_id)
+
+    status_query = db.query(
         Appointment.status,
         func.count(Appointment.id)
-    ).filter(func.date(Appointment.scheduled_start_time) == date_filter)
+    ).filter(*base_filter)
     
-    if gate_id:
-        query = query.filter(Appointment.gate_in_id == gate_id)
-    
-    results = query.group_by(Appointment.status).all()
+    results = status_query.group_by(Appointment.status).all()
     
     counts = {
         "in_transit": 0,
+        "in_process": 0,
         "delayed": 0,
         "canceled": 0,
         "completed": 0,
-        "total": 0
+        "total": 0,
+        "infractions": 0,
     }
     
     for status, count in results:
         if status in counts:
             counts[status] = count
         counts["total"] += count
+
+    # Count records with highway_infraction flag regardless of status
+    counts["infractions"] = db.query(func.count(Appointment.id)).filter(
+        *base_filter,
+        Appointment.highway_infraction == True  # noqa: E712
+    ).scalar() or 0
     
     return counts
 
