@@ -6,8 +6,8 @@ from minio.commonconfig import Filter # type: ignore
 from urllib3.exceptions import MaxRetryError, NewConnectionError # type: ignore
 from datetime import timedelta
 import logging
-import cv2
-import numpy as np
+import cv2 # type: ignore
+import numpy as np # type: ignore
 import io
 
 logger = logging.getLogger("ImageStorage")

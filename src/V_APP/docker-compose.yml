@@ -263,12 +263,9 @@ services:
     image: v-gateway:latest
     container_name: v-gateway
     restart: unless-stopped
+    env_file: .env
     ports:
       - "8003:8003"
-    environment:
-      - GATEWAY_PORT=8003
-      - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
-      - GATE_ID=${GATE_ID}
     depends_on:
       kafka-init:
         condition: service_completed_successfully

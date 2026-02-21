@@ -1,6 +1,6 @@
 import logging
-import cv2
-import numpy as np
+import cv2 # type: ignore
+import numpy as np # type: ignore
 from typing import List, Tuple, Union
 
 logger = logging.getLogger("BoundingBoxDrawer")

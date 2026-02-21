@@ -1,24 +1,31 @@
 from shared.src.base_gateway import BaseGateway
-from shared.src.kafka_protocol import Message
+from shared.src.kafka_protocol import Message, KafkaTopicFactory
 
 
-class V_Gateway(BaseGateway):
+class VGateway(BaseGateway):
     def get_topics_consume(self) -> list[str]:
-        return [f"agent-decision-{self.gate_id}"]
+        topics = []
+        for gate_id in self.config.gate_ids:
+            topics.append(KafkaTopicFactory.agent_decision(gate_id))
+        return topics
 
     def get_gateway_name(self) -> str:
         return "V_Gateway"
 
     def get_topics_produce(self) -> dict[str, str]:
-        return {
-            "hazard_plate_results": f"hz-results-{self.gate_id}",
-            "license_plate_results": f"lp-results-{self.gate_id}",
-        }
+        # Map source topic (AI broker) → destination topic (V broker).
+        # Keyed on the full topic name so routing is unambiguous across multiple gates.
+        topics = {}
+        for gate_id in self.config.gate_ids:
+            topics[KafkaTopicFactory.truck_detected(gate_id)] = KafkaTopicFactory.truck_detected(gate_id)
+            topics[KafkaTopicFactory.license_plate_results(gate_id)] = KafkaTopicFactory.license_plate_results(gate_id)
+            topics[KafkaTopicFactory.hazard_plate_results(gate_id)] = KafkaTopicFactory.hazard_plate_results(gate_id)
+        return topics
 
-    def get_recievers(self) -> list[str]:
-        return ["http://10.255.32.110:8003"]  # AI_APP Gateway base URL
+    def get_receivers(self) -> list[str]:
+        return self.config.receivers
 
     def process_message(self, message: Message) -> Message:
         # For now, we just log the message and return it unchanged.
-        self.logger.info(f"Processing message: {message}")
+        self.logger.info(f"Processing \"{message.MESSAGE_TYPE}\" message before sending...")
         return message

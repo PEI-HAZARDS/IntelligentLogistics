@@ -152,12 +152,7 @@ class DecisionEngine:
                 route="",
                 decision=decision,
                 decision_reason=reason,
-                decision_source="automated",
-                gate_id=int(GATE_ID),
-                appointment_id=None,
-                lp_confidence=lp_msg.confidence,
-                hz_confidence=hz_msg.confidence,
-                processing_time_ms=int((time.time() - start_time) * 1000),
+                decision_source="automated"
             )
             
             self.kafka_producer.produce(
@@ -188,12 +183,7 @@ class DecisionEngine:
                 route="",
                 decision=decision,
                 decision_reason=reason,
-                decision_source="automated",
-                gate_id=int(GATE_ID),
-                appointment_id=None,
-                lp_confidence=lp_msg.confidence,
-                hz_confidence=hz_msg.confidence,
-                processing_time_ms=int((time.time() - start_time) * 1000),
+                decision_source="automated"
             )
             
             self.kafka_producer.produce(
@@ -221,11 +211,6 @@ class DecisionEngine:
                 decision=decision,
                 decision_reason=reason,
                 decision_source="automated",
-                gate_id=int(GATE_ID),
-                appointment_id=None,
-                lp_confidence=lp_msg.confidence,
-                hz_confidence=hz_msg.confidence,
-                processing_time_ms=int((time.time() - start_time) * 1000),
             )
             
             self.kafka_producer.produce(
@@ -257,11 +242,6 @@ class DecisionEngine:
                 decision=decision,
                 decision_reason=reason,
                 decision_source="automated",
-                gate_id=int(GATE_ID),
-                appointment_id=None,
-                lp_confidence=lp_msg.confidence,
-                hz_confidence=hz_msg.confidence,
-                processing_time_ms=int((time.time() - start_time) * 1000),
             )
         
         # Handle matched plate
@@ -269,13 +249,6 @@ class DecisionEngine:
             decision = DecisionStatus.ACCEPTED.value
             reason = "license_plate_matched"
             logger.info(f"Decision: [{decision} - {reason}]")
-            
-            # Find matched appointment to include appointment_id
-            matched_appointment = self._get_appointment_from_plate(
-                matched_plate, 
-                appointments.get("candidates", [])
-            )
-            matched_appointment_id = int(matched_appointment.get("appointment_id", 0)) if matched_appointment else None
             
             message = KafkaMessageProto.decision_result(
                 license_plate=license_plate,
@@ -287,12 +260,7 @@ class DecisionEngine:
                 route="",
                 decision=decision,
                 decision_reason=reason,
-                decision_source="automated",
-                gate_id=int(GATE_ID),
-                appointment_id=matched_appointment_id,
-                lp_confidence=lp_msg.confidence,
-                hz_confidence=hz_msg.confidence,
-                processing_time_ms=int((time.time() - start_time) * 1000),
+                decision_source="automated"
             )
         
         # Publish decision result

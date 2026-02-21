@@ -1,8 +1,10 @@
-from V_APP.gateway.v_gateway import V_Gateway
+from V_APP.gateway.v_gateway import VGateway
+from shared.src.base_gateway import BaseGatewayConfig
 
 
 def main():
-    gateway = V_Gateway()
+    config = BaseGatewayConfig()
+    gateway = VGateway(config)
     gateway.start()
 
 

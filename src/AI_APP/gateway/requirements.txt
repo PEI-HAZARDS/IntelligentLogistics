@@ -4,6 +4,7 @@ confluent_kafka==2.12.2
 fastapi
 uvicorn[standard]
 httpx
+pydantic-settings
 
 # Prometheus metrics
 prometheus_client
