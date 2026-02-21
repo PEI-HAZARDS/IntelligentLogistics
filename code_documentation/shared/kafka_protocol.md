@@ -6,11 +6,11 @@
 
 ## Overview
 
-`kafka_protocol.py` establishes a shared contract for every Kafka message exchanged between system components. It defines an abstract `Message` base class and four concrete message types — one per pipeline stage — ensuring that producers and consumers agree on field names, types, and serialization format (JSON).
+`kafka_protocol.py` establishes a shared contract for every Kafka message exchanged between system components. It defines an abstract `Message` base class, four concrete message types — one per pipeline stage — and a `KafkaTopicFactory` that generates consistent, gate-scoped topic names. Together these ensure that producers and consumers agree on field names, types, serialization format (JSON), and topic naming conventions.
 
-The module is imported by every component that publishes or consumes Kafka messages: `AgentA` (truck detection), `AgentB`/`AgentC` (plate recognition), the `decision_engine`, the `broker`, the `api-gateway`, and the operator frontend. By centralizing schema definitions here, field-name mismatches and silent data loss are avoided across the distributed system.
+The module is imported by every component that publishes or consumes Kafka messages: `AgentA` (truck detection), `AgentB`/`AgentC` (plate recognition), the `decision_engine`, the `broker`, the `api-gateway`, gateways, and the operator frontend. By centralizing schema definitions and topic naming here, field-name mismatches, topic typos, and silent data loss are avoided across the distributed system.
 
-It does **not** handle Kafka transport (see `kafka_wrapper.py`) or business logic — it is purely a data-contract and serialization layer.
+It does **not** handle Kafka transport (see `kafka_wrapper.py`) or business logic — it is purely a data-contract, topic-naming, and serialization layer.
 
 ---
 
@@ -36,7 +36,10 @@ src/shared/src/kafka_protocol.py
 ```
   Producer (e.g. AgentA)                     Consumer (e.g. Broker)
        │                                          │
-       │  KafkaMessageProto.truck_detected()       │
+       │  topic = KafkaTopicFactory                │
+       │           .truck_detected(gate_id)        │
+       │  msg   = KafkaMessageProto                │
+       │           .truck_detected(...)            │
        ▼                                          │
   TruckDetectedMessage                            │
        │                                          │
@@ -51,13 +54,100 @@ src/shared/src/kafka_protocol.py
 ```
 
 **Message flow:**
-1. Producers create messages via `KafkaMessageProto` factory methods.
-2. Messages are serialized with `.to_dict()` / `.to_json()` and published.
-3. Consumers receive JSON, pass it to `deserialize_message()`, and get back a typed `Message` subclass.
+1. Producers resolve the target topic via `KafkaTopicFactory` methods.
+2. Producers create messages via `KafkaMessageProto` factory methods.
+3. Messages are serialized with `.to_dict()` / `.to_json()` and published to the resolved topic.
+4. Consumers receive JSON, pass it to `deserialize_message()`, and get back a typed `Message` subclass.
 
 ---
 
 ## Classes
+
+### `KafkaTopicFactory`
+
+> Factory for generating consistent, gate-scoped Kafka topic names. Eliminates hardcoded topic strings across the codebase.
+
+**Inherits from:** `None`
+
+---
+
+#### Methods
+
+##### `truck_detected(gate_id)` *(classmethod)*
+
+> Returns the topic name for truck-detected events.
+
+**Parameters**
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `gate_id` | `str \| int` | required | Gate identifier |
+
+**Returns:** `str` — `"truck-detected-{gate_id}"`
+
+---
+
+##### `license_plate_results(gate_id)` *(classmethod)*
+
+> Returns the topic name for license plate results.
+
+**Parameters**
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `gate_id` | `str \| int` | required | Gate identifier |
+
+**Returns:** `str` — `"lp-results-{gate_id}"`
+
+---
+
+##### `hazard_plate_results(gate_id)` *(classmethod)*
+
+> Returns the topic name for hazard plate results.
+
+**Parameters**
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `gate_id` | `str \| int` | required | Gate identifier |
+
+**Returns:** `str` — `"hz-results-{gate_id}"`
+
+---
+
+##### `agent_decision(gate_id)` *(classmethod)*
+
+> Returns the topic name for agent decision results.
+
+**Parameters**
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `gate_id` | `str \| int` | required | Gate identifier |
+
+**Returns:** `str` — `"agent-decision-{gate_id}"`
+
+---
+
+##### `operator_decision(gate_id)` *(classmethod)*
+
+> Returns the topic name for operator decision results.
+
+**Parameters**
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `gate_id` | `str \| int` | required | Gate identifier |
+
+**Returns:** `str` — `"operator-decision-{gate_id}"`
+
+**Example**
+```python
+from shared.src.kafka_protocol import KafkaTopicFactory
+
+topic = KafkaTopicFactory.truck_detected("1")
+# → "truck-detected-1"
+
+topic = KafkaTopicFactory.agent_decision(2)
+# → "agent-decision-2"
+```
+
+---
 
 ### `Message` _(abstract)_
 
@@ -440,13 +530,15 @@ pytest src/shared/tests/kafka_wrapper_unit_test.py
 
 ## Known Issues / TODOs
 
-> Add topics name Enum/factory so every consumer/producer can easily get the correct necessary topics.
+- [x] ~~Add topics name Enum/factory so every consumer/producer can easily get the correct necessary topics~~ — Resolved: `KafkaTopicFactory` added.
 
 ---
 
 ## Changelog
 
-> N/A
+| Version / Date | Change |
+|----------------|--------|
+| `2026-02-21` | Added `KafkaTopicFactory` class with gate-scoped topic name generation (`truck_detected`, `license_plate_results`, `hazard_plate_results`, `agent_decision`, `operator_decision`) |
 
 ---
 

@@ -398,9 +398,11 @@ agent.start()
 For dependency injection (e.g. in tests):
 ```python
 from unittest.mock import MagicMock
-from agentA import AgentA
+from agentA import AgentA, AgentAConfig
 
+config = AgentAConfig(minio_user="test", minio_password="test")
 agent = AgentA(
+    config=config,
     object_detector=MagicMock(),
     stream_manager=MagicMock(),
     kafka_producer=MagicMock(),
@@ -442,7 +444,9 @@ pytest src/AI_APP/agentA/tests/
 
 ## Changelog
 
-> N/A
+| Version / Date | Change |
+|----------------|--------|
+| `2026-02-21` | Constructor refactored to accept `AgentAConfig` as a required first parameter instead of reading env vars inline. Kafka topic names now resolved via `KafkaTopicFactory` (`kafka_topic_produce`, `kafka_topic_consume` properties). |
 
 ---
 
