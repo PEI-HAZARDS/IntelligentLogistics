@@ -42,10 +42,6 @@ class BaseGateway(ABC):
         self._consumer_thread: Optional[threading.Thread] = None
 
         self.logger = logging.getLogger(self.gateway_name)
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        )
 
         # Build FastAPI app with routes bound to this instance
         self.app = self._create_app()

@@ -65,7 +65,7 @@ class KafkaProducerWrapper:
         if err is not None:
             logger.error(f"Message delivery failed: {err}")
         else:
-            logger.debug(f"Message delivered to {msg.topic()}.")
+            logger.info(f"Message delivered to {msg.topic()}.")
 
 class KafkaConsumerWrapper:
     def __init__(self, bootstrap_servers: str, group_id: str, topics: list):

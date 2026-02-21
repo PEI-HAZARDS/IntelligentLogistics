@@ -260,7 +260,7 @@
       },
       "targets": [
         {
-          "expr": "agent_messages_processed_total{agent=\"agent-a\", status=\"success\"}",
+          "expr": "rate(agent_a_frames_processed_total[5m])",
           "legendFormat": "Processed",
           "refId": "A"
         }
@@ -309,7 +309,7 @@
       },
       "targets": [
         {
-          "expr": "agent_messages_processed_total{agent=\"agent-b\", status=\"success\"}",
+          "expr": "rate(agent_b_frames_processed_total[5m])",
           "legendFormat": "Processed",
           "refId": "A"
         }
@@ -358,7 +358,7 @@
       },
       "targets": [
         {
-          "expr": "agent_messages_processed_total{agent=\"agent-c\", status=\"success\"}",
+          "expr": "rate(agent_c_frames_processed_total[5m])",
           "legendFormat": "Processed",
           "refId": "A"
         }
@@ -409,7 +409,7 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(inference_total{job=\"agent-a\"}[5m])) * 60",
+          "expr": "sum(rate(agent_a_frames_processed_total{job=\"agent-a\"}[5m])) * 60",
           "legendFormat": "Inferences/min",
           "refId": "A"
         }
@@ -447,7 +447,7 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(inference_total{job=\"agent-b\"}[5m])) * 60",
+          "expr": "sum(rate(agent_b_frames_processed_total{job=\"agent-b\"}[5m])) * 60",
           "legendFormat": "Inferences/min",
           "refId": "A"
         }
@@ -485,7 +485,7 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(inference_total{job=\"agent-c\"}[5m])) * 60",
+          "expr": "sum(rate(agent_c_frames_processed_total{job=\"agent-c\"}[5m])) * 60",
           "legendFormat": "Inferences/min",
           "refId": "A"
         }
@@ -524,12 +524,12 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(agent_inference_seconds_bucket{agent=\"agent-a\"}[5m])) by (le)) * 1000",
+          "expr": "histogram_quantile(0.50, sum(rate(agent_a_inference_latency_seconds_bucket{job=\"agent-a\"}[5m])) by (le)) * 1000",
           "legendFormat": "P50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(agent_inference_seconds_bucket{agent=\"agent-a\"}[5m])) by (le)) * 1000",
+          "expr": "histogram_quantile(0.95, sum(rate(agent_a_inference_latency_seconds_bucket{job=\"agent-a\"}[5m])) by (le)) * 1000",
           "legendFormat": "P95",
           "refId": "B"
         }
@@ -568,12 +568,12 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(agent_inference_seconds_bucket{agent=\"agent-b\"}[5m])) by (le)) * 1000",
+          "expr": "histogram_quantile(0.50, sum(rate(agent_b_inference_latency_seconds_bucket{job=\"agent-b\"}[5m])) by (le)) * 1000",
           "legendFormat": "P50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(agent_inference_seconds_bucket{agent=\"agent-b\"}[5m])) by (le)) * 1000",
+          "expr": "histogram_quantile(0.95, sum(rate(agent_b_inference_latency_seconds_bucket{job=\"agent-b\"}[5m])) by (le)) * 1000",
           "legendFormat": "P95",
           "refId": "B"
         }
@@ -612,12 +612,12 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(agent_inference_seconds_bucket{agent=\"agent-c\"}[5m])) by (le)) * 1000",
+          "expr": "histogram_quantile(0.50, sum(rate(agent_c_inference_latency_seconds_bucket{job=\"agent-c\"}[5m])) by (le)) * 1000",
           "legendFormat": "P50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(agent_inference_seconds_bucket{agent=\"agent-c\"}[5m])) by (le)) * 1000",
+          "expr": "histogram_quantile(0.95, sum(rate(agent_c_inference_latency_seconds_bucket{job=\"agent-c\"}[5m])) by (le)) * 1000",
           "legendFormat": "P95",
           "refId": "B"
         }
@@ -668,7 +668,7 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(detections_total{job=~\"agent-.*\"}[5m])) by (job)",
+          "expr": "sum(rate(agent_a_trucks_detected_total{job=\"agent-a\"}[5m])) by (job) or sum(rate(agent_b_plates_detected_total{job=\"agent-b\"}[5m])) by (job) or sum(rate(agent_c_hazards_detected_total{job=\"agent-c\"}[5m])) by (job)",
           "legendFormat": "{{ job }}",
           "refId": "A"
         }
@@ -707,7 +707,7 @@
       },
       "targets": [
         {
-          "expr": "avg(detection_confidence{job=~\"agent-.*\"}) by (job) * 100",
+          "expr": "avg(agent_a_detection_confidence_sum / agent_a_detection_confidence_count) by (job) * 100",
           "legendFormat": "{{ job }}",
           "refId": "A"
         }
@@ -756,7 +756,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{container=\"agenta\"}",
+          "expr": "{container=\"agenta-1\"}",
           "refId": "A"
         }
       ],
