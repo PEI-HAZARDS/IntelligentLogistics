@@ -5,14 +5,14 @@ from typing import Any, Dict, List, Optional, Tuple, cast
 
 from pydantic_settings import BaseSettings # type: ignore
 from pydantic import Field, SecretStr # type: ignore
-from shared.src.stream_manager import StreamManager
-from shared.src.object_detector import ObjectDetector
-from shared.src.paddle_ocr import OCR
-from shared.src.image_storage import ImageStorage
-from shared.src.plate_classifier import PlateClassifier
-from shared.src.bounding_box_drawer import BoundingBoxDrawer, Box
+from AI_APP.shared.src.stream_manager import StreamManager
+from AI_APP.shared.src.object_detector import ObjectDetector
+from AI_APP.shared.src.paddle_ocr import OCR
+from AI_APP.shared.src.image_storage import ImageStorage
+from AI_APP.shared.src.plate_classifier import PlateClassifier
+from AI_APP.shared.src.bounding_box_drawer import BoundingBoxDrawer, Box
 from shared.src.kafka_wrapper import KafkaProducerWrapper, KafkaConsumerWrapper
-from shared.src.consensus_algorithm import ConsensusAlgorithm
+from AI_APP.shared.src.consensus_algorithm import ConsensusAlgorithm
 from shared.src.kafka_protocol import Message
 from queue import Queue, Empty
 import logging

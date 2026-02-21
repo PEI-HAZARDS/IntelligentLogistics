@@ -1,6 +1,6 @@
-from shared.src.base_agent import BaseAgent, BaseAgentConfig
-from shared.src.plate_classifier import PlateClassifier
-from shared.src.paddle_ocr import OCR
+from AI_APP.shared.src.base_agent import BaseAgent, BaseAgentConfig
+from AI_APP.shared.src.plate_classifier import PlateClassifier
+from AI_APP.shared.src.paddle_ocr import OCR
 from shared.src.kafka_protocol import KafkaMessageProto, Message, KafkaTopicFactory
 
 import os

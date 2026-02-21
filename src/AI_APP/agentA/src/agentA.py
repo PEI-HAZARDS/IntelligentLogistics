@@ -1,7 +1,7 @@
-from shared.src.stream_manager import StreamManager
-from shared.src.object_detector import ObjectDetector
-from shared.src.bounding_box_drawer import BoundingBoxDrawer, Box
-from shared.src.image_storage import ImageStorage
+from AI_APP.shared.src.stream_manager import StreamManager
+from AI_APP.shared.src.object_detector import ObjectDetector
+from AI_APP.shared.src.bounding_box_drawer import BoundingBoxDrawer, Box
+from AI_APP.shared.src.image_storage import ImageStorage
 from shared.src.kafka_wrapper import KafkaProducerWrapper
 from shared.src.kafka_protocol import KafkaMessageProto, KafkaTopicFactory
 import time

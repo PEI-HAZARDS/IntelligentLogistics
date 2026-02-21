@@ -2,7 +2,7 @@
 FROM python:3.11-slim
 
 # Environment variables
-ENV PYTHONPATH=/app \
+ENV PYTHONPATH=/app:/app/AI_APP \
     MODELS_PATH=/app/data \
     DEBIAN_FRONTEND=noninteractive
 

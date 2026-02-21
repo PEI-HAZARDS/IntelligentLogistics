@@ -23,6 +23,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Source code — only what agentB needs
 COPY AI_APP/agentB/ ./AI_APP/agentB/
+COPY AI_APP/shared/ ./AI_APP/shared/
 COPY shared/ ./shared/
 
 # Download model

@@ -22,7 +22,7 @@ mock_prometheus = MagicMock()
 sys.modules["prometheus_client"] = mock_prometheus
 
 from agentB import AgentB
-from shared.src.plate_classifier import PlateClassifier
+from AI_APP.shared.src.plate_classifier import PlateClassifier
 
 # =============================================================================
 # Fixtures
