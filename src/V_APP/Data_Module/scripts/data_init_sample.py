@@ -117,7 +117,7 @@ def init_simple_data(db: Session):
         manager = Worker(
             num_worker="MGR001",
             name="João Silva",
-            email="joao.silva@porto.pt",
+            email="manager@example.pt",
             phone="910000001",
             password_hash=pwd_context.hash("password123"),
             active=True
@@ -287,7 +287,8 @@ def init_simple_data(db: Session):
                 scheduled_start_time=scheduled_time,
                 expected_duration=45,
                 status="in_transit",  # ALL in_transit for demo flow
-                notes=f"HAZMAT: {desc}" if is_hazmat else f"Cargo: {desc}"
+                notes=f"HAZMAT: {desc}" if is_hazmat else f"Cargo: {desc}",
+                highway_infraction=(i < 2)  # First 2 hazmat trucks flagged as highway infraction
             )
             db.add(appt)
             db.flush()
@@ -311,7 +312,7 @@ def init_simple_data(db: Session):
 │  │ Email                   │ Password    │ Role       │             │
 │  ├─────────────────────────┼─────────────┼────────────┤             │
 │  │ worker@porto.pt         │ password123 │ Operator   │             │
-│  │ joao.silva@porto.pt     │ password123 │ Manager    │             │
+│  │ manager@example.pt      │ password123 │ Manager    │             │
 │  └─────────────────────────┴─────────────┴────────────┘             │
 │                                                                      │
 │  MOBILE APP (Driver):                                                │

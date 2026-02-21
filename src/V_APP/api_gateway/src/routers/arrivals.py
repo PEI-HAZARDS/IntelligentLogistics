@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any
 from datetime import date
 
-from fastapi import APIRouter, Query, Path, Body
+from fastapi import APIRouter, Query, Path, Body, Request
 from pydantic import BaseModel
 
 from clients import internal_api_client as internal_client
@@ -22,17 +22,26 @@ async def list_all_arrivals(
     license_plate: Optional[str] = Query(None, alias="matricula"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None, description="Filter by status"),
+    scheduled_date: Optional[date] = Query(None, description="Filter by scheduled date"),
+    gate_id: Optional[int] = Query(None, description="Filter by entry gate"),
+    search: Optional[str] = Query(None, description="Search by license plate or driver name"),
 ):
     """
     Proxy to GET /api/v1/arrivals in Data Module.
+    Supports server-side pagination, filtering and search.
     """
-    skip = (page - 1) * limit
     params = {
-        "skip": skip,
+        "page": page,
         "limit": limit,
+        **{k: v for k, v in {
+            "license_plate": license_plate,
+            "status": status,
+            "scheduled_date": scheduled_date.isoformat() if scheduled_date else None,
+            "gate_id": gate_id,
+            "search": search,
+        }.items() if v is not None}
     }
-    if license_plate:
-        params["license_plate"] = license_plate
 
     return await internal_client.get("/arrivals", params=params)
 
@@ -293,6 +302,22 @@ async def list_arrivals_by_gate_shift(
         "shift_id": shift
     }
     return await internal_client.get("/arrivals", params=params)
+
+
+# -------------------------------
+# PATCH: /api/arrivals/{appointment_id}/highway-infraction
+# Manager-only: Flag appointment as highway infraction
+# -------------------------------
+@router.patch("/arrivals/{appointment_id}/highway-infraction")
+async def flag_highway_infraction(
+    appointment_id: int = Path(..., description="Appointment ID"),
+):
+    """
+    Flag an appointment as highway infraction.
+    Called when hazmat truck detected on restricted highway route.
+    Should only be triggered by logistics manager or automated detection.
+    """
+    return await internal_client.patch(f"/arrivals/{appointment_id}/highway-infraction")
 
 
 # -------------------------------

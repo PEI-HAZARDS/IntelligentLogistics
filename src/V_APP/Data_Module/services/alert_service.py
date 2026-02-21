@@ -115,7 +115,7 @@ def create_alerts_for_appointment(
 ) -> List[Alert]:
     """
     Creates alerts for an appointment.
-    Associates alerts to the visit if it exists.
+    Always sets appointment_id; also sets visit_id if visit exists.
     
     alerts_payload expected:
     [
@@ -126,16 +126,17 @@ def create_alerts_for_appointment(
     if not alerts_payload:
         return []
     
-    # Get visit_id from appointment
+    # Get visit_id from appointment (may be None if visit not created yet)
     visit_id = None
     if appointment.visit:
         visit_id = appointment.visit.appointment_id
     
-    # Create alerts
+    # Create alerts — always set appointment_id to prevent orphaning
     created_alerts = []
     for alert_data in alerts_payload:
         alert = Alert(
             visit_id=visit_id,
+            appointment_id=appointment.id,
             type=alert_data.get("type", "generic"),
             description=alert_data.get("description", "Alert without description"),
             image_url=alert_data.get("image_url"),
@@ -258,4 +259,11 @@ def get_alerts_for_visit(db: Session, visit_id: int) -> List[Alert]:
     """Gets all alerts for a specific visit."""
     return db.query(Alert).filter(
         Alert.visit_id == visit_id
+    ).order_by(Alert.timestamp.desc()).all()
+
+
+def get_alerts_for_appointment(db: Session, appointment_id: int) -> List[Alert]:
+    """Gets all alerts for a specific appointment (including orphaned alerts without visit)."""
+    return db.query(Alert).filter(
+        Alert.appointment_id == appointment_id
     ).order_by(Alert.timestamp.desc()).all()

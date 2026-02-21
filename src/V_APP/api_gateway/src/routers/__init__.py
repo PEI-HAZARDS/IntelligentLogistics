@@ -6,3 +6,4 @@ from . import drivers
 from . import stream
 from . import realtime
 from . import workers
+from . import statistics

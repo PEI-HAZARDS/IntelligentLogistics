@@ -3,7 +3,7 @@ Arrivals Routes - Endpoints for appointment and visit management.
 Consumed by: Operator frontend, Decision Engine, Driver app.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Generic, TypeVar
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
@@ -14,6 +14,7 @@ from models.pydantic_models import (
 )
 from services.arrival_service import (
     get_all_appointments,
+    count_all_appointments,
     get_appointment_by_id,
     get_appointment_by_arrival_id,
     get_appointments_by_license_plate,
@@ -24,8 +25,19 @@ from services.arrival_service import (
     create_visit_for_appointment,
     update_visit_status
 )
+from services.cache_service import get_or_cache
+
+T = TypeVar("T")
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    items: List[T]
+    total: int
+    page: int
+    limit: int
+    pages: int
 from models.sql_models import ShiftType
 from db.postgres import get_db
+from utils.shift_utils import parse_shift_type
 
 router = APIRouter(prefix="/arrivals", tags=["Arrivals"])
 
@@ -41,58 +53,84 @@ class CreateVisitRequest(BaseModel):
 
 # ==================== GET ENDPOINTS ====================
 
-@router.get("", response_model=List[Appointment])
+@router.get("", response_model=PaginatedResponse[Appointment])
 def list_arrivals(
-    skip: int = Query(0, ge=0, description="Number of records to skip"),
-    limit: int = Query(100, ge=1, le=500, description="Maximum records"),
+    page: int = Query(1, ge=1, description="Page number (1-based)"),
+    limit: int = Query(20, ge=1, le=100, description="Items per page"),
     gate_id: Optional[int] = Query(None, description="Filter by entry gate"),
     shift_gate_id: Optional[int] = Query(None, description="Filter by shift gate"),
     shift_type: Optional[str] = Query(None, description="Filter by shift type"),
     shift_date: Optional[date] = Query(None, description="Filter by shift date"),
     status: Optional[str] = Query(None, description="Filter by status"),
     scheduled_date: Optional[date] = Query(None, description="Filter by scheduled date"),
-    db: Session = Depends(get_db)
+    search: Optional[str] = Query(None, description="Search by license plate or driver name"),
+    db: Session = Depends(get_db),
 ):
     """
-    Lists appointments with optional filters.
+    Lists appointments with server-side pagination, filtering and search.
     Used by operator frontend to list daily arrivals.
     """
-    appointments = get_all_appointments(
-        db, skip=skip, limit=limit,
+    parsed_shift_type = None
+    if shift_type:
+        try:
+            parsed_shift_type = parse_shift_type(shift_type)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    skip = (page - 1) * limit
+    filter_kwargs = dict(
         gate_id=gate_id,
         shift_gate_id=shift_gate_id,
-        shift_type=shift_type,
+        shift_type=parsed_shift_type,
         shift_date=shift_date,
         status=status,
-        scheduled_date=scheduled_date
+        scheduled_date=scheduled_date,
+        search=search,
     )
-    return [Appointment.model_validate(a) for a in appointments]
+
+    total = count_all_appointments(db, **filter_kwargs)
+    appointments = get_all_appointments(db, skip=skip, limit=limit, **filter_kwargs)
+
+    return PaginatedResponse(
+        items=[Appointment.model_validate(a) for a in appointments],
+        total=total,
+        page=page,
+        limit=limit,
+        pages=max(1, -(-total // limit)),
+    )
 
 
 @router.get("/stats", response_model=Dict[str, int])
 def get_arrivals_stats(
     gate_id: Optional[int] = Query(None, description="Filter by gate"),
     target_date: Optional[date] = Query(None, description="Date to query (default: today)"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Arrival statistics by status.
-    Used in operator dashboard.
+    Cached in Redis for 30 s to avoid hitting PostgreSQL on every dashboard refresh.
     """
-    return get_appointments_count_by_status(db, gate_id=gate_id, target_date=target_date)
+    today = (target_date or date.today()).isoformat()
+    cache_key = f"stats:gate:{gate_id or 'all'}:{today}"
+    return get_or_cache(
+        key=cache_key,
+        ttl=30,
+        fallback=lambda: get_appointments_count_by_status(db, gate_id=gate_id, target_date=target_date),
+    )
 
 
 @router.get("/next/{gate_id}", response_model=List[Appointment])
 def get_upcoming_arrivals(
     gate_id: int = Path(..., description="Gate ID"),
     limit: int = Query(5, ge=1, le=20, description="Number of arrivals"),
+    status: Optional[str] = Query(None, description="Filter by status"),
     db: Session = Depends(get_db)
 ):
     """
     Next scheduled arrivals for a gate.
     Used in operator's sidebar panel.
     """
-    appointments = get_next_appointments(db, gate_id=gate_id, limit=limit)
+    appointments = get_next_appointments(db, gate_id=gate_id, limit=limit, status=status)
     return [Appointment.model_validate(a) for a in appointments]
 
 
@@ -139,16 +177,44 @@ def query_arrivals_by_license_plate(
     Query appointments by license plate.
     Used by Decision Engine to find candidate arrivals.
     """
+    parsed_shift_type = None
+    if shift_type:
+        try:
+            parsed_shift_type = parse_shift_type(shift_type)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
     appointments = get_appointments_by_license_plate(
         db, license_plate=license_plate,
         shift_gate_id=shift_gate_id,
-        shift_type=shift_type,
+        shift_type=parsed_shift_type,
         shift_date=shift_date,
         status=status,
         scheduled_date=scheduled_date
     )
     return [Appointment.model_validate(a) for a in appointments]
 
+
+
+# ==================== HIGHWAY INFRACTION ====================
+
+@router.patch("/{appointment_id}/highway-infraction", response_model=Appointment)
+def flag_highway_infraction(
+    appointment_id: int = Path(..., description="Appointment ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    Flag an appointment as highway infraction.
+    Hazmat truck detected on restricted highway route before port entry.
+    """
+    from models.sql_models import Appointment as AppointmentModel
+    appt = db.query(AppointmentModel).filter(AppointmentModel.id == appointment_id).first()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    appt.highway_infraction = True
+    db.commit()
+    db.refresh(appt)
+    return Appointment.model_validate(appt)
 
 
 # ==================== UPDATE ENDPOINTS ====================
@@ -215,14 +281,10 @@ def create_visit(
     Called when appointment starts execution.
     Uses composite FK to Shift.
     """
-    # Convert shift_type string to enum
     try:
-        shift_type_enum = ShiftType[request.shift_type]
-    except KeyError:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Invalid shift_type. Must be one of: MORNING, AFTERNOON, NIGHT"
-        )
+        shift_type_enum = parse_shift_type(request.shift_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     
     visit = create_visit_for_appointment(
         db, 

@@ -6,33 +6,25 @@ Used by: Operator frontend, Decision Engine, Driver app.
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date, time, timedelta
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_, or_
+from sqlalchemy import func, and_, or_, case, Integer
 
-from models.sql_models import Appointment, Visit, Shift, Cargo, Booking, Gate, ShiftType
+from models.sql_models import Appointment, Visit, Shift, Cargo, Booking, Gate, ShiftType, Company, Driver
 
 
-def get_all_appointments(
-    db: Session,
-    skip: int = 0,
-    limit: int = 100,
-    gate_id: Optional[int] = None,
-    shift_gate_id: Optional[int] = None,
-    shift_type: Optional[str] = None,
-    shift_date: Optional[date] = None,
-    status: Optional[str] = None,
-    scheduled_date: Optional[date] = None
-) -> List[Appointment]:
-    """
-    Gets appointments with optional filters.
-    Used by operator frontend to list arrivals.
-    """
-    query = db.query(Appointment)
-    
+def ensure_arrival_id(db: Session, appointment: Appointment) -> Appointment:
+    if appointment.arrival_id:
+        return appointment
+
+    db.refresh(appointment)
+    return appointment
+
+
+def _apply_appointment_filters(query, gate_id, shift_gate_id, shift_type, shift_date, status, scheduled_date, search):
+    """Applies common filters to a query — shared by list and count helpers."""
     if gate_id:
         query = query.filter(Appointment.gate_in_id == gate_id)
     if shift_gate_id and shift_type and shift_date:
-        # Filter by visits that have this shift (composite FK)
-        query = query.join(Visit).filter(
+        query = query.join(Visit, isouter=True).filter(
             Visit.shift_gate_id == shift_gate_id,
             Visit.shift_type == shift_type,
             Visit.shift_date == shift_date
@@ -41,13 +33,63 @@ def get_all_appointments(
         query = query.filter(Appointment.status == status)
     if scheduled_date:
         query = query.filter(func.date(Appointment.scheduled_start_time) == scheduled_date)
-    
-    return query.order_by(Appointment.scheduled_start_time.asc()).offset(skip).limit(limit).all()
+    if search:
+        term = f"%{search.upper()}%"
+        query = query.filter(func.upper(Appointment.truck_license_plate).like(term))
+    return query
+
+
+def get_all_appointments(
+    db: Session,
+    skip: int = 0,
+    limit: int = 100,
+    gate_id: Optional[int] = None,
+    shift_gate_id: Optional[int] = None,
+    shift_type: Optional[ShiftType] = None,
+    shift_date: Optional[date] = None,
+    status: Optional[str] = None,
+    scheduled_date: Optional[date] = None,
+    search: Optional[str] = None,
+) -> List[Appointment]:
+    """
+    Gets appointments with optional filters.
+    Used by operator frontend to list arrivals.
+    """
+    query = db.query(Appointment)
+    query = _apply_appointment_filters(
+        query, gate_id, shift_gate_id, shift_type, shift_date, status, scheduled_date, search
+    )
+    appointments = query.order_by(Appointment.scheduled_start_time.asc()).offset(skip).limit(limit).all()
+    for appointment in appointments:
+        if appointment.arrival_id is None:
+            ensure_arrival_id(db, appointment)
+    return appointments
+
+
+def count_all_appointments(
+    db: Session,
+    gate_id: Optional[int] = None,
+    shift_gate_id: Optional[int] = None,
+    shift_type: Optional[ShiftType] = None,
+    shift_date: Optional[date] = None,
+    status: Optional[str] = None,
+    scheduled_date: Optional[date] = None,
+    search: Optional[str] = None,
+) -> int:
+    """Returns total count matching the same filters as get_all_appointments."""
+    query = db.query(func.count(Appointment.id))
+    query = _apply_appointment_filters(
+        query, gate_id, shift_gate_id, shift_type, shift_date, status, scheduled_date, search
+    )
+    return query.scalar() or 0
 
 
 def get_appointment_by_id(db: Session, appointment_id: int) -> Optional[Appointment]:
     """Gets a specific appointment by ID."""
-    return db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if appointment and appointment.arrival_id is None:
+        ensure_arrival_id(db, appointment)
+    return appointment
 
 
 def get_appointment_by_arrival_id(db: Session, arrival_id: str) -> Optional[Appointment]:
@@ -59,7 +101,7 @@ def get_appointments_by_license_plate(
     db: Session,
     license_plate: str,
     shift_gate_id: Optional[int] = None,
-    shift_type: Optional[str] = None,
+    shift_type: Optional[ShiftType] = None,
     shift_date: Optional[date] = None,
     status: Optional[str] = None,
     scheduled_date: Optional[date] = None
@@ -84,7 +126,11 @@ def get_appointments_by_license_plate(
         # Default: filter by today
         query = query.filter(func.date(Appointment.scheduled_start_time) == date.today())
     
-    return query.order_by(Appointment.scheduled_start_time.asc()).all()
+    appointments = query.order_by(Appointment.scheduled_start_time.asc()).all()
+    for appointment in appointments:
+        if appointment.arrival_id is None:
+            ensure_arrival_id(db, appointment)
+    return appointments
 
 
 def get_appointments_for_decision(
@@ -126,6 +172,9 @@ def get_appointments_for_decision(
     )
     
     appointments = query.order_by(Appointment.scheduled_start_time.asc()).all()
+    for appointment in appointments:
+        if appointment.arrival_id is None:
+            ensure_arrival_id(db, appointment)
     
     # Format response with extra info
     result = []
@@ -151,6 +200,7 @@ def get_appointments_for_decision(
             "shift_date": current_shift.date.isoformat() if current_shift else None,
             "scheduled_time": a.scheduled_start_time.isoformat() if a.scheduled_start_time else None,
             "status": a.status,
+            "highway_infraction": a.highway_infraction,
             "cargo": cargo,
             "booking": {
                 "reference": a.booking.reference,
@@ -172,28 +222,37 @@ def get_appointments_count_by_status(
     """
     date_filter = target_date or date.today()
     
-    query = db.query(
+    base_filter = [func.date(Appointment.scheduled_start_time) == date_filter]
+    if gate_id:
+        base_filter.append(Appointment.gate_in_id == gate_id)
+
+    status_query = db.query(
         Appointment.status,
         func.count(Appointment.id)
-    ).filter(func.date(Appointment.scheduled_start_time) == date_filter)
+    ).filter(*base_filter)
     
-    if gate_id:
-        query = query.filter(Appointment.gate_in_id == gate_id)
-    
-    results = query.group_by(Appointment.status).all()
+    results = status_query.group_by(Appointment.status).all()
     
     counts = {
         "in_transit": 0,
+        "in_process": 0,
         "delayed": 0,
         "canceled": 0,
         "completed": 0,
-        "total": 0
+        "total": 0,
+        "infractions": 0,
     }
     
     for status, count in results:
         if status in counts:
             counts[status] = count
         counts["total"] += count
+
+    # Count records with highway_infraction flag regardless of status
+    counts["infractions"] = db.query(func.count(Appointment.id)).filter(
+        *base_filter,
+        Appointment.highway_infraction == True  # noqa: E712
+    ).scalar() or 0
     
     return counts
 
@@ -220,6 +279,9 @@ def update_appointment_status(
     
     db.commit()
     db.refresh(appointment)
+
+    if appointment.arrival_id is None:
+        ensure_arrival_id(db, appointment)
     
     return appointment
 
@@ -324,6 +386,9 @@ def update_appointment_from_decision(
     
     db.commit()
     db.refresh(appointment)
+
+    if appointment.arrival_id is None:
+        ensure_arrival_id(db, appointment)
     
     # Create alerts if present (delegate to alert_service)
     if "alerts" in decision_payload and decision_payload["alerts"]:
@@ -336,7 +401,8 @@ def update_appointment_from_decision(
 def get_next_appointments(
     db: Session,
     gate_id: int,
-    limit: int = 5
+    limit: int = 5,
+    status: Optional[str] = None,
 ) -> List[Appointment]:
     """
     Gets next scheduled appointments (used in operator's sidebar).
@@ -354,11 +420,119 @@ def get_next_appointments(
         else_=1
     )
     
-    return db.query(Appointment).filter(
+    base_filters = [
         Appointment.gate_in_id == gate_id,
         func.date(Appointment.scheduled_start_time) == today,
-        Appointment.status.in_(['in_transit', 'delayed'])
+    ]
+
+    if status:
+        base_filters.append(Appointment.status == status)
+    else:
+        base_filters.append(Appointment.status.in_(['in_transit', 'delayed']))
+
+    appointments = db.query(Appointment).filter(
+        *base_filters
     ).order_by(
         status_priority,  # delayed first
         Appointment.scheduled_start_time.asc()  # then by scheduled time
     ).limit(limit).all()
+
+    for appointment in appointments:
+        if appointment.arrival_id is None:
+            ensure_arrival_id(db, appointment)
+
+    return appointments
+
+
+def get_transport_stats_by_company(
+    db: Session,
+    target_date: Optional[date] = None,
+    days: int = 30,
+) -> List[Dict[str, Any]]:
+    """
+    Aggregates per-company KPIs by joining Appointment -> Driver -> Company + Visit.
+    Uses count(distinct) to avoid inflation from LEFT JOIN.
+    """
+    end_date = target_date or date.today()
+    start_date = end_date - timedelta(days=days)
+
+    rows = (
+        db.query(
+            Company.nif,
+            Company.name,
+            # Defensive: count distinct to avoid inflation from LEFT JOIN
+            func.count(func.distinct(Appointment.id)).label("ops_count"),
+            func.avg(
+                func.extract('epoch', Visit.out_time) - func.extract('epoch', Visit.entry_time)
+            ).label("avg_duration_seconds"),
+            # Avg wait: only count positive waits (truck arrived after scheduled time)
+            func.avg(
+                case(
+                    (
+                        func.extract('epoch', Visit.entry_time) > func.extract('epoch', Appointment.scheduled_start_time),
+                        func.extract('epoch', Visit.entry_time) - func.extract('epoch', Appointment.scheduled_start_time),
+                    ),
+                    else_=None,
+                )
+            ).label("avg_wait_seconds"),
+            func.sum(
+                case(
+                    (Appointment.status == 'completed', 1),
+                    else_=0
+                )
+            ).label("completed_count"),
+        )
+        .join(Driver, Appointment.driver_license == Driver.drivers_license)
+        .join(Company, Driver.company_nif == Company.nif)
+        .outerjoin(Visit, Visit.appointment_id == Appointment.id)
+        .filter(
+            func.date(Appointment.scheduled_start_time) >= start_date,
+            func.date(Appointment.scheduled_start_time) <= end_date,
+        )
+        .group_by(Company.nif, Company.name)
+        .all()
+    )
+
+    results = []
+    for nif, name, ops_count, avg_dur, avg_wait, completed in rows:
+        avg_unloading = round(abs(avg_dur or 0) / 60, 1)
+        avg_waiting = round((avg_wait or 0) / 60, 1)
+        sla_rate = round((completed or 0) / ops_count * 100, 1) if ops_count > 0 else 0
+
+        results.append({
+            "companyName": name,
+            "companyNif": nif,
+            "avgUnloadingTime": avg_unloading,
+            "avgWaitingTime": avg_waiting,
+            "operationsCount": ops_count,
+            "slaAttendedRate": sla_rate,
+        })
+
+    return sorted(results, key=lambda x: x["operationsCount"], reverse=True)
+
+
+def get_avg_permanence_minutes(
+    db: Session,
+    target_date: Optional[date] = None,
+) -> float:
+    """
+    Calculates average visit permanence in minutes from entry_time to out_time.
+    Only includes completed visits (where both times are set).
+    """
+    query = (
+        db.query(
+            func.avg(
+                func.extract('epoch', Visit.out_time) - func.extract('epoch', Visit.entry_time)
+            )
+        )
+        .filter(
+            Visit.entry_time.isnot(None),
+            Visit.out_time.isnot(None),
+        )
+    )
+
+    if target_date:
+        query = query.filter(func.date(Visit.entry_time) == target_date)
+
+    result = query.scalar()
+    return round(abs(result or 0) / 60, 1)

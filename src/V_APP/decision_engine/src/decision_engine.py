@@ -152,7 +152,12 @@ class DecisionEngine:
                 route="",
                 decision=decision,
                 decision_reason=reason,
-                decision_source="automated"
+                decision_source="automated",
+                gate_id=int(GATE_ID),
+                appointment_id=None,
+                lp_confidence=lp_msg.confidence,
+                hz_confidence=hz_msg.confidence,
+                processing_time_ms=int((time.time() - start_time) * 1000),
             )
             
             self.kafka_producer.produce(
@@ -183,7 +188,12 @@ class DecisionEngine:
                 route="",
                 decision=decision,
                 decision_reason=reason,
-                decision_source="automated"
+                decision_source="automated",
+                gate_id=int(GATE_ID),
+                appointment_id=None,
+                lp_confidence=lp_msg.confidence,
+                hz_confidence=hz_msg.confidence,
+                processing_time_ms=int((time.time() - start_time) * 1000),
             )
             
             self.kafka_producer.produce(
@@ -210,7 +220,12 @@ class DecisionEngine:
                 route="",
                 decision=decision,
                 decision_reason=reason,
-                decision_source="automated"
+                decision_source="automated",
+                gate_id=int(GATE_ID),
+                appointment_id=None,
+                lp_confidence=lp_msg.confidence,
+                hz_confidence=hz_msg.confidence,
+                processing_time_ms=int((time.time() - start_time) * 1000),
             )
             
             self.kafka_producer.produce(
@@ -241,7 +256,12 @@ class DecisionEngine:
                 route="",
                 decision=decision,
                 decision_reason=reason,
-                decision_source="automated"
+                decision_source="automated",
+                gate_id=int(GATE_ID),
+                appointment_id=None,
+                lp_confidence=lp_msg.confidence,
+                hz_confidence=hz_msg.confidence,
+                processing_time_ms=int((time.time() - start_time) * 1000),
             )
         
         # Handle matched plate
@@ -249,6 +269,13 @@ class DecisionEngine:
             decision = DecisionStatus.ACCEPTED.value
             reason = "license_plate_matched"
             logger.info(f"Decision: [{decision} - {reason}]")
+            
+            # Find matched appointment to include appointment_id
+            matched_appointment = self._get_appointment_from_plate(
+                matched_plate, 
+                appointments.get("candidates", [])
+            )
+            matched_appointment_id = int(matched_appointment.get("appointment_id", 0)) if matched_appointment else None
             
             message = KafkaMessageProto.decision_result(
                 license_plate=license_plate,
@@ -260,20 +287,13 @@ class DecisionEngine:
                 route="",
                 decision=decision,
                 decision_reason=reason,
-                decision_source="automated"
+                decision_source="automated",
+                gate_id=int(GATE_ID),
+                appointment_id=matched_appointment_id,
+                lp_confidence=lp_msg.confidence,
+                hz_confidence=hz_msg.confidence,
+                processing_time_ms=int((time.time() - start_time) * 1000),
             )
-            
-            # Update appointment status in the database
-            matched_appointment = self._get_appointment_from_plate(
-                matched_plate, 
-                appointments.get("candidates", [])
-            )
-            if matched_appointment is not None:
-                matched_appointment_id = int(matched_appointment.get("appointment_id", 0))
-                self.database_client.update_appointment_status(
-                    matched_appointment_id, 
-                    DecisionStatus.ACCEPTED.value
-                )
         
         # Publish decision result
         self.kafka_producer.produce(

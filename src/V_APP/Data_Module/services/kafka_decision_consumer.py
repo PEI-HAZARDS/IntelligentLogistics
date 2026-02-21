@@ -19,6 +19,7 @@ import json
 
 from shared.src.kafka_wrapper import KafkaConsumerWrapper
 from services.decision_service import persist_decision_event_from_kafka, update_appointment_after_decision
+from services.notification_service import create_notification
 
 logger = logging.getLogger("kafka_decision_consumer")
 
@@ -28,11 +29,15 @@ GATE_ID = os.getenv("GATE_ID", "1")
 class DecisionCorrelator:
     """
     Manages correlation between agent and operator decisions.
-    Stores pending MANUAL_REVIEW decisions until operator decision arrives.
+    Uses Redis to persist pending MANUAL_REVIEW decisions — survives container restarts.
     """
     
+    PENDING_KEY_PREFIX = "pending_review:"
+    PENDING_TTL = 1800  # 30 minutes
+    
     def __init__(self):
-        self.pending_manual_reviews: Dict[str, Dict[str, Any]] = {}  # {truck_id: agent_decision_data}
+        from db.redis import redis_client
+        self.redis = redis_client
         
     def process_agent_decision(self, truck_id: str, decision_data: dict) -> Optional[dict]:
         """
@@ -49,8 +54,12 @@ class DecisionCorrelator:
             return self._build_final_decision(decision_data, source="agent")
         
         elif decision_status == "MANUAL_REVIEW":
-            logger.info(f"Agent MANUAL_REVIEW for truck_id={truck_id}, waiting for operator decision.")
-            self.pending_manual_reviews[truck_id] = decision_data
+            logger.info(f"Agent MANUAL_REVIEW for truck_id={truck_id}, storing in Redis.")
+            try:
+                key = f"{self.PENDING_KEY_PREFIX}{truck_id}"
+                self.redis.setex(key, self.PENDING_TTL, json.dumps(decision_data, default=str))
+            except Exception as e:
+                logger.error(f"Failed to store pending review in Redis for truck_id={truck_id}: {e}")
             return None
         
         else:
@@ -65,8 +74,16 @@ class DecisionCorrelator:
         - dict: Final decision to persist (combines agent + operator data)
         - None: No pending agent decision found
         """
-        # Check if there's a pending agent decision
-        agent_data = self.pending_manual_reviews.pop(truck_id, None)
+        # Check Redis for pending agent decision
+        agent_data = None
+        try:
+            key = f"{self.PENDING_KEY_PREFIX}{truck_id}"
+            raw = self.redis.get(key)
+            if raw:
+                agent_data = json.loads(raw)
+                self.redis.delete(key)
+        except Exception as e:
+            logger.error(f"Failed to retrieve pending review from Redis for truck_id={truck_id}: {e}")
         
         if not agent_data:
             logger.warning(f"Received operator decision for truck_id={truck_id} but no pending agent decision found.")
@@ -175,6 +192,14 @@ class KafkaDecisionConsumer:
                             break
                 
                 if not truck_id:
+                    # Bug fix 1: try extracting truck_id from the payload body before discarding
+                    try:
+                        body_preview = json.loads(msg.value().decode("utf-8"))
+                        truck_id = body_preview.get("truck_id") or body_preview.get("truckId")
+                    except Exception:
+                        pass
+
+                if not truck_id:
                     logger.warning(f"Message from {topic} has no truckId header, skipping")
                     continue
                 
@@ -207,9 +232,10 @@ class KafkaDecisionConsumer:
         try:
             logger.info(f"Persisting final decision for truck_id={truck_id}")
             
-            # Extract key data
+            # Extract key data from enriched payload (with fallbacks)
             license_plate = decision_data.get("license_plate")
-            gate_id = int(GATE_ID)
+            gate_id = decision_data.get("gate_id", int(GATE_ID))
+            appointment_id = decision_data.get("appointment_id")
             
             # Persist event to MongoDB
             event_id = await asyncio.get_event_loop().run_in_executor(
@@ -220,9 +246,9 @@ class KafkaDecisionConsumer:
             
             logger.info(f"Decision event persisted with id={event_id}")
             
-            # Update appointment in PostgreSQL if decision is ACCEPTED
-            decision_status = decision_data.get("decision")
-            if decision_status == "ACCEPTED":
+            # Update appointment in PostgreSQL if decision is ACCEPTED or approved
+            decision_status = decision_data.get("decision", "").upper()
+            if decision_status in ("ACCEPTED", "APPROVED"):
                 result = await asyncio.get_event_loop().run_in_executor(
                     None,
                     update_appointment_after_decision,
@@ -232,11 +258,43 @@ class KafkaDecisionConsumer:
                 )
                 if result:
                     logger.info(f"Appointment updated for license_plate={license_plate}: {result['old_status']} -> {result['new_status']}")
+
+                    # Bug fix 3: create notification via Kafka path (mirrors HTTP path)
+                    alerts = decision_data.get("alerts") or []
+                    try:
+                        if alerts:
+                            for alert in alerts:
+                                alert_type = alert if isinstance(alert, str) else alert.get("type", "")
+                                if alert_type in ("highway_infraction", "highway"):
+                                    title, ntype = "Highway Infraction", "danger"
+                                elif alert_type == "manual_review":
+                                    title, ntype = "Manual Review Needed", "warning"
+                                else:
+                                    title, ntype = "Vehicle Alert", "warning"
+                                create_notification(
+                                    gate_id=gate_id,
+                                    title=title,
+                                    message=f"Alert for {license_plate}: {alert_type}",
+                                    notification_type=ntype,
+                                    appointment_id=appointment_id,
+                                    license_plate=license_plate,
+                                )
+                        else:
+                            create_notification(
+                                gate_id=gate_id,
+                                title="Vehicle Approved",
+                                message=f"Truck {license_plate} approved for entry.",
+                                notification_type="info",
+                                appointment_id=appointment_id,
+                                license_plate=license_plate,
+                            )
+                    except Exception as notif_err:
+                        logger.warning(f"Failed to create notification for truck={license_plate}: {notif_err}")
                 else:
                     logger.warning(f"Failed to update appointment for license_plate={license_plate}")
 
             else:
-                logger.info(f"Wrong format status for operator decision: {decision_status} for truck_id={truck_id}")
+                logger.info(f"Decision status '{decision_data.get('decision')}' — no appointment update needed")
                     
         except Exception as e:
             logger.error(f"Error persisting decision for truck_id={truck_id}: {e}", exc_info=True)

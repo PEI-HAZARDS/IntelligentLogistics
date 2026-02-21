@@ -212,6 +212,37 @@ curl http://localhost:8080/api/v1/health
 }
 ```
 
+---
+
+## Highway Infraction System
+
+### Overview
+The system tracks hazmat trucks detected on restricted highways before port entry.
+
+### Database Field
+```sql
+Appointment.highway_infraction BOOLEAN DEFAULT FALSE
+```
+
+### Detection Flow
+```
+Highway Camera (stream)
+  → AgentC (hazmat detection)
+  → Decision Module (external - validates infraction)
+  → PATCH /arrivals/{id}/highway-infraction
+  → WebSocket notification → Frontend
+```
+
+### Usage
+```bash
+# Flag an appointment as highway infraction
+curl -X PATCH http://localhost:8080/api/v1/arrivals/42/highway-infraction
+
+# Get statistics (includes infractions count)
+curl http://localhost:8080/api/v1/arrivals/stats?gate_id=1
+# Response: { "infractions": 2, "pending": 5, ... }
+```
+
 ### Stop Services
 
 ```bash
@@ -259,10 +290,11 @@ Swagger UI: `http://localhost:8080/docs`
 | GET    | `/arrivals`                               | List appointments (paginated)      |
 | GET    | `/arrivals/{id}`                          | Get appointment by ID              |
 | GET    | `/arrivals/pin/{pin}`                     | Get appointment by access PIN      |
-| GET    | `/arrivals/stats`                         | Appointment statistics             |
+| GET    | `/arrivals/stats`                         | Appointment statistics (includes infractions count) |
 | GET    | `/arrivals/next/{gate_id}`                | Next arrivals for gate             |
 | GET    | `/arrivals/query/license-plate/{plate}`   | Query by license plate             |
 | POST   | `/arrivals/{id}/decision`                 | Process decision for appointment   |
+| PATCH  | `/arrivals/{id}/highway-infraction`       | Flag appointment as highway infraction |
 
 ### Decisions
 
