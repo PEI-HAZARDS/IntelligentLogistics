@@ -1,75 +1,80 @@
+x-agenta-base: &agenta-base
+  build:
+    context: ..
+    dockerfile: AI_APP/agentA/Dockerfile
+  image: agenta:latest
+  restart: unless-stopped
+  env_file: .env
+  depends_on:
+    kafka-init:
+      condition: service_completed_successfully
+  command: ["python", "AI_APP/agentA/init.py"]
+
+x-agentb-base: &agentb-base
+  build:
+    context: ..
+    dockerfile: AI_APP/agentB/Dockerfile
+  image: agentb:latest
+  restart: unless-stopped
+  env_file: .env
+  depends_on:
+    kafka-init:
+      condition: service_completed_successfully
+  command: ["python", "AI_APP/agentB/init.py"]
+
+x-agentc-base: &agentc-base
+  build:
+    context: ..
+    dockerfile: AI_APP/agentC/Dockerfile
+  image: agentc:latest
+  restart: unless-stopped
+  env_file: .env
+  depends_on:
+    kafka-init:
+      condition: service_completed_successfully
+  command: ["python", "AI_APP/agentC/init.py"]
+
 services:
-  agenta:
-    build:
-      context: ..             # src/ directory as build context
-      dockerfile: AI_APP/Dockerfile  # Path to unified Dockerfile from src/
-    image: agenta:latest
-    container_name: agenta
-    restart: unless-stopped
+  agenta-1:
+    <<: *agenta-base
+    container_name: agenta-1
     ports:
       - "8000:8000"
     environment:
+      - GATE_ID=1
       - MODELS_PATH=${MODELS_PATH_A}
-    env_file:
-      - .env
-    depends_on:
-      kafka-init:
-        condition: service_completed_successfully
-    command: ["python", "AI_APP/agentA/init.py"]
 
-  agentb:
-    build:
-      context: ..             # src/ directory as build context
-      dockerfile: AI_APP/Dockerfile  # Path to unified Dockerfile from src/
-    image: agentb:latest
-    container_name: agentb
-    restart: unless-stopped
+  agentb-1:
+    <<: *agentb-base
+    container_name: agentb-1
     ports:
-      - "8001:8001"
+      - "8001:8000"
     environment:
+      - GATE_ID=1
       - MODELS_PATH=${MODELS_PATH_B}
-      - BUCKET_NAME=${BUCKET_NAME_LP}
-      - METRICS_PORT=${METRICS_PORT_B:-8001}
-    env_file:
-      - .env
-    depends_on:
-      kafka-init:
-        condition: service_completed_successfully
-    command: ["python", "AI_APP/agentB/init.py"]
 
-  agentc:
-    build:
-      context: ..             # src/ directory as build context
-      dockerfile: AI_APP/Dockerfile  # Path to unified Dockerfile from src/
-    image: agentc:latest
-    container_name: agentc
-    restart: unless-stopped
+  agentc-1:
+    <<: *agentc-base
+    container_name: agentc-1
     ports:
-      - "8002:8002"
+      - "8002:8000"
     environment:
+      - GATE_ID=1
       - MODELS_PATH=${MODELS_PATH_C}
-      - BUCKET_NAME=${BUCKET_NAME_HZ}
-      - METRICS_PORT=${METRICS_PORT_C:-8002}
-    env_file:
-      - .env
-    depends_on:
-      kafka-init:
-        condition: service_completed_successfully
-    command: ["python", "AI_APP/agentC/init.py"]
-
+  
   ai-gateway:
     build:
       context: ..
-      dockerfile: AI_APP/Dockerfile
+      dockerfile: AI_APP/gateway/Dockerfile
     image: ai-gateway:latest
     container_name: ai-gateway
     restart: unless-stopped
+    env_file: .env
     ports:
-      - "8003:8003"
+      - "8003:8000"
     environment:
-      - GATEWAY_PORT=8003
-    env_file:
-      - .env
+      - GATE_ID=1
+      - KAFKA_BOOTSTRAP=kafka:29092
     depends_on:
       kafka-init:
         condition: service_completed_successfully
@@ -103,30 +108,42 @@ services:
       CLUSTER_ID: "5L6g3nShT-eMCtK--X86sw"
       # Log dirs
       KAFKA_LOG_DIRS: "/tmp/kraft-combined-logs"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:29092"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
     
   kafka-init:
     image: confluentinc/cp-kafka:7.6.0
     container_name: kafka-init
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
     entrypoint: ["bash", "-c"]
     command:
       - |
         echo "Waiting for Kafka to be ready..."
         cub kafka-ready -b kafka:29092 1 60
 
-        echo "Creating topics..."
-        for TOPIC in \
-          truck-detected-${GATE_ID} \
-          lp-results-${GATE_ID} \
-          hz-results-${GATE_ID} \
-          operator-decision-${GATE_ID} \
-          agent-decision-${GATE_ID}; do
-          kafka-topics --create --if-not-exists \
-            --bootstrap-server kafka:29092 \
-            --partitions 1 \
-            --replication-factor 1 \
-            --topic "$$TOPIC"
+        # Parse GATE_IDS from JSON-array string e.g. ["1","2","3"] -> "1 2 3"
+        GATE_ID_LIST=$(echo "$$GATE_IDS" | tr -d '[]"' | tr ',' ' ')
+
+        echo "Creating topics for gate IDs: $$GATE_ID_LIST"
+        for GID in $$GATE_ID_LIST; do
+          for TOPIC in \
+            truck-detected-$$GID \
+            lp-results-$$GID \
+            hz-results-$$GID \
+            operator-decision-$$GID \
+            agent-decision-$$GID; do
+            kafka-topics --create --if-not-exists \
+              --bootstrap-server kafka:29092 \
+              --partitions 1 \
+              --replication-factor 1 \
+              --topic "$$TOPIC"
+          done
         done
 
         echo "All topics created."
@@ -145,9 +162,9 @@ services:
     depends_on:
       - kafka
       - kafka-exporter
-      - agenta
-      - agentb
-      - agentc
+      - agenta-1
+      - agentb-1
+      - agentc-1
     restart: unless-stopped
 
   redpanda-console:
@@ -159,9 +176,9 @@ services:
     depends_on:
     - kafka
     - kafka-exporter
-    - agenta
-    - agentb
-    - agentc
+    - agenta-1
+    - agentb-1
+    - agentc-1
     restart: unless-stopped
 
   # Prometheus exporter for Kafka metrics

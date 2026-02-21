@@ -87,7 +87,7 @@ def main():
     
     try:
         logger.info("Starting AgentC main loop...")
-        agent.loop()
+        agent.start()
     except KeyboardInterrupt:
         logger.info("\nKeyboard interrupt received, stopping agent...")
         AGENT_UP.labels(agent='agent-c').set(0)

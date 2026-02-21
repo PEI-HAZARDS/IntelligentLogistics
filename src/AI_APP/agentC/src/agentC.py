@@ -1,7 +1,7 @@
-from shared.src.base_agent import BaseAgent
+from shared.src.base_agent import BaseAgent, BaseAgentConfig
 from shared.src.plate_classifier import PlateClassifier
 from shared.src.paddle_ocr import OCR
-from shared.src.kafka_protocol import HazardPlateResultsMessage, KafkaMessageProto, Message
+from shared.src.kafka_protocol import KafkaMessageProto, Message, KafkaTopicFactory
 
 import os
 from typing import Optional
@@ -31,7 +31,7 @@ class AgentC(BaseAgent):
         """Return agent identifier."""
         return "AgentC"
     
-    def initiallize_ocr(self) -> OCR:
+    def initialize_ocr(self) -> OCR:
         """Initialize and return OCR instance."""
         allowed_chars = '0123456789xX '  # Digits, space, and hyphen for hazard plates
         return OCR(allowed_chars=allowed_chars)
@@ -50,15 +50,15 @@ class AgentC(BaseAgent):
 
     def get_bucket(self) -> str:
         """Return bucket name for annotated frames and crops."""
-        return f"agentc-{self.gate_id}"
+        return f"agentc-{self.config.gate_id}"
 
     def get_consume_topic(self) -> str:
         """Return Kafka topic to consume truck detection events."""
-        return f"truck-detected-{self.gate_id}"
+        return KafkaTopicFactory.truck_detected(self.config.gate_id)
 
     def get_produce_topic(self) -> str:
         """Return Kafka topic to produce hazard plate results."""
-        return f"hz-results-{self.gate_id}"
+        return KafkaTopicFactory.hazard_plate_results(self.config.gate_id)
 
     def get_object_type(self) -> str:
         """Return detected object type name."""
@@ -71,7 +71,6 @@ class AgentC(BaseAgent):
         """
         self.logger.debug(f"Crop {box_index} accepted as HAZARD_PLATE")
         self.hazards_detected.inc()
-        self.ocr_confidence.observe(confidence)
         return True
 
     def _build_message_for_detection(self, text: str, confidence: float, crop_url: Optional[str]) -> Message:
@@ -84,7 +83,7 @@ class AgentC(BaseAgent):
             confidence=confidence
         )
 
-    def init_metrics(self):
+    def init_metrics(self) -> None:
         """Initialize Prometheus metrics for Agent C."""
         self.inference_latency = Histogram(
             'agent_c_inference_latency_seconds', 
@@ -101,9 +100,13 @@ class AgentC(BaseAgent):
         )
         self.ocr_confidence = Histogram(
             'agent_c_hazard_confidence', 
-            'Confidence score of hazard detection',
+            'Confidence score of OCR readings for hazard plates',
             buckets=[0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
         )
+
+    def get_detection_metric(self) -> Optional[object]:
+        """Return hazards_detected counter to increment per detected box."""
+        return self.hazards_detected
 
     # ========================================================================
     # Agent C specific overrides

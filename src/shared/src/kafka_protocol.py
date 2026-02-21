@@ -6,7 +6,29 @@ import logging
 
 logger = logging.getLogger("protocol")
 
+class KafkaTopicFactory:
+    """Factory for generating consistent Kafka topic names based on gate_id."""
 
+    @classmethod
+    def truck_detected(cls, gate_id: str | int) -> str:
+        return f"truck-detected-{gate_id}"
+
+    @classmethod
+    def license_plate_results(cls, gate_id: str | int) -> str:
+        return f"lp-results-{gate_id}"
+
+    @classmethod
+    def hazard_plate_results(cls, gate_id: str | int) -> str:
+        return f"hz-results-{gate_id}"
+
+    @classmethod
+    def agent_decision(cls, gate_id: str | int) -> str:
+        return f"agent-decision-{gate_id}"
+    
+    @classmethod
+    def operator_decision(cls, gate_id: str | int) -> str:
+        return f"operator-decision-{gate_id}"
+    
 class Message(ABC):
     """Base Message Type. Subclasses must implement to_dict() and from_dict()."""
 

@@ -1,5 +1,5 @@
-from shared.src.base_agent import BaseAgent
-from shared.src.kafka_protocol import LicensePlateResultsMessage, KafkaMessageProto, Message
+from shared.src.base_agent import BaseAgent, BaseAgentConfig
+from shared.src.kafka_protocol import KafkaMessageProto, Message, KafkaTopicFactory
 from shared.src.plate_classifier import PlateClassifier
 from shared.src.image_storage import ImageStorage
 from shared.src.paddle_ocr import OCR
@@ -22,19 +22,10 @@ class AgentB(BaseAgent):
 
     def __init__(self, **kwargs):
         """Initialize Agent B with license plate detection capabilities."""
-        # Create separate storage for failed crops
-        minio_host = os.getenv("MINIO_HOST", "10.255.32.82")
-        minio_port = os.getenv("MINIO_PORT", "9000")
-        minio_conf = {
-            "endpoint": f"{minio_host}:{minio_port}",
-            "access_key": os.getenv("ACCESS_KEY"),
-            "secret_key": os.getenv("SECRET_KEY"),
-            "secure": False
-        }
-        self.crop_fails = ImageStorage(minio_conf, "failed-crops")
-        
-        # Call parent constructor (forwards any injected dependencies)
+        # Call parent constructor first so self.config is available
         super().__init__(**kwargs)
+        # Separate storage bucket for rejected crops (requires self.config)
+        self.crop_fails = ImageStorage(self.config.minio_config, "failed-crops")
 
     # ========================================================================
     # Required abstract method implementations
@@ -44,7 +35,7 @@ class AgentB(BaseAgent):
         """Return agent identifier."""
         return "AgentB"
     
-    def initiallize_ocr(self) -> OCR:
+    def initialize_ocr(self) -> OCR:
         """Initialize and return OCR instance."""
         return OCR()
     
@@ -62,15 +53,15 @@ class AgentB(BaseAgent):
 
     def get_bucket(self) -> str:
         """Return bucket name for annotated frames and crops."""
-        return f"agentb-{self.gate_id}"
+        return f"agentb-{self.config.gate_id}"
 
     def get_consume_topic(self) -> str:
         """Return Kafka topic to consume truck detection events."""
-        return f"truck-detected-{self.gate_id}"
+        return KafkaTopicFactory.truck_detected(self.config.gate_id)
 
     def get_produce_topic(self) -> str:
         """Return Kafka topic to produce license plate results."""
-        return f"lp-results-{self.gate_id}"
+        return KafkaTopicFactory.license_plate_results(self.config.gate_id)
 
     def get_object_type(self) -> str:
         """Return detected object type name."""
@@ -101,7 +92,7 @@ class AgentB(BaseAgent):
             confidence=confidence
         )
 
-    def init_metrics(self):
+    def init_metrics(self) -> None:
         """Initialize Prometheus metrics for Agent B."""
         self.inference_latency = Histogram(
             'agent_b_inference_latency_seconds', 
@@ -121,3 +112,7 @@ class AgentB(BaseAgent):
             'Confidence score of OCR readings',
             buckets=[0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
         )
+
+    def get_detection_metric(self) -> Optional[object]:
+        """plates_detected is incremented directly in is_valid_detection; no separate counter needed here."""
+        return None
