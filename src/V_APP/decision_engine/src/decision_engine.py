@@ -9,7 +9,7 @@ from prometheus_client import start_http_server, Counter, Histogram # type: igno
 from shared.src.utils import load_from_file
 from shared.src.kafka_wrapper import KafkaConsumerWrapper, KafkaProducerWrapper
 from shared.src.kafka_protocol import HazardPlateResultsMessage, KafkaMessageProto, DecisionResultsMessage, LicensePlateResultsMessage, Message
-from decision_engine.src.plate_matcher import PlateMatcher
+from V_APP.shared.src.plate_matcher import PlateMatcher
 from decision_engine.src.database_client import DatabaseClient
 from enum import Enum
 
@@ -34,8 +34,8 @@ class DecisionEngine:
     def __init__(self) -> None:
         self.running = True
         
-        self.un_numbers = load_from_file("./src/un_numbers.txt", separator="|")
-        self.kemler_codes = load_from_file("./src/kemler_codes.txt", separator="|")
+        self.un_numbers = load_from_file("./data/un_numbers.txt", separator="|")
+        self.kemler_codes = load_from_file("./data/kemler_codes.txt", separator="|")
         logger.info(f"Loaded {len(self.un_numbers)} UN numbers and {len(self.kemler_codes)} Kemler codes.")
 
         # Store typed message objects instead of dicts

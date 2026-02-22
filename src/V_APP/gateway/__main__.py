@@ -1,4 +1,4 @@
-from V_APP.gateway.v_gateway import VGateway
+from V_APP.gateway.src.v_gateway import VGateway
 from shared.src.base_gateway import BaseGatewayConfig
 
 

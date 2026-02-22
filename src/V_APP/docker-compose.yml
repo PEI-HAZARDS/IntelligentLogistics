@@ -81,8 +81,7 @@ services:
   data-module:
     build: 
       context: ..
-      dockerfile: V_APP/Dockerfile
-      target: data_module
+      dockerfile: V_APP/Data_Module/Dockerfile
     container_name: dm_data_module
     restart: unless-stopped
     depends_on:
@@ -133,8 +132,7 @@ services:
   api-gateway:
     build:
       context: ..
-      dockerfile: V_APP/Dockerfile
-      target: api_gateway
+      dockerfile: V_APP/api_gateway/Dockerfile
     image: api-gateway:latest
     container_name: api-gateway
     restart: unless-stopped
@@ -176,8 +174,7 @@ services:
   decision-engine:
     build:
       context: ..
-      dockerfile: V_APP/Dockerfile
-      target: decision_engine
+      dockerfile: V_APP/decision_engine/Dockerfile
     image: decision-engine:latest
     container_name: decision-engine
     restart: unless-stopped
@@ -258,8 +255,7 @@ services:
   v-gateway:
     build:
       context: ..
-      dockerfile: V_APP/Dockerfile
-      target: v_gateway
+      dockerfile: V_APP/gateway/Dockerfile
     image: v-gateway:latest
     container_name: v-gateway
     restart: unless-stopped

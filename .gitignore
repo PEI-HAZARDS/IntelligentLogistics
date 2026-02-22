@@ -23,7 +23,6 @@ ENV/
 # =====================================
 # Machine Learning / Data
 # =====================================
-**/data/
 **/datasets/
 **/checkpoints/
 **/logs/
