@@ -503,9 +503,10 @@ class BaseAgent(ABC):
 
         if self.consensus_algorithm.check_full_consensus():
             final_text = self.consensus_algorithm.build_final_text()
-            self.logger.info(f"Consensus: '{final_text}'")
+            confidence = self.consensus_algorithm.compute_consensus_confidence()
+            self.logger.info(f"Consensus: '{final_text}' (confidence={confidence:.3f})")
             best_crop = self.consensus_algorithm.select_best_crop(final_text)
-            return final_text, 1.0, best_crop
+            return final_text, confidence, best_crop
 
         return None
     

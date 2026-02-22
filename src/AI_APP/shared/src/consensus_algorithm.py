@@ -19,6 +19,7 @@ class ConsensusAlgorithm:
         self.best_crop = None
         self.best_confidence = 0.0
         self.candidate_crops = []  # [{"crop": array, "text": str, "confidence": float}]
+        self.accepted_confidences = []  # OCR confidences that passed validation
         self.logger = getLogger("ConsensusAlgorithm")
 
     def reset(self):
@@ -29,6 +30,7 @@ class ConsensusAlgorithm:
             self.best_crop = None
             self.best_confidence = 0.0
             self.candidate_crops = []
+            self.accepted_confidences = []
             self.frames_processed = 0
             self.length_counter = {}
             self.consecutive_none_frames = 0
@@ -101,6 +103,8 @@ class ConsensusAlgorithm:
         if not self._track_text_length(len(text_normalized)):
             return
 
+        self.accepted_confidences.append(confidence)
+
         self.logger.debug(
             f"Adding to consensus: '{text_normalized}' "
             f"(conf={confidence:.2f}, len={len(text_normalized)})")
@@ -155,6 +159,42 @@ class ConsensusAlgorithm:
         final_text = "".join(text_chars)
         self.logger.debug(f"Built final text: '{final_text}'")
         return final_text
+
+    def compute_consensus_confidence(self) -> float:
+        """
+        Compute composite confidence score based on:
+        1. Position dominance: how strongly the winning character dominated at each position
+        2. Average OCR confidence: mean confidence of all accepted readings
+        
+        Returns:
+            float: Confidence score between 0.0 and 1.0
+        """
+        if not self.decided_chars or not self.counter:
+            return 0.0
+
+        # Compute dominance per decided position
+        position_dominances = []
+        for pos, char in self.decided_chars.items():
+            total_votes = sum(self.counter[pos].values())
+            winner_votes = self.counter[pos].get(char, 0)
+            position_dominances.append(winner_votes / total_votes if total_votes > 0 else 0.0)
+
+        agreement_score = sum(position_dominances) / len(position_dominances)
+
+        # Combine with average OCR confidence
+        if self.accepted_confidences:
+            avg_ocr_confidence = sum(self.accepted_confidences) / len(self.accepted_confidences)
+        else:
+            avg_ocr_confidence = 0.0
+
+        confidence = agreement_score * avg_ocr_confidence
+
+        self.logger.info(
+            f"Consensus confidence: {confidence:.3f} "
+            f"(agreement={agreement_score:.3f}, avg_ocr={avg_ocr_confidence:.3f}, "
+            f"readings={len(self.accepted_confidences)})")
+
+        return confidence
     
     def select_best_crop(self, final_text: str):
         """
