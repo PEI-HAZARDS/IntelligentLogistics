@@ -1,4 +1,4 @@
-from AI_APP.gateway.ai_gateway import AIGateway
+from AI_APP.gateway.src.ai_gateway import AIGateway
 from shared.src.base_gateway import BaseGatewayConfig
 
 

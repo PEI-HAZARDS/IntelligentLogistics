@@ -166,6 +166,7 @@ services:
 
   redpanda-console:
     image: docker.redpanda.com/redpandadata/console:latest
+    container_name: redpanda-console
     ports:
       - "9090:8080"
     environment:
