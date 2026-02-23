@@ -38,7 +38,11 @@ class Settings(BaseSettings):
     # Runtime
     environment: str = "development"
     debug: bool = False
-    
+
+    # Kafka
+    kafka_bootstrap: str = "kafka:29092"
+    gate_id: str = "1"
+
     # Driver Authentication
     debug_mode: bool = False  # When True, allows bypassing sequential delivery checks
     token_expiry_hours: int = 24  # Session token expiration time in hours

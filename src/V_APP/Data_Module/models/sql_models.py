@@ -262,7 +262,7 @@ class Appointment(Base):
     # Status
     status = Column(appointment_status_enum, default='in_transit')
     notes = Column(Text)
-    highway_infraction = Column(Boolean, default=False)  # Hazmat truck on restricted highway route
+    highway_infraction = Column(Boolean, default=False, server_default="false")  # Hazmat truck on restricted highway route
     
     # Relationships
     booking = relationship("Booking", back_populates="appointments")

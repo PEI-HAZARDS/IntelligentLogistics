@@ -1,15 +1,16 @@
 import json
 import logging
-import os
 import threading
 import asyncio
 from web_socket_manager import WebSocketManager
 from shared.src.kafka_wrapper import KafkaConsumerWrapper, KafkaProducerWrapper
-from shared.src.kafka_protocol import Message, deserialize_message
+from shared.src.kafka_protocol import Message, deserialize_message, KafkaTopicFactory
 from fastapi import FastAPI # type: ignore
 import uvicorn # type: ignore
 from fastapi.middleware.cors import CORSMiddleware # type: ignore
 from prometheus_fastapi_instrumentator import Instrumentator # type: ignore
+from pydantic_settings import BaseSettings # type: ignore
+from pydantic import Field # type: ignore
 
 # OpenTelemetry for distributed tracing
 from opentelemetry import trace # type: ignore
@@ -32,55 +33,44 @@ from routers import (
 
 logger = logging.getLogger("APIGateway")
 
+
+class APIGatewayConfig(BaseSettings):
+    """Configuration for the API Gateway, loaded from environment variables."""
+    kafka_bootstrap: str = Field(default="localhost:9092")
+    gate_id: str = Field(default="1")
+    gateway_port: int = Field(default=8000)
+    data_module_url: str = Field(default="http://data-module:8000")
+    stream_base_url: str = Field(default="http://nginx-rtmp:8080")
+    api_prefix: str = Field(default="/api")
+    env: str = Field(default="dev")
+    cors_allow_origins: list[str] = Field(default=["*"])
+    cors_allow_credentials: bool = Field(default=True)
+    cors_allow_methods: list[str] = Field(default=["*"])
+    cors_allow_headers: list[str] = Field(default=["*"])
+
+
 class APIGateway:
-    def __init__(self, kafka_producer: KafkaProducerWrapper | None, kafka_consumer: KafkaConsumerWrapper | None, WSManager: WebSocketManager | None) -> None:
-        self._load_config()
-        self.kafka_producer = kafka_producer or KafkaProducerWrapper(self.kafka_bootstrap)
-        self.kafka_consumer = kafka_consumer or KafkaConsumerWrapper(self.kafka_bootstrap, "api-gateway-group", self.consume_topic)
+    def __init__(
+        self,
+        config: APIGatewayConfig | None = None,
+        kafka_producer: KafkaProducerWrapper | None = None,
+        kafka_consumer: KafkaConsumerWrapper | None = None,
+        WSManager: WebSocketManager | None = None,
+    ) -> None:
+        self.config = config or APIGatewayConfig()
+
+        # Topic names via factory — single source of truth
+        self.consume_topic = [KafkaTopicFactory.agent_decision(self.config.gate_id)]
+        self.produce_topic = KafkaTopicFactory.operator_decision(self.config.gate_id)
+
+        self.kafka_producer = kafka_producer or KafkaProducerWrapper(self.config.kafka_bootstrap)
+        self.kafka_consumer = kafka_consumer or KafkaConsumerWrapper(
+            self.config.kafka_bootstrap, "api-gateway-group", self.consume_topic
+        )
         self.ws_manager = WSManager or WebSocketManager()
         self.app = self._create_app()
         self.running = False
-    
-    def _load_config(self):
-        self.gate_ids = os.getenv("GATE_ID", "gate_1")
-        self.gateway_port = int(os.getenv("GATEWAY_PORT", "8000"))
-        self.kafka_bootstrap = os.getenv("KAFKA_BOOTSTRAP", "localhost:9092")
-        self.consume_topic = ["agent-decision-1"]  #TODO: remove hardcoded value
-        self.produce_topic = "operator-decision-1"
-        self.API_PREFIX: str = os.getenv("GW_API_PREFIX", "/api")
 
-        # URL base do Data Module (Internal API)
-        self.DATA_MODULE_URL: str = os.getenv("DATA_MODULE_URL", "http://data-module:8000")
-
-        # URL base do servidor de streams (Nginx-RTMP com HLS)
-        self.STREAM_BASE_URL: str = os.getenv("STREAM_BASE_URL", "http://nginx-rtmp:8080")
-
-        # Kafka – para consumir decisões em tempo real
-        self.KAFKA_BOOTSTRAP_SERVERS: str = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
-
-        # Tópico REAL com os resultados das decisões
-        self.KAFKA_DECISION_TOPIC: str = os.getenv("KAFKA_DECISION_TOPIC", "decision_results")
-
-        # Consumer group do gateway
-        self.KAFKA_CONSUMER_GROUP: str = os.getenv("KAFKA_CONSUMER_GROUP", "api-gateway-decisions")
-
-        # Ambiente
-        self.ENV: str = os.getenv("GW_ENV", "dev")
-
-        # CORS
-        self.CORS_ALLOW_ORIGINS: list[str] = json.loads(
-            os.getenv("CORS_ALLOW_ORIGINS", '["*"]')
-        )
-        self.CORS_ALLOW_CREDENTIALS: bool = (
-            os.getenv("CORS_ALLOW_CREDENTIALS", "true").lower() == "true"
-        )
-        self.CORS_ALLOW_METHODS: list[str] = json.loads(
-            os.getenv("CORS_ALLOW_METHODS", '["*"]')
-        )
-        self.CORS_ALLOW_HEADERS: list[str] = json.loads(
-            os.getenv("CORS_ALLOW_HEADERS", '["*"]')
-        )
-    
     def _consumer_loop(self):
         """Consume from Kafka, process, and send via WebSockets"""
         logger.info(f"[Consumer thread] Listening on topics: {self.consume_topic}")
@@ -111,7 +101,7 @@ class APIGateway:
                 # Forward the processed message to all receiver gateways
                 # Must schedule on the main event loop (where WebSockets live)
                 future = asyncio.run_coroutine_threadsafe(
-                    self.ws_manager.broadcast_to_gate(self.gate_ids, payload),
+                    self.ws_manager.broadcast_to_gate(self.config.gate_id, payload),
                     self._loop,
                 )
                 future.result(timeout=5)  # wait up to 5s for the broadcast
@@ -136,43 +126,43 @@ class APIGateway:
         app.state.kafka_producer = self.kafka_producer
         app.state.produce_topic = self.produce_topic
         app.state.ws_manager = self.ws_manager
-        app.state.data_module_url = self.DATA_MODULE_URL
-        app.state.stream_base_url = self.STREAM_BASE_URL
-        app.state.gate_id = self.gate_ids
+        app.state.data_module_url = self.config.data_module_url
+        app.state.stream_base_url = self.config.stream_base_url
+        app.state.gate_id = self.config.gate_id
 
         # ----------------------
         # CORS
         # ----------------------
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=self.CORS_ALLOW_ORIGINS,
-            allow_credentials=self.CORS_ALLOW_CREDENTIALS,
-            allow_methods=self.CORS_ALLOW_METHODS,
-            allow_headers=self.CORS_ALLOW_HEADERS,
+            allow_origins=self.config.cors_allow_origins,
+            allow_credentials=self.config.cors_allow_credentials,
+            allow_methods=self.config.cors_allow_methods,
+            allow_headers=self.config.cors_allow_headers,
         )
 
         # ----------------------
         # Routers HTTP
         # ----------------------
-        app.include_router(arrivals.router, prefix=self.API_PREFIX)
-        app.include_router(manual_review.router, prefix=self.API_PREFIX)
-        app.include_router(alerts.router, prefix=self.API_PREFIX)
-        app.include_router(drivers.router, prefix=self.API_PREFIX)
-        app.include_router(stream.router, prefix=self.API_PREFIX)
-        app.include_router(workers.router, prefix=self.API_PREFIX)
-        app.include_router(statistics.router, prefix=self.API_PREFIX)
+        app.include_router(arrivals.router, prefix=self.config.api_prefix)
+        app.include_router(manual_review.router, prefix=self.config.api_prefix)
+        app.include_router(alerts.router, prefix=self.config.api_prefix)
+        app.include_router(drivers.router, prefix=self.config.api_prefix)
+        app.include_router(stream.router, prefix=self.config.api_prefix)
+        app.include_router(workers.router, prefix=self.config.api_prefix)
+        app.include_router(statistics.router, prefix=self.config.api_prefix)
 
         # ----------------------
         # Router WebSocket
         # ----------------------
-        app.include_router(realtime.router, prefix=self.API_PREFIX)
+        app.include_router(realtime.router, prefix=self.config.api_prefix)
 
         # ----------------------
         # Healthcheck
         # ----------------------
         @app.get("/health", tags=["health"])
         def health():
-            return {"status": "ok", "env": self.ENV}
+            return {"status": "ok", "env": self.config.env}
 
         return app
     
@@ -183,7 +173,7 @@ class APIGateway:
           2. Run the FastAPI server on the main thread (blocking)
         """
         self.running = True
-        logger.info(f"Starting api gateway on port {self.gateway_port}")
+        logger.info(f"Starting api gateway on port {self.config.gateway_port}")
 
         # Capture the main event loop so the consumer thread can schedule coroutines on it
         self._loop = asyncio.new_event_loop()
@@ -199,7 +189,7 @@ class APIGateway:
 
         # Thread 2 (main) – FastAPI / uvicorn (uses the event loop above)
         try:
-            config = uvicorn.Config(self.app, host="0.0.0.0", port=self.gateway_port, loop="asyncio")
+            config = uvicorn.Config(self.app, host="0.0.0.0", port=self.config.gateway_port, loop="asyncio")
             server = uvicorn.Server(config)
             self._loop.run_until_complete(server.serve())
         except KeyboardInterrupt:

@@ -24,7 +24,7 @@ from routes.worker import router as workers_router
 from routes.notifications import router as notifications_router
 
 # Kafka decision consumer
-from services.kafka_decision_consumer import decision_consumer
+from services.kafka_decision_consumer import KafkaDecisionConsumer
 
 # DB / infra imports used for startup checks
 from db.postgres import engine, SessionLocal
@@ -114,7 +114,8 @@ async def lifespan(app: FastAPI):
     
     # 5) Start Kafka decision consumer
     try:
-        await decision_consumer.start()
+        app.state.decision_consumer = KafkaDecisionConsumer()
+        await app.state.decision_consumer.start()
         logger.info("Kafka decision consumer started.")
     except Exception as e:
         logger.exception("Failed to start Kafka decision consumer: %s", e)
@@ -124,7 +125,9 @@ async def lifespan(app: FastAPI):
     # ===== SHUTDOWN =====
     # Stop Kafka consumer
     try:
-        await decision_consumer.stop()
+        consumer = getattr(app.state, "decision_consumer", None)
+        if consumer:
+            await consumer.stop()
         logger.info("Kafka decision consumer stopped.")
     except Exception:
         logger.exception("Error stopping Kafka decision consumer.")
