@@ -19,12 +19,20 @@ class StreamManager:
         self.cap = None
         self.frame = None
         self.lock = threading.Lock()
-        self.running = True
+        self.running = False
 
-        # The update thread will handle the initial connection.
+        self.thread = None
+
         logger.info(f"Initialized for: {url}")
 
-        # Thread in parallel to read stream continuously
+    def connect(self):
+        """Starts the stream and background thread. Call when the stream is needed."""
+        if self.running:
+            logger.warning("Stream is already running.")
+            return
+
+        logger.info(f"Connecting to: {self.url}")
+        self.running = True
         self.thread = threading.Thread(target=self.update, daemon=True)
         self.thread.start()
 
@@ -149,14 +157,19 @@ class StreamManager:
             return self.frame.copy()
 
     def release(self):
-        """Releases resources and stops thread"""
+        """Releases resources and stops the background thread. Can call connect() again after this."""
         logger.info(f"Stopping stream manager: {self.url}")
         self.running = False
         
-        # Wait briefly for thread to notice
-        self.thread.join(timeout=1.0)
+        if self.thread is not None:
+            self.thread.join(timeout=1.0)
+            self.thread = None
         
         if self.cap:
             self.cap.release()
+            self.cap = None
+
+        with self.lock:
+            self.frame = None
             
         logger.info("Stopped.")

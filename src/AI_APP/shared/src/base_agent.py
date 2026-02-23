@@ -282,9 +282,15 @@ class BaseAgent(ABC):
             message_obj: Typed message object received from the Kafka consumer.
         """
         self.logger.info(f"Processing truck: {self.truck_id}")
+        
+        self.logger.info("Connecting to video stream…")
+        self.stream_manager.connect()
     
         # Run detection pipeline and always use the returned crop
         text, confidence, crop = self.process_detection()  
+        
+        self.logger.info("Releasing to video stream…")
+        self.stream_manager.release()
         
         crop_url = None
         if crop is not None:
