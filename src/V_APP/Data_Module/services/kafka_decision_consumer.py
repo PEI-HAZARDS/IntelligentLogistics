@@ -11,20 +11,19 @@ Responsibilities:
 """
 
 import logging
-import os
 import asyncio
-from typing import Optional, Dict, Any
+from typing import Optional
 from datetime import datetime, timezone
 import json
 
 from shared.src.kafka_wrapper import KafkaConsumerWrapper
+from shared.src.kafka_protocol import KafkaTopicFactory
 from services.decision_service import persist_decision_event_from_kafka, update_appointment_after_decision
 from services.notification_service import create_notification
+from config import settings
 
 logger = logging.getLogger("kafka_decision_consumer")
 
-KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka:29092")
-GATE_ID = os.getenv("GATE_ID", "1")
 
 class DecisionCorrelator:
     """
@@ -128,22 +127,25 @@ class KafkaDecisionConsumer:
     """
     Background consumer for agent and operator decisions.
     """
-    
-    def __init__(self):
+
+    def __init__(self, consumer: KafkaConsumerWrapper | None = None):
         self.running = False
         self.consumer_task = None
         self.correlator = DecisionCorrelator()
-        
-        # Initialize Kafka consumer for both topics (with GATE_ID suffix)
-        topics = [f"agent-decision-{GATE_ID}", f"operator-decision-{GATE_ID}"]
-        self.consumer = KafkaConsumerWrapper(
-            bootstrap_servers=KAFKA_BOOTSTRAP,
+
+        # Topic names via factory — single source of truth
+        topics = [
+            KafkaTopicFactory.agent_decision(settings.gate_id),
+            KafkaTopicFactory.operator_decision(settings.gate_id),
+        ]
+        self.consumer = consumer or KafkaConsumerWrapper(
+            bootstrap_servers=settings.kafka_bootstrap,
             group_id="data-module-decisions",
-            topics=topics
+            topics=topics,
         )
-        
+
         logger.info(f"KafkaDecisionConsumer initialized for topics: {topics}")
-    
+
     async def start(self):
         """Start the consumer loop."""
         if self.running:
@@ -168,65 +170,48 @@ class KafkaDecisionConsumer:
     async def _consume_loop(self):
         """Main consumption loop."""
         logger.info("Starting Kafka consumption loop...")
-        
+
         while self.running:
             try:
-                # Consume message (this is sync, but we run in executor)
+                # Consume message (sync, run in executor to avoid blocking)
                 msg = await asyncio.get_event_loop().run_in_executor(
-                    None, 
+                    None,
                     self.consumer.consume_message,
                     1.0  # timeout
                 )
-                
+
                 if msg is None:
                     await asyncio.sleep(0.1)
                     continue
-                
-                # Parse message
-                topic = msg.topic()
-                truck_id = None
-                if msg.headers():
-                    for key, value in msg.headers():
-                        if key == "truckId":
-                            truck_id = value.decode("utf-8") if isinstance(value, bytes) else value
-                            break
-                
-                if not truck_id:
-                    # Bug fix 1: try extracting truck_id from the payload body before discarding
-                    try:
-                        body_preview = json.loads(msg.value().decode("utf-8"))
-                        truck_id = body_preview.get("truck_id") or body_preview.get("truckId")
-                    except Exception:
-                        pass
+
+                # parse_message handles header extraction and JSON decoding
+                topic, data, truck_id = self.consumer.parse_message(msg)
 
                 if not truck_id:
                     logger.warning(f"Message from {topic} has no truckId header, skipping")
                     continue
-                
-                # Parse payload
-                try:
-                    data = json.loads(msg.value().decode("utf-8"))
-                except Exception as e:
-                    logger.error(f"Failed to parse message from {topic}: {e}")
+
+                if data is None:
+                    logger.error(f"Failed to parse message body from {topic}")
                     continue
-                
+
                 # Process based on topic
                 final_decision = None
-                
-                if topic == f"agent-decision-{GATE_ID}":
+
+                if topic == KafkaTopicFactory.agent_decision(settings.gate_id):
                     final_decision = self.correlator.process_agent_decision(truck_id, data)
-                
-                elif topic == f"operator-decision-{GATE_ID}":
+
+                elif topic == KafkaTopicFactory.operator_decision(settings.gate_id):
                     final_decision = self.correlator.process_operator_decision(truck_id, data)
-                
+
                 # If final decision ready, persist it
                 if final_decision:
                     await self._persist_decision(truck_id, final_decision)
-            
+
             except Exception as e:
                 logger.error(f"Error in consume loop: {e}", exc_info=True)
                 await asyncio.sleep(1)
-    
+
     async def _persist_decision(self, truck_id: str, decision_data: dict):
         """Persist final decision to database."""
         try:
@@ -234,7 +219,7 @@ class KafkaDecisionConsumer:
             
             # Extract key data from enriched payload (with fallbacks)
             license_plate = decision_data.get("license_plate")
-            gate_id = decision_data.get("gate_id", int(GATE_ID))
+            gate_id = decision_data.get("gate_id", int(settings.gate_id))
             appointment_id = decision_data.get("appointment_id")
             
             # Persist event to MongoDB
@@ -295,10 +280,6 @@ class KafkaDecisionConsumer:
 
             else:
                 logger.info(f"Decision status '{decision_data.get('decision')}' — no appointment update needed")
-                    
+
         except Exception as e:
             logger.error(f"Error persisting decision for truck_id={truck_id}: {e}", exc_info=True)
-
-
-# Global instance
-decision_consumer = KafkaDecisionConsumer()
