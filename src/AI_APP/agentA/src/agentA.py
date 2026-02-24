@@ -2,7 +2,7 @@ from AI_APP.shared.src.stream_manager import StreamManager
 from AI_APP.shared.src.object_detector import ObjectDetector
 from AI_APP.shared.src.bounding_box_drawer import BoundingBoxDrawer, Box
 from AI_APP.shared.src.image_storage import ImageStorage
-from shared.src.kafka_wrapper import KafkaProducerWrapper
+from shared.src.kafka_wrapper import KafkaProducerWrapper, KafkaConsumerWrapper
 from shared.src.kafka_protocol import KafkaMessageProto, KafkaTopicFactory
 import time
 import uuid
@@ -11,6 +11,7 @@ import logging
 from prometheus_client import Counter, Histogram #type: ignore
 from pydantic_settings import BaseSettings # type: ignore
 from pydantic import Field # type: ignore
+
 
 logger = logging.getLogger("AgentA")
 
@@ -42,10 +43,8 @@ class AgentAConfig(BaseSettings):
     # App Operational Config
     gate_id: str = Field(default="1")
     models_path: str = Field(default="/app/AI_APP/agentA/data")
+    decision_timeout: int = Field(default=60)
     
-    #Others
-    message_interval: float = Field(default=35.0)
-
     # Use properties to dynamically construct dependent values
     @property
     def stream_low(self) -> str:
@@ -86,6 +85,7 @@ class AgentA:
         object_detector: Optional[ObjectDetector] = None,
         stream_manager: Optional[StreamManager] = None,
         kafka_producer: Optional[KafkaProducerWrapper] = None,
+        kafka_consumer: Optional[KafkaConsumerWrapper] = None,
         image_storage: Optional[ImageStorage] = None,
         drawer: Optional[BoundingBoxDrawer] = None,
     ):
@@ -104,8 +104,11 @@ class AgentA:
         self.image_storage = image_storage or ImageStorage(config.minio_config, config.minio_bucket_name)
         self.stream_manager = stream_manager or StreamManager(config.stream_low)
         self.kafka_producer = kafka_producer or KafkaProducerWrapper(config.kafka_bootstrap)
+        self.kafka_consumer = kafka_consumer or KafkaConsumerWrapper(self.config.kafka_bootstrap, f"agenta-{self.config.gate_id}-group", self.config.kafka_topic_consume)
         
+        self.stream_manager.connect()
         self.running = True
+        self.first_message_sent = False
         self.last_message_time = 0
         
         # --- Prometheus Metrics ---
@@ -121,16 +124,24 @@ class AgentA:
 
         # Main processing cycle
         while self.running:
+            now = time.time()
             try:
-                frame = self.stream_manager.read()
-
-                if frame is None:
-                    time.sleep(0.1) 
-                    continue
+                if self.first_message_sent and (now - self.last_message_time) <= self.config.decision_timeout:
+                    # Wait for a decision before resuming detection
+                    _, message_obj, truck_id = self.kafka_consumer.consume_typed_message(timeout=0.1)
+                    if truck_id is None:
+                        if int(now) % 10 == 0:
+                            logger.info("No decision received yet, waiting...")
+                        continue  # timeout, keep waiting
+                        
+                    logger.info(f"Received decision for truck_id={truck_id}, resuming detection...")
                 
-                # Process frame for truck detection
-                self._process_detection(frame)
+                if now - self.last_message_time > self.config.decision_timeout:
+                        logger.info("Decision timeout exceeded while waiting for decision, resuming detection anyway...")
+                
+                self._process_detection()
 
+                self.first_message_sent = True
             except Exception as e:
                 logger.exception(f"Exception during detection loop: {e}")
                 time.sleep(1)
@@ -149,64 +160,72 @@ class AgentA:
         self.kafka_producer.flush()
         self.kafka_producer.close()
     
-    def _process_detection(self, frame) -> None:
+    def _process_detection(self) -> None:
         """
-        Process a frame for truck detection and publish to Kafka if detected.
-        
-        Args:
-            frame: Video frame to process
+        Continuously capture and process frames for truck detection.
+        Returns only when a truck has been successfully detected and the Kafka event is published.
         """
-        # Run YOLO inference
-        logger.debug("Frame captured, running truck detection…")
-        try:
-            with self.inference_latency.time():
-                results = self.yolo.detect(frame)
+        while self.running:
+            # Wait until stream is actually ready
+            frame = None
+            while frame is None and self.running:
+                frame = self.stream_manager.read()
+                if frame is None:
+                    time.sleep(0.1)
             
-            self.frames_processed.inc()
+            if not self.running or frame is None:
+                break
 
-            if results is None:
-                logger.warning("YOLO model returned no results (None).")
-                return
-
-            # Check for positive detection
-            if not self.yolo.object_found(results):
-                logger.debug("No truck detected in this frame.")
-                return
-            
-            now = time.time()
-            elapsed = now - self.last_message_time
-
-            # Check throttling interval (Debounce)
-            if elapsed < self.config.message_interval:
-                logger.info(f"Truck detected, but waiting {self.config.message_interval - elapsed:.1f}s before next message.")
-                return
-
-            truck_id = "TRK" + str(uuid.uuid4())[:8]
-            boxes = self.yolo.get_boxes(results)  # [x1,y1,x2,y2,conf]
-            num_boxes = len(boxes)
-            max_conf = max((b[4] for b in boxes), default=0.0)
-
-            # Draw detected boxes on the frame (labelled)
+            # Run YOLO inference
+            logger.debug("Frame captured, running truck detection…")
             try:
-                frame = self.drawer.draw_box(frame, cast(List[Box], boxes))
-                self.image_storage.upload_memory_image(frame, f"{truck_id}_{int(time.time())}.jpg", image_type="annotated_frames")
+                with self.inference_latency.time():
+                    results = self.yolo.detect(frame)
+                
+                self.frames_processed.inc()
+
+                if results is None:
+                    logger.warning("YOLO model returned no results (None).")
+                    continue
+
+                # Check for positive detection
+                if not self.yolo.object_found(results):
+                    logger.debug("No truck detected in this frame.")
+                    continue
+                
+                truck_id = "TRK" + str(uuid.uuid4())[:8]
+                boxes = self.yolo.get_boxes(results)  # [x1,y1,x2,y2,conf]
+                num_boxes = len(boxes)
+                max_conf = max((b[4] for b in boxes), default=0.0)
+
+                # Draw detected boxes on the frame (labelled)
+                try:
+                    frame = self.drawer.draw_box(frame, cast(List[Box], boxes))
+                    self.image_storage.upload_memory_image(frame, f"{truck_id}_{int(time.time())}.jpg", image_type="annotated_frames")
+                except Exception as e:
+                    logger.exception(f"Error drawing boxes: {e}")
+
+                # Record metrics
+                self.trucks_detected.inc(num_boxes)
+                self.detection_confidence.observe(max_conf)
+
+                message = KafkaMessageProto.truck_detected(confidence=max_conf, num_detections=num_boxes)
+                self.kafka_producer.produce(
+                    topic=self.config.kafka_topic_produce,
+                    data=message.to_dict(),
+                    headers={"truck_id": truck_id}
+                )
+                
+                # Force delivery callbacks to process immediately so we see the log
+                self.kafka_producer.flush(timeout=1)
+                self.last_message_time = time.time()
+                logger.info(f"Truck detected! truck_id={truck_id}, confidence={max_conf:.2f}, num_detections={num_boxes}.")
+
+                # Truck detected and message sent; return to the main loop
+                return
+
             except Exception as e:
-                logger.exception(f"Error drawing boxes: {e}")
-
-            # Record metrics
-            self.trucks_detected.inc(num_boxes)
-            self.detection_confidence.observe(max_conf)
-
-            self.last_message_time = now
-            
-            message = KafkaMessageProto.truck_detected(confidence=max_conf, num_detections=num_boxes)
-            self.kafka_producer.produce(
-                topic=self.config.kafka_topic_produce,
-                data=message.to_dict(),
-                headers={"truck_id": truck_id}
-            )
-
-        except Exception as e:
-            logger.exception(f"Error preparing Kafka event: {e}")
+                logger.exception(f"Error preparing Kafka event: {e}")
+                time.sleep(0.1)
 
 
