@@ -28,7 +28,26 @@ class KafkaTopicFactory:
     @classmethod
     def operator_decision(cls, gate_id: str | int) -> str:
         return f"operator-decision-{gate_id}"
+
+    @classmethod
+    def reset_agent_a(cls, gate_id: str | int) -> str:
+        return f"reset-agentA-{gate_id}"
+
+    @classmethod
+    def infraction_decision(cls, gate_id: str | int) -> str:
+        return f"infraction-decision-{gate_id}"
+
+    """Dont need gate_id because it is global to all network so 
+       doesnt matter which gate is associated with the message"""
+    @classmethod
+    def scale_up(cls) -> str:
+        return "scale-up"
+
+    @classmethod
+    def scale_down(cls) -> str:
+        return "scale-down"
     
+
 class Message(ABC):
     """Base Message Type. Subclasses must implement to_dict() and from_dict()."""
 
@@ -228,6 +247,132 @@ class DecisionResultsMessage(Message):
         except KeyError as e:
             raise ValueError(f"Missing required field {e} in {cls.MESSAGE_TYPE} message") from e
 
+class ResetAgentAMessage(Message):
+    """Message to reset agent A.
+    This message is send by each the V-Brain after some time and logic passes by the decision agents.
+    And has the functionality to reset the agent A to its detection state.
+    """
+
+    MESSAGE_TYPE = "reset_agent_a"
+
+    def __init__(self, reason: str = "unknown", timestamp: Optional[int] = None) -> None:
+        super().__init__(timestamp)
+        self.reason = reason  # e.g. "agent_decision", "infraction_decision", "timeout"
+
+    def to_dict(self) -> dict:
+        return {
+            "message_type": self.MESSAGE_TYPE,
+            "timestamp": self.timestamp,
+            "reason": self.reason,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ResetAgentAMessage":
+        """Reconstruct message from dict.
+
+        Raises:
+            ValueError: If a required field is missing.
+        """
+        try:
+            return cls(
+                reason=data.get("reason", "unknown"),
+                timestamp=data.get("timestamp"),
+            )
+        except KeyError as e:
+            raise ValueError(f"Missing required field {e} in {cls.MESSAGE_TYPE} message") from e
+
+
+class InfractionDecisionMessage(Message):
+    """Message published when a truck is detected making a possible highway infraction.
+    Produced by Infraction_Decision and consumed by V_Brain.
+    """
+
+    MESSAGE_TYPE = "infraction_decision"
+
+    def __init__(
+        self,
+        license_plate: str,
+        license_crop_url: str,
+        un: str,
+        kemler: str,
+        hazard_crop_url: str,
+        highway_infraction: str,
+        timestamp: Optional[int] = None,
+    ) -> None:
+        super().__init__(timestamp)
+        self.license_plate = license_plate
+        self.license_crop_url = license_crop_url
+        self.un = un
+        self.kemler = kemler
+        self.hazard_crop_url = hazard_crop_url
+        self.highway_infraction = highway_infraction
+
+    def to_dict(self) -> dict:
+        return {
+            "message_type": self.MESSAGE_TYPE,
+            "timestamp": self.timestamp,
+            "license_plate": self.license_plate,
+            "license_crop_url": self.license_crop_url,
+            "un": self.un,
+            "kemler": self.kemler,
+            "hazard_crop_url": self.hazard_crop_url,
+            "highway_infraction": self.highway_infraction,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "InfractionDecisionMessage":
+        """Raises:
+            ValueError: If a required field is missing.
+        """
+        try:
+            return cls(
+                license_plate=data["license_plate"],
+                license_crop_url=data["license_crop_url"],
+                un=data["un"],
+                kemler=data["kemler"],
+                hazard_crop_url=data["hazard_crop_url"],
+                highway_infraction=data["highway_infraction"],
+                timestamp=data.get("timestamp"),
+            )
+        except KeyError as e:
+            raise ValueError(f"Missing required field {e} in {cls.MESSAGE_TYPE} message") from e
+
+
+class ScaleNetworkMessage(Message):
+    """Message to signal the API_Gateway to connect to 4k stream or 720p stream.
+    """
+
+    MESSAGE_TYPE = "scale_network"
+
+    def __init__(self, gate_id: str, mode: str, timestamp: Optional[int] = None) -> None:
+        super().__init__(timestamp)
+        self.gate_id = gate_id
+        self.mode = mode                # "scale_up" or "scale_down"
+
+    def to_dict(self) -> dict:
+        return {
+            "message_type": self.MESSAGE_TYPE,
+            "timestamp": self.timestamp,
+            "gate_id": self.gate_id,
+            "mode": self.mode,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "ScaleNetworkMessage":
+        """Raises:
+            ValueError: If a required field is missing.
+        """
+        try:
+            return cls(
+                gate_id=data["gate_id"],
+                mode=data["mode"],
+                timestamp=data.get("timestamp"),
+            )
+        except KeyError as e:
+            raise ValueError(f"Missing required field {e} in {cls.MESSAGE_TYPE} message") from e
+
+
+
 
 # Message factory for deserialization
 MESSAGE_TYPES = {
@@ -235,6 +380,9 @@ MESSAGE_TYPES = {
     LicensePlateResultsMessage.MESSAGE_TYPE: LicensePlateResultsMessage,
     HazardPlateResultsMessage.MESSAGE_TYPE: HazardPlateResultsMessage,
     DecisionResultsMessage.MESSAGE_TYPE: DecisionResultsMessage,
+    ResetAgentAMessage.MESSAGE_TYPE: ResetAgentAMessage,
+    InfractionDecisionMessage.MESSAGE_TYPE: InfractionDecisionMessage,
+    ScaleNetworkMessage.MESSAGE_TYPE: ScaleNetworkMessage,
 }
 
 
@@ -298,3 +446,33 @@ class KafkaMessageProto:
             decision_reason,
             decision_source,
         )
+
+    @classmethod
+    def reset_agent_a(cls, reason: str = "unknown") -> ResetAgentAMessage:
+        return ResetAgentAMessage(reason=reason)
+
+    @classmethod
+    def infraction_decision(
+        cls,
+        license_plate: str,
+        license_crop_url: str,
+        un: str,
+        kemler: str,
+        hazard_crop_url: str,
+        highway_infraction: str,
+    ) -> InfractionDecisionMessage:
+        return InfractionDecisionMessage(
+            license_plate,
+            license_crop_url,
+            un,
+            kemler,
+            hazard_crop_url,
+            highway_infraction,
+        )
+
+    @classmethod
+    def scale(cls, gate_id: str, mode: str) -> ScaleNetworkMessage:
+        """Produce a scale message. Publish on KafkaTopicFactory.scale_up() or scale_down()
+        depending on the desired mode ("scale_up" or "scale_down").
+        """
+        return ScaleNetworkMessage(gate_id, mode=mode)

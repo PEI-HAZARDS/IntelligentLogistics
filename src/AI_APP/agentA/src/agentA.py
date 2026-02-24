@@ -69,7 +69,7 @@ class AgentAConfig(BaseSettings):
     
     @property
     def kafka_topic_consume(self) -> List[str]:
-        return [KafkaTopicFactory.agent_decision(self.gate_id)]
+        return [KafkaTopicFactory.reset_agent_a(self.gate_id)]
 
 class AgentA:
     """
@@ -108,7 +108,7 @@ class AgentA:
         
         self.stream_manager.connect()
         self.running = True
-        self.first_message_sent = False
+        self.awaiting_reset = False
         self.last_message_time = 0
         
         # --- Prometheus Metrics ---
@@ -126,22 +126,22 @@ class AgentA:
         while self.running:
             now = time.time()
             try:
-                if self.first_message_sent and (now - self.last_message_time) <= self.config.decision_timeout:
-                    # Wait for a decision before resuming detection
+                if self.awaiting_reset and (now - self.last_message_time) <= self.config.decision_timeout:
+                    # Wait for reset-agentA before resuming detection
                     _, message_obj, truck_id = self.kafka_consumer.consume_typed_message(timeout=0.1)
                     if truck_id is None:
                         if int(now) % 10 == 0:
-                            logger.info("No decision received yet, waiting...")
+                            logger.info("Waiting for reset signal from V_Brain...")
                         continue  # timeout, keep waiting
                         
-                    logger.info(f"Received decision for truck_id={truck_id}, resuming detection...")
+                    logger.info(f"Reset received (truck_id={truck_id}, reason={message_obj.reason}), resuming detection...")
                 
                 if now - self.last_message_time > self.config.decision_timeout:
-                        logger.info("Decision timeout exceeded while waiting for decision, resuming detection anyway...")
+                        logger.info("Reset timeout exceeded while waiting for decision, resuming detection anyway...")
                 
                 self._process_detection()
 
-                self.first_message_sent = True
+                self.awaiting_reset = True   # truck detected — wait for reset before next detection
             except Exception as e:
                 logger.exception(f"Exception during detection loop: {e}")
                 time.sleep(1)

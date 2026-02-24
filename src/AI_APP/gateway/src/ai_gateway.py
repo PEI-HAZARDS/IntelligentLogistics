@@ -17,13 +17,13 @@ class AIGateway(BaseGateway):
     def get_topics_produce(self) -> dict[str, str]:
         topics = {}
         for gate_id in self.config.gate_ids:
-            # Primary key: X-Source-Topic header value sent by VGateway.
-            # Unambiguous even with multiple gates.
-            topics[KafkaTopicFactory.agent_decision(gate_id)] = KafkaTopicFactory.agent_decision(gate_id)
-        # Fallback key: message_type field, used when X-Source-Topic header is absent.
-        # Only safe for single-gate deployments; for multi-gate rely on X-Source-Topic.
+            # Reset AgentA relay: V_Brain → V_Gateway → IA_Gateway → AI_Broker (→ AgentA)
+            topics[KafkaTopicFactory.reset_agent_a(gate_id)] = KafkaTopicFactory.reset_agent_a(gate_id)
+
+        # Fallback by message_type (single-gate deployments only)
         if len(self.config.gate_ids) == 1:
-            topics["decision_results"] = KafkaTopicFactory.agent_decision(self.config.gate_ids[0])
+            gate_id = self.config.gate_ids[0]
+            topics["reset_agent_a"] = KafkaTopicFactory.reset_agent_a(gate_id)
         return topics
 
     def get_receivers(self) -> list[str]:
