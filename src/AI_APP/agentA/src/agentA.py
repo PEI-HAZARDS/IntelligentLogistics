@@ -128,13 +128,14 @@ class AgentA:
             try:
                 if self.awaiting_reset and (now - self.last_message_time) <= self.config.decision_timeout:
                     # Wait for reset-agentA before resuming detection
-                    _, message_obj, truck_id = self.kafka_consumer.consume_typed_message(timeout=0.1)
-                    if truck_id is None:
+                    topic, message_obj, truck_id = self.kafka_consumer.consume_typed_message(timeout=0.1)
+                    if topic is None:
+                        # No message received (timeout)
                         if int(now) % 10 == 0:
                             logger.info("Waiting for reset signal from V_Brain...")
-                        continue  # timeout, keep waiting
+                        continue
                         
-                    logger.info(f"Reset received (truck_id={truck_id}, reason={message_obj.reason}), resuming detection...")
+                    logger.info(f"Reset received (reason={message_obj.reason}), resuming detection...")
                 
                 if now - self.last_message_time > self.config.decision_timeout:
                         logger.info("Reset timeout exceeded while waiting for decision, resuming detection anyway...")
