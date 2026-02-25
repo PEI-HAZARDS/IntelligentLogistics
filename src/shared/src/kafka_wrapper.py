@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Any, Optional
 from confluent_kafka import Producer, Consumer, KafkaError, KafkaException # type: ignore
-from shared.src.kafka_protocol import deserialize_message
+from shared.src.kafka_protocol import deserialize_message, KafkaTopicFactory
 
 logger = logging.getLogger("KafkaWrapper")
 
@@ -179,7 +179,7 @@ class KafkaConsumerWrapper:
             return None, None, None
             
         truck_id = self.extract_truck_id_from_headers(msg.headers())
-        if not truck_id:
+        if not truck_id and msg.topic() not in KafkaTopicFactory.global_topics():
             logger.warning("Missing truck_id header, skipped")
             return None, None, None
             

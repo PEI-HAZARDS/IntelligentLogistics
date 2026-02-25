@@ -59,8 +59,12 @@ class APIGateway:
     ) -> None:
         self.config = config or APIGatewayConfig()
 
-        # Topic names via factory — single source of truth
-        self.consume_topic = [KafkaTopicFactory.agent_decision(self.config.gate_id)]
+        # Topics consumed from V_Broker
+        self.consume_topic = [
+            KafkaTopicFactory.agent_decision(self.config.gate_id),
+            KafkaTopicFactory.scale_up(),
+            KafkaTopicFactory.scale_down(),
+        ]
         self.produce_topic = KafkaTopicFactory.operator_decision(self.config.gate_id)
 
         self.kafka_producer = kafka_producer or KafkaProducerWrapper(self.config.kafka_bootstrap)
@@ -68,6 +72,7 @@ class APIGateway:
             self.config.kafka_bootstrap, "api-gateway-group", self.consume_topic
         )
         self.ws_manager = WSManager or WebSocketManager()
+        self.stream_ws_manager = WebSocketManager()  # separate manager for stream scale events
         self.app = self._create_app()
         self.running = False
 
@@ -96,10 +101,26 @@ class APIGateway:
                 
                 payload = typed_message.to_dict()
                 payload["truck_id"] = truck_id  # ensure truck_id is always present
-            
-            
-                # Forward the processed message to all receiver gateways
-                # Must schedule on the main event loop (where WebSockets live)
+
+                # Scale messages → send to stream WebSocket (separate from decisions)
+                if topic in (KafkaTopicFactory.scale_up(), KafkaTopicFactory.scale_down()):
+                    scale_event = {
+                        "event": "stream_scale",
+                        "mode": payload.get("mode"),
+                        "quality": "high" if topic == KafkaTopicFactory.scale_up() else "low",
+                        "gate_id": payload.get("gate_id"),
+                    }
+                    logger.info(f"Stream scale event: {scale_event}")
+                    future = asyncio.run_coroutine_threadsafe(
+                        self.stream_ws_manager.broadcast_to_gate(self.config.gate_id, scale_event),
+                        self._loop,
+                    )
+                    future.result(timeout=5)
+                    continue
+
+                payload["truck_id"] = truck_id
+
+                # Default — forward decision to WebSocket (agent-decision, operator-decision, etc.)
                 future = asyncio.run_coroutine_threadsafe(
                     self.ws_manager.broadcast_to_gate(self.config.gate_id, payload),
                     self._loop,
@@ -126,6 +147,7 @@ class APIGateway:
         app.state.kafka_producer = self.kafka_producer
         app.state.produce_topic = self.produce_topic
         app.state.ws_manager = self.ws_manager
+        app.state.stream_ws_manager = self.stream_ws_manager
         app.state.data_module_url = self.config.data_module_url
         app.state.stream_base_url = self.config.stream_base_url
         app.state.gate_id = self.config.gate_id

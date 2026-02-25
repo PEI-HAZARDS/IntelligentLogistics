@@ -239,6 +239,7 @@ services:
             lp-results-$$GID \
             hz-results-$$GID \
             operator-decision-$$GID \
+            reset-agentA-$$GID \
             agent-decision-$$GID; do
             kafka-topics --create --if-not-exists \
               --bootstrap-server kafka:29092 \
@@ -248,9 +249,18 @@ services:
           done
         done
 
+        # Global topics (not per-gate)
+        for TOPIC in scale-up scale-down; do
+          kafka-topics --create --if-not-exists \
+            --bootstrap-server kafka:29092 \
+            --partitions 1 \
+            --replication-factor 1 \
+            --topic "$$TOPIC"
+        done
+
         echo "All topics created."
     environment:
-      - GATE_ID=${GATE_ID}
+      - GATE_IDS=${GATE_IDS}
     restart: "no"
     networks:
       - intelligent-logistics

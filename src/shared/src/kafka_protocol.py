@@ -46,7 +46,12 @@ class KafkaTopicFactory:
     @classmethod
     def scale_down(cls) -> str:
         return "scale-down"
-    
+
+    @classmethod
+    def global_topics(cls) -> list[str]:
+        """Topics that don't require truck_id headers (system-level events)."""
+        return [cls.scale_up(), cls.scale_down()]
+
 
 class Message(ABC):
     """Base Message Type. Subclasses must implement to_dict() and from_dict()."""
