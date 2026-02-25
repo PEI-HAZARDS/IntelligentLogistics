@@ -4,7 +4,7 @@ import sys
 import logging
 
 # Prometheus metrics
-from prometheus_client import start_http_server, Counter, Histogram, Gauge # type: ignore
+from prometheus_client import start_http_server, Counter, Histogram, Gauge  # type: ignore
 
 # Auto-configure PYTHONPATH for local execution
 # This ensures it works both in Docker (/app) and locally
@@ -22,12 +22,12 @@ logging.basicConfig(
 )
 
 # Prometheus metrics
-METRICS_PORT = int(os.getenv("METRICS_PORT", 8001))
-DECISIONS_TOTAL = Counter('decisions_total', 'Total decisions made', ['decision_type'])
-DECISION_TIME = Histogram('decision_processing_seconds', 'Decision processing time in seconds')
-ENGINE_UP = Gauge('decision_engine_up', 'Decision engine is running')
+METRICS_PORT = int(os.getenv("METRICS_PORT", 8002))
+INFRACTIONS_TOTAL = Counter('infractions_total', 'Total infraction evaluations', ['result'])
+INFRACTION_TIME = Histogram('infraction_processing_seconds', 'Infraction processing time in seconds')
+ENGINE_UP = Gauge('infraction_engine_up', 'Infraction engine is running')
 
-from decision_engine.src.decision_engine import DecisionEngine
+from infraction_engine.src.infraction_engine import InfractionEngine
 
 def main():
     # Start Prometheus metrics server
@@ -35,28 +35,28 @@ def main():
     start_http_server(METRICS_PORT)
     ENGINE_UP.set(1)
     
-    decision_engine = DecisionEngine()
+    infraction_engine = InfractionEngine()
     
     # Register signal handler for graceful shutdown
     def signal_handler(sig, frame):
         logger.info("\nKeyboard interrupt received, stopping agent...")
         ENGINE_UP.set(0)
-        decision_engine.stop()
+        infraction_engine.stop()
         sys.exit(0)
     
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
     try:
-        decision_engine.start()
+        infraction_engine.start()
     except KeyboardInterrupt:
         logger.info("\nKeyboard interrupt received, stopping agent...")
         ENGINE_UP.set(0)
-        decision_engine.stop()
+        infraction_engine.stop()
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         ENGINE_UP.set(0)
-        decision_engine.stop()
+        infraction_engine.stop()
         raise
 
 if __name__ == "__main__":

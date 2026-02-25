@@ -191,6 +191,27 @@ services:
     networks:
       - intelligent-logistics
 
+  # Infraction Engine
+  infraction-engine:
+    build:
+      context: ..
+      dockerfile: V_APP/infraction_engine/Dockerfile
+    image: infraction-engine:latest
+    container_name: infraction-engine
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
+      - GATE_ID=${GATE_ID}
+      - API_URL=${DE_API_URL}
+      - TIME_TOLERANCE_MINUTES=${TIME_TOLERANCE_MINUTES}
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    networks:
+      - intelligent-logistics
+
   # Kafka broker (KRaft mode)
   kafka:
     image: confluentinc/cp-kafka:7.6.0
@@ -240,7 +261,8 @@ services:
             hz-results-$$GID \
             operator-decision-$$GID \
             reset-agentA-$$GID \
-            agent-decision-$$GID; do
+            agent-decision-$$GID \
+            infraction-decision-$$GID; do
             kafka-topics --create --if-not-exists \
               --bootstrap-server kafka:29092 \
               --partitions 1 \

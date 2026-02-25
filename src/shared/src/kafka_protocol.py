@@ -301,7 +301,7 @@ class InfractionDecisionMessage(Message):
         un: str,
         kemler: str,
         hazard_crop_url: str,
-        highway_infraction: str,
+        infraction: bool,
         timestamp: Optional[int] = None,
     ) -> None:
         super().__init__(timestamp)
@@ -310,7 +310,7 @@ class InfractionDecisionMessage(Message):
         self.un = un
         self.kemler = kemler
         self.hazard_crop_url = hazard_crop_url
-        self.highway_infraction = highway_infraction
+        self.infraction = infraction
 
     def to_dict(self) -> dict:
         return {
@@ -321,7 +321,7 @@ class InfractionDecisionMessage(Message):
             "un": self.un,
             "kemler": self.kemler,
             "hazard_crop_url": self.hazard_crop_url,
-            "highway_infraction": self.highway_infraction,
+            "infraction": self.infraction,
         }
 
     @classmethod
@@ -336,7 +336,7 @@ class InfractionDecisionMessage(Message):
                 un=data["un"],
                 kemler=data["kemler"],
                 hazard_crop_url=data["hazard_crop_url"],
-                highway_infraction=data["highway_infraction"],
+                infraction=data["infraction"],
                 timestamp=data.get("timestamp"),
             )
         except KeyError as e:
@@ -464,7 +464,7 @@ class KafkaMessageProto:
         un: str,
         kemler: str,
         hazard_crop_url: str,
-        highway_infraction: str,
+        infraction: bool,
     ) -> InfractionDecisionMessage:
         return InfractionDecisionMessage(
             license_plate,
@@ -472,7 +472,7 @@ class KafkaMessageProto:
             un,
             kemler,
             hazard_crop_url,
-            highway_infraction,
+            infraction,
         )
 
     @classmethod
