@@ -134,6 +134,7 @@ services:
             lp-results-$$GID \
             hz-results-$$GID \
             operator-decision-$$GID \
+            reset-agentA-$$GID \
             agent-decision-$$GID; do
             kafka-topics --create --if-not-exists \
               --bootstrap-server kafka:29092 \
