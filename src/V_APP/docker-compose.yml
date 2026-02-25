@@ -229,19 +229,23 @@ services:
         echo "Waiting for Kafka to be ready..."
         cub kafka-ready -b kafka:29092 1 60
 
-        echo "Creating topics..."
-        for TOPIC in \
-          truck-detected-${GATE_ID} \
-          lp-results-${GATE_ID} \
-          hz-results-${GATE_ID} \
-          decision-results-${GATE_ID} \
-          agent-decision-${GATE_ID} \
-          operator-decision-${GATE_ID}; do
-          kafka-topics --create --if-not-exists \
-            --bootstrap-server kafka:29092 \
-            --partitions 1 \
-            --replication-factor 1 \
-            --topic "$$TOPIC"
+        # Parse GATE_IDS from JSON-array string e.g. ["1","2","3"] -> "1 2 3"
+        GATE_ID_LIST=$(echo "$$GATE_IDS" | tr -d '[]"' | tr ',' ' ')
+
+        echo "Creating topics for gate IDs: $$GATE_ID_LIST"
+        for GID in $$GATE_ID_LIST; do
+          for TOPIC in \
+            truck-detected-$$GID \
+            lp-results-$$GID \
+            hz-results-$$GID \
+            operator-decision-$$GID \
+            agent-decision-$$GID; do
+            kafka-topics --create --if-not-exists \
+              --bootstrap-server kafka:29092 \
+              --partitions 1 \
+              --replication-factor 1 \
+              --topic "$$TOPIC"
+          done
         done
 
         echo "All topics created."
@@ -250,6 +254,20 @@ services:
     restart: "no"
     networks:
       - intelligent-logistics
+  
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:latest
+    container_name: redpanda-console
+    ports:
+      - "9999:8080"
+    environment:
+      KAFKA_BROKERS: kafka:29092
+    depends_on:
+    - kafka
+    - kafka-init
+    restart: unless-stopped
+    networks:
+    - intelligent-logistics
 
   # V_APP Gateway (inter-app bridge)
   v-gateway:
