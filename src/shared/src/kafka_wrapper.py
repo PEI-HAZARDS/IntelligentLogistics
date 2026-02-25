@@ -179,7 +179,7 @@ class KafkaConsumerWrapper:
             return None, None, None
             
         truck_id = self.extract_truck_id_from_headers(msg.headers())
-        if not truck_id and msg.topic() not in KafkaTopicFactory.global_topics():
+        if not truck_id and KafkaTopicFactory.requires_truck_id(msg.topic()):
             logger.warning("Missing truck_id header, skipped")
             return None, None, None
             

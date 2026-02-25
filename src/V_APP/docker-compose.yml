@@ -240,7 +240,8 @@ services:
             hz-results-$$GID \
             operator-decision-$$GID \
             reset-agentA-$$GID \
-            agent-decision-$$GID; do
+            agent-decision-$$GID \
+            infraction-decision-$$GID; do
             kafka-topics --create --if-not-exists \
               --bootstrap-server kafka:29092 \
               --partitions 1 \
@@ -290,6 +291,26 @@ services:
     env_file: .env
     ports:
       - "8003:8003"
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    networks:
+      - intelligent-logistics
+
+  # V_Brain — central orchestrator (scale up/down + reset AgentA)
+  # Single instance handles ALL gates — receives GATE_IDS (JSON array)
+  v-brain:
+    build:
+      context: ..
+      dockerfile: V_APP/v_brain/Dockerfile
+    image: v-brain:latest
+    container_name: v-brain
+    restart: unless-stopped
+    environment:
+      - KAFKA_BOOTSTRAP=kafka:29092
+      - GATE_IDS=${GATE_IDS}
+      - CORRELATOR_TIMEOUT_SECONDS=${CORRELATOR_TIMEOUT_SECONDS:-30}
+      - PYTHONUNBUFFERED=1
     depends_on:
       kafka-init:
         condition: service_completed_successfully

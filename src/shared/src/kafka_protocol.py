@@ -52,6 +52,20 @@ class KafkaTopicFactory:
         """Topics that don't require truck_id headers (system-level events)."""
         return [cls.scale_up(), cls.scale_down()]
 
+    @classmethod
+    def requires_truck_id(cls, topic: str) -> bool:
+        """Whether a Kafka topic requires a truck_id header.
+
+        Returns False for:
+          - Global topics (scale-up, scale-down)
+          - Command topics (reset-agentA-{gate_id})
+        """
+        if topic in cls.global_topics():
+            return False
+        if topic.startswith("reset-agentA-"):
+            return False
+        return True
+
 
 class Message(ABC):
     """Base Message Type. Subclasses must implement to_dict() and from_dict()."""
