@@ -118,21 +118,7 @@ class TestUpdateAppointmentStatus:
         call_args = mock_patch.call_args
         assert "in_process" in str(call_args)
 
-    @patch("database_client.requests.patch")
-    def test_update_status_rejected(self, mock_patch, db_client):
-        """REJECTED decision updates status to canceled."""
-        # Arrange
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_patch.return_value = mock_response
 
-        # Act
-        db_client.update_appointment_status(123, "REJECTED")
-
-        # Assert
-        mock_patch.assert_called_once()
-        call_args = mock_patch.call_args
-        assert "canceled" in str(call_args)
 
     @patch("database_client.requests.patch")
     def test_update_status_manual_review_skipped(self, mock_patch, db_client):

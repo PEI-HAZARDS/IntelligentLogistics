@@ -136,28 +136,22 @@ def get_appointments_by_license_plate(
 def get_appointments_for_decision(
     db: Session,
     gate_id: int,
-    time_frame: int = 1,
 ) -> List[Dict[str, Any]]:
     """
     Gets candidate appointments for Decision Engine.
-    Returns appointments with specific license plate, in current shift,
-    with status 'in_transit' or 'delayed'.
+    Returns today's appointments (in_transit or delayed) for the given gate,
+    plus any delayed appointments from yesterday (midnight edge case).
     
     Includes extra info: cargo, booking, gate.
     """
     today = date.today()
-    now = datetime.now()
+    yesterday = today - timedelta(days=1)
     
-    # Calculate time window safely, clamping to start/end of day
-    window_start = now - timedelta(hours=time_frame)
-    window_end = now + timedelta(hours=time_frame)
-    
-    # Clamp to today's boundaries if needed
+    # Day boundaries
     day_start = datetime.combine(today, datetime.min.time())
     day_end = datetime.combine(today, datetime.max.time())
-    
-    window_start = max(window_start, day_start)
-    window_end = min(window_end, day_end)
+    yesterday_start = datetime.combine(yesterday, datetime.min.time())
+    yesterday_end = datetime.combine(yesterday, datetime.max.time())
     
     # Find current shift based on time and gate
     current_shift = db.query(Shift).filter(
@@ -166,9 +160,19 @@ def get_appointments_for_decision(
     ).first()
     
     query = db.query(Appointment).filter(
-        Appointment.scheduled_start_time.between(window_start, window_end),
+        or_(
+            # Today's in_transit or delayed
+            and_(
+                Appointment.scheduled_start_time.between(day_start, day_end),
+                Appointment.status.in_(['in_transit', 'delayed'])
+            ),
+            # Yesterday's delayed that still haven't arrived
+            and_(
+                Appointment.scheduled_start_time.between(yesterday_start, yesterday_end),
+                Appointment.status == 'delayed'
+            )
+        ),
         Appointment.gate_in_id == gate_id,
-        Appointment.status.in_(['in_transit', 'delayed'])
     )
     
     appointments = query.order_by(Appointment.scheduled_start_time.asc()).all()

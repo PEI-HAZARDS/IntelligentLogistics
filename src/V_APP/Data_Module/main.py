@@ -43,21 +43,46 @@ logging.basicConfig(level=logging.INFO)
 
 async def update_delayed_appointments():
     """
-    Background task: Updates in_transit appointments to delayed
-    if they're past their scheduled time + 15 min tolerance.
+    Background task:
+    1. Updates in_transit appointments to delayed if past scheduled time + 15 min.
+    2. At midnight (day change), marks ALL remaining in_transit from the previous
+       day as delayed so they are never lost across day boundaries.
     """
+    current_day = datetime.now(timezone.utc).date()
+
     while True:
         try:
             db = SessionLocal()
             try:
-                cutoff = datetime.now(timezone.utc) - timedelta(minutes=15)
-                
+                now = datetime.now(timezone.utc)
+                today = now.date()
+
+                # --- Day boundary: mark all previous-day in_transit as delayed ---
+                if today != current_day:
+                    yesterday_start = datetime.combine(current_day, datetime.min.time().replace(tzinfo=timezone.utc))
+                    yesterday_end = datetime.combine(current_day, datetime.max.time().replace(tzinfo=timezone.utc))
+
+                    rolled = db.query(Appointment).filter(
+                        Appointment.status == 'in_transit',
+                        Appointment.scheduled_start_time != None,
+                        Appointment.scheduled_start_time.between(yesterday_start, yesterday_end)
+                    ).update({"status": "delayed"}, synchronize_session=False)
+
+                    if rolled > 0:
+                        db.commit()
+                        logger.info(f"Midnight rollover: marked {rolled} in_transit from {current_day} as delayed")
+
+                    current_day = today
+
+                # --- Normal: 15 min tolerance for today's appointments ---
+                cutoff = now - timedelta(minutes=15)
+
                 updated = db.query(Appointment).filter(
                     Appointment.status == 'in_transit',
                     Appointment.scheduled_start_time != None,
                     Appointment.scheduled_start_time < cutoff
                 ).update({"status": "delayed"}, synchronize_session=False)
-                
+
                 if updated > 0:
                     db.commit()
                     logger.info(f"Scheduler: Updated {updated} appointments to 'delayed'")
@@ -65,7 +90,7 @@ async def update_delayed_appointments():
                 db.close()
         except Exception as e:
             logger.error(f"Scheduler error updating delayed appointments: {e}")
-        
+
         # Run every 5 minutes
         await asyncio.sleep(300)
 

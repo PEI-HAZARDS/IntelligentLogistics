@@ -10,10 +10,9 @@ class DatabaseClient:
         self.gate_id = gate_id
     
     def get_appointments(self) -> dict:
-        """Query Appointments API to get all candidates in time frame."""
+        """Query Appointments API to get all candidates for this gate."""
         url = f"{self.api_url}/decisions/query-appointments"
         payload = {
-            "time_frame": 24,
             "gate_id": self.gate_id
         }
         try:
@@ -34,8 +33,6 @@ class DatabaseClient:
         # Map decision to status (same as manual review)
         if decision == "ACCEPTED":
             new_status = "in_process"  # Truck at gate, being processed
-        elif decision == "REJECTED":
-            new_status = "canceled"
         else:
             return  # Don't update for MANUAL_REVIEW
         

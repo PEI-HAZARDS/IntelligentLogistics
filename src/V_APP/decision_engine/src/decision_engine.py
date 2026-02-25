@@ -29,7 +29,7 @@ class DecisionEngineConfig(BaseSettings):
     api_url: str = Field(default="http://localhost:8080/api/v1")
     time_tolerance_minutes: int = Field(default=30)
     max_levenshtein_distance: int = Field(default=2)
-    time_frame_hours: int = Field(default=1)
+
 
 
 class DecisionEngine:
