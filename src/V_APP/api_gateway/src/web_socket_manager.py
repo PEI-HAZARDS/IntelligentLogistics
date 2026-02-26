@@ -8,14 +8,14 @@ logger = logging.getLogger("websocket_manager")
 
 class WebSocketManager:
     """
-    Mantém uma lista de WebSockets ligados ao Gateway para receber
-    notificações em tempo real.
+    Maintains a list of WebSockets connected to the Gateway to receive
+    real-time notifications.
 
-    Estrutura interna:
+    Internal structure:
       _connections : Dict[str, Set[WebSocket]]
 
-    Onde a chave é o gate_id e o valor é um conjunto de WebSockets
-    que pertencem a utilizadores nesse gate.
+    Where the key is the gate_id and the value is a set of WebSockets
+    belonging to users at that gate.
     """
 
     def __init__(self) -> None:
@@ -23,39 +23,39 @@ class WebSocketManager:
 
     async def connect(self, gate_id: str, websocket: WebSocket) -> None:
         """
-        Regista um WebSocket como estando ligado a um determinado gate.
+        Registers a WebSocket as connected to a specific gate.
         """
         await websocket.accept()
         self._connections[gate_id].add(websocket)
-        logger.info(f"[Hub] Registered connection for gate '{gate_id}'. Total connections: {len(self._connections[gate_id])}")
+        logger.info(f"Registered connection for gate '{gate_id}'. Total connections: {len(self._connections[gate_id])}")
 
     def disconnect(self, gate_id: str, websocket: WebSocket) -> None:
         """
-        Remove um WebSocket da lista quando o cliente fecha a ligação.
+        Removes a WebSocket from the list when the client closes the connection.
         """
         try:
             conns = self._connections.get(gate_id, set())
             conns.discard(websocket)
             if not conns:
-                # Se ficou vazio, removemos a chave
+                # If the set is empty, remove the key
                 self._connections.pop(gate_id, None)
-            logger.info(f"[Hub] Disconnected from gate '{gate_id}'. Remaining: {len(self._connections.get(gate_id, set()))}")
+            logger.info(f"Disconnected from gate '{gate_id}'. Remaining: {len(self._connections.get(gate_id, set()))}")
         except Exception:
             pass  # fail silent
 
     async def broadcast_to_gate(self, gate_id: str, message: dict) -> None:
         """
-        Envia uma mensagem JSON para todos os WebSockets ligados
-        ao mesmo gate_id.
+        Sends a JSON message to all WebSockets connected
+        to the same gate_id.
         """
         conns = list(self._connections.get(gate_id, []))
-        logger.info(f"[Hub] Broadcasting to gate '{gate_id}': {len(conns)} connections. All gates: {list(self._connections.keys())}")
+        logger.info(f"Broadcasting to gate '{gate_id}': {len(conns)} connections. All gates: {list(self._connections.keys())}")
 
         for ws in conns:
             try:
                 await ws.send_json(message)
-                logger.info(f"[Hub] Sent message to WebSocket for gate '{gate_id}'")
+                logger.info(f"Sent message to WebSocket for gate '{gate_id}'")
             except Exception as e:
-                # Se der erro ao enviar, desligar o websocket
-                logger.error(f"[Hub] Failed to send to WebSocket: {e}")
+                # If sending fails, disconnect the websocket
+                logger.error(f"Failed to send to WebSocket: {e}")
                 self.disconnect(gate_id, ws)

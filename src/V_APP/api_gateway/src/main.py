@@ -9,14 +9,40 @@ we use the lifespan context to start/stop it alongside uvicorn.
 """
 import asyncio
 import logging
+import logging.config
 import threading
 
 from api_gateway import APIGateway
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(name)-18s | %(levelname)-7s | %(message)s",
-)
+_LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s – %(message)s"
+
+LOG_CONFIG: dict = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {"format": _LOG_FORMAT},
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+            "stream": "ext://sys.stdout",
+        },
+    },
+    "root": {
+        "level": "INFO",
+        "handlers": ["console"],
+    },
+    "loggers": {
+        "uvicorn":        {"handlers": ["console"], "level": "INFO",    "propagate": False},
+        "uvicorn.error": {"handlers": ["console"], "level": "INFO",    "propagate": False},
+        "uvicorn.access":{"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "fastapi":       {"handlers": ["console"], "level": "INFO",    "propagate": False},
+        "httpx":         {"handlers": ["console"], "level": "WARNING", "propagate": False},
+    },
+}
+
+logging.config.dictConfig(LOG_CONFIG)
 
 # Create the gateway instance (reads config from env vars)
 gateway = APIGateway(kafka_producer=None, kafka_consumer=None, WSManager=None)

@@ -185,6 +185,11 @@ class APIGateway:
         @app.get("/health", tags=["health"])
         def health():
             return {"status": "ok", "env": self.config.env}
+        
+        # ----------------------
+        # Prometheus metrics at /metrics (scraped by Grafana/Prometheus)
+        # ----------------------
+        Instrumentator().instrument(app).expose(app)
 
         return app
     
