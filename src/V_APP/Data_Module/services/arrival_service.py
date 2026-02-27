@@ -226,17 +226,70 @@ def get_appointments_count_by_status(
     """
     date_filter = target_date or date.today()
     
-    base_filter = [func.date(Appointment.scheduled_start_time) == date_filter]
+    start_dt = datetime.combine(date_filter, time.min)
+    end_dt = datetime.combine(date_filter, time.max)
+    base_filter = [
+        Appointment.scheduled_start_time >= start_dt,
+        Appointment.scheduled_start_time <= end_dt
+    ]
+    
     if gate_id:
         base_filter.append(Appointment.gate_in_id == gate_id)
 
+    # Filtro para delayed antigos ainda não finalizados
+    delayed_filter = [
+        Appointment.status == "delayed",
+        Appointment.scheduled_start_time < start_dt
+    ]
+    if gate_id:
+        delayed_filter.append(Appointment.gate_in_id == gate_id)
+
+    # Filtro para in_process antigos ainda não finalizados
+    in_process_filter = [
+        Appointment.status == "in_process",
+        Appointment.scheduled_start_time < start_dt
+    ]
+    if gate_id:
+        in_process_filter.append(Appointment.gate_in_id == gate_id)
+
+    # Query para appointments do dia
     status_query = db.query(
         Appointment.status,
         func.count(Appointment.id)
     ).filter(*base_filter)
-    
+
+    # Query para delayed antigos
+    delayed_query = db.query(
+        func.count(Appointment.id)
+    ).filter(*delayed_filter)
+
+    # Query para in_process antigos
+    in_process_query = db.query(
+        func.count(Appointment.id)
+    ).filter(*in_process_filter)
+
+    # Query para infractions do dia
+    infractions_query = db.query(
+        func.count(Appointment.id)
+    ).filter(*base_filter, Appointment.highway_infraction == True)
+
+    # Query para infractions em delayed antigos
+    infractions_delayed_query = db.query(
+        func.count(Appointment.id)
+    ).filter(*delayed_filter, Appointment.highway_infraction == True)
+
+    # Query para infractions em in_process antigos
+    infractions_in_process_query = db.query(
+        func.count(Appointment.id)
+    ).filter(*in_process_filter, Appointment.highway_infraction == True)
+
     results = status_query.group_by(Appointment.status).all()
-    
+    delayed_count = delayed_query.scalar() or 0
+    in_process_count = in_process_query.scalar() or 0
+    infractions_count = infractions_query.scalar() or 0
+    infractions_delayed_count = infractions_delayed_query.scalar() or 0
+    infractions_in_process_count = infractions_in_process_query.scalar() or 0
+
     counts = {
         "in_transit": 0,
         "in_process": 0,
@@ -246,20 +299,24 @@ def get_appointments_count_by_status(
         "total": 0,
         "infractions": 0,
     }
-    
+
     for status, count in results:
         if status in counts:
             counts[status] = count
         counts["total"] += count
 
-    # Count records with highway_infraction flag regardless of status
-    counts["infractions"] = db.query(func.count(Appointment.id)).filter(
-        *base_filter,
-        Appointment.highway_infraction == True  # noqa: E712
-    ).scalar() or 0
-    
-    return counts
+    # Inclui delayed antigos
+    counts["delayed"] += delayed_count
+    counts["total"] += delayed_count
 
+    # Inclui in_process antigos
+    counts["in_process"] += in_process_count
+    counts["total"] += in_process_count
+
+    # Inclui infractions de todos os grupos
+    counts["infractions"] = infractions_count + infractions_delayed_count + infractions_in_process_count
+
+    return counts
 
 def update_appointment_status(
     db: Session,
