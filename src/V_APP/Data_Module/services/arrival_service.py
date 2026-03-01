@@ -30,7 +30,14 @@ def _apply_appointment_filters(query, gate_id, shift_gate_id, shift_type, shift_
             Visit.shift_date == shift_date
         )
     if status:
-        query = query.filter(Appointment.status == status)
+        # Handle multiple statuses (comma-separated) or single status
+        if ',' in status:
+            # Filter empty strings and strip whitespace
+            statuses_list = [s.strip() for s in status.split(',') if s.strip()]
+            if statuses_list:  # Only apply filter if list is not empty
+                query = query.filter(Appointment.status.in_(statuses_list))
+        else:
+            query = query.filter(Appointment.status == status)
     if scheduled_date:
         query = query.filter(func.date(Appointment.scheduled_start_time) == scheduled_date)
     if search:
@@ -90,6 +97,122 @@ def get_appointment_by_id(db: Session, appointment_id: int) -> Optional[Appointm
     if appointment and appointment.arrival_id is None:
         ensure_arrival_id(db, appointment)
     return appointment
+
+
+def get_appointment_detail(db: Session, appointment_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Gets detailed appointment info with all related data.
+    Includes: driver + company, booking + cargo, gates, terminal, visit info.
+    Returns a formatted dict with all nested relationships.
+    """
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appointment:
+        return None
+    
+    # Ensure arrival_id is set
+    if appointment.arrival_id is None:
+        ensure_arrival_id(db, appointment)
+    
+    # Format driver info (with company)
+    driver_info = None
+    if appointment.driver:
+        driver_info = {
+            "license": appointment.driver.drivers_license,
+            "name": appointment.driver.name,
+            "phone": appointment.driver.phone,
+            "company": {
+                "nif": appointment.driver.company.nif,
+                "name": appointment.driver.company.name,
+                "contact": appointment.driver.company.contact,
+            } if appointment.driver.company else None
+        }
+    
+    # Format truck info
+    truck_info = None
+    if appointment.truck:
+        truck_info = {
+            "license_plate": appointment.truck.license_plate,
+            "brand": appointment.truck.brand,
+            "weight": appointment.truck.weight,
+        }
+    
+    # Format booking info with cargo
+    booking_info = None
+    if appointment.booking:
+        cargos = []
+        if appointment.booking.cargos:
+            for cargo in appointment.booking.cargos:
+                cargos.append({
+                    "id": cargo.id,
+                    "description": cargo.description,
+                    "state": cargo.state,
+                    "quantity": float(cargo.quantity) if cargo.quantity else None,
+                })
+        
+        booking_info = {
+            "reference": appointment.booking.reference,
+            "direction": appointment.booking.direction,
+            "scheduled_unloading": appointment.booking.scheduled_unloading.isoformat() if appointment.booking.scheduled_unloading else None,
+            "origin": appointment.booking.origin,
+            "destination": appointment.booking.destination,
+            "cargos": cargos,
+        }
+    
+    # Format gates info
+    gate_in_info = None
+    if appointment.gate_in:
+        gate_in_info = {
+            "id": appointment.gate_in.id,
+            "name": appointment.gate_in.name,
+            "terminal_id": appointment.gate_in.terminal_id,
+        }
+    
+    gate_out_info = None
+    if appointment.gate_out:
+        gate_out_info = {
+            "id": appointment.gate_out.id,
+            "name": appointment.gate_out.name,
+            "terminal_id": appointment.gate_out.terminal_id,
+        }
+    
+    # Format terminal info
+    terminal_info = None
+    if appointment.terminal:
+        terminal_info = {
+            "id": appointment.terminal.id,
+            "name": appointment.terminal.name,
+            "location": appointment.terminal.location,
+        }
+    
+    # Format visit info (if exists)
+    visit_info = None
+    if appointment.visit:
+        visit_info = {
+            "appointment_id": appointment.visit.appointment_id,
+            "shift_gate_id": appointment.visit.shift_gate_id,
+            "shift_type": appointment.visit.shift_type.name if appointment.visit.shift_type else None,
+            "shift_date": appointment.visit.shift_date.isoformat() if appointment.visit.shift_date else None,
+            "entry_time": appointment.visit.entry_time.isoformat() if appointment.visit.entry_time else None,
+            "out_time": appointment.visit.out_time.isoformat() if appointment.visit.out_time else None,
+            "state": appointment.visit.state,
+        }
+    
+    return {
+        "id": appointment.id,
+        "arrival_id": appointment.arrival_id,
+        "status": appointment.status,
+        "scheduled_start_time": appointment.scheduled_start_time.isoformat() if appointment.scheduled_start_time else None,
+        "expected_duration": appointment.expected_duration,
+        "notes": appointment.notes,
+        "highway_infraction": appointment.highway_infraction,
+        "driver": driver_info,
+        "truck": truck_info,
+        "booking": booking_info,
+        "gate_in": gate_in_info,
+        "gate_out": gate_out_info,
+        "terminal": terminal_info,
+        "visit": visit_info,
+    }
 
 
 def get_appointment_by_arrival_id(db: Session, arrival_id: str) -> Optional[Appointment]:
@@ -455,6 +578,29 @@ def update_appointment_from_decision(
     if "alerts" in decision_payload and decision_payload["alerts"]:
         from services.alert_service import create_alerts_for_appointment
         create_alerts_for_appointment(db, appointment, decision_payload["alerts"])
+    
+    return appointment
+
+
+def flag_appointment_highway_infraction(
+    db: Session,
+    appointment_id: int
+) -> Optional[Appointment]:
+    """
+    Flags an appointment as highway infraction.
+    Used when hazmat truck is detected on restricted highway route before port entry.
+    """
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    
+    if not appointment:
+        return None
+    
+    appointment.highway_infraction = True
+    db.commit()
+    db.refresh(appointment)
+    
+    if appointment.arrival_id is None:
+        ensure_arrival_id(db, appointment)
     
     return appointment
 
