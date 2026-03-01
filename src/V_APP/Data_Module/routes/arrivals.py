@@ -8,6 +8,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from loguru import logger
 
 from models.pydantic_models import (
     Appointment, AppointmentStatusUpdate, Visit, VisitStatusUpdate, ShiftTypeEnum
@@ -16,11 +17,13 @@ from services.arrival_service import (
     get_all_appointments,
     count_all_appointments,
     get_appointment_by_id,
+    get_appointment_detail,
     get_appointment_by_arrival_id,
     get_appointments_by_license_plate,
     get_appointments_count_by_status,
     update_appointment_status,
     update_appointment_from_decision,
+    flag_appointment_highway_infraction,
     get_next_appointments,
     create_visit_for_appointment,
     update_visit_status
@@ -61,7 +64,8 @@ def list_arrivals(
     shift_gate_id: Optional[int] = Query(None, description="Filter by shift gate"),
     shift_type: Optional[str] = Query(None, description="Filter by shift type"),
     shift_date: Optional[date] = Query(None, description="Filter by shift date"),
-    status: Optional[str] = Query(None, description="Filter by status"),
+    status: Optional[str] = Query(None, description="Filter by single status"),
+    statuses: Optional[str] = Query(None, description="Filter by multiple statuses (comma-separated)"),
     scheduled_date: Optional[date] = Query(None, description="Filter by scheduled date"),
     search: Optional[str] = Query(None, description="Search by license plate or driver name"),
     db: Session = Depends(get_db),
@@ -69,6 +73,9 @@ def list_arrivals(
     """
     Lists appointments with server-side pagination, filtering and search.
     Used by operator frontend to list daily arrivals.
+    Supports filtering by single status or multiple statuses (comma-separated).
+    
+    Note: If both status and statuses are provided, statuses takes precedence.
     """
     parsed_shift_type = None
     if shift_type:
@@ -78,12 +85,21 @@ def list_arrivals(
             raise HTTPException(status_code=400, detail=str(exc))
 
     skip = (page - 1) * limit
+    
+    # Handle both single status and multiple statuses
+    # Warn if both are provided (statuses takes precedence)
+    final_status = status
+    if statuses:
+        if status:
+            logger.warning(f"Both status and statuses provided. Using statuses='{statuses}', ignoring status='{status}'")
+        final_status = statuses
+    
     filter_kwargs = dict(
         gate_id=gate_id,
         shift_gate_id=shift_gate_id,
         shift_type=parsed_shift_type,
         shift_date=shift_date,
-        status=status,
+        status=final_status,
         scheduled_date=scheduled_date,
         search=search,
     )
@@ -134,6 +150,22 @@ def get_upcoming_arrivals(
     return [Appointment.model_validate(a) for a in appointments]
 
 
+@router.get("/{appointment_id}/detail", response_model=Dict[str, Any])
+def get_arrival_detail(
+    appointment_id: int = Path(..., description="Appointment ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    Gets enriched appointment details with all related data.
+    Includes: driver + company, booking + cargo, gates, terminal, visit status.
+    Used by operator interface for detailed appointment review.
+    """
+    detail = get_appointment_detail(db, appointment_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    return detail
+
+
 @router.get("/{appointment_id}", response_model=Appointment)
 def get_arrival(
     appointment_id: int = Path(..., description="Appointment ID"),
@@ -144,6 +176,7 @@ def get_arrival(
     if not appointment:
         raise HTTPException(status_code=404, detail="Appointment not found")
     return Appointment.model_validate(appointment)
+
 
 
 @router.get("/pin/{arrival_id}", response_model=Appointment)
@@ -207,14 +240,10 @@ def flag_highway_infraction(
     Flag an appointment as highway infraction.
     Hazmat truck detected on restricted highway route before port entry.
     """
-    from models.sql_models import Appointment as AppointmentModel
-    appt = db.query(AppointmentModel).filter(AppointmentModel.id == appointment_id).first()
-    if not appt:
+    appointment = flag_appointment_highway_infraction(db, appointment_id)
+    if not appointment:
         raise HTTPException(status_code=404, detail="Appointment not found")
-    appt.highway_infraction = True
-    db.commit()
-    db.refresh(appt)
-    return Appointment.model_validate(appt)
+    return Appointment.model_validate(appointment)
 
 
 # ==================== UPDATE ENDPOINTS ====================

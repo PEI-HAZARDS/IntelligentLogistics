@@ -108,10 +108,10 @@ async def get_arrival_detail(
     appointment_id: int = Path(..., description="Appointment ID"),
 ):
     """
-    Get appointment details by ID.
-    Proxy to GET /api/v1/arrivals/{appointment_id}
+    Get enriched appointment details by ID (with driver, company, booking, cargo, gates).
+    Proxy to GET /api/v1/arrivals/{appointment_id}/detail
     """
-    return await internal_client.get(f"/arrivals/{appointment_id}")
+    return await internal_client.get(f"/arrivals/{appointment_id}/detail")
 
 
 # -------------------------------
@@ -137,6 +137,7 @@ async def query_arrivals_by_license_plate(
 # -------------------------------
 # GET: /api/arrivals/{gate_id}/pending
 # NOTE: More specific path, must be before /arrivals/{gate_id}
+# NOTE: Returns arrivals pending manual review: status in ['delayed', 'in_transit']
 # -------------------------------
 @router.get("/arrivals/{gate_id}/pending")
 async def list_arrivals_pending(
@@ -145,14 +146,15 @@ async def list_arrivals_pending(
     limit: int = Query(20, ge=1, le=100),
 ):
     """
-    Lists pending arrivals (status='pending') by gate.
+    Lists pending manual review arrivals (status='delayed' or 'in_transit') by gate.
+    Used for manual review queue in operator interface.
     """
     skip = (page - 1) * limit
     params = {
         "skip": skip,
         "limit": limit,
         "gate_id": gate_id,
-        "status": "pending"
+        "statuses": "delayed,in_transit"
     }
     return await internal_client.get("/arrivals", params=params)
 
@@ -233,7 +235,7 @@ async def list_arrivals_pending_shift(
         "limit": limit,
         "gate_id": gate_id,
         "shift_id": shift,
-        "status": "pending"
+        "statuses": "delayed,in_transit"
     }
     return await internal_client.get("/arrivals", params=params)
 
