@@ -127,7 +127,19 @@ These tests validate interface consistency and clarity.
 **Goal:**
 Identify usability weaknesses in layout and clarity.
 
-### 4.2 API Clarity Tests
+### 4.2 Usability tests (SUS)
+
+We implement usability tests also focusing in interface consistency and clarity.
+
+- Forms with a simple survey about our main interface and dashs
+  - Test with a few users/clients
+
+These tests validate interface consistency and clarity with real users.
+
+**Goal:**
+Identify usability weaknesses in layout and clarity.
+
+### 4.3 API Clarity Tests ??????????????
 
 Since the frontend depends on backend APIs:
 
@@ -139,7 +151,7 @@ Since the frontend depends on backend APIs:
 **Goal:**
 Ensure backend communication does not reduce usability.
 
-### 4.3 Deployment Tests
+### 4.4 Deployment Tests
 
 We evaluate:
 
@@ -150,7 +162,7 @@ We evaluate:
 **Goal:**
 Ensure the system is usable in a real operational environment.
 
-### 4.4 Documentation Tests
+### 4.5 Documentation Tests
 
 We verify:
 
