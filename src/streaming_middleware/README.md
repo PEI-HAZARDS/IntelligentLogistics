@@ -47,24 +47,27 @@ The **Streaming Middleware** is the video distribution infrastructure for the ha
 ## Architecture
 
 ```
-IP Camera (RTSP)
-    │
-    ├─ rtsp://10.255.35.86:554/stream2 (720p)
-    └─ rtsp://10.255.35.86:554/stream1 (4K)
-    │
-    ▼
-FFmpeg Ingest (inside container)
-    │
-    ├─ Converts RTSP → RTMP
-    └─ Publishes to local NGINX
-    │
-    ▼
+IP Camera 1 (RTSP)                      IP Camera 2 (RTSP)
+    │                                       │
+    ├─ stream2 (720p)                       ├─ stream2 (720p)
+    └─ stream1 (4K)                         └─ stream1 (4K)
+    │                                       │
+    ▼                                       ▼
+FFmpeg Ingest (CAM1)                    FFmpeg Ingest (CAM2)
+    │                                       │
+    ├─ Converts RTSP → RTMP                 ├─ Converts RTSP → RTMP
+    └─ Publishes to local NGINX             └─ Publishes to local NGINX
+    │                                       │
+    ▼                                       ▼
 NGINX RTMP Server
     │
-    ├─ rtmp://nginx-rtmp/streams_low/gate01  (for Agents)
-    ├─ rtmp://nginx-rtmp/streams_high/gate01 (for Agents)
-    ├─ http://nginx-rtmp:8080/hls/low/gate01.m3u8  (for Frontend)
-    └─ http://nginx-rtmp:8080/hls/high/gate01.m3u8 (for Frontend)
+    ├─ rtmp://nginx-rtmp/streams_low/gate1    (AgentA - Gate 1)
+    ├─ rtmp://nginx-rtmp/streams_low/gate2    (AgentA - Gate 2)
+    ├─ rtmp://nginx-rtmp/streams_high/gate1   (AgentB/C - Gate 1)
+    ├─ rtmp://nginx-rtmp/streams_high/gate2   (AgentB/C - Gate 2)
+    │
+    ├─ http://nginx-rtmp:8080/hls/low/gate1/index.m3u8
+    └─ http://nginx-rtmp:8080/hls/low/gate2/index.m3u8
 ```
 
 ---
@@ -75,16 +78,17 @@ NGINX RTMP Server
 
 | Endpoint | Description |
 |----------|-------------|
-| `rtmp://nginx-rtmp:1935/streams_low/gate01` | 720p stream for AgentA |
-| `rtmp://nginx-rtmp:1935/streams_high/gate01` | 4K stream for AgentB/AgentC |
+| `rtmp://nginx-rtmp:1935/streams_low/gate1` | 720p stream for AgentA (Cam 1) |
+| `rtmp://nginx-rtmp:1935/streams_low/gate2` | 720p stream for AgentA (Cam 2) |
+| `rtmp://nginx-rtmp:1935/streams_high/gate1` | 4K stream for AgentB/AgentC (Cam 1) |
+| `rtmp://nginx-rtmp:1935/streams_high/gate2` | 4K stream for AgentB/AgentC (Cam 2) |
 
 ### HTTP (For Frontend - Web Compatible)
 
 | Endpoint | Description |
 |----------|-------------|
-| `http://nginx-rtmp:8080/hls/low/gate01.m3u8` | HLS 720p stream |
-| `http://nginx-rtmp:8080/hls/high/gate01.m3u8` | HLS 4K stream |
-| `http://nginx-rtmp:8080/dash/low/gate01.mpd` | DASH 720p (optional) |
+| `http://nginx-rtmp:8080/hls/low/gate1/index.m3u8` | HLS 720p stream (Cam 1) |
+| `http://nginx-rtmp:8080/hls/low/gate2/index.m3u8` | HLS 720p stream (Cam 2) |
 | `http://nginx-rtmp:8080/stat` | RTMP statistics page |
 | `http://nginx-rtmp:8080/health` | Health check endpoint |
 
