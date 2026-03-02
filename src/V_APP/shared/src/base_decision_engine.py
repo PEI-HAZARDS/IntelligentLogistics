@@ -119,6 +119,9 @@ class BaseDecisionEngine(ABC):
         default_gid = active_gates[0] if active_gates else "1"
         self.database_client = database_client or DatabaseClient(self.config.api_url, default_gid)
 
+        # Last Truck detected used to prevent duplicate processing where detection starts before last truck leaves the camera view
+        self.last_truck_detected = dict[str, str]()  # gate_id -> license_plate
+
         self._init_base_metrics()
         self._init_specific_metrics()
 

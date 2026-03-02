@@ -123,9 +123,11 @@ class DecisionEngine(BaseDecisionEngine):
             self._publish_decision(
                 gate_id, truck_id, license_plate, lp_msg, hz_msg, un_number, kemler_code,
                 decision=DecisionStatus.ACCEPTED.value,
-                reason="license_plate_matched",
+                reason="license_plate_matched" if matched_plate != self.last_truck_detected.get(gate_id) else "same_truck_detection", # Differente reason if same truck twice ina row
                 start_time=start_time,
             )
+            # Refresh the last detected truck to prevent duplicate decisions if the same truck is detected again shortly after
+            self.last_truck_detected[gate_id] = matched_plate
 
     def _publish_decision(
         self,
