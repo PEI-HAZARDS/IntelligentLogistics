@@ -199,7 +199,7 @@ class BaseDecisionEngine(ABC):
 
         self._execute_logic(gate_id, truck_id, lp_msg, hz_msg)
 
-        del self.lp_buffer[key]
+        del self.lp_buffer[key] # aleterbativa self.lp_buffer.pop(key, None)
         del self.hz_buffer[key]
         self.logger.debug(f"Buffers cleaned for gate_id='{gate_id}', truck_id='{truck_id}'")
 

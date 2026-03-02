@@ -121,6 +121,12 @@ class APIGateway:
 
                 payload["truck_id"] = truck_id
 
+                # Filter out SKIPPED decisions — only relevant for V_Brain (reset cycle),
+                # not for the operator WebSocket
+                if payload.get("decision") == "SKIPPED":
+                    logger.debug(f"Filtered SKIPPED decision for truck {truck_id}")
+                    continue
+
                 # Default — forward decision to WebSocket (agent-decision, operator-decision, etc.)
                 future = asyncio.run_coroutine_threadsafe(
                     self.ws_manager.broadcast_to_gate(self.config.gate_id, payload),

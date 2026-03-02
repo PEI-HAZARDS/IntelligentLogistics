@@ -18,6 +18,7 @@ class DecisionStatus(Enum):
     """Possible outcomes of the automated decision process."""
     ACCEPTED = "ACCEPTED"
     MANUAL_REVIEW = "MANUAL_REVIEW"
+    SKIPPED = "SKIPPED"
 
 
 class DecisionEngineConfig(BaseDecisionEngineConfig):
@@ -108,10 +109,17 @@ class DecisionEngine(BaseDecisionEngine):
             )
             return
 
-        # Match license plate with appointments
+        # Get candidate plates from appointments
         candidate_plates = [appt["license_plate"] for appt in appointments.get("candidates", [])]
+        
+        # Puts the last truck so that if the detection happens twice we kown it has the last truck
+        if self.last_truck_detected.get(gate_id) is not None:
+            candidate_plates.append(self.last_truck_detected.get(gate_id))
+        
+        # Match license plate with appointments
         matched_plate = self.plate_matcher.match_plate(license_plate, candidate_plates)
 
+        # Handle matches
         if matched_plate is None:
             self._publish_decision(
                 gate_id, truck_id, license_plate, lp_msg, hz_msg, un_number, kemler_code,
@@ -120,10 +128,22 @@ class DecisionEngine(BaseDecisionEngine):
                 start_time=start_time,
             )
         else:
+            
+            # Handle same truck detected — publish SKIPPED so V_Brain can reset
+            if matched_plate == self.last_truck_detected.get(gate_id):
+                self.logger.info(f"Gate {gate_id} | Same truck detected: {matched_plate}, publishing SKIPPED")
+                self._publish_decision(
+                    gate_id, truck_id, license_plate, lp_msg, hz_msg, un_number, kemler_code,
+                    decision=DecisionStatus.SKIPPED.value,
+                    reason="same_truck_detection",
+                    start_time=start_time,
+                )
+                return
+
             self._publish_decision(
                 gate_id, truck_id, license_plate, lp_msg, hz_msg, un_number, kemler_code,
                 decision=DecisionStatus.ACCEPTED.value,
-                reason="license_plate_matched" if matched_plate != self.last_truck_detected.get(gate_id) else "same_truck_detection", # Differente reason if same truck twice ina row
+                reason="license_plate_matched",
                 start_time=start_time,
             )
             # Refresh the last detected truck to prevent duplicate decisions if the same truck is detected again shortly after
