@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-WORKDIR /decision_engine
+WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -9,13 +9,11 @@ ENV PYTHONUNBUFFERED=1
 COPY V_APP/decision_engine/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-ENV PYTHONPATH=/decision_engine
-COPY V_APP/decision_engine/src/ ./src/
+# Copy application code (consistent with V_Brain)
+ENV PYTHONPATH=/app
+COPY V_APP/decision_engine/ ./V_APP/decision_engine/
 COPY shared/ ./shared/
-COPY V_APP/decision_engine/init.py ./
-COPY V_APP/decision_engine/data ./data
-COPY V_APP/shared ./V_APP/shared
-COPY V_APP/decision_engine/tests/ ./tests/
+COPY V_APP/shared/ ./V_APP/shared/
 
-CMD ["python", "init.py"]
+# Use module-style execution for consistent imports
+CMD ["python", "-m", "V_APP.decision_engine.init"]

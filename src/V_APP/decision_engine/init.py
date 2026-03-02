@@ -27,7 +27,7 @@ DECISIONS_TOTAL = Counter('decisions_total', 'Total decisions made', ['decision_
 DECISION_TIME = Histogram('decision_processing_seconds', 'Decision processing time in seconds')
 ENGINE_UP = Gauge('decision_engine_up', 'Decision engine is running')
 
-from decision_engine.src.decision_engine import DecisionEngine
+from V_APP.decision_engine.src.decision_engine import DecisionEngine
 
 def main():
     # Start Prometheus metrics server

@@ -182,7 +182,8 @@ services:
       - "8001:8001"
     environment:
       - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
-      - GATE_ID=${GATE_ID}
+      - GATE_IDS=${GATE_IDS}
+      - DECISION_GATE_IDS=${DECISION_GATE_IDS}
       - API_URL=${DE_API_URL}
       - TIME_TOLERANCE_MINUTES=${TIME_TOLERANCE_MINUTES}
     depends_on:
@@ -203,7 +204,8 @@ services:
       - "8002:8002"
     environment:
       - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
-      - GATE_ID=${GATE_ID}
+      - GATE_IDS=${GATE_IDS}
+      - INFRACTION_GATE_IDS=${INFRACTION_GATE_IDS}
       - API_URL=${DE_API_URL}
       - TIME_TOLERANCE_MINUTES=${TIME_TOLERANCE_MINUTES}
     depends_on:

@@ -27,7 +27,7 @@ INFRACTIONS_TOTAL = Counter('infractions_total', 'Total infraction evaluations',
 INFRACTION_TIME = Histogram('infraction_processing_seconds', 'Infraction processing time in seconds')
 ENGINE_UP = Gauge('infraction_engine_up', 'Infraction engine is running')
 
-from infraction_engine.src.infraction_engine import InfractionEngine
+from V_APP.infraction_engine.src.infraction_engine import InfractionEngine
 
 def main():
     # Start Prometheus metrics server

@@ -64,6 +64,7 @@ class APIGateway:
             KafkaTopicFactory.agent_decision(self.config.gate_id),
             KafkaTopicFactory.scale_up(),
             KafkaTopicFactory.scale_down(),
+            KafkaTopicFactory.infraction_decision(self.config.gate_id),
         ]
         self.produce_topic = KafkaTopicFactory.operator_decision(self.config.gate_id)
 

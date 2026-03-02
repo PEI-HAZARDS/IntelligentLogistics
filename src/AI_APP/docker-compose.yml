@@ -39,7 +39,7 @@ services:
     <<: *agenta-base
     container_name: agenta-1
     ports:
-      - "8000:8000"
+      - "${AGENTA_1_PORT}:8000"
     environment:
       - GATE_ID=1
       - MODELS_PATH=${MODELS_PATH_A}
@@ -48,7 +48,7 @@ services:
     <<: *agentb-base
     container_name: agentb-1
     ports:
-      - "8001:8000"
+      - "${AGENTB_1_PORT}:8000"
     environment:
       - GATE_ID=1
       - MODELS_PATH=${MODELS_PATH_B}
@@ -57,9 +57,36 @@ services:
     <<: *agentc-base
     container_name: agentc-1
     ports:
-      - "8002:8000"
+      - "${AGENTC_1_PORT}:8000"
     environment:
       - GATE_ID=1
+      - MODELS_PATH=${MODELS_PATH_C}
+  
+  agenta-2:
+    <<: *agenta-base
+    container_name: agenta-2
+    ports:
+      - "${AGENTA_2_PORT}:8000"
+    environment:
+      - GATE_ID=2
+      - MODELS_PATH=${MODELS_PATH_A}
+
+  agentb-2:
+    <<: *agentb-base
+    container_name: agentb-2
+    ports:
+      - "${AGENTB_2_PORT}:8000"
+    environment:
+      - GATE_ID=2
+      - MODELS_PATH=${MODELS_PATH_B}
+
+  agentc-2:
+    <<: *agentc-base
+    container_name: agentc-2
+    ports:
+      - "${AGENTC_2_PORT}:8000"
+    environment:
+      - GATE_ID=2
       - MODELS_PATH=${MODELS_PATH_C}
   
   ai-gateway:
