@@ -186,6 +186,8 @@ services:
       - DECISION_GATE_IDS=${DECISION_GATE_IDS}
       - API_URL=${DE_API_URL}
       - TIME_TOLERANCE_MINUTES=${TIME_TOLERANCE_MINUTES}
+      - UN_NUMBERS_FILE=${DE_UN_NUMBERS_FILE}
+      - KEMLER_CODES_FILE=${DE_KEMLER_CODES_FILE}
     depends_on:
       kafka-init:
         condition: service_completed_successfully
@@ -208,6 +210,8 @@ services:
       - INFRACTION_GATE_IDS=${INFRACTION_GATE_IDS}
       - API_URL=${DE_API_URL}
       - TIME_TOLERANCE_MINUTES=${TIME_TOLERANCE_MINUTES}
+      - UN_NUMBERS_FILE=${DE_UN_NUMBERS_FILE}
+      - KEMLER_CODES_FILE=${DE_KEMLER_CODES_FILE}
     depends_on:
       kafka-init:
         condition: service_completed_successfully
