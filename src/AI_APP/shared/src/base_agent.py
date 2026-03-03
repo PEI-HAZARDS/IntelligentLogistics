@@ -121,7 +121,7 @@ class BaseAgent(ABC):
         self.crop_storage = crop_storage or self.image_storage
         self.stream_manager = stream_manager or StreamManager(self.config.stream_url)
         self.kafka_producer = kafka_producer or KafkaProducerWrapper(self.config.kafka_bootstrap)
-        self.kafka_consumer = kafka_consumer or KafkaConsumerWrapper(self.config.kafka_bootstrap, f"{self.agent_name.lower()}-group", [self.get_consume_topic()])
+        self.kafka_consumer = kafka_consumer or KafkaConsumerWrapper(self.config.kafka_bootstrap, f"{self.agent_name.lower()}-{self.config.gate_id}-group", [self.get_consume_topic()])
         self.consensus_algorithm = consensus_algorithm or ConsensusAlgorithm()
         
         # Runtime state

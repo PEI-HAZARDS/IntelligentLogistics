@@ -28,3 +28,6 @@ opentelemetry-instrumentation-fastapi
 passlib[bcrypt]
 bcrypt==4.0.1
 python-dotenv
+
+# --- Logging ---
+loguru
