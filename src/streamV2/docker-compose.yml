@@ -1,0 +1,37 @@
+services:
+  mediamtx:
+    build: .
+    container_name: mediamtx
+    ports:
+      - "1935:1935"   # RTMP  — ffmpeg ingest + AI agents
+      - "8554:8554"   # RTSP  — alternative agent consumption
+      - "8888:8888"   # HLS   — browser playback (LL-HLS)
+      - "8889:8889"   # WebRTC — ultra-low latency browser
+      - "9997:9997"   # API   — health check + management
+    environment:
+      # Stream Mode: "camera" (default) ou "test"
+      - STREAM_MODE=${STREAM_MODE}
+      # Camera 1
+      - CAMERA1_IP=${CAMERA1_IP}
+      - CAMERA1_PORT=${CAMERA1_PORT}
+      - CAMERA1_LOW_PATH=${CAMERA1_LOW_PATH}
+      - CAMERA1_HIGH_PATH=${CAMERA1_HIGH_PATH}
+      - CAMERA1_GATE_ID=${CAMERA1_GATE_ID}
+      # Camera 2
+      - CAMERA2_IP=${CAMERA2_IP}
+      - CAMERA2_PORT=${CAMERA2_PORT}
+      - CAMERA2_LOW_PATH=${CAMERA2_LOW_PATH}
+      - CAMERA2_HIGH_PATH=${CAMERA2_HIGH_PATH}
+      - CAMERA2_GATE_ID=${CAMERA2_GATE_ID}
+      # Test videos
+      - TEST_VIDEO1_PATH=${TEST_VIDEO1_PATH}
+      - TEST_VIDEO2_PATH=${TEST_VIDEO2_PATH}
+    volumes:
+      - ${TEST_VIDEOS_HOST_PATH}:/videos:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9997/v3/config/global/get"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

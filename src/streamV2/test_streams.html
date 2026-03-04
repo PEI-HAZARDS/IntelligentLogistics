@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>MediaMTX - Stream Test (Dual Camera)</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+            margin: 0;
+        }
+
+        h1 {
+            text-align: center;
+            color: #4CAF50;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .camera-section {
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 15px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .player-box {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        h2 {
+            margin-top: 0;
+            color: #64B5F6;
+            font-size: 1.2em;
+        }
+
+        video {
+            width: 100%;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+        }
+
+        .status {
+            padding: 8px;
+            margin: 8px 0;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+
+        .status.loading {
+            background: #FF9800;
+            color: #000;
+        }
+
+        .status.success {
+            background: #4CAF50;
+        }
+
+        .status.error {
+            background: #f44336;
+        }
+
+        .info {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 8px;
+            margin-top: 8px;
+            border-radius: 5px;
+            font-size: 11px;
+        }
+
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            margin: 5px 0;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        .header-full {
+            grid-column: 1 / -1;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header-full">
+            <h1>MediaMTX — Dual Camera Monitoring</h1>
+        </div>
+
+        <!-- CAMERA 1 -->
+        <div class="camera-section">
+            <h2 style="color: #FFD54F; text-align: center;">GATE: gate1</h2>
+            <div class="player-box">
+                <h2>Stream LOW (720p)</h2>
+                <div id="status-cam1-low" class="status loading">Initializing...</div>
+                <video id="video-cam1-low" controls muted autoplay></video>
+                <div class="info">
+                    <strong>URL:</strong> <span id="url-cam1-low">-</span><br>
+                    <strong>Resolution:</strong> <span id="res-cam1-low">-</span>
+                </div>
+                <button onclick="reload('gate1', 'low', 'cam1')">Reload LOW</button>
+            </div>
+            <div class="player-box">
+                <h2>Stream HIGH (4K)</h2>
+                <div id="status-cam1-high" class="status loading">Initializing...</div>
+                <video id="video-cam1-high" controls muted></video>
+                <div class="info">
+                    <strong>URL:</strong> <span id="url-cam1-high">-</span><br>
+                    <strong>Resolution:</strong> <span id="res-cam1-high">-</span>
+                </div>
+                <button onclick="reload('gate1', 'high', 'cam1')">Reload HIGH</button>
+            </div>
+        </div>
+
+        <!-- CAMERA 2 -->
+        <div class="camera-section">
+            <h2 style="color: #FFD54F; text-align: center;">GATE: gate2</h2>
+            <div class="player-box">
+                <h2>Stream LOW (720p)</h2>
+                <div id="status-cam2-low" class="status loading">Initializing...</div>
+                <video id="video-cam2-low" controls muted autoplay></video>
+                <div class="info">
+                    <strong>URL:</strong> <span id="url-cam2-low">-</span><br>
+                    <strong>Resolution:</strong> <span id="res-cam2-low">-</span>
+                </div>
+                <button onclick="reload('gate2', 'low', 'cam2')">Reload LOW</button>
+            </div>
+            <div class="player-box">
+                <h2>Stream HIGH (4K)</h2>
+                <div id="status-cam2-high" class="status loading">Initializing...</div>
+                <video id="video-cam2-high" controls muted></video>
+                <div class="info">
+                    <strong>URL:</strong> <span id="url-cam2-high">-</span><br>
+                    <strong>Resolution:</strong> <span id="res-cam2-high">-</span>
+                </div>
+                <button onclick="reload('gate2', 'high', 'cam2')">Reload HIGH</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // MediaMTX HLS — hardcoded VM IP for local file testing
+        const BASE_URL = "http://10.255.32.56:8888";
+        const streams = {};
+
+        function initPlayer(gate, quality, playerPrefix) {
+            const id = `${playerPrefix}-${quality}`;
+            const video = document.getElementById(`video-${id}`);
+            const status = document.getElementById(`status-${id}`);
+            const urlDisplay = document.getElementById(`url-${id}`);
+            const resDisplay = document.getElementById(`res-${id}`);
+
+            const m3u8Url = `${BASE_URL}/streams_${quality}/${gate}/index.m3u8`;
+            urlDisplay.textContent = m3u8Url;
+            status.textContent = 'Connecting...';
+
+            if (Hls.isSupported()) {
+                if (streams[id]) streams[id].destroy();
+
+                const hls = new Hls({
+                    lowLatencyMode: true,
+                    liveSyncDuration: 1,
+                    liveMaxLatencyDuration: 5,
+                    maxLiveSyncPlaybackRate: 1.5,
+                    liveDurationInfinity: true,
+                });
+
+                streams[id] = hls;
+                hls.loadSource(m3u8Url);
+                hls.attachMedia(video);
+
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    status.className = 'status success';
+                    status.textContent = 'Live';
+                });
+
+                hls.on(Hls.Events.ERROR, (event, data) => {
+                    if (data.fatal) {
+                        status.className = 'status error';
+                        status.textContent = `Error: ${data.details}`;
+                        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+                    }
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = m3u8Url;
+                status.className = 'status success';
+                status.textContent = 'Native Playback';
+            }
+
+            video.onloadedmetadata = () => {
+                resDisplay.textContent = `${video.videoWidth}x${video.videoHeight}`;
+            };
+        }
+
+        function reload(gate, quality, playerPrefix) {
+            initPlayer(gate, quality, playerPrefix);
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            initPlayer('gate1', 'low', 'cam1');
+            initPlayer('gate1', 'high', 'cam1');
+            initPlayer('gate2', 'low', 'cam2');
+            initPlayer('gate2', 'high', 'cam2');
+        });
+    </script>
+</body>
+
+</html>
