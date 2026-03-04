@@ -156,6 +156,9 @@ services:
       - CORS_ALLOW_HEADERS=${CORS_ALLOW_HEADERS}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
       - PYTHONUNBUFFERED=1
+      - GATE_IDS=${GATE_IDS}
+      - INFRACTION_GATE_IDS=${INFRACTION_GATE_IDS}
+      - DECISION_GATE_IDS=${DECISION_GATE_IDS}
     depends_on:
       kafka-init:
         condition: service_completed_successfully

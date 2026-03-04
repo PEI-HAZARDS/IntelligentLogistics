@@ -77,10 +77,9 @@ class InfractionEngine(BaseDecisionEngine):
         infraction = True
         
         if has_appointment:
-            self.logger.info(f"Truck '{license_plate}' (gate {gate_id}) is hazardous but has a valid appointment — infraction detected")
+            self.logger.info(f"Truck '{license_plate}' (gate {gate_id}) is hazardous and a valid appointment — infraction detected")
         else:
-            self.logger.warning(f"Truck '{license_plate}' (gate {gate_id}) is hazardous but could NOT be matched to any appointment - ignoring")
-            infraction = False
+            self.logger.warning(f"Truck '{license_plate}' (gate {gate_id}) is hazardous but could NOT be matched to any appointment - infraction detected regardless")
 
         self._publish_infraction(
             gate_id, truck_id, license_plate, lp_msg, hz_msg,

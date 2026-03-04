@@ -8,11 +8,6 @@ def get_kafka_producer(request: Request) -> KafkaProducerWrapper:
     return request.app.state.kafka_producer
 
 
-def get_produce_topic(request: Request) -> str:
-    """FastAPI dependency — retrieves the Kafka produce topic from app.state."""
-    return request.app.state.produce_topic
-
-
 def get_stream_base_url(request: Request) -> str:
     """FastAPI dependency — retrieves the stream base URL from app.state."""
     return request.app.state.stream_base_url
@@ -27,7 +22,3 @@ def get_ws_manager(request: Request) -> WebSocketManager:
     """FastAPI dependency — retrieves the WebSocketManager from app.state."""
     return request.app.state.ws_manager
 
-
-def get_gate_id(request: Request) -> str:
-    """FastAPI dependency — retrieves the gate ID from app.state."""
-    return request.app.state.gate_id

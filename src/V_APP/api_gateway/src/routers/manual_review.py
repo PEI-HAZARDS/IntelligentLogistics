@@ -1,12 +1,11 @@
-from typing import Dict, Any, Optional, List
+from typing import Optional, List
 
-from fastapi import APIRouter, Body, Query, Path, Depends # type: ignore
+from fastapi import APIRouter, Query, Depends # type: ignore
 from loguru import logger # type: ignore
 
-from clients import internal_api_client as internal_client
-from dependencies import get_kafka_producer, get_produce_topic, get_ws_manager, get_gate_id
+from dependencies import get_kafka_producer, get_ws_manager
 from shared.src.kafka_wrapper import KafkaProducerWrapper
-from shared.src.kafka_protocol import DecisionResultsMessage
+from shared.src.kafka_protocol import DecisionResultsMessage, KafkaTopicFactory
 from web_socket_manager import WebSocketManager
 router = APIRouter(tags=["manual_review"])
 
@@ -17,9 +16,8 @@ router = APIRouter(tags=["manual_review"])
 @router.post("/manual-review/")
 async def produce_manual_review(
     kafka_producer: KafkaProducerWrapper = Depends(get_kafka_producer),
-    produce_topic: str = Depends(get_produce_topic),
     ws_manager: WebSocketManager = Depends(get_ws_manager),
-    gate_id: str = Depends(get_gate_id),
+    gate_id: str = Query(..., description="Gate ID the operator is working on"),
     license_plate: str = Query(..., description="Detected license plate"),
     license_crop_url: str = Query("", description="License plate crop URL"),
     un: str = Query("", description="UN number"),
@@ -34,6 +32,7 @@ async def produce_manual_review(
 ):
     """
     Propagate a manual decision to kafka, which will be consumed by the Data Module and stored in the database.
+    The gate_id is provided by the frontend and used to route the message to the correct operator-decision topic.
     """
     msg = DecisionResultsMessage(
         license_plate=license_plate,
@@ -47,8 +46,12 @@ async def produce_manual_review(
         decision_reason=decision_reason,
         decision_source=decision_source,
     )
+
+    # Build the correct topic for this gate
+    produce_topic = KafkaTopicFactory.operator_decision(gate_id)
     
-    logger.info(f"Propagating manual review decision for {license_plate}: {decision} (reason: {decision_reason})")
+    logger.info(f"Propagating manual review decision for {license_plate}: {decision} "
+                f"(reason: {decision_reason}) to topic '{produce_topic}'")
     
     if truck_id is not None:
         kafka_producer.produce(
@@ -62,7 +65,7 @@ async def produce_manual_review(
             data=msg.to_dict(),
         )
 
-    # Broadcast the decision to connected WebSocket clients
+    # Broadcast the decision to connected WebSocket clients for this gate
     ws_payload = msg.to_dict()
     ws_payload["truck_id"] = truck_id
     
