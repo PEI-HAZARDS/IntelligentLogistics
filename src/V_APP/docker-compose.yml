@@ -141,6 +141,7 @@ services:
     environment:
       - DATA_MODULE_URL=${DATA_MODULE_URL}
       - STREAM_BASE_URL=${STREAM_BASE_URL}
+      - STREAM_WEBRTC_BASE_URL=${STREAM_WEBRTC_BASE_URL}
       - KAFKA_BOOTSTRAP=kafka:29092
       - CONSUME_TOPIC=decision-results-${GATE_ID}
       - PRODUCE_TOPIC=operator-decision-${GATE_ID}

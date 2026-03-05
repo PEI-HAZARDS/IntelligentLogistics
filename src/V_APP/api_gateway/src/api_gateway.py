@@ -42,7 +42,8 @@ class APIGatewayConfig(BaseSettings):
     infraction_gate_ids: str = Field(default='["1"]') # Highway/Approach gates
     gateway_port: int = Field(default=8000)
     data_module_url: str = Field(default="http://data-module:8000")
-    stream_base_url: str = Field(default="http://nginx-rtmp:8080")
+    stream_base_url: str = Field(default="http://mediamtx:8888")
+    stream_webrtc_base_url: str = Field(default="http://mediamtx:8889")
     api_prefix: str = Field(default="/api")
     env: str = Field(default="dev")
     cors_allow_origins: list[str] = Field(default=["*"])
@@ -181,6 +182,7 @@ class APIGateway:
         app.state.ws_manager = self.ws_manager
         app.state.data_module_url = self.config.data_module_url
         app.state.stream_base_url = self.config.stream_base_url
+        app.state.stream_webrtc_base_url = self.config.stream_webrtc_base_url
 
         app.add_middleware(
             CORSMiddleware,

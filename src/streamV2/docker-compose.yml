@@ -6,9 +6,21 @@ services:
       - "1935:1935"   # RTMP  — ffmpeg ingest + AI agents
       - "8554:8554"   # RTSP  — alternative agent consumption
       - "8888:8888"   # HLS   — browser playback (LL-HLS)
-      - "8889:8889"   # WebRTC — ultra-low latency browser
+      - "8889:8889"   # WebRTC — ultra-low latency browser (signaling)
+      - "8189:8189/udp" # WebRTC — UDP mux port (media transport)
+      - "8189:8189/tcp" # WebRTC — TCP mux port (fallback)
       - "9997:9997"   # API   — health check + management
     environment:
+      # WebRTC NAT traversal — MediaMTX native env var overrides
+      # (env var = MTX_ + config field name in UPPERCASE)
+      # Disable auto-gathering Docker-internal IPs (127.0.0.1, 172.x.x.x)
+      - MTX_WEBRTCIPSFROMINTERFACES=false
+      # Advertise ONLY the host VM IP for ICE candidates
+      - MTX_WEBRTCADDITIONALHOSTS=${MTX_WEBRTC_HOST_IP}
+      # UDP port for WebRTC media transport (mapped in ports above)
+      - MTX_WEBRTCLOCALUDPADDRESS=:8189
+      # TCP fallback for WebRTC media (empty = disabled by default)
+      - MTX_WEBRTCLOCALTCPADDRESS=:8189
       # Stream Mode: "camera" (default) ou "test"
       - STREAM_MODE=${STREAM_MODE}
       # Camera 1

@@ -191,7 +191,7 @@ class TestBaseAgentInit:
 
             # Assert
             assert agent.gate_id == "1"  # Default
-            assert "rtmp://" in agent.stream_url
+            assert "rtsp://" in agent.stream_url
             assert "gate1" in agent.stream_url
 
     def test_load_config_uses_env_vars(self, mock_dependencies):

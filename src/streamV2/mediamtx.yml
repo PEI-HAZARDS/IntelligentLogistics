@@ -30,6 +30,11 @@ hlsSegmentMaxSize: 50M
 # WebRTC — ultra-low latency browser playback
 webrtc: yes
 webrtcAddress: :8889
+# NAT traversal + mux ports are configured via docker-compose env vars:
+#   MTX_WEBRTCIPSFROMINTERFACES — disable Docker-internal IP gathering
+#   MTX_WEBRTCADDITIONALHOSTS   — host external IP for ICE candidates
+#   MTX_WEBRTCLOCALUDPADDRESS   — single UDP port for media
+#   MTX_WEBRTCLOCALTCPADDRESS   — single TCP port (fallback)
 
 # API — management / health checks
 api: yes
