@@ -1,0 +1,11 @@
+confluent_kafka==2.12.2
+
+# Gateway HTTP server
+fastapi
+uvicorn[standard]
+httpx
+pydantic-settings
+
+# Prometheus metrics
+prometheus_client
+prometheus-fastapi-instrumentator

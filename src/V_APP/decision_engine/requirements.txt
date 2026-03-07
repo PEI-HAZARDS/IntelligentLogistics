@@ -1,0 +1,13 @@
+# --- Core ---
+pydantic
+pydantic-settings
+numpy
+
+# --- HTTP ---
+requests
+
+# --- Kafka & Messaging ---
+confluent_kafka==2.12.0
+
+# --- Observability ---
+prometheus_client

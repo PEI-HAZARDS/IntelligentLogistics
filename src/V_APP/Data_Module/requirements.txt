@@ -1,0 +1,33 @@
+# --- Web & API ---
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# --- Database & Storage ---
+sqlalchemy
+psycopg2-binary
+pymongo
+dnspython
+redis[hiredis]
+
+# --- HTTP ---
+httpx[http2]
+
+# --- Kafka & Messaging ---
+confluent_kafka==2.12.0
+
+# --- Observability ---
+prometheus-fastapi-instrumentator
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-instrumentation-fastapi
+
+# --- Security ---
+passlib[bcrypt]
+bcrypt==4.0.1
+python-dotenv
+
+# --- Logging ---
+loguru
