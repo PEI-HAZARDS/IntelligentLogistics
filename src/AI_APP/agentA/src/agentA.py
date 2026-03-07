@@ -31,7 +31,7 @@ class AgentAConfig(BaseSettings):
     
     # MediaMTX RTSP (low-latency UDP stream consumption)
     nginx_host: str = Field(default="10.255.32.56")
-    nginx_port: int = Field(default=8554)
+    nginx_port: int = Field(default=1935)
     
     # MinIO
     minio_host: str = Field(default="10.255.32.82")
@@ -48,7 +48,7 @@ class AgentAConfig(BaseSettings):
     # Use properties to dynamically construct dependent values
     @property
     def stream_low(self) -> str:
-        return f"rtsp://{self.nginx_host}:{self.nginx_port}/streams_low/gate{self.gate_id}"
+        return f"rtmp://{self.nginx_host}:{self.nginx_port}/streams_low/gate{self.gate_id}"
         
     @property
     def minio_bucket_name(self) -> str:
