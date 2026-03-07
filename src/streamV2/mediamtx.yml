@@ -1,0 +1,59 @@
+###############################################
+# MediaMTX Configuration — StreamV2
+# Replaces NGINX-RTMP for lower latency,
+# less bandwidth, and native WebRTC support.
+###############################################
+
+# ── Global ──────────────────────────────────
+logLevel: info
+logDestinations: [stdout]
+
+# ── Protocol Listeners ──────────────────────
+# RTMP — used by ffmpeg ingest + AI agents
+rtmp: yes
+rtmpAddress: :1935
+
+# RTSP — optional, agents can also consume via RTSP
+rtsp: yes
+rtspAddress: :8554
+
+# HLS — browser playback (LL-HLS for low latency)
+hls: yes
+hlsAddress: :8888
+hlsAlwaysRemux: yes
+hlsVariant: lowLatency
+hlsSegmentCount: 7
+hlsSegmentDuration: 500ms
+hlsPartDuration: 100ms
+hlsSegmentMaxSize: 50M
+
+# WebRTC — ultra-low latency browser playback
+webrtc: yes
+webrtcAddress: :8889
+# NAT traversal + mux ports are configured via docker-compose env vars:
+#   MTX_WEBRTCIPSFROMINTERFACES — disable Docker-internal IP gathering
+#   MTX_WEBRTCADDITIONALHOSTS   — host external IP for ICE candidates
+#   MTX_WEBRTCLOCALUDPADDRESS   — single UDP port for media
+#   MTX_WEBRTCLOCALTCPADDRESS   — single TCP port (fallback)
+
+# API — management / health checks
+api: yes
+apiAddress: :9997
+
+# ── Paths ───────────────────────────────────
+# Dynamic paths: any publisher can create a path
+# matching these patterns. No need to pre-declare
+# each gate — gate1, gate2, etc. are all accepted.
+
+paths:
+  # LOW quality streams (720p) — AgentA consumes these
+  streams_low/gate1:
+    source: publisher
+  streams_low/gate2:
+    source: publisher
+
+  # HIGH quality streams (4K) — AgentB/C consume these
+  streams_high/gate1:
+    source: publisher
+  streams_high/gate2:
+    source: publisher

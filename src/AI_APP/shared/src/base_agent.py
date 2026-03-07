@@ -21,7 +21,7 @@ class BaseAgentConfig(BaseSettings):
     # Kafka
     kafka_bootstrap: str = Field(default="10.255.32.143:9092")
 
-    # NGINX RTMP
+    # MediaMTX RTSP (low-latency UDP stream consumption)
     nginx_host: str = Field(default="10.255.32.56")
     nginx_port: int = Field(default=1935)
 

@@ -13,6 +13,11 @@ def get_stream_base_url(request: Request) -> str:
     return request.app.state.stream_base_url
 
 
+def get_stream_webrtc_base_url(request: Request) -> str:
+    """FastAPI dependency — retrieves the WebRTC stream base URL from app.state."""
+    return request.app.state.stream_webrtc_base_url
+
+
 def get_data_module_url(request: Request) -> str:
     """FastAPI dependency — retrieves the Data Module URL from app.state."""
     return request.app.state.data_module_url
