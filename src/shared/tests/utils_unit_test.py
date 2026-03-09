@@ -11,10 +11,9 @@ Uses unittest.mock for file I/O mocking.
 
 import pytest
 from unittest.mock import patch, MagicMock, mock_open
-from utils import (
+from shared.src.utils import (
     levenshtein_distance,
     load_from_file,
-    extract_truck_id_from_headers,
 )
 
 
@@ -260,93 +259,4 @@ class TestLoadFromFile:
         assert result == {"key1": "value1", "key2": "value2"}
 
 
-# =============================================================================
-# Tests for extract_truck_id_from_headers
-# =============================================================================
 
-class TestExtractTruckIdFromHeaders:
-    """Tests for the extract_truck_id_from_headers function."""
-
-    def test_bytes_header_value(self):
-        """Extract truck_id when value is bytes."""
-        # Arrange
-        headers = [("truckId", b"TRUCK-123")]
-
-        # Act
-        result = extract_truck_id_from_headers(headers)
-
-        # Assert
-        assert result == "TRUCK-123"
-
-    def test_string_header_value(self):
-        """Extract truck_id when value is already string."""
-        # Arrange
-        headers = [("truckId", "TRUCK-456")]
-
-        # Act
-        result = extract_truck_id_from_headers(headers)
-
-        # Assert
-        assert result == "TRUCK-456"
-
-    def test_missing_truck_id_header(self):
-        """Return None when truckId header is not present."""
-        # Arrange
-        headers = [("someOtherHeader", "value")]
-
-        # Act
-        result = extract_truck_id_from_headers(headers)
-
-        # Assert
-        assert result is None
-
-    def test_empty_headers_list(self):
-        """Return None for empty headers list."""
-        # Arrange
-        headers = []
-
-        # Act
-        result = extract_truck_id_from_headers(headers)
-
-        # Assert
-        assert result is None
-
-    def test_none_headers(self):
-        """Return None when headers is None."""
-        # Arrange
-        headers = None
-
-        # Act
-        result = extract_truck_id_from_headers(headers)
-
-        # Assert
-        assert result is None
-
-    def test_multiple_headers_finds_truck_id(self):
-        """Find truckId among multiple headers."""
-        # Arrange
-        headers = [
-            ("header1", "val1"),
-            ("truckId", b"FOUND-TRUCK"),
-            ("header2", "val2"),
-        ]
-
-        # Act
-        result = extract_truck_id_from_headers(headers)
-
-        # Assert
-        assert result == "FOUND-TRUCK"
-
-    def test_first_truck_id_is_returned(self):
-        """If multiple truckId headers exist, first one is returned."""
-        # Arrange
-        headers = [
-            ("truckId", b"FIRST"),
-            ("truckId", b"SECOND"),
-        ]
-
-        # Act
-        result = extract_truck_id_from_headers(headers)
-
-        # Assert
-        assert result == "FIRST"

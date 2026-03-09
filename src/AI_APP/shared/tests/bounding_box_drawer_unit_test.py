@@ -13,7 +13,7 @@ All cv2 calls are mocked.
 import pytest
 import numpy as np
 from unittest.mock import patch, MagicMock
-from bounding_box_drawer import BoundingBoxDrawer
+from AI_APP.shared.src.bounding_box_drawer import BoundingBoxDrawer
 
 
 # =============================================================================
@@ -182,7 +182,7 @@ class TestBgrColorMapping:
 class TestDrawBox:
     """Tests for the draw_box method."""
 
-    @patch("bounding_box_drawer.cv2")
+    @patch("AI_APP.shared.src.bounding_box_drawer.cv2")
     def test_draw_single_box_without_confidence(self, mock_cv2):
         """Draw a single box without confidence value."""
         # Arrange
@@ -197,7 +197,7 @@ class TestDrawBox:
         mock_cv2.rectangle.assert_called_once()
         assert result is frame
 
-    @patch("bounding_box_drawer.cv2")
+    @patch("AI_APP.shared.src.bounding_box_drawer.cv2")
     def test_draw_single_box_with_confidence(self, mock_cv2):
         """Draw a single box with confidence value."""
         # Arrange
@@ -213,7 +213,7 @@ class TestDrawBox:
         mock_cv2.rectangle.assert_called()
         assert result is frame
 
-    @patch("bounding_box_drawer.cv2")
+    @patch("AI_APP.shared.src.bounding_box_drawer.cv2")
     def test_draw_multiple_boxes(self, mock_cv2):
         """Draw multiple boxes in single call."""
         # Arrange
@@ -233,7 +233,7 @@ class TestDrawBox:
         assert mock_cv2.rectangle.call_count == 6
         assert result is frame
 
-    @patch("bounding_box_drawer.cv2")
+    @patch("AI_APP.shared.src.bounding_box_drawer.cv2")
     def test_draw_empty_boxes_list(self, mock_cv2):
         """Empty boxes list doesn't call rectangle."""
         # Arrange
@@ -248,7 +248,7 @@ class TestDrawBox:
         mock_cv2.rectangle.assert_not_called()
         assert result is frame
 
-    @patch("bounding_box_drawer.cv2")
+    @patch("AI_APP.shared.src.bounding_box_drawer.cv2")
     def test_skip_invalid_box_with_less_than_4_elements(self, mock_cv2):
         """Boxes with less than 4 elements are skipped."""
         # Arrange
@@ -263,7 +263,7 @@ class TestDrawBox:
         mock_cv2.rectangle.assert_not_called()
         assert result is frame
 
-    @patch("bounding_box_drawer.cv2")
+    @patch("AI_APP.shared.src.bounding_box_drawer.cv2")
     def test_draw_box_with_label_only(self, mock_cv2):
         """Draw box with label but no confidence."""
         # Arrange
@@ -279,7 +279,7 @@ class TestDrawBox:
         mock_cv2.rectangle.assert_called()
         assert result is frame
 
-    @patch("bounding_box_drawer.cv2")
+    @patch("AI_APP.shared.src.bounding_box_drawer.cv2")
     def test_continue_on_exception_in_single_box(self, mock_cv2):
         """If one box fails, continue drawing others."""
         # Arrange
@@ -310,7 +310,7 @@ class TestDrawBox:
 class TestDrawLabel:
     """Tests for the _draw_label method."""
 
-    @patch("bounding_box_drawer.cv2")
+    @patch("AI_APP.shared.src.bounding_box_drawer.cv2")
     def test_draw_label_with_light_background(self, mock_cv2):
         """Light color background gets dark text (sum >= 400)."""
         # Arrange
@@ -328,7 +328,7 @@ class TestDrawLabel:
         text_color = call_args[5]  # 6th positional arg is text_color
         assert text_color == (0, 0, 0)  # Black text for light background
 
-    @patch("bounding_box_drawer.cv2")
+    @patch("AI_APP.shared.src.bounding_box_drawer.cv2")
     def test_draw_label_with_dark_background(self, mock_cv2):
         """Dark color background gets light text (sum < 400)."""
         # Arrange
@@ -345,7 +345,7 @@ class TestDrawLabel:
         text_color = call_args[5]  # 6th positional arg is text_color
         assert text_color == (255, 255, 255)  # White text for dark background
 
-    @patch("bounding_box_drawer.cv2")
+    @patch("AI_APP.shared.src.bounding_box_drawer.cv2")
     def test_label_repositioned_when_near_right_edge(self, mock_cv2):
         """Label is shifted left when it would overflow right edge."""
         # Arrange
@@ -360,7 +360,7 @@ class TestDrawLabel:
         # Assert
         mock_cv2.rectangle.assert_called()
 
-    @patch("bounding_box_drawer.cv2")
+    @patch("AI_APP.shared.src.bounding_box_drawer.cv2")
     def test_label_repositioned_when_near_top_edge(self, mock_cv2):
         """Label is placed below box when near top edge."""
         # Arrange
@@ -375,7 +375,7 @@ class TestDrawLabel:
         # Assert
         mock_cv2.rectangle.assert_called()
 
-    @patch("bounding_box_drawer.cv2")
+    @patch("AI_APP.shared.src.bounding_box_drawer.cv2")
     def test_label_handles_exception_getting_frame_shape(self, mock_cv2):
         """Handle exception when frame shape can't be determined."""
         # Arrange

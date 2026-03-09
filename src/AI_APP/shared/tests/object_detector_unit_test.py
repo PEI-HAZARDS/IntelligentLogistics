@@ -25,12 +25,12 @@ class TestObjectDetector:
     def test_initialization_loads_model(self):
         """Initialization loads YOLO model with given path."""
         # Arrange & Act
-        with patch("object_detector.YOLO") as MockYOLO, \
-             patch("object_detector.os.path.isfile", return_value=True):
+        with patch("AI_APP.shared.src.object_detector.YOLO") as MockYOLO, \
+             patch("AI_APP.shared.src.object_detector.os.path.isfile", return_value=True):
             mock_model = MagicMock()
             MockYOLO.return_value = mock_model
             
-            from object_detector import ObjectDetector
+            from AI_APP.shared.src.object_detector import ObjectDetector
             detector = ObjectDetector("/path/to/model.pt")
 
             # Assert
@@ -40,12 +40,12 @@ class TestObjectDetector:
     def test_initialization_with_class_id(self):
         """Initialization with class_id stores it correctly."""
         # Arrange & Act
-        with patch("object_detector.YOLO") as MockYOLO, \
-             patch("object_detector.os.path.isfile", return_value=True):
+        with patch("AI_APP.shared.src.object_detector.YOLO") as MockYOLO, \
+             patch("AI_APP.shared.src.object_detector.os.path.isfile", return_value=True):
             mock_model = MagicMock()
             MockYOLO.return_value = mock_model
             
-            from object_detector import ObjectDetector
+            from AI_APP.shared.src.object_detector import ObjectDetector
             detector = ObjectDetector("/path/to/model.pt", class_id=5)
 
             # Assert
@@ -54,12 +54,12 @@ class TestObjectDetector:
     def test_initialization_default_class_id(self):
         """Default class_id is -1."""
         # Arrange & Act
-        with patch("object_detector.YOLO") as MockYOLO, \
-             patch("object_detector.os.path.isfile", return_value=True):
+        with patch("AI_APP.shared.src.object_detector.YOLO") as MockYOLO, \
+             patch("AI_APP.shared.src.object_detector.os.path.isfile", return_value=True):
             mock_model = MagicMock()
             MockYOLO.return_value = mock_model
             
-            from object_detector import ObjectDetector
+            from AI_APP.shared.src.object_detector import ObjectDetector
             detector = ObjectDetector("/path/to/model.pt")
 
             # Assert
@@ -68,14 +68,14 @@ class TestObjectDetector:
     def test_detect_with_output_suppression(self):
         """detect method suppresses output via verbose=False by default."""
         # Arrange
-        with patch("object_detector.YOLO") as MockYOLO, \
-             patch("object_detector.os.path.isfile", return_value=True):
+        with patch("AI_APP.shared.src.object_detector.YOLO") as MockYOLO, \
+             patch("AI_APP.shared.src.object_detector.os.path.isfile", return_value=True):
             mock_model = MagicMock()
             mock_results = [MagicMock()]
             mock_model.return_value = mock_results
             MockYOLO.return_value = mock_model
             
-            from object_detector import ObjectDetector
+            from AI_APP.shared.src.object_detector import ObjectDetector
             detector = ObjectDetector("/path/to/model.pt")
             image = np.zeros((416, 416, 3), dtype=np.uint8)
 
@@ -89,14 +89,14 @@ class TestObjectDetector:
     def test_detect_without_output_suppression(self):
         """detect method can run without output suppression."""
         # Arrange
-        with patch("object_detector.YOLO") as MockYOLO, \
-             patch("object_detector.os.path.isfile", return_value=True):
+        with patch("AI_APP.shared.src.object_detector.YOLO") as MockYOLO, \
+             patch("AI_APP.shared.src.object_detector.os.path.isfile", return_value=True):
             mock_model = MagicMock()
             mock_results = [MagicMock()]
             mock_model.return_value = mock_results
             MockYOLO.return_value = mock_model
             
-            from object_detector import ObjectDetector
+            from AI_APP.shared.src.object_detector import ObjectDetector
             detector = ObjectDetector("/path/to/model.pt")
             image = np.zeros((416, 416, 3), dtype=np.uint8)
 
@@ -109,14 +109,14 @@ class TestObjectDetector:
     def test_detect_with_class_filter(self):
         """detect uses class filter when class_id >= 0."""
         # Arrange
-        with patch("object_detector.YOLO") as MockYOLO, \
-             patch("object_detector.os.path.isfile", return_value=True):
+        with patch("AI_APP.shared.src.object_detector.YOLO") as MockYOLO, \
+             patch("AI_APP.shared.src.object_detector.os.path.isfile", return_value=True):
             mock_model = MagicMock()
             mock_results = [MagicMock()]
             mock_model.return_value = mock_results
             MockYOLO.return_value = mock_model
             
-            from object_detector import ObjectDetector
+            from AI_APP.shared.src.object_detector import ObjectDetector
             detector = ObjectDetector("/path/to/model.pt", class_id=2)
             image = np.zeros((416, 416, 3), dtype=np.uint8)
 
@@ -129,18 +129,20 @@ class TestObjectDetector:
     def test_get_boxes_extracts_coordinates(self):
         """get_boxes extracts box coordinates from results."""
         # Arrange
-        with patch("object_detector.YOLO") as MockYOLO, \
-             patch("object_detector.os.path.isfile", return_value=True):
+        with patch("AI_APP.shared.src.object_detector.YOLO") as MockYOLO, \
+             patch("AI_APP.shared.src.object_detector.os.path.isfile", return_value=True):
             mock_model = MagicMock()
             MockYOLO.return_value = mock_model
             
-            from object_detector import ObjectDetector
+            from AI_APP.shared.src.object_detector import ObjectDetector
             detector = ObjectDetector("/path/to/model.pt")
             
             # Create mock box with xyxy and conf
             mock_box = MagicMock()
+            mock_tensor_xyxy = MagicMock()
+            mock_tensor_xyxy.tolist.return_value = [10.0, 20.0, 50.0, 60.0]
             mock_box.xyxy = MagicMock()
-            mock_box.xyxy.__getitem__ = MagicMock(return_value=[10.0, 20.0, 50.0, 60.0])
+            mock_box.xyxy.__getitem__ = MagicMock(return_value=mock_tensor_xyxy)
             mock_box.conf = MagicMock()
             mock_box.conf.__getitem__ = MagicMock(return_value=0.95)
             
@@ -158,24 +160,26 @@ class TestObjectDetector:
     def test_get_boxes_multiple_detections(self):
         """get_boxes handles multiple detections."""
         # Arrange
-        with patch("object_detector.YOLO") as MockYOLO, \
-             patch("object_detector.os.path.isfile", return_value=True):
+        with patch("AI_APP.shared.src.object_detector.YOLO") as MockYOLO, \
+             patch("AI_APP.shared.src.object_detector.os.path.isfile", return_value=True):
             mock_model = MagicMock()
             MockYOLO.return_value = mock_model
             
-            from object_detector import ObjectDetector
+            from AI_APP.shared.src.object_detector import ObjectDetector
             detector = ObjectDetector("/path/to/model.pt")
             
             # Create multiple mock boxes
             mock_boxes = []
             for i, conf in enumerate([0.9, 0.85, 0.75]):
                 mock_box = MagicMock()
+                mock_tensor_xyxy = MagicMock()
+                mock_tensor_xyxy.tolist.return_value = [i*10.0, i*10.0, i*10.0+40.0, i*10.0+30.0]
                 mock_box.xyxy = MagicMock()
-                mock_box.xyxy.__getitem__ = MagicMock(
-                    return_value=[i*10, i*10, i*10+40, i*10+30]
-                )
+                mock_box.xyxy.__getitem__ = MagicMock(return_value=mock_tensor_xyxy)
+                mock_tensor_conf = MagicMock()
+                mock_tensor_conf.item.return_value = conf
                 mock_box.conf = MagicMock()
-                mock_box.conf.__getitem__ = MagicMock(return_value=conf)
+                mock_box.conf.__getitem__ = MagicMock(return_value=mock_tensor_conf)
                 mock_boxes.append(mock_box)
             
             mock_result = MagicMock()
@@ -191,12 +195,12 @@ class TestObjectDetector:
     def test_object_found_true_when_boxes_exist(self):
         """object_found returns True when boxes are detected."""
         # Arrange
-        with patch("object_detector.YOLO") as MockYOLO, \
-             patch("object_detector.os.path.isfile", return_value=True):
+        with patch("AI_APP.shared.src.object_detector.YOLO") as MockYOLO, \
+             patch("AI_APP.shared.src.object_detector.os.path.isfile", return_value=True):
             mock_model = MagicMock()
             MockYOLO.return_value = mock_model
             
-            from object_detector import ObjectDetector
+            from AI_APP.shared.src.object_detector import ObjectDetector
             detector = ObjectDetector("/path/to/model.pt")
             
             mock_result = MagicMock()
@@ -212,12 +216,12 @@ class TestObjectDetector:
     def test_object_found_false_when_no_boxes(self):
         """object_found returns False when no boxes detected."""
         # Arrange
-        with patch("object_detector.YOLO") as MockYOLO, \
-             patch("object_detector.os.path.isfile", return_value=True):
+        with patch("AI_APP.shared.src.object_detector.YOLO") as MockYOLO, \
+             patch("AI_APP.shared.src.object_detector.os.path.isfile", return_value=True):
             mock_model = MagicMock()
             MockYOLO.return_value = mock_model
             
-            from object_detector import ObjectDetector
+            from AI_APP.shared.src.object_detector import ObjectDetector
             detector = ObjectDetector("/path/to/model.pt")
             
             mock_result = MagicMock()
@@ -233,12 +237,12 @@ class TestObjectDetector:
     def test_close_calls_model_close(self):
         """close method closes the model."""
         # Arrange
-        with patch("object_detector.YOLO") as MockYOLO, \
-             patch("object_detector.os.path.isfile", return_value=True):
+        with patch("AI_APP.shared.src.object_detector.YOLO") as MockYOLO, \
+             patch("AI_APP.shared.src.object_detector.os.path.isfile", return_value=True):
             mock_model = MagicMock()
             MockYOLO.return_value = mock_model
             
-            from object_detector import ObjectDetector
+            from AI_APP.shared.src.object_detector import ObjectDetector
             detector = ObjectDetector("/path/to/model.pt")
 
             # Act

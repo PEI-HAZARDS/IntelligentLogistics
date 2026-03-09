@@ -5,7 +5,7 @@ Tests for license plate matching using OCR confusion matrix and Levenshtein dist
 import pytest
 from unittest.mock import patch, MagicMock
 
-from plate_matcher import PlateMatcher, PlateMatcherMode
+from V_APP.shared.src.plate_matcher import PlateMatcher, PlateMatcherMode
 
 
 # =============================================================================

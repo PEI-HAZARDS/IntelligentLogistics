@@ -22,7 +22,7 @@ from unittest.mock import patch, MagicMock
 @pytest.fixture
 def classifier():
     """Create a fresh PlateClassifier instance."""
-    from plate_classifier import PlateClassifier
+    from AI_APP.shared.src.plate_classifier import PlateClassifier
     return PlateClassifier()
 
 
@@ -109,7 +109,7 @@ class TestClassify:
         # Assert
         assert result == classifier.UNKNOWN
 
-    @patch("plate_classifier.cv2")
+    @patch("AI_APP.shared.src.plate_classifier.cv2")
     def test_wide_white_classified_as_license_plate(self, mock_cv2, classifier, wide_white_image):
         """Wide white image classified as LICENSE_PLATE."""
         # Arrange
@@ -126,7 +126,7 @@ class TestClassify:
         # Assert
         assert result == classifier.LICENSE_PLATE
 
-    @patch("plate_classifier.cv2")
+    @patch("AI_APP.shared.src.plate_classifier.cv2")
     def test_square_orange_classified_as_hazard_plate(self, mock_cv2, classifier, square_orange_image):
         """Square orange image classified as HAZARD_PLATE."""
         # Arrange
@@ -140,7 +140,7 @@ class TestClassify:
         # Assert
         assert result == classifier.HAZARD_PLATE
 
-    @patch("plate_classifier.cv2")
+    @patch("AI_APP.shared.src.plate_classifier.cv2")
     def test_ambiguous_returns_unknown(self, mock_cv2, classifier):
         """Ambiguous image (medium aspect ratio, mixed colors) returns UNKNOWN."""
         # Arrange
@@ -156,7 +156,7 @@ class TestClassify:
         # Assert
         assert result == classifier.UNKNOWN
 
-    @patch("plate_classifier.cv2")
+    @patch("AI_APP.shared.src.plate_classifier.cv2")
     def test_strong_license_color_wins_tiebreaker(self, mock_cv2, classifier):
         """Strong license plate color wins tiebreaker (1.5x threshold)."""
         # Arrange
@@ -172,7 +172,7 @@ class TestClassify:
         # Assert
         assert result == classifier.LICENSE_PLATE
 
-    @patch("plate_classifier.cv2")
+    @patch("AI_APP.shared.src.plate_classifier.cv2")
     def test_strong_hazard_color_wins_tiebreaker(self, mock_cv2, classifier):
         """Strong hazard plate color wins tiebreaker (1.5x threshold)."""
         # Arrange
@@ -195,7 +195,7 @@ class TestClassify:
 class TestAnalyzeColors:
     """Tests for color analysis method."""
 
-    @patch("plate_classifier.cv2")
+    @patch("AI_APP.shared.src.plate_classifier.cv2")
     def test_returns_normalized_scores(self, mock_cv2, classifier):
         """Returns normalized scores between 0 and 1."""
         # Arrange
@@ -210,7 +210,7 @@ class TestAnalyzeColors:
         assert 0 <= scores['license'] <= 1
         assert 0 <= scores['hazard'] <= 1
 
-    @patch("plate_classifier.cv2")
+    @patch("AI_APP.shared.src.plate_classifier.cv2")
     def test_license_score_accumulates_across_ranges(self, mock_cv2, classifier):
         """License score accumulates across all color ranges."""
         # Arrange
@@ -234,7 +234,7 @@ class TestAnalyzeColors:
 class TestVisualizeClassification:
     """Tests for classification visualization."""
 
-    @patch("plate_classifier.cv2")
+    @patch("AI_APP.shared.src.plate_classifier.cv2")
     def test_license_plate_green_border(self, mock_cv2, classifier):
         """LICENSE_PLATE gets green border."""
         # Arrange
@@ -250,7 +250,7 @@ class TestVisualizeClassification:
         call_kwargs = mock_cv2.copyMakeBorder.call_args[1]
         assert call_kwargs["value"] == (0, 255, 0)  # Green
 
-    @patch("plate_classifier.cv2")
+    @patch("AI_APP.shared.src.plate_classifier.cv2")
     def test_hazard_plate_red_border(self, mock_cv2, classifier):
         """HAZARD_PLATE gets red border."""
         # Arrange
@@ -265,7 +265,7 @@ class TestVisualizeClassification:
         call_kwargs = mock_cv2.copyMakeBorder.call_args[1]
         assert call_kwargs["value"] == (0, 0, 255)  # Red
 
-    @patch("plate_classifier.cv2")
+    @patch("AI_APP.shared.src.plate_classifier.cv2")
     def test_unknown_gray_border(self, mock_cv2, classifier):
         """UNKNOWN gets gray border."""
         # Arrange
@@ -280,7 +280,7 @@ class TestVisualizeClassification:
         call_kwargs = mock_cv2.copyMakeBorder.call_args[1]
         assert call_kwargs["value"] == (128, 128, 128)  # Gray
 
-    @patch("plate_classifier.cv2")
+    @patch("AI_APP.shared.src.plate_classifier.cv2")
     def test_save_to_file_when_path_provided(self, mock_cv2, classifier):
         """Saves to file when save_path is provided."""
         # Arrange
@@ -298,7 +298,7 @@ class TestVisualizeClassification:
         call_args = mock_cv2.imwrite.call_args[0]
         assert call_args[0] == "/tmp/test.jpg"
 
-    @patch("plate_classifier.cv2")
+    @patch("AI_APP.shared.src.plate_classifier.cv2")
     def test_no_save_without_path(self, mock_cv2, classifier):
         """Does not save when save_path is None."""
         # Arrange
@@ -312,7 +312,7 @@ class TestVisualizeClassification:
         # Assert
         mock_cv2.imwrite.assert_not_called()
 
-    @patch("plate_classifier.cv2")
+    @patch("AI_APP.shared.src.plate_classifier.cv2")
     def test_returns_annotated_image(self, mock_cv2, classifier):
         """Returns the annotated image."""
         # Arrange

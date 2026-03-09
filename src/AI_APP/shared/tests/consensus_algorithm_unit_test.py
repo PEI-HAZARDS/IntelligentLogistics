@@ -15,7 +15,7 @@ import pytest
 import numpy as np
 from unittest.mock import patch, MagicMock
 
-from consensus_algorithm import (
+from AI_APP.shared.src.consensus_algorithm import (
     ConsensusAlgorithm,
     CONSENSUS_PERCENTAGE,
     DECISION_THRESHOLD,
@@ -428,7 +428,7 @@ class TestSelectBestCrop:
         # Assert
         assert np.array_equal(result, crop2)
 
-    @patch("consensus_algorithm.levenshtein_distance")
+    @patch("AI_APP.shared.src.consensus_algorithm.levenshtein_distance")
     def test_selects_crop_with_highest_similarity(self, mock_distance, algorithm, sample_crop):
         """Select crop with text most similar to final text."""
         # Arrange
@@ -450,7 +450,7 @@ class TestSelectBestCrop:
         assert np.array_equal(result, crop2)
         assert algorithm.best_crop is not None
 
-    @patch("consensus_algorithm.levenshtein_distance")
+    @patch("AI_APP.shared.src.consensus_algorithm.levenshtein_distance")
     def test_uses_confidence_as_tiebreaker(self, mock_distance, algorithm):
         """When similarity is equal, use confidence as tiebreaker."""
         # Arrange
@@ -505,7 +505,7 @@ class TestGetBestPartialResult:
         assert conf == 0.0  # best_confidence not updated when no final_text
         assert crop is not None
 
-    @patch("consensus_algorithm.levenshtein_distance")
+    @patch("AI_APP.shared.src.consensus_algorithm.levenshtein_distance")
     def test_builds_partial_text_from_counter(self, mock_distance, algorithm, sample_crop):
         """Builds partial text using decided and most voted characters."""
         # Arrange

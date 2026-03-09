@@ -29,7 +29,7 @@ import cv2
 import pytest
 from pathlib import Path
 
-from plate_classifier import PlateClassifier
+from AI_APP.shared.src.plate_classifier import PlateClassifier
 
 
 
@@ -49,7 +49,7 @@ def expected_type(request):
 
 @pytest.fixture
 def crop_files(request):
-    crops_dir = request.config.getoption("--crops-dir")
+    crops_dir = request.config.getoption("--crops-dir", default=None)
     if crops_dir:
         crops_dir = Path(crops_dir)
     else:

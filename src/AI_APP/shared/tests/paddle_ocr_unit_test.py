@@ -44,11 +44,11 @@ class TestOCRInit:
     def test_initialization_creates_paddle_ocr(self):
         """Initialization creates PaddleOCR with correct settings."""
         # Arrange & Act
-        with patch("paddle_ocr.PaddleOCR") as MockPaddleOCR:
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR") as MockPaddleOCR:
             mock_ocr = MagicMock()
             MockPaddleOCR.return_value = mock_ocr
             
-            from paddle_ocr import OCR
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
 
             # Assert
@@ -68,11 +68,11 @@ class TestToCvImage:
     def test_string_path_reads_image(self, sample_cv_image):
         """String path triggers cv2.imread."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            with patch("paddle_ocr.cv2") as mock_cv2:
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            with patch("AI_APP.shared.src.paddle_ocr.cv2") as mock_cv2:
                 mock_cv2.imread.return_value = sample_cv_image
                 
-                from paddle_ocr import OCR
+                from AI_APP.shared.src.paddle_ocr import OCR
                 ocr = OCR()
 
                 # Act
@@ -85,8 +85,8 @@ class TestToCvImage:
     def test_numpy_array_returns_as_is(self, sample_cv_image):
         """Numpy array is returned unchanged."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
 
             # Act
@@ -98,12 +98,12 @@ class TestToCvImage:
     def test_pil_image_rgb_converted_to_bgr(self):
         """PIL RGB image is converted to BGR."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            with patch("paddle_ocr.cv2") as mock_cv2:
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            with patch("AI_APP.shared.src.paddle_ocr.cv2") as mock_cv2:
                 mock_cv2.COLOR_RGB2BGR = 4  # Standard constant
                 mock_cv2.cvtColor.return_value = np.zeros((50, 50, 3), dtype=np.uint8)
                 
-                from paddle_ocr import OCR
+                from AI_APP.shared.src.paddle_ocr import OCR
                 ocr = OCR()
                 pil_image = Image.fromarray(np.zeros((50, 50, 3), dtype=np.uint8))
 
@@ -116,8 +116,8 @@ class TestToCvImage:
     def test_pil_grayscale_image(self):
         """PIL grayscale image is handled correctly."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
             pil_image = Image.fromarray(np.zeros((50, 50), dtype=np.uint8))
 
@@ -130,8 +130,8 @@ class TestToCvImage:
     def test_unsupported_type_raises_type_error(self):
         """Unsupported type raises TypeError."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
 
             # Act & Assert
@@ -149,14 +149,14 @@ class TestResizeAndPad:
     def test_resize_to_target_height(self, sample_cv_image):
         """Image is resized to target height with aspect ratio maintained."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            with patch("paddle_ocr.cv2") as mock_cv2:
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            with patch("AI_APP.shared.src.paddle_ocr.cv2") as mock_cv2:
                 mock_cv2.INTER_LANCZOS4 = 4
                 mock_cv2.BORDER_REPLICATE = 1
                 mock_cv2.resize.return_value = np.zeros((48, 96, 3), dtype=np.uint8)
                 mock_cv2.copyMakeBorder.return_value = np.zeros((68, 116, 3), dtype=np.uint8)
                 
-                from paddle_ocr import OCR
+                from AI_APP.shared.src.paddle_ocr import OCR
                 ocr = OCR()
 
                 # Act
@@ -169,14 +169,14 @@ class TestResizeAndPad:
     def test_adds_padding_around_image(self, sample_cv_image):
         """Padding is added around the image."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            with patch("paddle_ocr.cv2") as mock_cv2:
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            with patch("AI_APP.shared.src.paddle_ocr.cv2") as mock_cv2:
                 mock_cv2.INTER_LANCZOS4 = 4
                 mock_cv2.BORDER_REPLICATE = 1
                 mock_cv2.resize.return_value = np.zeros((48, 96, 3), dtype=np.uint8)
                 mock_cv2.copyMakeBorder.return_value = np.zeros((68, 116, 3), dtype=np.uint8)
                 
-                from paddle_ocr import OCR
+                from AI_APP.shared.src.paddle_ocr import OCR
                 ocr = OCR()
 
                 # Act
@@ -199,8 +199,8 @@ class TestPreprocessPlate:
     def test_raises_on_none_image(self):
         """Raises ValueError for None image."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
 
             # Act & Assert
@@ -210,8 +210,8 @@ class TestPreprocessPlate:
     def test_raises_on_too_small_image(self, small_image):
         """Raises ValueError for too small image."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
 
             # Act & Assert
@@ -221,8 +221,8 @@ class TestPreprocessPlate:
     def test_processes_valid_image(self, sample_cv_image):
         """Processes valid image through resize, grayscale, and back to BGR."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            with patch("paddle_ocr.cv2") as mock_cv2:
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            with patch("AI_APP.shared.src.paddle_ocr.cv2") as mock_cv2:
                 mock_cv2.INTER_LANCZOS4 = 4
                 mock_cv2.BORDER_REPLICATE = 1
                 mock_cv2.COLOR_BGR2GRAY = 6
@@ -231,7 +231,7 @@ class TestPreprocessPlate:
                 mock_cv2.copyMakeBorder.return_value = np.zeros((84, 148, 3), dtype=np.uint8)
                 mock_cv2.cvtColor.return_value = np.zeros((84, 148), dtype=np.uint8)
                 
-                from paddle_ocr import OCR
+                from AI_APP.shared.src.paddle_ocr import OCR
                 ocr = OCR()
 
                 # Act
@@ -252,8 +252,8 @@ class TestFilterText:
     def test_empty_string_returns_empty(self):
         """Empty string returns empty."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
 
             # Act
@@ -265,8 +265,8 @@ class TestFilterText:
     def test_none_returns_empty(self):
         """None returns empty string."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
 
             # Act
@@ -278,8 +278,8 @@ class TestFilterText:
     def test_uppercase_conversion(self):
         """Lowercase is converted to uppercase."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
 
             # Act
@@ -291,8 +291,8 @@ class TestFilterText:
     def test_removes_special_characters(self):
         """Special characters are removed."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
 
             # Act
@@ -304,8 +304,8 @@ class TestFilterText:
     def test_keeps_dash(self):
         """Dashes are kept."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
 
             # Act
@@ -317,8 +317,8 @@ class TestFilterText:
     def test_strips_whitespace(self):
         """Result is stripped of whitespace."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
 
             # Act
@@ -338,8 +338,8 @@ class TestParseResult:
     def test_empty_result_returns_empty(self):
         """Empty result returns empty text and 0 confidence."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
 
             # Act
@@ -352,8 +352,8 @@ class TestParseResult:
     def test_none_result_returns_empty(self):
         """None result returns empty text and 0 confidence."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
 
             # Act
@@ -366,8 +366,8 @@ class TestParseResult:
     def test_parses_dict_format_with_rec_texts(self):
         """Parses dictionary format with rec_texts and rec_scores."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
             
             result = [{"rec_texts": ["ABC", "123"], "rec_scores": [0.95, 0.92]}]
@@ -383,8 +383,8 @@ class TestParseResult:
     def test_parses_dict_format_with_text_score(self):
         """Parses dictionary format with text and score keys."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
             
             result = [{"text": "ABC123", "score": 0.95}]
@@ -399,8 +399,8 @@ class TestParseResult:
     def test_parses_list_format(self):
         """Parses list/tuple format (old style)."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
             
             # Old format: [[[box_coords], (text, conf)], ...]
@@ -418,8 +418,8 @@ class TestParseResult:
     def test_handles_parse_exception(self):
         """Handles exceptions during parsing gracefully."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
             
             # Malformed result that might cause issues
@@ -443,8 +443,8 @@ class TestExtractText:
     def test_returns_empty_for_none_image(self):
         """Returns empty for None image."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
 
             # Act
@@ -457,8 +457,8 @@ class TestExtractText:
     def test_successful_extraction(self, sample_cv_image):
         """Successfully extracts text from image."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR") as MockPaddleOCR:
-            with patch("paddle_ocr.cv2") as mock_cv2:
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR") as MockPaddleOCR:
+            with patch("AI_APP.shared.src.paddle_ocr.cv2") as mock_cv2:
                 mock_ocr = MagicMock()
                 mock_ocr.predict.return_value = [{"rec_texts": ["ABC123"], "rec_scores": [0.95]}]
                 MockPaddleOCR.return_value = mock_ocr
@@ -472,7 +472,7 @@ class TestExtractText:
                 mock_cv2.copyMakeBorder.return_value = np.zeros((84, 148, 3), dtype=np.uint8)
                 mock_cv2.cvtColor.return_value = np.zeros((84, 148), dtype=np.uint8)
                 
-                from paddle_ocr import OCR
+                from AI_APP.shared.src.paddle_ocr import OCR
                 ocr = OCR()
 
                 # Act
@@ -485,8 +485,8 @@ class TestExtractText:
     def test_handles_preprocessing_error(self, small_image):
         """Handles preprocessing errors by returning empty."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
 
             # Act - small image should fail preprocessing
@@ -507,8 +507,8 @@ class TestParseDictItem:
     def test_extracts_rec_texts_format(self):
         """Extracts rec_texts and rec_scores."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
             
             texts = []
@@ -525,8 +525,8 @@ class TestParseDictItem:
     def test_extracts_text_score_format(self):
         """Extracts text and score keys."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
             
             texts = []
@@ -547,8 +547,8 @@ class TestParseListItem:
     def test_extracts_from_tuple_format(self):
         """Extracts text and confidence from tuple format."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
             
             texts = []
@@ -565,8 +565,8 @@ class TestParseListItem:
     def test_skips_item_with_less_than_2_elements(self):
         """Skips items with less than 2 elements."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
             
             texts = []
@@ -583,8 +583,8 @@ class TestParseListItem:
     def test_handles_string_text_data(self):
         """Handles string text data with default confidence."""
         # Arrange
-        with patch("paddle_ocr.PaddleOCR"):
-            from paddle_ocr import OCR
+        with patch("AI_APP.shared.src.paddle_ocr.PaddleOCR"):
+            from AI_APP.shared.src.paddle_ocr import OCR
             ocr = OCR()
             
             texts = []

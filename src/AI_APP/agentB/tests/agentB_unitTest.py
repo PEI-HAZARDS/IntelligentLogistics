@@ -44,9 +44,14 @@ def mock_dependencies():
     }
 
 @pytest.fixture
-def agent_b(mock_dependencies):
+def mock_config():
+    from AI_APP.shared.src.base_agent import BaseAgentConfig
+    return BaseAgentConfig(minio_user="test_user", minio_password="test_password")
+
+@pytest.fixture
+def agent_b(mock_dependencies, mock_config):
     with patch("agentB.ImageStorage"): # Mock internal ImageStorage creation
-        agent = AgentB(**mock_dependencies)
+        agent = AgentB(config=mock_config, **mock_dependencies)
         agent.running = False
         return agent
 
@@ -89,39 +94,28 @@ class TestIsValidDetection:
         assert is_valid is True
         agent_b.classifier.classify.assert_called_with(crop)
 
-class TestBuildPublishPayload:
-    """Tests for build_publish_payload method."""
+class TestBuildMessageForDetection:
+    """Tests for _build_message_for_detection method."""
 
-    def test_builds_correct_payload(self, agent_b):
-        """Constructs payload with license plate text."""
-        result = {"text": "AB-12-CD"}
-        payload = agent_b.build_publish_payload(
-            truck_id="TRK1",
-            detection_result=result,
+    def test_builds_correct_message(self, agent_b):
+        """Constructs message with license plate text."""
+        message = agent_b._build_message_for_detection(
+            license_plate="AB-12-CD",
             confidence=0.99,
             crop_url="http://crop"
         )
         
-        assert payload["licensePlate"] == "AB-12-CD"
-        assert payload["confidence"] == 0.99
-        assert payload["cropUrl"] == "http://crop"
+        # message is a KafkaMessageProto
+        assert message.license_plate == "AB-12-CD"
+        assert message.confidence == 0.99
+        assert message.crop_url == "http://crop"
         
-    def test_handles_none_confidence(self, agent_b):
-        """Handles None detection confidence."""
-        result = {"text": "AB-12-CD"}
-        payload = agent_b.build_publish_payload(
-            truck_id="TRK1",
-            detection_result=result,
-            confidence=None,
+    def test_handles_none_crop_url(self, agent_b):
+        """Handles None crop url."""
+        message = agent_b._build_message_for_detection(
+            license_plate="AB-12-CD",
+            confidence=0.5,
             crop_url=None
         )
         
-        assert payload["confidence"] == 0.0
-
-class TestParseDetectionResult:
-    """Tests for _parse_detection_result method."""
-    
-    def test_returns_text_dict(self, agent_b):
-        """Simply wraps text in dictionary."""
-        res = agent_b._parse_detection_result("HELLO")
-        assert res == {"text": "HELLO"}
+        assert message.crop_url == ""

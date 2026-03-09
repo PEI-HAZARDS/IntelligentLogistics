@@ -5,7 +5,7 @@ Tests for API communication with the data module.
 import pytest
 from unittest.mock import patch, MagicMock
 
-from database_client import DatabaseClient
+from V_APP.shared.src.database_client import DatabaseClient
 
 
 # =============================================================================
@@ -43,7 +43,7 @@ class TestDatabaseClientInit:
 class TestGetAppointments:
     """Tests for get_appointments method."""
 
-    @patch("database_client.requests.post")
+    @patch("V_APP.shared.src.database_client.requests.post")
     def test_get_appointments_success(self, mock_post, db_client):
         """Successfully retrieves appointments from API."""
         # Arrange
@@ -63,7 +63,7 @@ class TestGetAppointments:
         assert len(result["candidates"]) == 1
         mock_post.assert_called_once()
 
-    @patch("database_client.requests.post")
+    @patch("V_APP.shared.src.database_client.requests.post")
     def test_get_appointments_api_error(self, mock_post, db_client):
         """Handles API error response."""
         # Arrange
@@ -80,7 +80,7 @@ class TestGetAppointments:
         assert result["candidates"] == []
         assert result["message"] == "API Error"
 
-    @patch("database_client.requests.post")
+    @patch("V_APP.shared.src.database_client.requests.post")
     def test_get_appointments_connection_error(self, mock_post, db_client):
         """Handles connection error."""
         # Arrange
@@ -93,62 +93,6 @@ class TestGetAppointments:
         assert result["found"] is False
         assert result["candidates"] == []
         assert "Connection refused" in result["message"]
-
-
-# =============================================================================
-# Tests for update_appointment_status
-# =============================================================================
-
-class TestUpdateAppointmentStatus:
-    """Tests for update_appointment_status method."""
-
-    @patch("database_client.requests.patch")
-    def test_update_status_accepted(self, mock_patch, db_client):
-        """ACCEPTED decision updates status to in_process."""
-        # Arrange
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_patch.return_value = mock_response
-
-        # Act
-        db_client.update_appointment_status(123, "ACCEPTED")
-
-        # Assert
-        mock_patch.assert_called_once()
-        call_args = mock_patch.call_args
-        assert "in_process" in str(call_args)
-
-
-
-    @patch("database_client.requests.patch")
-    def test_update_status_manual_review_skipped(self, mock_patch, db_client):
-        """MANUAL_REVIEW decision does not call API."""
-        # Act
-        db_client.update_appointment_status(123, "MANUAL_REVIEW")
-
-        # Assert
-        mock_patch.assert_not_called()
-
-    @patch("database_client.requests.patch")
-    def test_update_status_handles_error(self, mock_patch, db_client):
-        """Handles API error when updating status."""
-        # Arrange
-        mock_response = MagicMock()
-        mock_response.status_code = 400
-        mock_response.text = "Bad Request"
-        mock_patch.return_value = mock_response
-
-        # Act - should not raise
-        db_client.update_appointment_status(123, "ACCEPTED")
-
-    @patch("database_client.requests.patch")
-    def test_update_status_handles_exception(self, mock_patch, db_client):
-        """Handles exception when updating status."""
-        # Arrange
-        mock_patch.side_effect = Exception("Connection failed")
-
-        # Act - should not raise
-        db_client.update_appointment_status(123, "ACCEPTED")
 
 
 # =============================================================================

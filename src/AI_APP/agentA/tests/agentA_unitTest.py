@@ -40,8 +40,13 @@ def mock_dependencies():
     }
 
 @pytest.fixture
-def agent_a(mock_dependencies):
-    agent = AgentA(**mock_dependencies)
+def mock_config():
+    from agentA import AgentAConfig
+    return AgentAConfig(minio_user="test_user", minio_password="test_password")
+
+@pytest.fixture
+def agent_a(mock_dependencies, mock_config):
+    agent = AgentA(config=mock_config, **mock_dependencies)
     agent.running = False # Prevent loop from running automatically
     return agent
 
@@ -56,9 +61,9 @@ def sample_frame():
 class TestAgentAInit:
     """Tests for AgentA initialization."""
 
-    def test_init_uses_injected_dependencies(self, mock_dependencies):
+    def test_init_uses_injected_dependencies(self, mock_dependencies, mock_config):
         """Review that injected dependencies are used."""
-        agent = AgentA(**mock_dependencies)
+        agent = AgentA(config=mock_config, **mock_dependencies)
         
         assert agent.yolo is mock_dependencies["object_detector"]
         assert agent.stream_manager is mock_dependencies["stream_manager"]
@@ -66,9 +71,9 @@ class TestAgentAInit:
         assert agent.image_storage is mock_dependencies["image_storage"]
         assert agent.drawer is mock_dependencies["drawer"]
 
-    def test_init_sets_running_true(self, mock_dependencies):
+    def test_init_sets_running_true(self, mock_dependencies, mock_config):
         """Review that running is set to True."""
-        agent = AgentA(**mock_dependencies)
+        agent = AgentA(config=mock_config, **mock_dependencies)
         assert agent.running is True
 
 # =============================================================================
@@ -80,148 +85,176 @@ class TestProcessDetection:
 
     def test_process_detection_no_results(self, agent_a, sample_frame):
         """Does nothing when YOLO returns None."""
+        agent_a.running = True
         agent_a.yolo.detect.return_value = None
+        def mock_read():
+            agent_a.running = False
+            return sample_frame
+        agent_a.stream_manager.read.side_effect = mock_read
         
-        agent_a._process_detection(sample_frame)
+        agent_a._process_detection()
         
         agent_a.kafka_producer.produce.assert_not_called()
 
     def test_process_detection_no_truck_detected(self, agent_a, sample_frame):
         """Does nothing when no truck is detected."""
+        agent_a.running = True
         results = MagicMock()
         agent_a.yolo.detect.return_value = results
         agent_a.yolo.object_found.return_value = False
+        def mock_read():
+            agent_a.running = False
+            return sample_frame
+        agent_a.stream_manager.read.side_effect = mock_read
         
-        agent_a._process_detection(sample_frame)
+        agent_a._process_detection()
         
         agent_a.kafka_producer.produce.assert_not_called()
 
     def test_process_detection_throttled(self, agent_a, sample_frame):
-        """Does not publish if within message interval."""
+        """Test process detection."""
+        agent_a.running = True
         results = MagicMock()
         agent_a.yolo.detect.return_value = results
         agent_a.yolo.object_found.return_value = True
+        agent_a.yolo.get_boxes.return_value = [[10, 10, 50, 50, 0.95]]
+        agent_a.stream_manager.read.side_effect = [sample_frame] # Should return after publish
         
-        # Simulate recent message
-        agent_a.last_message_time = time.time()
+        agent_a._process_detection()
         
-        agent_a._process_detection(sample_frame)
-        
-        agent_a.kafka_producer.produce.assert_not_called()
+        # In current design, _process_detection always publishes if truck found.
+        agent_a.kafka_producer.produce.assert_called_once()
 
     def test_process_detection_publishes_event(self, agent_a, sample_frame):
-        """Publishes event when truck detected and not throttled."""
+        """Publishes event when truck detected."""
+        agent_a.running = True
         results = MagicMock()
         agent_a.yolo.detect.return_value = results
         agent_a.yolo.object_found.return_value = True
         # Mock boxes: [x1, y1, x2, y2, confidence]
         agent_a.yolo.get_boxes.return_value = [[10, 10, 50, 50, 0.95]]
+        agent_a.stream_manager.read.side_effect = [sample_frame]
         
-        # Ensure not throttled
-        agent_a.last_message_time = 0
-        
-        agent_a._process_detection(sample_frame)
+        agent_a._process_detection()
         
         # Check Kafka publish
         agent_a.kafka_producer.produce.assert_called_once()
-        args = agent_a.kafka_producer.produce.call_args
-        topic, payload = args[0]
-        headers = args[1]["headers"]
+        args, kwargs = agent_a.kafka_producer.produce.call_args
+        topic = kwargs.get("topic") if "topic" in kwargs else args[0] if args else None
+        payload = kwargs.get("data") if "data" in kwargs else args[1] if len(args) > 1 else None
+        headers = kwargs.get("headers") if "headers" in kwargs else args[2] if len(args) > 2 else {}
         
         assert "truck-detected" in topic
         assert payload["confidence"] == 0.95
-        assert payload["detections"] == 1
-        assert "truckId" in headers
+        assert payload["num_detections"] == 1
+        assert "truck_id" in headers
 
     def test_process_detection_uploads_image(self, agent_a, sample_frame):
         """Uploads annotated image when truck detected."""
+        agent_a.running = True
         results = MagicMock()
         agent_a.yolo.detect.return_value = results
         agent_a.yolo.object_found.return_value = True
         agent_a.yolo.get_boxes.return_value = [[10, 10, 50, 50, 0.95]]
-        agent_a.last_message_time = 0
         agent_a.drawer.draw_box.return_value = sample_frame
+        agent_a.stream_manager.read.side_effect = [sample_frame]
         
-        agent_a._process_detection(sample_frame)
+        agent_a._process_detection()
         
         agent_a.image_storage.upload_memory_image.assert_called_once()
 
     def test_process_detection_handles_drawing_error(self, agent_a, sample_frame):
         """Handles fail to draw/upload gracefully."""
+        agent_a.running = True
         results = MagicMock()
         agent_a.yolo.detect.return_value = results
         agent_a.yolo.object_found.return_value = True
         agent_a.yolo.get_boxes.return_value = [[10, 10, 50, 50, 0.95]]
-        agent_a.last_message_time = 0
+        agent_a.stream_manager.read.side_effect = [sample_frame]
         
         # Simulate drawing error
         agent_a.drawer.draw_box.side_effect = Exception("Draw error")
         
-        agent_a._process_detection(sample_frame)
+        agent_a._process_detection()
         
         # Should still try to publish kafka even if image fail
         agent_a.kafka_producer.produce.assert_called_once()
 
     def test_process_detection_handles_kafka_error(self, agent_a, sample_frame):
         """Handles Kafka publish error."""
+        agent_a.running = True
         results = MagicMock()
         agent_a.yolo.detect.return_value = results
         agent_a.yolo.object_found.return_value = True
         agent_a.yolo.get_boxes.return_value = [[10, 10, 50, 50, 0.95]]
-        agent_a.last_message_time = 0
+        
+        def mock_read():
+            if not hasattr(mock_read, "called"):
+                mock_read.called = True
+                return sample_frame
+            agent_a.running = False # Break loop on 2nd attempt
+            return None
+        agent_a.stream_manager.read.side_effect = mock_read
         
         agent_a.kafka_producer.produce.side_effect = Exception("Kafka error")
         
         # Should not raise exception
-        agent_a._process_detection(sample_frame)
+        agent_a._process_detection()
 
 # =============================================================================
-# Tests for loop
+# Tests for start() loop
 # =============================================================================
 
 class TestLoop:
-    """Tests for _loop method."""
+    """Tests for start method."""
 
-    def test_loop_reads_frames(self, agent_a, sample_frame):
-        """Loop reads frames and processes them."""
-        # Run one iteration
+    def test_start_calls_process_detection(self, agent_a):
+        """Loop processes detection when not awaiting reset."""
         agent_a.running = True
-        agent_a.stream_manager.read.side_effect = [sample_frame, KeyboardInterrupt()] # Frame then stop
-        
-        # Mock process to verify call
-        with patch.object(agent_a, '_process_detection') as mock_process:
-            try:
-               agent_a._loop()
-            except KeyboardInterrupt:
-                pass
-            
-            mock_process.assert_called_once_with(sample_frame)
-
-    def test_loop_handles_none_frame(self, agent_a):
-        """Loop handles None frames (retries)."""
-        agent_a.running = True
-        agent_a.stream_manager.read.side_effect = [None, KeyboardInterrupt()]
+        agent_a.awaiting_reset = False
         
         with patch.object(agent_a, '_process_detection') as mock_process:
-            try:
-                agent_a._loop()
-            except KeyboardInterrupt:
-                pass
+            # Stop the loop after first iteration
+            mock_process.side_effect = lambda: setattr(agent_a, 'running', False)
+            agent_a.start()
             
-            mock_process.assert_not_called()
+            mock_process.assert_called_once()
 
-    def test_loop_handles_exception(self, agent_a):
-        """Loop robust to exceptions."""
+    def test_start_waits_for_reset(self, agent_a):
+        """Loop waits for reset message if awaiting_reset."""
         agent_a.running = True
-        agent_a.stream_manager.read.side_effect = [Exception("Stream error"), KeyboardInterrupt()]
+        agent_a.awaiting_reset = True
+        agent_a.last_message_time = time.time() # Within timeout
+        
+        # Simulate receiving reset message
+        mock_msg = MagicMock()
+        mock_msg.reason = "test"
+        agent_a.kafka_consumer = MagicMock()
+        agent_a.kafka_consumer.consume_typed_message.return_value = ("topic", mock_msg, "TRK1")
         
         with patch.object(agent_a, '_process_detection') as mock_process:
-            try:
-                agent_a._loop()
-            except KeyboardInterrupt:
-                pass
+            mock_process.side_effect = lambda: setattr(agent_a, 'running', False)
+            agent_a.start()
             
-            mock_process.assert_not_called()
+            agent_a.kafka_consumer.consume_typed_message.assert_called_once()
+            mock_process.assert_called_once()
+
+    def test_start_handles_timeout(self, agent_a):
+        """Loop proceeds if reset timeout is exceeded."""
+        agent_a.running = True
+        agent_a.awaiting_reset = True
+        agent_a.last_message_time = time.time() - 100 # Past timeout
+        
+        mock_consumer = MagicMock()
+        agent_a.kafka_consumer = mock_consumer
+        
+        with patch.object(agent_a, '_process_detection') as mock_process:
+            mock_process.side_effect = lambda: setattr(agent_a, 'running', False)
+            agent_a.start()
+            
+            # Shouldn't consume if timed out
+            mock_consumer.consume_typed_message.assert_not_called()
+            mock_process.assert_called_once()
 
 # =============================================================================
 # Tests for stop

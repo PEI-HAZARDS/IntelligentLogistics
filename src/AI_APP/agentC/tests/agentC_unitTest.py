@@ -43,8 +43,13 @@ def mock_dependencies():
     }
 
 @pytest.fixture
-def agent_c(mock_dependencies):
-    agent = AgentC(**mock_dependencies)
+def mock_config():
+    from AI_APP.shared.src.base_agent import BaseAgentConfig
+    return BaseAgentConfig(minio_user="test_user", minio_password="test_password")
+
+@pytest.fixture
+def agent_c(mock_dependencies, mock_config):
+    agent = AgentC(config=mock_config, **mock_dependencies)
     agent.running = False
     return agent
 
@@ -79,43 +84,41 @@ class TestParseDetectionResult:
     def test_parses_un_and_kemler(self, agent_c):
         """Parses standard 'KEMLER UN' format."""
         text = "33 1203"
-        result = agent_c._parse_detection_result(text)
+        un, kemler = agent_c._parse_detection_result(text)
         
-        assert result["kemler"] == "33"
-        assert result["un"] == "1203"
-        assert result["text"] == text
+        assert kemler == "33"
+        assert un == "1203"
 
     def test_handles_missing_parts(self, agent_c):
         """Handles text that doesn't split into two parts."""
         text = "1203" # Only one part
-        result = agent_c._parse_detection_result(text)
+        un, kemler = agent_c._parse_detection_result(text)
         
-        assert result["kemler"] == "N/A"
-        assert result["un"] == "N/A"
-        assert result["text"] == text
+        assert kemler == "N/A"
+        assert un == "N/A"
 
     def test_handles_extra_parts(self, agent_c):
         """Handles text with too many parts."""
         text = "33 1203 EXTRA"
-        result = agent_c._parse_detection_result(text)
+        un, kemler = agent_c._parse_detection_result(text)
         
         # Current logic expects exactly 2 parts
-        assert result["kemler"] == "N/A"
-        assert result["un"] == "N/A"
+        assert kemler == "N/A"
+        assert un == "N/A"
 
-class TestBuildPublishPayload:
-    """Tests for build_publish_payload method."""
+class TestBuildMessageForDetection:
+    """Tests for _build_message_for_detection method."""
 
-    def test_builds_correct_payload(self, agent_c):
-        """Constructs payload with UN and Kemler codes."""
-        result = {"un": "1203", "kemler": "33"}
-        payload = agent_c.build_publish_payload(
-            truck_id="TRK1",
-            detection_result=result,
+    def test_builds_correct_message(self, agent_c):
+        """Constructs message with UN and Kemler codes."""
+        text = "33 1203"
+        message = agent_c._build_message_for_detection(
+            text=text,
             confidence=0.85,
             crop_url="http://crop"
         )
         
-        assert payload["un"] == "1203"
-        assert payload["kemler"] == "33"
-        assert payload["confidence"] == 0.85
+        assert message.un == "1203"
+        assert message.kemler == "33"
+        assert message.confidence == 0.85
+        assert message.crop_url == "http://crop"

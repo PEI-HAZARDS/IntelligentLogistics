@@ -17,8 +17,8 @@ from unittest.mock import patch, MagicMock, PropertyMock
 from io import BytesIO
 
 # Mock dependencies before import
-with patch("image_storage.Minio"):
-    from image_storage import ImageStorage
+with patch("AI_APP.shared.src.image_storage.Minio"):
+    from AI_APP.shared.src.image_storage import ImageStorage
 
 
 # =============================================================================
@@ -28,7 +28,7 @@ with patch("image_storage.Minio"):
 @pytest.fixture
 def mock_minio_client():
     """Create a mock MinIO client."""
-    with patch("image_storage.Minio") as MockMinio:
+    with patch("AI_APP.shared.src.image_storage.Minio") as MockMinio:
         mock_client = MagicMock()
         MockMinio.return_value = mock_client
         yield mock_client
@@ -61,7 +61,7 @@ class TestImageStorageInit:
     def test_initialization_creates_minio_client(self, storage_config):
         """Initialization creates MinIO client with provided config."""
         # Arrange & Act
-        with patch("image_storage.Minio") as MockMinio:
+        with patch("AI_APP.shared.src.image_storage.Minio") as MockMinio:
             storage = ImageStorage(storage_config, "test-bucket")
 
             # Assert
@@ -71,7 +71,7 @@ class TestImageStorageInit:
     def test_stores_bucket_name(self, storage_config):
         """Bucket name is stored correctly."""
         # Arrange & Act
-        with patch("image_storage.Minio"):
+        with patch("AI_APP.shared.src.image_storage.Minio"):
             storage = ImageStorage(storage_config, "my-bucket")
 
             # Assert
@@ -88,7 +88,7 @@ class TestEnsureBucket:
     def test_bucket_exists_returns_true(self, storage_config):
         """Returns True when bucket already exists."""
         # Arrange
-        with patch("image_storage.Minio") as MockMinio:
+        with patch("AI_APP.shared.src.image_storage.Minio") as MockMinio:
             mock_client = MagicMock()
             MockMinio.return_value = mock_client
             mock_client.bucket_exists.return_value = True
@@ -105,7 +105,7 @@ class TestEnsureBucket:
     def test_creates_bucket_if_not_exists(self, storage_config):
         """Creates bucket when it doesn't exist."""
         # Arrange
-        with patch("image_storage.Minio") as MockMinio:
+        with patch("AI_APP.shared.src.image_storage.Minio") as MockMinio:
             mock_client = MagicMock()
             MockMinio.return_value = mock_client
             mock_client.bucket_exists.return_value = False
@@ -124,7 +124,7 @@ class TestEnsureBucket:
         # Arrange
         from minio.error import S3Error
         
-        with patch("image_storage.Minio") as MockMinio:
+        with patch("AI_APP.shared.src.image_storage.Minio") as MockMinio:
             mock_client = MagicMock()
             MockMinio.return_value = mock_client
             mock_client.bucket_exists.side_effect = S3Error(
@@ -147,11 +147,11 @@ class TestEnsureBucket:
 class TestUploadMemoryImage:
     """Tests for uploading images from memory."""
 
-    @patch("image_storage.cv2")
+    @patch("AI_APP.shared.src.image_storage.cv2")
     def test_successful_upload(self, mock_cv2, storage_config, sample_image):
         """Successfully upload image and return presigned URL."""
         # Arrange
-        with patch("image_storage.Minio") as MockMinio:
+        with patch("AI_APP.shared.src.image_storage.Minio") as MockMinio:
             mock_client = MagicMock()
             MockMinio.return_value = mock_client
             mock_client.bucket_exists.return_value = True
@@ -169,11 +169,11 @@ class TestUploadMemoryImage:
             assert result == "http://example.com/image.jpg"
             mock_client.put_object.assert_called_once()
 
-    @patch("image_storage.cv2")
+    @patch("AI_APP.shared.src.image_storage.cv2")
     def test_upload_with_none_image_returns_none(self, mock_cv2, storage_config):
         """Uploading None image returns None."""
         # Arrange
-        with patch("image_storage.Minio") as MockMinio:
+        with patch("AI_APP.shared.src.image_storage.Minio") as MockMinio:
             mock_client = MagicMock()
             MockMinio.return_value = mock_client
             mock_client.bucket_exists.return_value = True
@@ -187,11 +187,11 @@ class TestUploadMemoryImage:
             assert result is None
             mock_client.put_object.assert_not_called()
 
-    @patch("image_storage.cv2")
+    @patch("AI_APP.shared.src.image_storage.cv2")
     def test_upload_with_empty_image_returns_none(self, mock_cv2, storage_config):
         """Uploading empty image array returns None."""
         # Arrange
-        with patch("image_storage.Minio") as MockMinio:
+        with patch("AI_APP.shared.src.image_storage.Minio") as MockMinio:
             mock_client = MagicMock()
             MockMinio.return_value = mock_client
             mock_client.bucket_exists.return_value = True
@@ -205,13 +205,13 @@ class TestUploadMemoryImage:
             # Assert
             assert result is None
 
-    @patch("image_storage.cv2")
+    @patch("AI_APP.shared.src.image_storage.cv2")
     def test_upload_fails_when_bucket_unavailable(self, mock_cv2, storage_config, sample_image):
         """Returns None when bucket is unavailable."""
         # Arrange
         from minio.error import S3Error
         
-        with patch("image_storage.Minio") as MockMinio:
+        with patch("AI_APP.shared.src.image_storage.Minio") as MockMinio:
             mock_client = MagicMock()
             MockMinio.return_value = mock_client
             mock_client.bucket_exists.side_effect = S3Error(
@@ -226,11 +226,11 @@ class TestUploadMemoryImage:
             # Assert
             assert result is None
 
-    @patch("image_storage.cv2")
+    @patch("AI_APP.shared.src.image_storage.cv2")
     def test_upload_fails_when_encoding_fails(self, mock_cv2, storage_config, sample_image):
         """Returns None when image encoding fails."""
         # Arrange
-        with patch("image_storage.Minio") as MockMinio:
+        with patch("AI_APP.shared.src.image_storage.Minio") as MockMinio:
             mock_client = MagicMock()
             MockMinio.return_value = mock_client
             mock_client.bucket_exists.return_value = True
@@ -247,13 +247,13 @@ class TestUploadMemoryImage:
             assert result is None
             mock_client.put_object.assert_not_called()
 
-    @patch("image_storage.cv2")
+    @patch("AI_APP.shared.src.image_storage.cv2")
     def test_upload_handles_s3_error(self, mock_cv2, storage_config, sample_image):
         """Handles S3Error during upload."""
         # Arrange
         from minio.error import S3Error
         
-        with patch("image_storage.Minio") as MockMinio:
+        with patch("AI_APP.shared.src.image_storage.Minio") as MockMinio:
             mock_client = MagicMock()
             MockMinio.return_value = mock_client
             mock_client.bucket_exists.return_value = True
@@ -271,11 +271,11 @@ class TestUploadMemoryImage:
             # Assert
             assert result is None
 
-    @patch("image_storage.cv2")
+    @patch("AI_APP.shared.src.image_storage.cv2")
     def test_upload_handles_connection_refused(self, mock_cv2, storage_config, sample_image):
         """Handles ConnectionRefusedError gracefully."""
         # Arrange
-        with patch("image_storage.Minio") as MockMinio:
+        with patch("AI_APP.shared.src.image_storage.Minio") as MockMinio:
             mock_client = MagicMock()
             MockMinio.return_value = mock_client
             mock_client.bucket_exists.return_value = True
@@ -291,11 +291,11 @@ class TestUploadMemoryImage:
             # Assert
             assert result is None
 
-    @patch("image_storage.cv2")
+    @patch("AI_APP.shared.src.image_storage.cv2")
     def test_upload_handles_os_error(self, mock_cv2, storage_config, sample_image):
         """Handles OSError gracefully."""
         # Arrange
-        with patch("image_storage.Minio") as MockMinio:
+        with patch("AI_APP.shared.src.image_storage.Minio") as MockMinio:
             mock_client = MagicMock()
             MockMinio.return_value = mock_client
             mock_client.bucket_exists.return_value = True
@@ -311,13 +311,13 @@ class TestUploadMemoryImage:
             # Assert
             assert result is None
 
-    @patch("image_storage.cv2")
+    @patch("AI_APP.shared.src.image_storage.cv2")
     def test_upload_handles_max_retry_error(self, mock_cv2, storage_config, sample_image):
         """Handles MaxRetryError gracefully."""
         # Arrange
         from urllib3.exceptions import MaxRetryError
 
-        with patch("image_storage.Minio") as MockMinio:
+        with patch("AI_APP.shared.src.image_storage.Minio") as MockMinio:
             mock_client = MagicMock()
             MockMinio.return_value = mock_client
             mock_client.bucket_exists.return_value = True
@@ -344,7 +344,7 @@ class TestGeneratePresignedUrl:
     def test_generates_presigned_url(self, storage_config):
         """Generates presigned URL with default expiry."""
         # Arrange
-        with patch("image_storage.Minio") as MockMinio:
+        with patch("AI_APP.shared.src.image_storage.Minio") as MockMinio:
             mock_client = MagicMock()
             MockMinio.return_value = mock_client
             mock_client.get_presigned_url.return_value = "http://presigned-url.com/img.jpg"
@@ -363,7 +363,7 @@ class TestGeneratePresignedUrl:
         # Arrange
         from datetime import timedelta
         
-        with patch("image_storage.Minio") as MockMinio:
+        with patch("AI_APP.shared.src.image_storage.Minio") as MockMinio:
             mock_client = MagicMock()
             MockMinio.return_value = mock_client
             mock_client.get_presigned_url.return_value = "http://url.com/img.jpg"

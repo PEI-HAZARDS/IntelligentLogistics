@@ -388,6 +388,7 @@ class TestKafkaConsumerWrapper:
             mock_msg.error.return_value = None
             mock_msg.value.return_value = json.dumps({"key": "value"}).encode()
             mock_msg.headers.return_value = [("other_header", b"value")]
+            mock_msg.topic.return_value = "test-topic"
             
             from kafka_wrapper import KafkaConsumerWrapper
             wrapper = KafkaConsumerWrapper("localhost:9092", "group", ["topic"])
@@ -412,7 +413,7 @@ class TestKafkaConsumerWrapper:
             headers = [("truck_id", b"TRUCK456")]
 
             # Act
-            result = wrapper._extract_truck_id_from_headers(headers)
+            result = wrapper.extract_truck_id_from_headers(headers)
 
             # Assert
             assert result == "TRUCK456"
@@ -429,7 +430,7 @@ class TestKafkaConsumerWrapper:
             headers = [("truckId", b"TRUCK789")]
 
             # Act
-            result = wrapper._extract_truck_id_from_headers(headers)
+            result = wrapper.extract_truck_id_from_headers(headers)
 
             # Assert
             assert result == "TRUCK789"
@@ -446,7 +447,7 @@ class TestKafkaConsumerWrapper:
             headers = [("truckId", "STRING-TRUCK")]  # String, not bytes
 
             # Act
-            result = wrapper._extract_truck_id_from_headers(headers)
+            result = wrapper.extract_truck_id_from_headers(headers)
 
             # Assert
             assert result == "STRING-TRUCK"
@@ -462,7 +463,7 @@ class TestKafkaConsumerWrapper:
             wrapper = KafkaConsumerWrapper("localhost:9092", "group", ["topic"])
 
             # Act
-            result = wrapper._extract_truck_id_from_headers([])
+            result = wrapper.extract_truck_id_from_headers([])
 
             # Assert
             assert result is None
@@ -478,7 +479,7 @@ class TestKafkaConsumerWrapper:
             wrapper = KafkaConsumerWrapper("localhost:9092", "group", ["topic"])
 
             # Act
-            result = wrapper._extract_truck_id_from_headers(None)
+            result = wrapper.extract_truck_id_from_headers(None)
 
             # Assert
             assert result is None
