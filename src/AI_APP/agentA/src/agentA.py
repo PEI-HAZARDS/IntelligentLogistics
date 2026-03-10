@@ -30,8 +30,8 @@ class AgentAConfig(BaseSettings):
     kafka_bootstrap: str = Field(default="10.255.32.143:9092")
     
     # MediaMTX RTSP (low-latency UDP stream consumption)
-    nginx_host: str = Field(default="10.255.32.56")
-    nginx_port: int = Field(default=1935)
+    mediamtx_host: str = Field(default="10.255.32.56")
+    mediamtx_port: int = Field(default=8554)
     
     # MinIO
     minio_host: str = Field(default="10.255.32.82")
@@ -48,7 +48,7 @@ class AgentAConfig(BaseSettings):
     # Use properties to dynamically construct dependent values
     @property
     def stream_low(self) -> str:
-        return f"rtmp://{self.nginx_host}:{self.nginx_port}/streams_low/gate{self.gate_id}"
+        return f"rtsp://{self.mediamtx_host}:{self.mediamtx_port}/streams_low/gate{self.gate_id}?rtsp_transport=udp"
         
     @property
     def minio_bucket_name(self) -> str:
@@ -135,10 +135,10 @@ class AgentA:
                             logger.info("Waiting for reset signal from V_Brain...")
                         continue
                         
-                    logger.info(f"Reset received (reason={message_obj.reason}), resuming detection...")
+                    logger.info(f"Reset received (reason={message_obj.reason}), resuming detection...") # type: ignore
                 
                 if now - self.last_message_time > self.config.decision_timeout:
-                        logger.info("Reset timeout exceeded while waiting for decision, resuming detection anyway...")
+                    logger.info("Reset timeout exceeded while waiting for decision, resuming detection anyway...")
                 
                 self._process_detection()
 
@@ -166,7 +166,14 @@ class AgentA:
         Continuously capture and process frames for truck detection.
         Returns only when a truck has been successfully detected and the Kafka event is published.
         """
+        last_poll = time.time()
         while self.running:
+            # Keep the Kafka consumer alive while scanning frames
+            now = time.time()
+            if now - last_poll >= 60:
+                self.kafka_consumer.consume_typed_message(timeout=0.0)
+                last_poll = now
+
             # Wait until stream is actually ready
             frame = None
             while frame is None and self.running:

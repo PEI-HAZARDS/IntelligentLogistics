@@ -210,7 +210,7 @@ class TestBaseAgentInit:
 
             # Assert
             assert agent.config.gate_id == "1"  # Default
-            assert "rtmp://" in agent.config.stream_url
+            assert "rtsp://" in agent.config.stream_url
             assert "gate1" in agent.config.stream_url
 
     def test_load_config_uses_env_vars(self, mock_dependencies):
@@ -219,8 +219,8 @@ class TestBaseAgentInit:
         env_vars = {
             "MINIO_USER": "u",
             "MINIO_PASSWORD": "p",
-            "NGINX_HOST": "192.168.1.100",
-            "NGINX_PORT": "2000",
+            "MEDIAMTX_HOST": "192.168.1.100",
+            "MEDIAMTX_PORT": "2000",
             "GATE_ID": "5",
             "KAFKA_BOOTSTRAP": "kafka-host:9094",
             "MINIO_HOST": "minio-host",

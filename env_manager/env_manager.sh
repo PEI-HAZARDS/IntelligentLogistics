@@ -49,7 +49,7 @@ ENV_LOCATIONS=(
     "AI_APP/.env"
     "V_APP/.env"
     "devops/observability/.env"
-    "streaming_middleware/.env"
+    "streamV2/.env"
 )
 
 # ============================================================================

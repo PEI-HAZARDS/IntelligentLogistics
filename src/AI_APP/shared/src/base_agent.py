@@ -22,8 +22,8 @@ class BaseAgentConfig(BaseSettings):
     kafka_bootstrap: str = Field(default="10.255.32.143:9092")
 
     # MediaMTX RTSP (low-latency UDP stream consumption)
-    nginx_host: str = Field(default="10.255.32.56")
-    nginx_port: int = Field(default=1935)
+    mediamtx_host: str = Field(default="10.255.32.56")
+    mediamtx_port: int = Field(default=8554)
 
     # MinIO
     minio_host: str = Field(default="10.255.32.82")
@@ -44,7 +44,7 @@ class BaseAgentConfig(BaseSettings):
     # Use properties to dynamically construct dependent values
     @property
     def stream_url(self) -> str:
-        return f"rtmp://{self.nginx_host}:{self.nginx_port}/streams_high/gate{self.gate_id}"
+        return f"rtsp://{self.mediamtx_host}:{self.mediamtx_port}/streams_high/gate{self.gate_id}?rtsp_transport=udp"
 
     @property
     def minio_config(self) -> Dict[str, Any]:
@@ -512,7 +512,7 @@ class BaseAgent(ABC):
             confidence = self.consensus_algorithm.compute_consensus_confidence()
             self.logger.info(f"Consensus: '{final_text}' (confidence={confidence:.3f})")
             best_crop = self.consensus_algorithm.select_best_crop(final_text)
-            return final_text, confidence, best_crop
+            return final_text, confidence, best_crop # type: ignore
 
         return None
     
