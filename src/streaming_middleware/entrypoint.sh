@@ -27,7 +27,47 @@ mkdir -p /tmp/hls/low /tmp/hls/high /tmp/dash/low /tmp/dash/high
 chmod -R 777 /tmp/hls /tmp/dash
 echo "[Entrypoint] ✓ Directories created"
 
-# Escolher script de ingest baseado em STREAM_MODE
+# Configurar player.html com os Gate IDs atuais
+echo "[Entrypoint] Configuring player.html..."
+PLAYER_HTML="/usr/local/nginx/html/player.html"
+if [[ -f "$PLAYER_HTML" ]]; then
+    # Ensure 'gate' prefix
+    [[ ! $CAMERA1_GATE_ID =~ ^gate ]] && CAMERA1_GATE_ID="gate${CAMERA1_GATE_ID:-1}"
+    [[ ! $CAMERA2_GATE_ID =~ ^gate ]] && CAMERA2_GATE_ID="gate${CAMERA2_GATE_ID:-2}"
+    
+    sed -i "s/{{CAMERA1_GATE_ID}}/${CAMERA1_GATE_ID}/g" "$PLAYER_HTML"
+    sed -i "s/{{CAMERA2_GATE_ID}}/${CAMERA2_GATE_ID}/g" "$PLAYER_HTML"
+    echo "[Entrypoint] ✓ player.html updated (Gate 1: $CAMERA1_GATE_ID, Gate 2: $CAMERA2_GATE_ID)"
+else
+    echo "[Entrypoint] ⚠ player.html not found at $PLAYER_HTML"
+fi
+
+# ============================================
+# 1. Start Nginx FIRST (background) so RTMP port 1935 is available
+# ============================================
+echo "[Entrypoint] ===================================="
+echo "[Entrypoint] Starting Nginx in background..."
+echo "[Entrypoint] ===================================="
+nginx -g 'daemon off;' &
+NGINX_PID=$!
+
+# Wait for Nginx RTMP to be ready (port 1935)
+echo "[Entrypoint] Waiting for Nginx RTMP to be ready..."
+MAX_WAIT=15
+WAITED=0
+while ! curl -sf http://localhost:8080/health > /dev/null 2>&1; do
+    sleep 1
+    WAITED=$((WAITED + 1))
+    if [[ $WAITED -ge $MAX_WAIT ]]; then
+        echo "[Entrypoint] ERROR: Nginx did not start within ${MAX_WAIT}s"
+        exit 1
+    fi
+done
+echo "[Entrypoint] ✓ Nginx is ready (took ${WAITED}s)"
+
+# ============================================
+# 2. Start ingest AFTER Nginx is listening
+# ============================================
 STREAM_MODE="${STREAM_MODE:-camera}"
 echo "[Entrypoint] ===================================="
 echo "[Entrypoint] STREAM MODE: ${STREAM_MODE}"
@@ -43,25 +83,23 @@ fi
 INGEST_PID=$!
 echo "[Entrypoint] ✓ Ingest started (PID: $INGEST_PID)"
 
-# Aguardar 2 segundos para ingest começar
-sleep 2
-
-# Iniciar Nginx em FOREGROUND (não retorna)
-echo "[Entrypoint] ===================================="
-echo "[Entrypoint] Starting Nginx in foreground..."
-echo "[Entrypoint] Nginx will handle all signals"
-echo "[Entrypoint] ===================================="
-
-# Cleanup handler
+# ============================================
+# 3. Cleanup handler + wait on Nginx
+# ============================================
 cleanup() {
     echo "[Entrypoint] Received signal, shutting down..."
     kill $INGEST_PID 2>/dev/null || true
+    kill $NGINX_PID 2>/dev/null || true
     wait $INGEST_PID 2>/dev/null || true
+    wait $NGINX_PID 2>/dev/null || true
     echo "[Entrypoint] Shutdown complete."
     exit 0
 }
 
 trap cleanup SIGTERM SIGINT
 
-# Iniciar Nginx em foreground (bloqueia aqui)
-exec nginx -g 'daemon off;'
+# Block on Nginx (replaces 'exec nginx')
+echo "[Entrypoint] ===================================="
+echo "[Entrypoint] Nginx running (PID: $NGINX_PID), waiting..."
+echo "[Entrypoint] ===================================="
+wait $NGINX_PID

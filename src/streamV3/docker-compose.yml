@@ -1,0 +1,9 @@
+services:
+  mediamtx:
+    build:
+      context: .          # sends Dockerfile + mediamtx.yml to the remote Docker context
+      dockerfile: Dockerfile
+    image: mediamtx-custom:latest
+    container_name: mediamtx
+    restart: unless-stopped
+    network_mode: host     # required for UDP RTSP and WebRTC ICE

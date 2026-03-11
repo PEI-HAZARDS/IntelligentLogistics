@@ -1,0 +1,14 @@
+# --- Web & API ---
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# --- HTTP ---
+httpx[http2]
+
+# --- Kafka & Messaging ---
+confluent_kafka==2.12.0
+
+# --- Observability ---
+prometheus-fastapi-instrumentator

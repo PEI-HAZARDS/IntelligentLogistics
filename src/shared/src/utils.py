@@ -15,7 +15,7 @@ def levenshtein_distance(s1, s2):
             deletions = current_row[j] + 1
             substitutions = previous_row[j] + (c1 != c2)
             
-            # append the minimum cost to the current row
+            # Append the minimum cost to the current row
             current_row.append(min(insertions, deletions, substitutions))
             
         previous_row = current_row
@@ -40,10 +40,3 @@ def load_from_file(filename: str, separator: str) -> dict:
             dic[part1] = part2
 
     return dic
-
-def extract_truck_id_from_headers(headers) -> str | None:
-    """Extracts truck_id from Kafka message headers."""
-    for k, v in (headers or []):
-        if k == "truckId":
-            return v.decode("utf-8") if isinstance(v, bytes) else v
-    return None

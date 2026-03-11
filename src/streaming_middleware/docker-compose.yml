@@ -8,14 +8,21 @@ services:
     environment:
       # Stream Mode: "camera" (default) ou "test"
       - STREAM_MODE=${STREAM_MODE}
-      # Configuração da câmara (usado quando STREAM_MODE=camera)
-      - CAMERA_IP=${CAMERA_IP}
-      - RTSP_PORT=${RTSP_PORT}
-      - STREAM_LOW_PATH=${STREAM_LOW_PATH}
-      - STREAM_HIGH_PATH=${STREAM_HIGH_PATH}
-      - GATE_ID=${GATE_ID}
-      # Configuração do vídeo de teste (usado quando STREAM_MODE=test)
-      - TEST_VIDEO_PATH=${TEST_VIDEO_PATH}
+      # Configuração da câmara 1
+      - CAMERA1_IP=${CAMERA1_IP}
+      - CAMERA1_PORT=${CAMERA1_PORT}
+      - CAMERA1_LOW_PATH=${CAMERA1_LOW_PATH}
+      - CAMERA1_HIGH_PATH=${CAMERA1_HIGH_PATH}
+      - CAMERA1_GATE_ID=${CAMERA1_GATE_ID}
+      # Configuração da câmara 2
+      - CAMERA2_IP=${CAMERA2_IP}
+      - CAMERA2_PORT=${CAMERA2_PORT}
+      - CAMERA2_LOW_PATH=${CAMERA2_LOW_PATH}
+      - CAMERA2_HIGH_PATH=${CAMERA2_HIGH_PATH}
+      - CAMERA2_GATE_ID=${CAMERA2_GATE_ID}
+      # Configuração dos vídeos de teste
+      - TEST_VIDEO1_PATH=${TEST_VIDEO1_PATH}
+      - TEST_VIDEO2_PATH=${TEST_VIDEO2_PATH}
     volumes:
       # Caminho absoluto na VM para os vídeos de teste
       - ${TEST_VIDEOS_HOST_PATH}:/videos:ro

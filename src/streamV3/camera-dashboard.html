@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Camera Dashboard — MediaMTX WebRTC</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #111; color: #eee; font-family: system-ui, sans-serif; padding: 16px; }
+    h1 { font-size: 1.2rem; margin-bottom: 16px; color: #7dd3fc; letter-spacing: 0.05em; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+    @media (max-width: 700px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .cam-card { background: #1e293b; border-radius: 10px; overflow: hidden; }
+    .cam-label { padding: 8px 12px; font-size: 0.8rem; color: #94a3b8; border-bottom: 1px solid #334155; }
+    video { width: 100%; display: block; background: #000; aspect-ratio: 16/9; }
+    .status { padding: 4px 12px; font-size: 0.7rem; color: #64748b; }
+    .status.ok { color: #4ade80; }
+    .status.err { color: #f87171; }
+  </style>
+</head>
+<body>
+
+<h1>📷 IP Camera Dashboard — Live WebRTC</h1>
+
+<div class="grid">
+  <div class="cam-card">
+    <div class="cam-label">Gate 1 — High Resolution (10.16.9.2/stream1)</div>
+    <video id="streams_high/gate1" autoplay muted playsinline></video>
+    <div class="status" id="status-streams_high/gate1">Connecting...</div>
+  </div>
+  <div class="cam-card">
+    <div class="cam-label">Gate 1 — Low Resolution (10.16.9.2/stream2)</div>
+    <video id="streams_low/gate1" autoplay muted playsinline></video>
+    <div class="status" id="status-streams_low/gate1">Connecting...</div>
+  </div>
+  <div class="cam-card">
+    <div class="cam-label">Gate 2 — High Resolution (10.16.9.4/stream1)</div>
+    <video id="streams_high/gate2" autoplay muted playsinline></video>
+    <div class="status" id="status-streams_high/gate2">Connecting...</div>
+  </div>
+  <div class="cam-card">
+    <div class="cam-label">Gate 2 — Low Resolution (10.16.9.4/stream2)</div>
+    <video id="streams_low/gate2" autoplay muted playsinline></video>
+    <div class="status" id="status-streams_low/gate2">Connecting...</div>
+  </div>
+</div>
+
+<script>
+  // ⚠️ Replace with the IP/hostname of your MediaMTX server
+  const MEDIAMTX = "10.255.32.56";
+  const PORT = 8889;
+
+  const STREAMS = [
+    "streams_high/gate1",
+    "streams_low/gate1",
+    "streams_high/gate2",
+    "streams_low/gate2",
+  ];
+
+  /**
+   * Connect a single stream via WebRTC using MediaMTX's built-in WHEP endpoint.
+   * WHEP = WebRTC-HTTP Egress Protocol — a standard supported by MediaMTX.
+   */
+  async function connectStream(streamName) {
+    const videoEl = document.getElementById(streamName);
+    const statusEl = document.getElementById(`status-${streamName}`);
+
+    const whepUrl = `http://${MEDIAMTX}:${PORT}/${streamName}/whep`;
+
+    const pc = new RTCPeerConnection({
+      iceServers: [],   // no STUN needed on LAN
+      iceTransportPolicy: "all",
+    });
+
+    // Accept incoming audio+video tracks
+    pc.addTransceiver("video", { direction: "recvonly" });
+    pc.addTransceiver("audio", { direction: "recvonly" });
+
+    pc.ontrack = (evt) => {
+      if (evt.track.kind === "video") {
+        videoEl.srcObject = evt.streams[0];
+        statusEl.textContent = "● Live";
+        statusEl.className = "status ok";
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+        statusEl.textContent = "⚠ Disconnected — retrying in 3s...";
+        statusEl.className = "status err";
+        setTimeout(() => connectStream(streamName), 3000);
+      }
+    };
+
+    // WHEP handshake
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    try {
+      const res = await fetch(whepUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/sdp" },
+        body: pc.localDescription.sdp,
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const answerSdp = await res.text();
+      await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+
+    } catch (err) {
+      statusEl.textContent = `✗ Error: ${err.message}`;
+      statusEl.className = "status err";
+      console.error(`[${streamName}]`, err);
+      setTimeout(() => connectStream(streamName), 5000);
+    }
+  }
+
+  STREAMS.forEach(connectStream);
+</script>
+</body>
+</html>
