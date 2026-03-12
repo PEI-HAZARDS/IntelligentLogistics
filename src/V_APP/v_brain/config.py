@@ -19,6 +19,11 @@ class VBrainConfig(BaseSettings):
     # before forcing scale-down + reset
     correlator_timeout_seconds: int = Field(default=30)
 
+    # Scaling API configuration (Tiago's slice scaling service)
+    scaling_api_url: str = Field(default="http://10.255.35.126:8008")
+    scaling_notification_destination: str = Field(default="https://example.com/")
+    scaling_slice_id: str = Field(default="")
+
     @field_validator("gate_ids", mode="before")
     @classmethod
     def _parse_gate_ids(cls, v: str) -> str:

@@ -1,3 +1,4 @@
 FROM bluenviron/mediamtx:1-ffmpeg
 
-COPY mediamtx.yml /mediamtx.yml
+ARG MODE=real
+COPY mediamtx_${MODE}.yml /mediamtx.yml

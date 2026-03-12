@@ -1,9 +1,13 @@
 services:
   mediamtx:
     build:
-      context: .          # sends Dockerfile + mediamtx.yml to the remote Docker context
+      context: . # sends Dockerfile + mediamtx.yml to the remote Docker context
       dockerfile: Dockerfile
+      args:
+        MODE: ${MODE:-real}
     image: mediamtx-custom:latest
     container_name: mediamtx
     restart: unless-stopped
-    network_mode: host     # required for UDP RTSP and WebRTC ICE
+    network_mode: host # required for UDP RTSP and WebRTC ICE
+    volumes:
+      - /home/pei_user/videos:/videos:ro

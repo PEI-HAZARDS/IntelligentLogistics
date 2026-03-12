@@ -44,7 +44,7 @@ class BaseAgentConfig(BaseSettings):
     # Use properties to dynamically construct dependent values
     @property
     def stream_url(self) -> str:
-        return f"rtsp://{self.mediamtx_host}:{self.mediamtx_port}/streams_high/gate{self.gate_id}?rtsp_transport=udp"
+        return f"rtsp://{self.mediamtx_host}:{self.mediamtx_port}/streams_high/gate{self.gate_id}"
 
     @property
     def minio_config(self) -> Dict[str, Any]:
