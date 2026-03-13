@@ -1,7 +1,6 @@
---extra-index-url https://download.pytorch.org/whl/cu121
---extra-index-url https://www.paddlepaddle.org.cn/packages/stable/cu126/
+--extra-index-url https://download.pytorch.org/whl/cu126
 
-torch==2.4.1
+torch==2.10.0
 ultralytics>=8.3.0
 opencv-python-headless>=4.12.0.88
 easyocr==1.7.2
@@ -13,6 +12,5 @@ prometheus_client
 pillow==12.0.0
 numpy
 minio
-paddlepaddle-gpu==3.0.0
 paddleocr==3.3.2
 pydantic-settings

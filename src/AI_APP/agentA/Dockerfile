@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
+FROM nvidia/cuda:13.1.1-runtime-ubuntu22.04
 
 ENV PYTHONPATH=/app:/app/AI_APP \
     MODELS_PATH=/app/AI_APP/agentA/data \

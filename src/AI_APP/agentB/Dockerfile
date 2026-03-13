@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
+FROM nvidia/cuda:13.1.1-runtime-ubuntu22.04
 
 ENV PYTHONPATH=/app:/app/AI_APP \
     MODELS_PATH=/app/AI_APP/agentB/data \
@@ -21,9 +21,10 @@ RUN apt-get update && \
     ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
     rm -rf /var/lib/apt/lists/*
 
-# Python dependencies
+# Python dependencies (split install to avoid nvidia-cuda-nvrtc version conflict)
 COPY AI_APP/agentB/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir paddlepaddle-gpu==3.0.0 -f https://www.paddlepaddle.org.cn/packages/stable/cu126/ && \
     pip install --no-cache-dir -r requirements.txt
 
 # Source code — only what agentB needs
