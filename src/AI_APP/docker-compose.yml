@@ -5,6 +5,13 @@ x-agenta-base: &agenta-base
   image: agenta:latest
   restart: unless-stopped
   env_file: .env
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
   depends_on:
     kafka-init:
       condition: service_completed_successfully
@@ -17,6 +24,13 @@ x-agentb-base: &agentb-base
   image: agentb:latest
   restart: unless-stopped
   env_file: .env
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
   depends_on:
     kafka-init:
       condition: service_completed_successfully
@@ -29,6 +43,13 @@ x-agentc-base: &agentc-base
   image: agentc:latest
   restart: unless-stopped
   env_file: .env
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
   depends_on:
     kafka-init:
       condition: service_completed_successfully

@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
 
 ENV PYTHONPATH=/app:/app/AI_APP \
     MODELS_PATH=/app/AI_APP/agentA/data \
@@ -6,12 +6,18 @@ ENV PYTHONPATH=/app:/app/AI_APP \
 
 WORKDIR /app
 
-# System dependencies
-# libgl1, libglib2.0-0: required by OpenCV
+# System dependencies + Python 3.11
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+    software-properties-common && \
+    add-apt-repository ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3.11 python3.11-venv python3-pip \
     libgl1 \
     libglib2.0-0 && \
+    ln -sf /usr/bin/python3.11 /usr/bin/python && \
+    ln -sf /usr/bin/python3.11 /usr/bin/python3 && \
     rm -rf /var/lib/apt/lists/*
 
 # Python dependencies
