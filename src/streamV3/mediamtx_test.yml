@@ -13,7 +13,7 @@ rtspAddress: :8554
 rtpAddress: :8000
 rtcpAddress: :8001
 # Server accepts UDP from downstream clients (AI agents, VLC, etc.)
-rtspTransports: [udp]
+rtspTransports: [tcp, udp]
 
 rtmp: false
 hls: false
@@ -24,19 +24,20 @@ srt: false
 ###############################################
 pathDefaults:
    rtspTransport: tcp
-   
+   alwaysAvailable: true
+
 ###############################################
 # Paths
 ###############################################
 paths:
    streams_high/gate1:
-    runOnDemand: ffmpeg -re -stream_loop -1 -i ./videos/gate.mp4 -c copy -f rtsp rtsp://localhost:8554/streams_high/gate1
-   
+      alwaysAvailableFile: ./videos/gate.mp4
+
    streams_low/gate1:
-    runOnDemand: ffmpeg -re -stream_loop -1 -i ./videos/gate.mp4 -c copy -f rtsp rtsp://localhost:8554/streams_low/gate1
-   
+      alwaysAvailableFile: ./videos/gate.mp4
+
    streams_high/gate2:
-    runOnDemand: ffmpeg -re -stream_loop -1 -i ./videos/highway.mp4 -c copy -f rtsp rtsp://localhost:8554/streams_high/gate2
-   
+      alwaysAvailableFile: ./videos/highway.mp4
+
    streams_low/gate2:
-    runOnDemand: ffmpeg -re -stream_loop -1 -i ./videos/highway.mp4 -c copy -f rtsp rtsp://localhost:8554/streams_low/gate2
+      alwaysAvailableFile: ./videos/highway.mp4
