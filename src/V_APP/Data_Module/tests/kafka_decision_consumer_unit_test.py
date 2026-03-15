@@ -178,3 +178,63 @@ class TestKafkaDecisionConsumer:
             await consumer.stop()
             assert consumer.running is False
         asyncio.run(_run())
+
+    def test_store_infraction_decision_updates_appointment(self, consumer):
+        data = {
+            "license_plate": "AB12CD",
+            "infraction": True,
+            "un": "1203",
+            "kemler": "33",
+        }
+
+        async def _run():
+            with patch("services.kafka_decision_consumer.persist_infraction_event_from_kafka", return_value="event-123") as persist_mock, \
+                 patch("services.kafka_decision_consumer.update_appointment_after_infraction", return_value={
+                     "appointment_id": 42,
+                     "old_highway_infraction": False,
+                     "new_highway_infraction": True,
+                 }) as update_mock, \
+                 patch("services.kafka_decision_consumer.create_notification") as notif_mock:
+                await consumer._store_infraction_decision("truck-1", data)
+
+                persist_mock.assert_called_once()
+                update_mock.assert_called_once_with("AB12CD", True)
+                notif_mock.assert_called_once()
+
+        asyncio.run(_run())
+
+    def test_store_infraction_decision_without_infraction_skips_update(self, consumer):
+        data = {
+            "license_plate": "AB12CD",
+            "infraction": False,
+        }
+
+        async def _run():
+            with patch("services.kafka_decision_consumer.persist_infraction_event_from_kafka", return_value="event-456") as persist_mock, \
+                 patch("services.kafka_decision_consumer.update_appointment_after_infraction") as update_mock, \
+                 patch("services.kafka_decision_consumer.create_notification") as notif_mock:
+                await consumer._store_infraction_decision("truck-2", data)
+
+                persist_mock.assert_called_once()
+                update_mock.assert_not_called()
+                notif_mock.assert_not_called()
+
+        asyncio.run(_run())
+
+    def test_store_infraction_decision_missing_plate_skips_update(self, consumer):
+        data = {
+            "license_plate": "N/A",
+            "infraction": True,
+        }
+
+        async def _run():
+            with patch("services.kafka_decision_consumer.persist_infraction_event_from_kafka", return_value="event-789") as persist_mock, \
+                 patch("services.kafka_decision_consumer.update_appointment_after_infraction") as update_mock, \
+                 patch("services.kafka_decision_consumer.create_notification") as notif_mock:
+                await consumer._store_infraction_decision("truck-3", data)
+
+                persist_mock.assert_called_once()
+                update_mock.assert_not_called()
+                notif_mock.assert_not_called()
+
+        asyncio.run(_run())
