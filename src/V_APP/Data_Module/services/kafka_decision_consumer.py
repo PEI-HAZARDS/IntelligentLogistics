@@ -18,7 +18,12 @@ import json
 
 from shared.src.kafka_wrapper import KafkaConsumerWrapper
 from shared.src.kafka_protocol import KafkaTopicFactory
-from services.decision_service import persist_decision_event_from_kafka, update_appointment_after_decision
+from services.decision_service import (
+    persist_decision_event_from_kafka,
+    update_appointment_after_decision,
+    persist_infraction_event_from_kafka,
+    update_appointment_after_infraction,
+)
 from services.notification_service import create_notification
 from config import settings
 
@@ -137,6 +142,7 @@ class KafkaDecisionConsumer:
         topics = [
             KafkaTopicFactory.agent_decision(settings.gate_id),
             KafkaTopicFactory.operator_decision(settings.gate_id),
+            KafkaTopicFactory.infraction_decision(settings.gate_id),
         ]
         self.consumer = consumer or KafkaConsumerWrapper(
             bootstrap_servers=settings.kafka_bootstrap,
@@ -203,6 +209,10 @@ class KafkaDecisionConsumer:
 
                 elif topic == KafkaTopicFactory.operator_decision(settings.gate_id):
                     final_decision = self.correlator.process_operator_decision(truck_id, data)
+
+                elif topic == KafkaTopicFactory.infraction_decision(settings.gate_id):
+                    await self._store_infraction_decision(truck_id, data)
+                    logger.info(f"Infraction decision processed for truck_id={truck_id}")
 
                 # If final decision ready, persist it
                 if final_decision:
@@ -283,3 +293,71 @@ class KafkaDecisionConsumer:
 
         except Exception as e:
             logger.error(f"Error persisting decision for truck_id={truck_id}: {e}", exc_info=True)
+
+    
+    async def _store_infraction_decision(self, truck_id: str, decision_data: dict):
+        """Persist infraction event and flag appointment highway_infraction when needed."""
+        try:
+            logger.info(f"Storing infraction decision for truck_id={truck_id}")
+
+            try:
+                gate_id = int(decision_data.get("gate_id", settings.gate_id))
+            except (TypeError, ValueError):
+                gate_id = int(settings.gate_id)
+
+            event_payload = {
+                **decision_data,
+                "gate_id": gate_id,
+                "truck_id": truck_id,
+            }
+
+
+            # Store infraction event in MongoDB (separate collection) — runs in executor to avoid blocking
+            event_id = await asyncio.get_event_loop().run_in_executor(
+                None,
+                persist_infraction_event_from_kafka,
+                truck_id,
+                event_payload,
+            )
+            logger.info(f"Infraction event persisted for truck_id={truck_id} with id={event_id}")
+
+            # Determine if infraction flag needs to be updated on appointment
+            infraction_detected = bool(decision_data.get("infraction", False))
+            if not infraction_detected:
+                logger.info(f"No infraction for truck_id={truck_id}; skipping appointment flag update")
+                return
+
+            license_plate = decision_data.get("license_plate")
+            if not license_plate or license_plate == "N/A":
+                logger.warning(f"Infraction detected for truck_id={truck_id} but license_plate is missing")
+                return
+            # Update appointment in PostgreSQL if infraction detected
+            result = await asyncio.get_event_loop().run_in_executor(
+                None,
+                update_appointment_after_infraction,
+                license_plate,
+                True,
+            )
+
+            if not result:
+                logger.warning(
+                    f"Infraction detected for truck_id={truck_id} plate={license_plate}, "
+                    "but no active appointment was updated"
+                )
+                return
+
+            logger.info(
+                f"Appointment {result['appointment_id']} infraction flag updated for truck_id={truck_id}: "
+                f"{result['old_highway_infraction']} -> {result['new_highway_infraction']}"
+            )
+
+            create_notification(
+                gate_id=gate_id,
+                title="Highway Infraction",
+                message=f"Truck {license_plate} flagged with highway infraction.",
+                notification_type="danger",
+                appointment_id=result.get("appointment_id"),
+                license_plate=license_plate,
+            )
+        except Exception as e:
+            logger.error(f"Error storing infraction decision for truck_id={truck_id}: {e}", exc_info=True)
