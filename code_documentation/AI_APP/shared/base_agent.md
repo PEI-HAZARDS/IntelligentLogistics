@@ -8,7 +8,7 @@
 
 `BaseAgent` encapsulates the full lifecycle of an AI detection agent: consuming trigger messages from Kafka, capturing video frames from an RTMP stream, running YOLO object detection, performing OCR on cropped regions, reaching consensus across multiple readings, uploading results to MinIO, and publishing detection outcomes back to Kafka.
 
-The module also defines `BaseAgentConfig`, a Pydantic settings class that centralises all environment-driven configuration (Kafka, NGINX RTMP, MinIO, detection parameters). Concrete subclasses—`AgentA` (`src/AI_APP/agentA/src/agentA.py`), `AgentB` (`src/AI_APP/agentB/src/agentB.py`), and `AgentC` (`src/AI_APP/agentC/src/agentC.py`)—implement the abstract hooks to specialise detection targets (e.g. license plates, hazard plates), YOLO models, OCR initialization, bounding-box styling, Kafka topics, and Prometheus metrics.
+The module also defines `BaseAgentConfig`, a Pydantic settings class that centralises all environment-driven configuration (Kafka, MediaMTX RTSP, MinIO, detection parameters). Concrete subclasses—`AgentA` (`src/AI_APP/agentA/src/agentA.py`), `AgentB` (`src/AI_APP/agentB/src/agentB.py`), and `AgentC` (`src/AI_APP/agentC/src/agentC.py`)—implement the abstract hooks to specialise detection targets (e.g. license plates, hazard plates), YOLO models, OCR initialization, bounding-box styling, Kafka topics, and Prometheus metrics.
 
 `BaseAgent` does **not** manage gateway-level HTTP forwarding (see `base_gateway.py`) nor the consensus algorithm itself (see `consensus_algorithm.py`); it orchestrates these collaborators.
 
@@ -56,6 +56,7 @@ src/shared/src/base_agent.py
                          ┌──────┴──────┐
                          ▼             │
                    _get_next_frame()   │  (loop up to max_frames)
+                   (robust capture)    │
                          │             │
                          ▼             │
                    _process_frame()    │
@@ -90,8 +91,8 @@ src/shared/src/base_agent.py
 ```python
 BaseAgentConfig(
     kafka_bootstrap: str = "10.255.32.143:9092",
-    nginx_host: str = "10.255.32.56",
-    nginx_port: int = 1935,
+    mediamtx_host: str = "10.255.32.56",
+    mediamtx_port: int = 8554,
     minio_host: str = "10.255.32.82",
     minio_port: int = 9000,
     minio_user: str,            # required
@@ -101,15 +102,14 @@ BaseAgentConfig(
     models_path: str = "/app/AI_APP",
     max_frames: int = 40,
     min_detection_confidence: float = 0.4,
-    frames_batch_size: int = 5,
 )
 ```
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `kafka_bootstrap` | `str` | `"10.255.32.143:9092"` | Kafka broker address |
-| `nginx_host` | `str` | `"10.255.32.56"` | NGINX RTMP server host |
-| `nginx_port` | `int` | `1935` | NGINX RTMP server port |
+| `mediamtx_host` | `str` | `"10.255.32.56"` | MediaMTX RTSP server host |
+| `mediamtx_port` | `int` | `8554` | MediaMTX RTSP server port |
 | `minio_host` | `str` | `"10.255.32.82"` | MinIO server host |
 | `minio_port` | `int` | `9000` | MinIO server port |
 | `minio_user` | `str` | required | MinIO access key |
@@ -119,14 +119,13 @@ BaseAgentConfig(
 | `models_path` | `str` | `"/app/AI_APP"` | Base path for ML model files |
 | `max_frames` | `int` | `40` | Maximum frames to process before returning partial result |
 | `min_detection_confidence` | `float` | `0.4` | Minimum YOLO confidence to accept a detection box |
-| `frames_batch_size` | `int` | `5` | Number of frames to capture per batch from RTMP stream |
 
 **Attributes**
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | *(all parameters above)* | | |
-| `stream_url` | `str` | (property) Computed RTMP URL: `rtmp://{nginx_host}:{nginx_port}/streams_high/gate{gate_id}` |
+| `stream_url` | `str` | (property) Computed RTSP URL: `rtsp://{mediamtx_host}:{mediamtx_port}/streams_high/gate{gate_id}` |
 | `minio_config` | `Dict[str, Any]` | (property) Computed MinIO connection dict with endpoint, credentials, and TLS flag |
 
 ---
@@ -157,7 +156,7 @@ BaseAgent(
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `config` | `Optional[BaseAgentConfig]` | `None` | Agent configuration; loaded from environment if not provided |
-| `stream_manager` | `Optional[StreamManager]` | `None` | RTMP frame reader; created from `config.stream_url` if not provided |
+| `stream_manager` | `Optional[StreamManager]` | `None` | RTMP/RTSP frame reader; created from `config.stream_url` if not provided |
 | `object_detector` | `Optional[ObjectDetector]` | `None` | YOLO detector; created from `get_yolo_model_path()` if not provided |
 | `ocr` | `Optional[OCR]` | `None` | OCR engine; created via `initialize_ocr()` if not provided |
 | `classifier` | `Optional[PlateClassifier]` | `None` | Plate classifier; default-constructed if not provided |
@@ -188,7 +187,6 @@ BaseAgent(
 | `self.kafka_consumer` | `KafkaConsumerWrapper` | Kafka consumer (group = `{agent_name}-group`) |
 | `self.consensus_algorithm` | `ConsensusAlgorithm` | Multi-reading consensus tracker |
 | `self.running` | `bool` | Lifecycle flag controlling the main loop |
-| `self.frames_queue` | `Queue` | Buffer for captured video frames |
 | `self.truck_id` | `str` | Current truck identifier (set per consumed message) |
 | `self.frames_processed_metric` | `Optional[object]` | Prometheus counter for frames processed (set by `init_metrics()`) |
 | `self.inference_latency` | `Optional[object]` | Prometheus histogram for YOLO inference latency (set by `init_metrics()`) |
@@ -429,27 +427,13 @@ BaseAgent(
 
 ##### `_get_next_frame()`
 
-> Retrieve the next frame from the internal queue, triggering a batch capture if the queue is empty.
+> Robustly retrieve the next frame from the stream manager. Retries for several seconds to allow the stream to connect and returns a **copy** of the frame to ensure thread safety and prevent memory corruption.
 
 **Parameters**
 
 > N/A
 
-**Returns:** `Optional[np.ndarray]` — Video frame, or `None` if no frame is available.
-
----
-
-##### `_add_frames_queue(num_frames)`
-
-> Capture frames from the RTMP/RTSP stream with automatic reconnection and add them to `self.frames_queue`.
-
-**Parameters**
-
-| Name | Type | Default | Description |
-|------|------|---------|-------------|
-| `num_frames` | `int` | `30` | Number of frames to capture |
-
-**Returns:** `None`
+**Returns:** `Optional[np.ndarray]` — A **copy** of the video frame, or `None` if no frame is available.
 
 ---
 
@@ -514,18 +498,6 @@ BaseAgent(
 
 ---
 
-##### `_clear_frames_queue()`
-
-> Drain all frames from `self.frames_queue`.
-
-**Parameters**
-
-> N/A
-
-**Returns:** `None`
-
----
-
 ##### `_publish_detection(message)`
 
 > Publish a detection result message to Kafka on the topic returned by `get_produce_topic()`, with `self.truck_id` as a header.
@@ -563,8 +535,8 @@ BaseAgent(
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `KAFKA_BOOTSTRAP` | ❌ | `10.255.32.143:9092` | Kafka broker address |
-| `NGINX_HOST` | ❌ | `10.255.32.56` | NGINX RTMP server host |
-| `NGINX_PORT` | ❌ | `1935` | NGINX RTMP server port |
+| `MEDIAMTX_HOST` | ❌ | `10.255.32.56` | MediaMTX RTSP server host |
+| `MEDIAMTX_PORT` | ❌ | `8554` | MediaMTX RTSP server port |
 | `MINIO_HOST` | ❌ | `10.255.32.82` | MinIO server host |
 | `MINIO_PORT` | ❌ | `9000` | MinIO server port |
 | `MINIO_USER` | ✅ | — | MinIO access key |
@@ -574,7 +546,6 @@ BaseAgent(
 | `MODELS_PATH` | ❌ | `"/app/AI_APP"` | Base path for ML model files |
 | `MAX_FRAMES` | ❌ | `40` | Maximum frames per detection cycle |
 | `MIN_DETECTION_CONFIDENCE` | ❌ | `0.4` | Minimum YOLO confidence threshold |
-| `FRAMES_BATCH_SIZE` | ❌ | `5` | Frames captured per batch from stream |
 
 ---
 
@@ -640,7 +611,7 @@ agent.start()  # blocks on main loop
 
 ## Error Handling
 
-The main loop in `start()` catches all exceptions per iteration, logs them with `logger.exception`, and retries after a 1-second sleep—preventing a single bad message from crashing the agent. Frame capture errors in `_add_frames_queue` are caught and retried with a 0.2-second backoff. OCR failures on individual crops are caught in `_process_frame` so remaining crops in the same frame are still processed. Annotated-frame upload and crop upload errors are caught and logged without aborting the pipeline. The `_process_frame` method re-raises non-OCR exceptions to surface unexpected errors. Resource cleanup in `_cleanup` is called by `stop()` to release the stream, flush/close Kafka, and free connections.
+The main loop in `start()` catches all exceptions per iteration, logs them with `logger.exception`, and retries after a 1-second sleep—preventing a single bad message from crashing the agent. Frame capture errors in `_get_next_frame` are caught and retried with a robust backoff. OCR failures on individual crops are caught in `_process_frame` so remaining crops in the same frame are still processed. Annotated-frame upload and crop upload errors are caught and logged without aborting the pipeline. The `_process_frame` method re-raises non-OCR exceptions to surface unexpected errors. Resource cleanup in `_cleanup` is called by `stop()` to release the stream, flush/close Kafka, and free connections.
 
 ---
 

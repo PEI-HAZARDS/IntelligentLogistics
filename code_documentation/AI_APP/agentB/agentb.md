@@ -6,7 +6,7 @@
 
 ## Overview
 
-`agentB.py` defines `AgentB`, a concrete implementation of `BaseAgent` that specialises the generic detection pipeline for license plate recognition. On receiving a Kafka `truck_detected` event, it reads frames from an RTMP stream, runs YOLO inference to locate license plates, and applies PaddleOCR through the consensus algorithm to extract the plate text. Detections classified as hazard plates by `PlateClassifier` are rejected and their crops are uploaded to a dedicated MinIO bucket (`failed-crops`) for later analysis; accepted plates are published as `license_plate_results` messages.
+`agentB.py` defines `AgentB`, a concrete implementation of `BaseAgent` that specialises the generic detection pipeline for license plate recognition. On receiving a Kafka `truck_detected` event, it reads frames from an MediaMTX RTSP stream, runs YOLO inference to locate license plates, and applies PaddleOCR through the consensus algorithm to extract the plate text. Detections classified as hazard plates by `PlateClassifier` are rejected and their crops are uploaded to a dedicated MinIO bucket (`failed-crops`) for later analysis; accepted plates are published as `license_plate_results` messages.
 
 The module acts as a downstream consumer of the truck detection stage (Agent A or equivalent) and an upstream producer for any component that acts on license plate data — including the `AIGateway`. It does not handle stream acquisition, Kafka I/O, or model training; those concerns are managed by `BaseAgent`, `StreamManager`, `KafkaWrapper`, and `ObjectDetector` respectively.
 
@@ -85,7 +85,7 @@ All keyword arguments are forwarded to `BaseAgent.__init__`. The constructor add
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `config` | `BaseAgentConfig` | `None` | Agent configuration; loaded from environment if omitted |
-| `stream_manager` | `StreamManager` | `None` | RTMP stream reader; created from config if omitted |
+| `stream_manager` | `StreamManager` | `None` | RTMP/RTSP stream reader; created from config if omitted |
 | `object_detector` | `ObjectDetector` | `None` | YOLO wrapper; instantiated with model path if omitted |
 | `ocr` | `OCR` | `None` | PaddleOCR instance; created via `initialize_ocr()` if omitted |
 | `classifier` | `PlateClassifier` | `None` | Plate classifier; default instance created if omitted |
@@ -357,14 +357,13 @@ assert agent.is_valid_detection(crop, 0.9, 1) is False
 | `MINIO_PASSWORD` | ✅ | — | MinIO secret key |
 | `GATE_ID` | ❌ | `"1"` | Gate identifier; used to namespace Kafka topics and MinIO bucket |
 | `MODELS_PATH` | ❌ | `/agentB/data` | Directory containing `license_plate_model.pt` |
-| `NGINX_HOST` | ❌ | `10.255.32.56` | RTMP server host |
-| `NGINX_PORT` | ❌ | `1935` | RTMP server port |
+| `MEDIAMTX_HOST` | ❌ | `10.255.32.56` | MediaMTX RTSP server host |
+| `MEDIAMTX_PORT` | ❌ | `8554` | MediaMTX RTSP server port |
 | `MINIO_HOST` | ❌ | `10.255.32.82` | MinIO server host |
 | `MINIO_PORT` | ❌ | `9000` | MinIO server port |
 | `MINIO_SECURE` | ❌ | `False` | Whether to use TLS for MinIO |
 | `MAX_FRAMES` | ❌ | `40` | Maximum frames to process per detection cycle |
 | `MIN_DETECTION_CONFIDENCE` | ❌ | `0.4` | Minimum YOLO confidence threshold |
-| `FRAMES_BATCH_SIZE` | ❌ | `5` | Number of frames captured per batch from the RTMP stream |
 
 ---
 
