@@ -14,7 +14,7 @@ from AI_APP.shared.src.bounding_box_drawer import BoundingBoxDrawer, Box
 from shared.src.kafka_wrapper import KafkaProducerWrapper, KafkaConsumerWrapper
 from AI_APP.shared.src.consensus_algorithm import ConsensusAlgorithm
 from shared.src.kafka_protocol import Message
-from queue import Queue, Empty
+from queue import Queue, Empty, Full
 import logging
 
 class BaseAgentConfig(BaseSettings):
@@ -40,6 +40,8 @@ class BaseAgentConfig(BaseSettings):
     max_frames: int = Field(default=40)
     min_detection_confidence: float = Field(default=0.4)
     frames_batch_size: int = Field(default=5)
+    annotated_frames_idle_upload: bool = Field(default=True)
+    annotated_frames_buffer_size: int = Field(default=100)
 
     # Use properties to dynamically construct dependent values
     @property
@@ -128,6 +130,7 @@ class BaseAgent(ABC):
         self.running = True
         self.frames_queue = Queue()
         self.truck_id = ""
+        self.pending_annotated_uploads: Queue = Queue(maxsize=max(1, int(self.config.annotated_frames_buffer_size)))
         
         # Metrics — subclasses set real values inside init_metrics();
         # base class guarantees these attributes always exist.
@@ -250,6 +253,8 @@ class BaseAgent(ABC):
                 
                 # No relevant message received, continue to next iteration
                 if truck_id is None:
+                    if self.config.annotated_frames_idle_upload:
+                        self._upload_pending_annotated_frames(max_items=1)
                     continue
                 
                 self.truck_id = truck_id
@@ -449,7 +454,17 @@ class BaseAgent(ABC):
         try:
             annotated_frame = frame.copy()
             annotated_frame = self.drawer.draw_box(annotated_frame, cast(List[Box], boxes))
-            self.image_storage.upload_memory_image(annotated_frame, f"{self.truck_id}_{int(time.time())}.jpg", image_type="annotated_frames")
+            object_name = f"{self.truck_id}_{int(time.time())}.jpg"
+            if self.config.annotated_frames_idle_upload:
+                enqueued = self._enqueue_annotated_frame_upload(annotated_frame, object_name)
+                if not enqueued:
+                    self.logger.warning("Annotated frame dropped: buffer full")
+            else:
+                self.image_storage.upload_memory_image(
+                    annotated_frame,
+                    object_name,
+                    image_type="annotated_frames"
+                )
         
         except Exception as e:
             self.logger.warning(f"Error drawing boxes: {e}")
@@ -546,7 +561,65 @@ class BaseAgent(ABC):
     def _cleanup(self) -> None:
         """Release resources and perform cleanup."""
         self.logger.info(f"Cleaning up resources for {self.agent_name}…")
+        if self.config.annotated_frames_idle_upload:
+            self._upload_pending_annotated_frames()
         self.stream_manager.release()
         self.kafka_producer.flush()
         self.kafka_producer.close()
         self.kafka_consumer.close()
+
+    def _enqueue_annotated_frame_upload(self, frame: np.ndarray, object_name: str) -> bool:
+        """Queue an annotated frame for deferred MinIO upload.
+
+        This is non-blocking and intended for debug/training artifacts so
+        detection and decision flow is never delayed by annotated frame upload.
+
+        Args:
+            frame: Annotated frame to upload later.
+            object_name: Target object key/name in MinIO.
+
+        Returns:
+            True when queued successfully, False when buffer is full.
+        """
+        try:
+            self.pending_annotated_uploads.put_nowait((frame.copy(), object_name))
+            return True
+        except Full:
+            return False
+
+    def _upload_pending_annotated_frames(self, max_items: Optional[int] = None) -> int:
+        """Flush queued annotated frame uploads from the deferred buffer.
+
+        Processes at most ``max_items`` entries (or all currently queued items
+        when ``max_items`` is None), uploading each to MinIO as
+        ``image_type='annotated_frames'``.
+
+        Args:
+            max_items: Upper bound of queued items to upload in this call.
+
+        Returns:
+            Number of upload attempts processed from the queue.
+        """
+        uploaded = 0
+        limit = max_items if max_items is not None else self.pending_annotated_uploads.qsize()
+
+        while uploaded < limit:
+            try:
+                frame, object_name = self.pending_annotated_uploads.get_nowait()
+            except Empty:
+                break
+
+            try:
+                self.image_storage.upload_memory_image(
+                    frame,
+                    object_name,
+                    image_type="annotated_frames"
+                )
+            except Exception as e:
+                self.logger.warning(f"Deferred annotated frame upload failed: {e}")
+            finally:
+                self.pending_annotated_uploads.task_done()
+
+            uploaded += 1
+
+        return uploaded
