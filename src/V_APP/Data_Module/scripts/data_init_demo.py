@@ -52,7 +52,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 #   "83-BTN-5"   → 83BTN5
 # ──────────────────────────────────────────────────────────────────────────────
 VIDEO1_PLATES = [
-    "1HEU148",
+    "87AX60",  #1HEU148
     "68BSH8",
     "PEI2025",
     "LN67OIZGB",
