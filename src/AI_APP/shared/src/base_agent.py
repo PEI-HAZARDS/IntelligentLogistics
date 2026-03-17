@@ -39,7 +39,6 @@ class BaseAgentConfig(BaseSettings):
     # Detection parameters
     max_frames: int = Field(default=40)
     min_detection_confidence: float = Field(default=0.4)
-    frames_batch_size: int = Field(default=5)
     annotated_frames_idle_upload: bool = Field(default=True)
     annotated_frames_buffer_size: int = Field(default=100)
 
