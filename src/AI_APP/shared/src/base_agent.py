@@ -567,7 +567,7 @@ class BaseAgent(ABC):
             True when queued successfully, False when buffer is full.
         """
         try:
-            self.pending_annotated_uploads.put_nowait((frame.copy(), object_name))
+            self.pending_annotated_uploads.put_nowait((frame, object_name))
             return True
         except Full:
             return False
