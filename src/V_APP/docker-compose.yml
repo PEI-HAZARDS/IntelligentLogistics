@@ -117,6 +117,8 @@ services:
       - API_PREFIX=${DM_API_PREFIX}
       - KAFKA_BOOTSTRAP=kafka:29092
       - GATE_ID=${GATE_ID}
+      - DECISION_GATE_IDS=${DECISION_GATE_IDS}
+      - INFRACTION_GATE_IDS=${INFRACTION_GATE_IDS}
     ports:
       - "8080:8000"
     healthcheck:
