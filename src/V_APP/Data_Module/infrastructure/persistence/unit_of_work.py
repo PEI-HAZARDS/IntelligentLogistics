@@ -13,7 +13,15 @@ from typing import Any
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from domain.interfaces import IInboxRepository, IOutboxRepository, IUnitOfWork
+from domain.interfaces import (
+    IAppointmentRepository,
+    IContainerRepository,
+    IInboxRepository,
+    IOutboxRepository,
+    IUnitOfWork,
+)
+from infrastructure.persistence.appointment_repository import SqlAlchemyAppointmentRepository
+from infrastructure.persistence.container_repository import SqlAlchemyContainerRepository
 from infrastructure.persistence.inbox_repository import SqlAlchemyInboxRepository
 from infrastructure.persistence.outbox_repository import SqlAlchemyOutboxRepository
 
@@ -33,6 +41,8 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
                 uow.commit()
     """
 
+    containers: IContainerRepository
+    appointments: IAppointmentRepository
     inbox: IInboxRepository
     outbox: IOutboxRepository
 
@@ -46,6 +56,8 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
 
     def __enter__(self) -> SqlAlchemyUnitOfWork:
         self._session = self._session_factory()
+        self.containers = SqlAlchemyContainerRepository(self._session)
+        self.appointments = SqlAlchemyAppointmentRepository(self._session)
         self.inbox = SqlAlchemyInboxRepository(self._session)
         self.outbox = SqlAlchemyOutboxRepository(self._session)
         return self

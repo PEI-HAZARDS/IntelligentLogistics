@@ -18,6 +18,42 @@ from domain.events import ConsumeContext, EventEnvelope
 
 
 # =========================================================
+# Domain repositories
+# =========================================================
+
+
+class IContainerRepository(ABC):
+    """Repository for container/appointment aggregate state transitions."""
+
+    @abstractmethod
+    def get_for_update(self, appointment_id: int) -> Optional[dict[str, Any]]:
+        """Return appointment dict with a ``SELECT … FOR UPDATE`` lock.
+
+        Returns *None* if the appointment does not exist.
+        """
+        ...
+
+    @abstractmethod
+    def save_state_transition(
+        self, appointment_id: int, new_state: str, metadata: dict[str, Any]
+    ) -> None:
+        ...
+
+
+class IAppointmentRepository(ABC):
+    """Repository for appointment lookup and optimistic-concurrency updates."""
+
+    @abstractmethod
+    def get_by_arrival_id(self, arrival_id: str) -> Optional[dict[str, Any]]:
+        ...
+
+    @abstractmethod
+    def update_status(self, appointment_id: int, status: str, *, version: int) -> int:
+        """Returns affected rows; 0 means optimistic concurrency conflict."""
+        ...
+
+
+# =========================================================
 # Inbox / Outbox repositories
 # =========================================================
 
@@ -70,12 +106,14 @@ class IOutboxRepository(ABC):
 
 class IUnitOfWork(ABC):
     """
-    Transactional boundary that groups Inbox + Outbox (and future
-    domain repository) mutations in a single PostgreSQL transaction.
+    Transactional boundary that groups Inbox + Outbox + domain
+    repository mutations in a single PostgreSQL transaction.
 
     Guardrail 6 — all persistence access goes through this abstraction.
     """
 
+    containers: IContainerRepository
+    appointments: IAppointmentRepository
     inbox: IInboxRepository
     outbox: IOutboxRepository
 
