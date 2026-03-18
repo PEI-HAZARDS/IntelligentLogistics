@@ -1,6 +1,9 @@
 """
 Arrivals Routes - Endpoints for appointment and visit management.
 Consumed by: Operator frontend, Decision Engine, Driver app.
+
+CQRS Query Side: GET endpoints read from MongoDB/Redis first.
+PostgreSQL fallback is allowed only on projection miss (Guardrail 5).
 """
 
 from typing import List, Optional, Dict, Any, Generic, TypeVar
@@ -30,6 +33,7 @@ from services.arrival_service import (
 )
 from services.cache_service import get_or_cache
 from db.redis import get_cached_appointment, cache_appointment
+from db.mongo import appointments_read_collection
 
 T = TypeVar("T")
 
@@ -55,6 +59,124 @@ class CreateVisitRequest(BaseModel):
     shift_date: date
 
 
+# ==================== CQRS READ MODEL HELPERS ====================
+
+_MONGO_WARM: Optional[bool] = None
+
+
+def _mongo_has_data() -> bool:
+    """Check if MongoDB appointments read model has been populated."""
+    global _MONGO_WARM
+    if _MONGO_WARM:
+        return True
+    try:
+        _MONGO_WARM = appointments_read_collection.estimated_document_count() > 0
+        return _MONGO_WARM
+    except Exception:
+        return False
+
+
+def _clean_mongo_doc(doc: dict) -> dict:
+    """Remove MongoDB internal fields before Pydantic validation."""
+    doc.pop("_id", None)
+    doc.pop("projected_at", None)
+    doc.pop("_visit", None)
+    doc.pop("_detail", None)
+    return doc
+
+
+def _build_mongo_filter(
+    gate_id=None, shift_gate_id=None, shift_type=None, shift_date=None,
+    status=None, scheduled_date=None, search=None,
+) -> dict:
+    """Build MongoDB query filter mirroring _apply_appointment_filters."""
+    query: dict = {}
+    if gate_id:
+        query["gate_in_id"] = gate_id
+    if shift_gate_id and shift_type and shift_date:
+        query["_visit.shift_gate_id"] = shift_gate_id
+        query["_visit.shift_type"] = (
+            shift_type.name if hasattr(shift_type, "name") else str(shift_type)
+        )
+        query["_visit.shift_date"] = shift_date.isoformat()
+    if status:
+        if "," in status:
+            statuses = [s.strip() for s in status.split(",") if s.strip()]
+            if statuses:
+                query["status"] = {"$in": statuses}
+        else:
+            query["status"] = status
+    if scheduled_date:
+        prefix = scheduled_date.isoformat()
+        query["scheduled_start_time"] = {
+            "$gte": f"{prefix}T00:00:00",
+            "$lte": f"{prefix}T23:59:59.999999",
+        }
+    if search:
+        query["truck_license_plate"] = {"$regex": search.upper(), "$options": "i"}
+    return query
+
+
+def _get_stats_from_mongo(
+    gate_id: Optional[int] = None,
+    target_date: Optional[date] = None,
+) -> Optional[Dict[str, int]]:
+    """Compute appointment status counts via MongoDB aggregation."""
+    try:
+        today = target_date or date.today()
+        day_start = f"{today.isoformat()}T00:00:00"
+        day_end = f"{today.isoformat()}T23:59:59.999999"
+
+        or_conditions: list = [
+            {"scheduled_start_time": {"$gte": day_start, "$lte": day_end}},
+            {"status": "delayed", "scheduled_start_time": {"$lt": day_start}},
+            {"status": "in_process", "scheduled_start_time": {"$lt": day_start}},
+        ]
+        match_filter: dict = {"$or": or_conditions}
+        if gate_id:
+            match_filter["gate_in_id"] = gate_id
+
+        pipeline = [
+            {"$match": match_filter},
+            {"$facet": {
+                "by_status": [
+                    {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+                ],
+                "infractions": [
+                    {"$match": {"highway_infraction": True}},
+                    {"$count": "total"},
+                ],
+            }},
+        ]
+
+        result = list(appointments_read_collection.aggregate(pipeline))
+        if not result:
+            return None
+
+        facets = result[0]
+        counts: Dict[str, int] = {
+            "in_transit": 0, "in_process": 0, "delayed": 0,
+            "canceled": 0, "completed": 0, "total": 0, "infractions": 0,
+        }
+
+        for item in facets.get("by_status", []):
+            s = item["_id"]
+            if s in counts:
+                counts[s] = item["count"]
+            counts["total"] += item["count"]
+
+        counts["infractions"] = (
+            facets["infractions"][0]["total"]
+            if facets.get("infractions")
+            else 0
+        )
+
+        return counts
+    except Exception as e:
+        logger.warning("MongoDB stats aggregation failed: %s", e)
+        return None
+
+
 # ==================== GET ENDPOINTS ====================
 
 @router.get("", response_model=PaginatedResponse[Appointment])
@@ -73,10 +195,9 @@ def list_arrivals(
 ):
     """
     Lists appointments with server-side pagination, filtering and search.
-    Used by operator frontend to list daily arrivals.
-    Supports filtering by single status or multiple statuses (comma-separated).
-    
-    Note: If both status and statuses are provided, statuses takes precedence.
+
+    **CQRS Query Side** — reads from MongoDB read model first.
+    Falls back to PostgreSQL only when projection is cold (Guardrail 5).
     """
     parsed_shift_type = None
     if shift_type:
@@ -86,33 +207,59 @@ def list_arrivals(
             raise HTTPException(status_code=400, detail=str(exc))
 
     skip = (page - 1) * limit
-    
-    # Handle both single status and multiple statuses
-    # Warn if both are provided (statuses takes precedence)
+
     final_status = status
     if statuses:
         if status:
-            logger.warning(f"Both status and statuses provided. Using statuses='{statuses}', ignoring status='{status}'")
+            logger.warning(
+                "Both status and statuses provided. Using statuses='%s', ignoring status='%s'",
+                statuses, status,
+            )
         final_status = statuses
-    
+
+    # ── CQRS: MongoDB read model first ─────────────────────
+    if _mongo_has_data():
+        try:
+            mongo_filter = _build_mongo_filter(
+                gate_id=gate_id, shift_gate_id=shift_gate_id,
+                shift_type=parsed_shift_type, shift_date=shift_date,
+                status=final_status, scheduled_date=scheduled_date,
+                search=search,
+            )
+            total = appointments_read_collection.count_documents(mongo_filter)
+            cursor = (
+                appointments_read_collection
+                .find(mongo_filter)
+                .sort("scheduled_start_time", 1)
+                .skip(skip)
+                .limit(limit)
+            )
+            items = [_clean_mongo_doc(doc) for doc in cursor]
+
+            logger.debug("list_arrivals served from MongoDB (%d items)", len(items))
+            return PaginatedResponse(
+                items=[Appointment.model_validate(a) for a in items],
+                total=total, page=page, limit=limit,
+                pages=max(1, -(-total // limit)),
+            )
+        except Exception as e:
+            logger.warning("MongoDB read failed for list_arrivals: %s — PG fallback", e)
+
+    # ── PostgreSQL fallback (observable — Guardrail 5) ─────
+    logger.info("PROJECTION MISS list_arrivals — PostgreSQL fallback (Guardrail 5)")
+
     filter_kwargs = dict(
-        gate_id=gate_id,
-        shift_gate_id=shift_gate_id,
-        shift_type=parsed_shift_type,
-        shift_date=shift_date,
-        status=final_status,
-        scheduled_date=scheduled_date,
+        gate_id=gate_id, shift_gate_id=shift_gate_id,
+        shift_type=parsed_shift_type, shift_date=shift_date,
+        status=final_status, scheduled_date=scheduled_date,
         search=search,
     )
-
     total = count_all_appointments(db, **filter_kwargs)
     appointments = get_all_appointments(db, skip=skip, limit=limit, **filter_kwargs)
 
     return PaginatedResponse(
         items=[Appointment.model_validate(a) for a in appointments],
-        total=total,
-        page=page,
-        limit=limit,
+        total=total, page=page, limit=limit,
         pages=max(1, -(-total // limit)),
     )
 
@@ -125,15 +272,22 @@ def get_arrivals_stats(
 ):
     """
     Arrival statistics by status.
-    Cached in Redis for 30 s to avoid hitting PostgreSQL on every dashboard refresh.
+
+    **CQRS Query Side** — tries MongoDB aggregation, then Redis cache,
+    then PostgreSQL fallback.  Result cached 30 s in Redis.
     """
     today = (target_date or date.today()).isoformat()
     cache_key = f"stats:gate:{gate_id or 'all'}:{today}"
-    return get_or_cache(
-        key=cache_key,
-        ttl=30,
-        fallback=lambda: get_appointments_count_by_status(db, gate_id=gate_id, target_date=target_date),
-    )
+
+    def _fallback():
+        mongo_stats = _get_stats_from_mongo(gate_id=gate_id, target_date=target_date)
+        if mongo_stats:
+            logger.debug("stats served from MongoDB aggregation")
+            return mongo_stats
+        logger.info("PROJECTION MISS stats — PostgreSQL fallback (Guardrail 5)")
+        return get_appointments_count_by_status(db, gate_id=gate_id, target_date=target_date)
+
+    return get_or_cache(key=cache_key, ttl=30, fallback=_fallback)
 
 
 @router.get("/next/{gate_id}", response_model=List[Appointment])
@@ -144,9 +298,52 @@ def get_upcoming_arrivals(
     db: Session = Depends(get_db)
 ):
     """
-    Next scheduled arrivals for a gate.
-    Used in operator's sidebar panel.
+    Next scheduled arrivals for a gate (operator sidebar).
+
+    **CQRS Query Side** — MongoDB aggregate with priority sort
+    (delayed first), PostgreSQL fallback on projection miss.
     """
+    # ── CQRS: MongoDB read model ──────────────────────────
+    if _mongo_has_data():
+        try:
+            today = date.today()
+            day_start = f"{today.isoformat()}T00:00:00"
+            day_end = f"{today.isoformat()}T23:59:59.999999"
+
+            match: dict = {
+                "gate_in_id": gate_id,
+                "scheduled_start_time": {"$gte": day_start, "$lte": day_end},
+            }
+            if status:
+                match["status"] = status
+            else:
+                match["status"] = {"$in": ["in_transit", "delayed"]}
+
+            pipeline = [
+                {"$match": match},
+                {"$addFields": {
+                    "_priority": {"$cond": [{"$eq": ["$status", "delayed"]}, 0, 1]}
+                }},
+                {"$sort": {"_priority": 1, "scheduled_start_time": 1}},
+                {"$limit": limit},
+                {"$project": {
+                    "_priority": 0, "_id": 0, "projected_at": 0,
+                    "_visit": 0, "_detail": 0,
+                }},
+            ]
+
+            docs = list(appointments_read_collection.aggregate(pipeline))
+            if docs:
+                logger.debug("next_arrivals served from MongoDB (%d items)", len(docs))
+                return [Appointment.model_validate(d) for d in docs]
+        except Exception as e:
+            logger.warning("MongoDB read failed for next_arrivals: %s — PG fallback", e)
+
+    # ── PostgreSQL fallback ────────────────────────────────
+    logger.info(
+        "PROJECTION MISS next_arrivals gate=%s — PostgreSQL fallback (Guardrail 5)",
+        gate_id,
+    )
     appointments = get_next_appointments(db, gate_id=gate_id, limit=limit, status=status)
     return [Appointment.model_validate(a) for a in appointments]
 
@@ -157,10 +354,25 @@ def get_arrival_detail(
     db: Session = Depends(get_db)
 ):
     """
-    Gets enriched appointment details with all related data.
-    Includes: driver + company, booking + cargo, gates, terminal, visit status.
-    Used by operator interface for detailed appointment review.
+    Enriched appointment details (driver, company, booking, cargo, gates, visit).
+
+    **CQRS Query Side** — reads pre-built ``_detail`` from MongoDB projection.
+    Falls back to PostgreSQL on projection miss.
     """
+    # ── CQRS: MongoDB enriched detail ─────────────────────
+    try:
+        doc = appointments_read_collection.find_one({"id": appointment_id})
+        if doc and doc.get("_detail"):
+            logger.debug("detail served from MongoDB for appointment_id=%s", appointment_id)
+            return doc["_detail"]
+    except Exception as e:
+        logger.warning("MongoDB read failed for detail: %s — PG fallback", e)
+
+    # ── PostgreSQL fallback ────────────────────────────────
+    logger.info(
+        "PROJECTION MISS detail appointment_id=%s — PostgreSQL fallback (Guardrail 5)",
+        appointment_id,
+    )
     detail = get_appointment_detail(db, appointment_id)
     if not detail:
         raise HTTPException(status_code=404, detail="Appointment not found")
@@ -204,16 +416,31 @@ def get_arrival(
     return result
 
 
-
 @router.get("/pin/{arrival_id}", response_model=Appointment)
 def get_arrival_by_pin_code(
     arrival_id: str = Path(..., description="Arrival ID / PIN"),
     db: Session = Depends(get_db)
 ):
     """
-    Gets appointment by arrival_id/PIN.
-    Used by driver to check their appointment.
+    Gets appointment by arrival_id/PIN (driver mobile app).
+
+    **CQRS Query Side** — MongoDB lookup by ``arrival_id`` index.
+    Falls back to PostgreSQL on projection miss.
     """
+    # ── CQRS: MongoDB read model ──────────────────────────
+    try:
+        doc = appointments_read_collection.find_one({"arrival_id": arrival_id})
+        if doc:
+            logger.debug("PIN lookup served from MongoDB for arrival_id=%s", arrival_id)
+            return Appointment.model_validate(_clean_mongo_doc(doc))
+    except Exception as e:
+        logger.warning("MongoDB read failed for PIN lookup: %s — PG fallback", e)
+
+    # ── PostgreSQL fallback ────────────────────────────────
+    logger.info(
+        "PROJECTION MISS pin=%s — PostgreSQL fallback (Guardrail 5)",
+        arrival_id,
+    )
     appointment = get_appointment_by_arrival_id(db, arrival_id)
     if not appointment:
         raise HTTPException(status_code=404, detail="Invalid PIN or appointment not found")
@@ -233,8 +460,9 @@ def query_arrivals_by_license_plate(
     db: Session = Depends(get_db)
 ):
     """
-    Query appointments by license plate.
-    Used by Decision Engine to find candidate arrivals.
+    Query appointments by license plate (Decision Engine).
+
+    **CQRS Query Side** — MongoDB read model first, PostgreSQL fallback.
     """
     parsed_shift_type = None
     if shift_type:
@@ -243,6 +471,47 @@ def query_arrivals_by_license_plate(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
 
+    # ── CQRS: MongoDB read model ──────────────────────────
+    if _mongo_has_data():
+        try:
+            query: dict = {"truck_license_plate": license_plate}
+            if shift_gate_id and parsed_shift_type and shift_date:
+                query["_visit.shift_gate_id"] = shift_gate_id
+                query["_visit.shift_type"] = (
+                    parsed_shift_type.name
+                    if hasattr(parsed_shift_type, "name")
+                    else str(parsed_shift_type)
+                )
+                query["_visit.shift_date"] = shift_date.isoformat()
+            if status:
+                query["status"] = status
+            target = scheduled_date or date.today()
+            prefix = target.isoformat()
+            query["scheduled_start_time"] = {
+                "$gte": f"{prefix}T00:00:00",
+                "$lte": f"{prefix}T23:59:59.999999",
+            }
+
+            docs = list(
+                appointments_read_collection
+                .find(query)
+                .sort("scheduled_start_time", 1)
+            )
+            if docs:
+                logger.debug(
+                    "license_plate query served from MongoDB (%d items)", len(docs),
+                )
+                return [Appointment.model_validate(_clean_mongo_doc(d)) for d in docs]
+        except Exception as e:
+            logger.warning(
+                "MongoDB read failed for license_plate query: %s — PG fallback", e,
+            )
+
+    # ── PostgreSQL fallback ────────────────────────────────
+    logger.info(
+        "PROJECTION MISS license_plate=%s — PostgreSQL fallback (Guardrail 5)",
+        license_plate,
+    )
     appointments = get_appointments_by_license_plate(
         db, license_plate=license_plate,
         shift_gate_id=shift_gate_id,
@@ -252,7 +521,6 @@ def query_arrivals_by_license_plate(
         scheduled_date=scheduled_date
     )
     return [Appointment.model_validate(a) for a in appointments]
-
 
 
 # ==================== HIGHWAY INFRACTION ====================
@@ -303,7 +571,7 @@ def process_decision(
     """
     Processes Decision Engine decision.
     Updates status and creates alerts if needed.
-    
+
     Expected payload:
     {
         "decision": "approved",
@@ -340,9 +608,9 @@ def create_visit(
         shift_type_enum = parse_shift_type(request.shift_type)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    
+
     visit = create_visit_for_appointment(
-        db, 
+        db,
         appointment_id,
         shift_gate_id=request.shift_gate_id,
         shift_type=shift_type_enum,

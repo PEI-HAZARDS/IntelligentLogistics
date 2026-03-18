@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from bson.objectid import ObjectId
 from pydantic import BaseModel, model_validator
 
+from loguru import logger
+
 from db.mongo import events_collection
 from db.postgres import get_db
 from services.decision_service import (

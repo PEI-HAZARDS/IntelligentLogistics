@@ -54,8 +54,8 @@ from db.redis import (
 from infrastructure.persistence.inbox_outbox_models import OutboxEvent
 from models.sql_models import Appointment as AppointmentORM
 from models.pydantic_models import Appointment as AppointmentSchema
-from models.sql_models import Appointment as AppointmentORM
-from models.pydantic_models import Appointment as AppointmentSchema
+from db.mongo import appointments_read_collection
+from services.arrival_service import get_appointment_detail
 
 # ── Configuration ───────────────────────────────────────────────
 BATCH_SIZE = 50
@@ -145,10 +145,38 @@ def project_to_redis(event_row: OutboxEvent, session) -> None:
                 snapshot = AppointmentSchema.model_validate(appt).model_dump(
                     mode="json"
                 )
+                # ── Redis hot cache (O(1) single-entity lookup) ────
                 cache_appointment(int(appointment_id), snapshot)
+
+                # ── MongoDB read model (queryable for lists/filters) ─
+                mongo_doc = {
+                    **snapshot,
+                    "projected_at": datetime.now(timezone.utc),
+                }
+                # Embed visit data for shift-based filtering
+                if hasattr(appt, "visit") and appt.visit:
+                    v = appt.visit
+                    mongo_doc["_visit"] = {
+                        "shift_gate_id": v.shift_gate_id,
+                        "shift_type": v.shift_type.name if v.shift_type else None,
+                        "shift_date": v.shift_date.isoformat() if v.shift_date else None,
+                        "entry_time": v.entry_time.isoformat() if v.entry_time else None,
+                        "out_time": v.out_time.isoformat() if v.out_time else None,
+                        "state": v.state,
+                    }
+                # Enriched detail for GET /arrivals/{id}/detail
+                detail = get_appointment_detail(session, int(appointment_id))
+                if detail:
+                    mongo_doc["_detail"] = detail
+
+                appointments_read_collection.update_one(
+                    {"id": int(appointment_id)},
+                    {"$set": mongo_doc},
+                    upsert=True,
+                )
             else:
                 logger.warning(
-                    "Appointment %s not found during Redis projection",
+                    "Appointment %s not found during projection",
                     appointment_id,
                 )
 

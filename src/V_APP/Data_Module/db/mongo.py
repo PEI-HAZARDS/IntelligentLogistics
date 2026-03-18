@@ -41,6 +41,10 @@ cache_metadata_collection = db["cache_metadata"]
 # Operator UI notifications (persistent, replaces localStorage)
 notifications_collection = db["notifications"]
 
+# CQRS Read Model — Appointment aggregate projection (Guardrail 5)
+# Populated by outbox worker; queried by arrivals routes instead of PostgreSQL.
+appointments_read_collection = db["appointments_read"]
+
 
 # ==================== INDEX CREATION ====================
 
@@ -198,7 +202,35 @@ def create_indexes():
     )
     
     logger.info("✓ Created cache_metadata indexes")
-    
+
+    # ===== appointments_read indexes (CQRS read model) =====
+    appointments_read_collection.create_index(
+        [("id", ASCENDING)],
+        name="idx_appt_read_id",
+        unique=True,
+    )
+    appointments_read_collection.create_index(
+        [("arrival_id", ASCENDING)],
+        name="idx_appt_read_arrival_id",
+        unique=True,
+        sparse=True,
+    )
+    appointments_read_collection.create_index(
+        [("gate_in_id", ASCENDING), ("status", ASCENDING),
+         ("scheduled_start_time", DESCENDING)],
+        name="idx_appt_read_gate_status_sched",
+    )
+    appointments_read_collection.create_index(
+        [("truck_license_plate", ASCENDING),
+         ("scheduled_start_time", DESCENDING)],
+        name="idx_appt_read_plate_sched",
+    )
+    appointments_read_collection.create_index(
+        [("status", ASCENDING), ("scheduled_start_time", DESCENDING)],
+        name="idx_appt_read_status_sched",
+    )
+    logger.info("✓ Created appointments_read indexes")
+
     logger.info("✅ All MongoDB indexes created successfully")
 
 
