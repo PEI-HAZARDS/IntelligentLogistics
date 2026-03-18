@@ -52,6 +52,10 @@ from db.redis import (
     increment_counter,
 )
 from infrastructure.persistence.inbox_outbox_models import OutboxEvent
+from models.sql_models import Appointment as AppointmentORM
+from models.pydantic_models import Appointment as AppointmentSchema
+from models.sql_models import Appointment as AppointmentORM
+from models.pydantic_models import Appointment as AppointmentSchema
 
 # ── Configuration ───────────────────────────────────────────────
 BATCH_SIZE = 50
@@ -106,14 +110,20 @@ def project_to_mongo(event_row: OutboxEvent) -> None:
     )
 
 
-def project_to_redis(event_row: OutboxEvent) -> None:
+def project_to_redis(event_row: OutboxEvent, session) -> None:
     """
     Update Redis hot caches so dashboards reflect the latest state.
 
     For ``AppointmentStateChanged`` events we:
       1. Invalidate the stale appointment cache entry.
-      2. Write a lightweight snapshot so the next read is a cache HIT.
+      2. Query the full Appointment aggregate from PostgreSQL and write
+         a complete JSON snapshot into Redis — the Query side reads this
+         key directly via ``GET /arrivals/{id}`` (O(1), CQRS Guardrail 5).
       3. Bump the real-time counter for the gate.
+
+    The ``session`` parameter allows the projection to enrich the cache
+    with the full aggregate, so the API can serve reads without touching
+    PostgreSQL for recently-changed appointments.
     """
     payload = event_row.payload or {}
     event_type = event_row.event_type
@@ -124,14 +134,23 @@ def project_to_redis(event_row: OutboxEvent) -> None:
             # 1) Invalidate stale entry
             invalidate_appointment_cache(int(appointment_id))
 
-            # 2) Write new snapshot into the hot cache
-            snapshot = {
-                "appointment_id": appointment_id,
-                "status": payload.get("new_state"),
-                "previous_status": payload.get("previous_state"),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }
-            cache_appointment(int(appointment_id), snapshot)
+            # 2) Full appointment snapshot → Redis hot cache
+            #    The Query side (GET /arrivals/{id}) reads this key directly.
+            appt = (
+                session.query(AppointmentORM)
+                .filter(AppointmentORM.id == int(appointment_id))
+                .first()
+            )
+            if appt:
+                snapshot = AppointmentSchema.model_validate(appt).model_dump(
+                    mode="json"
+                )
+                cache_appointment(int(appointment_id), snapshot)
+            else:
+                logger.warning(
+                    "Appointment %s not found during Redis projection",
+                    appointment_id,
+                )
 
             # 3) Real-time counters (extract gate from payload metadata)
             gate_id = payload.get("gate_in_id") or payload.get("gate_out_id")
@@ -175,7 +194,7 @@ def process_batch(session) -> int:
         try:
             # ── Project to read models ───────────────────────
             project_to_mongo(row)
-            project_to_redis(row)
+            project_to_redis(row, session)
 
             # ── Mark PUBLISHED in Postgres ───────────────────
             row.status = "PUBLISHED"

@@ -29,6 +29,7 @@ from services.arrival_service import (
     update_visit_status
 )
 from services.cache_service import get_or_cache
+from db.redis import get_cached_appointment, cache_appointment
 
 T = TypeVar("T")
 
@@ -169,13 +170,38 @@ def get_arrival_detail(
 @router.get("/{appointment_id}", response_model=Appointment)
 def get_arrival(
     appointment_id: int = Path(..., description="Appointment ID"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    """Gets details of a specific appointment."""
+    """
+    Gets details of a specific appointment.
+
+    **CQRS Query Side** — reads from Redis hot cache first (O(1)).
+    Falls back to PostgreSQL only on projection miss (Guardrail 5).
+
+    The outbox worker keeps this cache warm: every
+    ``AppointmentStateChanged`` event writes a full snapshot into
+    ``appointment:{id}:details``.
+    """
+    # ── 1) Redis hot cache (written by outbox worker) ─────────
+    cached = get_cached_appointment(appointment_id)
+    if cached:
+        logger.debug("CACHE HIT  appointment_id=%s", appointment_id)
+        return cached
+
+    # ── 2) Projection miss → PostgreSQL fallback (observable) ─
+    logger.info(
+        "CACHE MISS appointment_id=%s — PostgreSQL fallback (Guardrail 5)",
+        appointment_id,
+    )
     appointment = get_appointment_by_id(db, appointment_id)
     if not appointment:
         raise HTTPException(status_code=404, detail="Appointment not found")
-    return Appointment.model_validate(appointment)
+
+    # ── 3) Warm cache for subsequent reads ────────────────────
+    result = Appointment.model_validate(appointment)
+    cache_appointment(appointment_id, result.model_dump(mode="json"))
+
+    return result
 
 
 
