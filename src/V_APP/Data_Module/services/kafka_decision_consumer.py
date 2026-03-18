@@ -19,13 +19,15 @@ import json
 from shared.src.kafka_wrapper import KafkaConsumerWrapper
 from shared.src.kafka_protocol import KafkaTopicFactory
 from services.decision_service import (
-    persist_decision_event_from_kafka,
-    update_appointment_after_decision,
     persist_infraction_event_from_kafka,
     update_appointment_after_infraction,
 )
 from services.notification_service import create_notification
 from config import settings
+from domain.events import EventEnvelope, ConsumeContext
+from application.use_cases.container_moved_handler import ContainerMovedHandler
+from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from db.postgres import SessionLocal
 
 logger = logging.getLogger("kafka_decision_consumer")
 
@@ -202,99 +204,82 @@ class KafkaDecisionConsumer:
                     continue
 
                 # Process based on topic
-                final_decision = None
-
                 if topic == KafkaTopicFactory.agent_decision(settings.gate_id):
                     final_decision = self.correlator.process_agent_decision(truck_id, data)
+                    if final_decision:
+                        await self._dispatch_container_moved(truck_id, final_decision, msg)
 
                 elif topic == KafkaTopicFactory.operator_decision(settings.gate_id):
                     final_decision = self.correlator.process_operator_decision(truck_id, data)
+                    if final_decision:
+                        await self._dispatch_container_moved(truck_id, final_decision, msg)
 
                 elif topic == KafkaTopicFactory.infraction_decision(settings.gate_id):
                     await self._store_infraction_decision(truck_id, data)
                     logger.info(f"Infraction decision processed for truck_id={truck_id}")
 
-                # If final decision ready, persist it
-                if final_decision:
-                    await self._persist_decision(truck_id, final_decision)
-
             except Exception as e:
                 logger.error(f"Error in consume loop: {e}", exc_info=True)
                 await asyncio.sleep(1)
 
-    async def _persist_decision(self, truck_id: str, decision_data: dict):
-        """Persist final decision to database."""
-        try:
-            logger.info(f"Persisting final decision for truck_id={truck_id}")
-            
-            # Extract key data from enriched payload (with fallbacks)
-            license_plate = decision_data.get("license_plate")
-            gate_id = decision_data.get("gate_id", int(settings.gate_id))
-            appointment_id = decision_data.get("appointment_id")
-            
-            # Persist event to MongoDB
-            event_id = await asyncio.get_event_loop().run_in_executor(
-                None,
-                persist_decision_event_from_kafka,
-                decision_data
-            )
-            
-            logger.info(f"Decision event persisted with id={event_id}")
-            
-            # Update appointment in PostgreSQL if decision is ACCEPTED or approved
-            decision_status = decision_data.get("decision", "").upper()
-            if decision_status in ("ACCEPTED", "APPROVED"):
-                result = await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    update_appointment_after_decision,
-                    license_plate,
-                    gate_id,
-                    decision_data
-                )
-                if result:
-                    logger.info(f"Appointment updated for license_plate={license_plate}: {result['old_status']} -> {result['new_status']}")
+    async def _dispatch_container_moved(self, truck_id: str, decision_data: dict, msg) -> None:
+        """
+        Strangler Fig — route container-moved decisions through the clean
+        ContainerMovedHandler instead of the legacy multi-DB write path.
 
-                    # Bug fix 3: create notification via Kafka path (mirrors HTTP path)
-                    alerts = decision_data.get("alerts") or []
-                    try:
-                        if alerts:
-                            for alert in alerts:
-                                alert_type = alert if isinstance(alert, str) else alert.get("type", "")
-                                if alert_type in ("highway_infraction", "highway"):
-                                    title, ntype = "Highway Infraction", "danger"
-                                elif alert_type == "manual_review":
-                                    title, ntype = "Manual Review Needed", "warning"
-                                else:
-                                    title, ntype = "Vehicle Alert", "warning"
-                                create_notification(
-                                    gate_id=gate_id,
-                                    title=title,
-                                    message=f"Alert for {license_plate}: {alert_type}",
-                                    notification_type=ntype,
-                                    appointment_id=appointment_id,
-                                    license_plate=license_plate,
-                                )
-                        else:
-                            create_notification(
-                                gate_id=gate_id,
-                                title="Vehicle Approved",
-                                message=f"Truck {license_plate} approved for entry.",
-                                notification_type="info",
-                                appointment_id=appointment_id,
-                                license_plate=license_plate,
-                            )
-                    except Exception as notif_err:
-                        logger.warning(f"Failed to create notification for truck={license_plate}: {notif_err}")
-                else:
-                    logger.warning(f"Failed to update appointment for license_plate={license_plate}")
+        Kafka offset is committed ONLY after the handler returns successfully.
+        """
+        from uuid import uuid4
 
-            else:
-                logger.info(f"Decision status '{decision_data.get('decision')}' — no appointment update needed")
+        # ── Build EventEnvelope from correlated decision ──────────
+        headers_raw = msg.headers() or []
+        headers_dict = {
+            k: (v.decode("utf-8") if isinstance(v, bytes) else v)
+            for k, v in headers_raw
+        }
 
-        except Exception as e:
-            logger.error(f"Error persisting decision for truck_id={truck_id}: {e}", exc_info=True)
+        envelope = EventEnvelope(
+            event_id=str(uuid4()),
+            correlation_id=truck_id,
+            causation_id=None,
+            aggregate_type="appointment",
+            aggregate_id=str(decision_data.get("appointment_id", "")),
+            event_type="ContainerMoved",
+            event_version=1,
+            occurred_at=datetime.now(timezone.utc),
+            producer=msg.topic(),
+            partition_key=truck_id,
+            payload=decision_data,
+        )
 
-    
+        ctx = ConsumeContext(
+            topic=msg.topic(),
+            partition=msg.partition(),
+            offset=msg.offset(),
+            key=truck_id,
+            headers=headers_dict,
+        )
+
+        # ── Dispatch to clean handler (sync — run in executor) ────
+        handler = ContainerMovedHandler(
+            uow_factory=SqlAlchemyUnitOfWork,
+            session_factory=SessionLocal,
+        )
+
+        await asyncio.get_event_loop().run_in_executor(
+            None, handler.handle, envelope, ctx
+        )
+
+        # ── Commit Kafka offset ONLY after success (Guardrail 4) ──
+        await asyncio.get_event_loop().run_in_executor(
+            None, self.consumer.consumer.commit, msg
+        )
+        logger.info(
+            "ContainerMoved dispatched and offset committed for truck_id=%s",
+            truck_id,
+        )
+
+
     async def _store_infraction_decision(self, truck_id: str, decision_data: dict):
         """Persist infraction event and flag appointment highway_infraction when needed."""
         try:
