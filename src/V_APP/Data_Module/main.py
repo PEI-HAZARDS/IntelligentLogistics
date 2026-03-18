@@ -24,13 +24,13 @@ from routes.worker import router as workers_router
 from routes.notifications import router as notifications_router
 
 # Kafka decision consumer
-from services.kafka_decision_consumer import KafkaDecisionConsumer
+from infrastructure.messaging.kafka_decision_consumer import KafkaDecisionConsumer
 
 # DB / infra imports used for startup checks
-from db.postgres import engine, SessionLocal
-from models.sql_models import Base, Appointment
-from db.mongo import mongo_client  # MongoClient instance
-from db.redis import redis_client
+from infrastructure.persistence.postgres import engine, SessionLocal
+from infrastructure.persistence.sql_models import Base, Appointment
+from infrastructure.persistence.mongo import mongo_client  # MongoClient instance
+from infrastructure.persistence.redis import redis_client
 from config import settings
 
 # readiness flags set at startup

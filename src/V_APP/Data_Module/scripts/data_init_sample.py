@@ -25,7 +25,7 @@ try:
     )
 except Exception:
     try:
-        from models.sql_models import (
+        from infrastructure.persistence.sql_models import (
             Base, Worker, Manager, Operator, Company, Driver,
             Truck, Terminal, Dock, Gate, Shift, ShiftType,
             Booking, Cargo, Appointment, Visit, Alert, ShiftAlertHistory

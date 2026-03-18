@@ -25,7 +25,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-from models.sql_models import Base
+from infrastructure.persistence.sql_models import Base
 
 
 # =========================================================

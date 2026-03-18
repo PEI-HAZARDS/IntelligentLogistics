@@ -27,7 +27,7 @@ from config import settings
 from domain.events import EventEnvelope, ConsumeContext
 from application.use_cases.container_moved_handler import ContainerMovedHandler
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
-from db.postgres import SessionLocal
+from infrastructure.persistence.postgres import SessionLocal
 
 logger = logging.getLogger("kafka_decision_consumer")
 
@@ -42,7 +42,7 @@ class DecisionCorrelator:
     PENDING_TTL = 1800  # 30 minutes
     
     def __init__(self):
-        from db.redis import redis_client
+        from infrastructure.persistence.redis import redis_client
         self.redis = redis_client
         
     def process_agent_decision(self, truck_id: str, decision_data: dict) -> Optional[dict]:

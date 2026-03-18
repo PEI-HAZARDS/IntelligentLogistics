@@ -15,7 +15,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime as dt, timezone
 
 # MongoDB collections
-from db.mongo import (
+from infrastructure.persistence.mongo import (
     agent_detections_collection,
     decision_events_collection,
     detections_collection,  # Legacy
@@ -26,7 +26,7 @@ from db.mongo import (
 from services.notification_service import create_notification
 
 # Redis operations
-from db.redis import (
+from infrastructure.persistence.redis import (
     is_duplicate_and_mark as redis_is_duplicate,
     get_cached_decision as redis_get_decision,
     cache_decision as redis_cache_decision,
@@ -425,7 +425,7 @@ def process_incoming_decision(
     
     Returns dict with processing status.
     """
-    from db.postgres import SessionLocal
+    from infrastructure.persistence.postgres import SessionLocal
     from services.arrival_service import update_appointment_from_decision, update_visit_status
     
     ts = time.time()
@@ -607,7 +607,7 @@ def query_appointments_for_decision(gate_id: int) -> Dict[str, Any]:
         "message": "..."
     }
     """
-    from db.postgres import SessionLocal
+    from infrastructure.persistence.postgres import SessionLocal
     from services.arrival_service import get_appointments_for_decision
     
     db = SessionLocal()
@@ -668,8 +668,8 @@ def update_appointment_after_infraction(
     """
     Updates the appointment highway infraction flag after Infraction Engine decision.
     """
-    from db.postgres import SessionLocal
-    from models.sql_models import Appointment
+    from infrastructure.persistence.postgres import SessionLocal
+    from infrastructure.persistence.sql_models import Appointment
 
     db = SessionLocal()
     try:

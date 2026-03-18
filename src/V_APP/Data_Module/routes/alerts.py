@@ -8,8 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from db.postgres import get_db
-from models.pydantic_models import Alert as AlertPydantic, AlertCreate, TypeAlertEnum
+from infrastructure.persistence.postgres import get_db
+from application.schemas import Alert as AlertPydantic, AlertCreate, TypeAlertEnum
 from services.alert_service import (
     get_alerts,
     get_alert_by_id,
@@ -158,7 +158,7 @@ def create_hazmat_adr_alert(
     - kemler_code: Kemler code (e.g., "33" for flammable)
     - detected_hazmat: Detection description (from Agent C)
     """
-    from models.sql_models import Appointment
+    from infrastructure.persistence.sql_models import Appointment
     
     appointment = db.query(Appointment).filter(
         Appointment.id == request.appointment_id

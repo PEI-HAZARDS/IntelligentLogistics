@@ -18,7 +18,7 @@ from datetime import datetime, date
 from sqlalchemy.orm import Session, joinedload
 from utils.hashing_pass import hash_password, verify_password
 
-from models.sql_models import Driver, Appointment, Visit, Company, Booking
+from infrastructure.persistence.sql_models import Driver, Appointment, Visit, Company, Booking
 from config import settings
 
 

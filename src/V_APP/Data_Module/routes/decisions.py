@@ -12,8 +12,8 @@ from pydantic import BaseModel, model_validator
 
 from loguru import logger
 
-from db.mongo import events_collection
-from db.postgres import get_db
+from infrastructure.persistence.mongo import events_collection
+from infrastructure.persistence.postgres import get_db
 from services.decision_service import (
     process_incoming_decision,
     query_appointments_for_decision,
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/decisions", tags=["Decisions"])
 
 # ==================== PYDANTIC MODELS ====================
 
-from models.pydantic_models import AppointmentStatusEnum, DeliveryStatusEnum
+from application.schemas import AppointmentStatusEnum, DeliveryStatusEnum
 
 
 class DecisionIncomingRequest(BaseModel):
@@ -210,7 +210,7 @@ def get_event(event_id: str = Path(...)):
     doc = events_collection.find_one({"_id": oid})
     
     if not doc:
-        from db.mongo import detections_collection
+        from infrastructure.persistence.mongo import detections_collection
         doc = detections_collection.find_one({"_id": oid})
     
     if not doc:
@@ -245,7 +245,7 @@ def manual_review(
     - Updates Appointment.status to 'canceled'
     """
     from services.arrival_service import create_visit_for_appointment, update_appointment_from_decision
-    from models.sql_models import ShiftType
+    from infrastructure.persistence.sql_models import ShiftType
     from datetime import date
     
     # Map decision to appointment status

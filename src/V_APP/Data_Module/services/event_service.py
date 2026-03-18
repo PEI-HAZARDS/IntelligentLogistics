@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict, Any
-from db.mongo import events_collection
+from infrastructure.persistence.mongo import events_collection
 from bson import ObjectId
 
 def _serialize(doc: Dict[str, Any]) -> Dict[str, Any]:

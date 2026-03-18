@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from loguru import logger
 
-from models.pydantic_models import (
+from application.schemas import (
     Appointment, AppointmentStatusUpdate, Visit, VisitStatusUpdate, ShiftTypeEnum
 )
 from services.arrival_service import (
@@ -32,8 +32,8 @@ from services.arrival_service import (
     update_visit_status
 )
 from services.cache_service import get_or_cache
-from db.redis import get_cached_appointment, cache_appointment
-from db.mongo import appointments_read_collection
+from infrastructure.persistence.redis import get_cached_appointment, cache_appointment
+from infrastructure.persistence.mongo import appointments_read_collection
 
 T = TypeVar("T")
 
@@ -43,8 +43,8 @@ class PaginatedResponse(BaseModel, Generic[T]):
     page: int
     limit: int
     pages: int
-from models.sql_models import ShiftType
-from db.postgres import get_db
+from infrastructure.persistence.sql_models import ShiftType
+from infrastructure.persistence.postgres import get_db
 from utils.shift_utils import parse_shift_type
 
 router = APIRouter(prefix="/arrivals", tags=["Arrivals"])

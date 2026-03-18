@@ -1,4 +1,4 @@
-from models.sql_models import ShiftType
+from infrastructure.persistence.sql_models import ShiftType
 
 
 _ALIAS_MAP = {

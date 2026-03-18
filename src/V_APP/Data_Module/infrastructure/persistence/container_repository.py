@@ -12,7 +12,7 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 from domain.interfaces import IContainerRepository
-from models.sql_models import Appointment
+from infrastructure.persistence.sql_models import Appointment
 
 
 class SqlAlchemyContainerRepository(IContainerRepository):

@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from models.pydantic_models import Worker, Manager, Operator, Shift, WorkerLoginRequest, WorkerLoginResponse
+from application.schemas import Worker, Manager, Operator, Shift, WorkerLoginRequest, WorkerLoginResponse
 from services.worker_service import (
     authenticate_worker,
     get_worker_by_num_worker,
@@ -29,7 +29,7 @@ from services.worker_service import (
     deactivate_worker,
     promote_to_manager
 )
-from db.postgres import get_db
+from infrastructure.persistence.postgres import get_db
 
 router = APIRouter(prefix="/workers", tags=["Workers"])
 

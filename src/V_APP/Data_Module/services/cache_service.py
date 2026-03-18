@@ -1,6 +1,6 @@
 import json
 from typing import Optional, Any, Callable
-from db.redis import redis_client
+from infrastructure.persistence.redis import redis_client
 
 def get_or_cache(key: str, ttl: int, fallback: Callable) -> Optional[Any]:
     """Read-through cache pattern."""

@@ -36,7 +36,7 @@ sys.modules["config"] = config_module
 sys.modules["services.decision_service"] = MagicMock()
 sys.modules["services.notification_service"] = MagicMock()
 
-from services.kafka_decision_consumer import DecisionCorrelator, KafkaDecisionConsumer
+from infrastructure.messaging.kafka_decision_consumer import DecisionCorrelator, KafkaDecisionConsumer
 
 
 # ═══════════════════════════════════════════════════════════════════

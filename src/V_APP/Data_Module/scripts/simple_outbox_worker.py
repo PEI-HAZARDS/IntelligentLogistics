@@ -43,18 +43,18 @@ _data_module_dir = os.path.join(_script_dir, "..")
 sys.path.insert(0, _data_module_dir)
 
 # ── Imports from Data Module ────────────────────────────────────
-from db.postgres import SessionLocal
-from db.mongo import decision_events_collection
-from db.redis import (
+from infrastructure.persistence.postgres import SessionLocal
+from infrastructure.persistence.mongo import decision_events_collection
+from infrastructure.persistence.redis import (
     redis_client,
     cache_appointment,
     invalidate_appointment_cache,
     increment_counter,
 )
 from infrastructure.persistence.inbox_outbox_models import OutboxEvent
-from models.sql_models import Appointment as AppointmentORM
-from models.pydantic_models import Appointment as AppointmentSchema
-from db.mongo import appointments_read_collection
+from infrastructure.persistence.sql_models import Appointment as AppointmentORM
+from application.schemas import Appointment as AppointmentSchema
+from infrastructure.persistence.mongo import appointments_read_collection
 from services.arrival_service import get_appointment_detail
 
 # ── Configuration ───────────────────────────────────────────────

@@ -16,7 +16,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
 
-from models.pydantic_models import (
+from application.schemas import (
     Driver, Appointment,
     DriverLoginRequest, DriverLoginResponse,
     ClaimAppointmentRequest, ClaimAppointmentResponse
@@ -30,7 +30,7 @@ from services.driver_service import (
     claim_appointment_by_pin,
     get_driver_active_appointment,
 )
-from db.postgres import get_db
+from infrastructure.persistence.postgres import get_db
 from config import settings
 
 router = APIRouter(prefix="/drivers", tags=["Drivers"])

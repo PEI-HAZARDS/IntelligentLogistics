@@ -8,7 +8,7 @@ from datetime import datetime, date, time, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_, case, Integer
 
-from models.sql_models import Appointment, Visit, Shift, Cargo, Booking, Gate, ShiftType, Company, Driver
+from infrastructure.persistence.sql_models import Appointment, Visit, Shift, Cargo, Booking, Gate, ShiftType, Company, Driver
 
 
 def ensure_arrival_id(db: Session, appointment: Appointment) -> Appointment:

@@ -11,7 +11,7 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 from domain.interfaces import IAppointmentRepository
-from models.sql_models import Appointment
+from infrastructure.persistence.sql_models import Appointment
 
 
 class SqlAlchemyAppointmentRepository(IAppointmentRepository):

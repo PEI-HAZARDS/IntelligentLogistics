@@ -7,7 +7,7 @@ The HTTP-facing CRUD lives in routes/notifications.py.
 from typing import Optional
 from datetime import datetime as dt, timezone
 
-from db.mongo import notifications_collection
+from infrastructure.persistence.mongo import notifications_collection
 
 
 def create_notification(

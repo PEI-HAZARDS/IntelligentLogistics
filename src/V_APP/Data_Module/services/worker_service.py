@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from utils.hashing_pass import hash_password, verify_password
 
-from models.sql_models import Worker, Manager, Operator, Shift, Gate, Appointment, Visit, Alert, ShiftType
+from infrastructure.persistence.sql_models import Worker, Manager, Operator, Shift, Gate, Appointment, Visit, Alert, ShiftType
 
 
 # ==================== AUTHENTICATION ====================

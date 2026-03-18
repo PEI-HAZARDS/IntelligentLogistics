@@ -11,8 +11,8 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from db.postgres import SessionLocal
-from models.sql_models import Alert, Visit, Appointment, Booking
+from infrastructure.persistence.postgres import SessionLocal
+from infrastructure.persistence.sql_models import Alert, Visit, Appointment, Booking
 
 
 # ==================== HAZMAT/ADR CODES ====================
