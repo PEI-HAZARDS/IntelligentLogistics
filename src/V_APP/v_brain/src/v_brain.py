@@ -320,7 +320,7 @@ class VBrain:
         # se tiver algum truck que ainda não recebeu decisão (agent-decision ou infraction-decision)
 
         for truckId, state in self.correlator._state.items():
-            if state["decided"] is False:
+            if not self.correlator._is_results_complete(truckId):
                 logger.info(f"Truck {truckId} still needs scale-up, skipping scale-down for gate {gate_id}")
                 return 
 
