@@ -21,8 +21,9 @@ class VBrainConfig(BaseSettings):
 
     # Scaling API configuration (Tiago's slice scaling service)
     scaling_api_url: str = Field(default="http://10.255.35.126:8008")
-    scaling_notification_destination: str = Field(default="https://example.com/")
-    scaling_slice_id: str = Field(default="")
+    scaling_notification_destination: str = Field(default="https://one.one.one.one/")
+    scaling_slice_id: str = Field(default="Nexus")
+    scaling_request_id: str = Field(default="123456")
 
     @field_validator("gate_ids", mode="before")
     @classmethod
