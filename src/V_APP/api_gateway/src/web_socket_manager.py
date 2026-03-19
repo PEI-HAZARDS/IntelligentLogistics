@@ -25,37 +25,62 @@ class WebSocketManager:
         """
         Registers a WebSocket as connected to a specific gate.
         """
+        gate_id = str(gate_id).strip()
         await websocket.accept()
         self._connections[gate_id].add(websocket)
-        logger.info(f"Registered connection for gate '{gate_id}'. Total connections: {len(self._connections[gate_id])}")
+        logger.info(
+            f"Registered connection for gate '{gate_id}'. "
+            f"Total connections: {len(self._connections[gate_id])}"
+        )
 
     def disconnect(self, gate_id: str, websocket: WebSocket) -> None:
         """
         Removes a WebSocket from the list when the client closes the connection.
         """
         try:
+            gate_id = str(gate_id).strip()
             conns = self._connections.get(gate_id, set())
             conns.discard(websocket)
             if not conns:
                 # If the set is empty, remove the key
                 self._connections.pop(gate_id, None)
-            logger.info(f"Disconnected from gate '{gate_id}'. Remaining: {len(self._connections.get(gate_id, set()))}")
+            logger.info(
+                f"Disconnected from gate '{gate_id}'. "
+                f"Remaining: {len(self._connections.get(gate_id, set()))}"
+            )
         except Exception:
             pass  # fail silent
 
-    async def broadcast_to_gate(self, gate_id: str, message: dict) -> None:
+    async def broadcast(self, gate_ids: str | list[str], message: dict) -> None:
         """
-        Sends a JSON message to all WebSockets connected
-        to the same gate_id.
+        Sends a JSON message to one or multiple gates.
+        Accepts:
+          - gate_ids as str   -> single gate
+          - gate_ids as list  -> multiple gates
         """
-        conns = list(self._connections.get(gate_id, []))
-        logger.info(f"Broadcasting to gate '{gate_id}': {len(conns)} connections. All gates: {list(self._connections.keys())}")
+        if isinstance(gate_ids, str):
+            raw_gate_ids = [gate_ids]
+        else:
+            raw_gate_ids = gate_ids
 
-        for ws in conns:
-            try:
-                await ws.send_json(message)
-                logger.info(f"Sent message to WebSocket for gate '{gate_id}'")
-            except Exception as e:
-                # If sending fails, disconnect the websocket
-                logger.error(f"Failed to send to WebSocket: {e}")
-                self.disconnect(gate_id, ws)
+    
+        normalized_gates = [str(gid).strip() for gid in raw_gate_ids if str(gid).strip()]
+        unique_gates = list(dict.fromkeys(normalized_gates))
+
+        if not unique_gates:
+            logger.warning("broadcast called with no valid gate IDs")
+            return
+
+        logger.info(f"Broadcasting to gates {unique_gates}. All gates: {list(self._connections.keys())}")
+
+        for gate_id in unique_gates:
+            conns = list(self._connections.get(gate_id, []))
+            logger.info(f"Gate '{gate_id}': {len(conns)} connections")
+
+            for ws in conns:
+                try:
+                    await ws.send_json(message)
+                    logger.info(f"Sent message to WebSocket for gate '{gate_id}'")
+                except Exception as e:
+                    logger.error(f"Failed to send to WebSocket: {e}")
+                    self.disconnect(gate_id, ws)

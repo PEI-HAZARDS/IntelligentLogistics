@@ -1,14 +1,14 @@
 # `agentC.py`
 
-> Performs hazard plate detection on truck frames, extracting UN and Kemler codes via OCR.
+> Performs hazard plate detection on truck frames by extending the shared `BaseAgent` pipeline.
 
 ---
 
 ## Overview
 
-`agentC.py` defines `AgentC`, a concrete implementation of `BaseAgent` that specialises the generic detection pipeline for hazard (ADR) plate recognition. On receiving a Kafka `truck_detected` event, it reads frames from an RTMP stream, runs YOLO inference using a dedicated hazard plate model, and applies PaddleOCR — restricted to digits, spaces, and `xX` — through the consensus algorithm to extract the plate text. Unlike `AgentB`, all YOLO detections pass the validity check without classification filtering. The raw OCR text is then parsed into a (Kemler, UN) code pair and published to Kafka as a `hazard_plate_results` message.
+`agentC.py` defines `AgentC`, a concrete implementation of `BaseAgent` that specialises the generic detection pipeline for hazard plate recognition. On receiving a Kafka `truck_detected` event, it reads frames from a MediaMTX RTSP stream, runs YOLO inference to locate hazard plates, and applies PaddleOCR through the consensus algorithm to extract UN and Kemler codes. Results are published to Kafka as `hazard_plate_results` messages.
 
-`AgentC` sits in parallel with `AgentB` as a downstream consumer of truck detection events and an upstream producer for any component that acts on hazardous material data, including the `AIGateway`. Frame capture, Kafka I/O, consensus logic, and MinIO uploads are fully handled by `BaseAgent`; `AgentC` only provides hazard-plate–specific configuration, validity, message building, and text parsing.
+The module acts as a downstream consumer of the truck detection stage (Agent A or equivalent) and an upstream producer for any component that acts on hazard plate data — including the `AIGateway` and the `InfractionEngine`. It does not handle stream acquisition, Kafka I/O, or model training; those concerns are managed by `BaseAgent`, `StreamManager`, `KafkaWrapper`, and `ObjectDetector` respectively.
 
 ---
 
@@ -23,9 +23,8 @@ src/AI_APP/agentC/src/agentC.py
 | Module | Why it's used |
 |--------|---------------|
 | `AI_APP/shared/src/base_agent.py` | Base class (`BaseAgent`, `BaseAgentConfig`) providing the full detection lifecycle |
-| `AI_APP/shared/src/plate_classifier.py` | `PlateClassifier` constant (`HAZARD_PLATE`) referenced in parent context |
-| `AI_APP/shared/src/paddle_ocr.py` | `OCR` for text extraction with a restricted character set |
 | `shared/src/kafka_protocol.py` | `KafkaMessageProto`, `Message`, `KafkaTopicFactory` for topic names and message construction |
+| `AI_APP/shared/src/paddle_ocr.py` | `OCR` for text extraction from detected crops |
 
 ### External
 | Package | Version | Why it's used |
@@ -47,18 +46,18 @@ src/AI_APP/agentC/src/agentC.py
           ▼
    BaseAgent._process_message()
           │  captures RTMP frames
-          ├─► BaseAgent._run_yolo_inference()      (hazard_plate_model.pt)
+          ├─► BaseAgent._run_yolo_inference()   (hazard_plate_model.pt)
           │         │  bbox crops
           │         ▼
-          │   AgentC.is_valid_detection()          (always True — no filtering)
-          │         │  valid crop
+          │   AgentC.is_valid_detection()       (Always returns True)
+          │         │
           │         ▼
-          │   BaseAgent._process_ocr_result()      (ConsensusAlgorithm, digits/xX only)
+          │   BaseAgent._process_ocr_result()   (ConsensusAlgorithm)
           │
           ├─► annotated frames → MinIO (agentc-<gate_id> bucket)
           ▼
 AgentC._build_message_for_detection()
-          │  calls _parse_detection_result()
+          │  parses text into UN/Kemler
           ▼
 [Kafka: hazard_plate_results_<gate_id>]
 ```
@@ -69,7 +68,7 @@ AgentC._build_message_for_detection()
 
 ### `AgentC`
 
-> Concrete `BaseAgent` that detects ADR hazard plates and publishes UN and Kemler codes to Kafka.
+> Concrete `BaseAgent` that detects hazardous material plates and publishes OCR results (UN/Kemler) to Kafka.
 
 **Inherits from:** `BaseAgent`
 
@@ -78,18 +77,18 @@ AgentC._build_message_for_detection()
 AgentC(**kwargs)
 ```
 
-All keyword arguments are forwarded directly to `BaseAgent.__init__`. No additional attributes are set beyond what `BaseAgent` initialises.
+All keyword arguments are forwarded to `BaseAgent.__init__`.
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `config` | `BaseAgentConfig` | `None` | Agent configuration; loaded from environment if omitted |
-| `stream_manager` | `StreamManager` | `None` | RTMP stream reader; created from config if omitted |
+| `stream_manager` | `StreamManager` | `None` | RTMP/RTSP stream reader; created from config if omitted |
 | `object_detector` | `ObjectDetector` | `None` | YOLO wrapper; instantiated with model path if omitted |
 | `ocr` | `OCR` | `None` | PaddleOCR instance; created via `initialize_ocr()` if omitted |
-| `classifier` | `PlateClassifier` | `None` | Plate classifier (unused in validation, but initialised by base) |
+| `classifier` | `PlateClassifier` | `None` | Plate classifier (unused by Agent C) |
 | `drawer` | `BoundingBoxDrawer` | `None` | Bounding box drawer; defaults to orange "Hazard Plate" style |
 | `annotated_frames_storage` | `ImageStorage` | `None` | MinIO storage for annotated frames |
-| `crop_storage` | `ImageStorage` | `None` | MinIO storage for accepted crops |
+| `crop_storage` | `ImageStorage` | `None` | MinIO storage for detection crops |
 | `kafka_producer` | `KafkaProducerWrapper` | `None` | Kafka producer; created from config if omitted |
 | `kafka_consumer` | `KafkaConsumerWrapper` | `None` | Kafka consumer; created from config if omitted |
 | `consensus_algorithm` | `ConsensusAlgorithm` | `None` | Consensus algorithm instance |
@@ -99,8 +98,8 @@ All keyword arguments are forwarded directly to `BaseAgent.__init__`. No additio
 |-----------|------|-------------|
 | `self.inference_latency` | `Histogram` | Prometheus histogram: YOLO inference duration (seconds) |
 | `self.frames_processed_metric` | `Counter` | Prometheus counter: total frames processed by Agent C |
-| `self.hazards_detected` | `Counter` | Prometheus counter: total hazard plates detected |
-| `self.ocr_confidence` | `Histogram` | Prometheus histogram: OCR confidence score distribution for hazard plates |
+| `self.hazards_detected` | `Counter` | Prometheus counter: total hazardous plates detected |
+| `self.ocr_confidence` | `Histogram` | Prometheus histogram: OCR confidence score distribution |
 
 ---
 
@@ -116,38 +115,17 @@ All keyword arguments are forwarded directly to `BaseAgent.__init__`. No additio
 
 **Returns:** `str` — The fixed string `"AgentC"`.
 
-**Raises:**
-
-> N/A
-
-**Example**
-```python
-agent = AgentC(**mock_deps)
-assert agent.get_agent_name() == "AgentC"
-```
-
 ---
 
 ##### `initialize_ocr() -> OCR`
 
-> Instantiates and returns the OCR engine with a character set restricted to digits, spaces, and `xX`.
+> Instantiates and returns the OCR engine with a character set restricted to digits, spaces, and 'X' (hazard plate standard).
 
 **Parameters**
 
 > N/A
 
-**Returns:** `OCR` — `OCR(allowed_chars='0123456789xX ')` instance.
-
-**Raises:**
-
-> N/A
-
-**Example**
-```python
-ocr = agent.initialize_ocr()
-```
-
-> ⚠️ **Note:** The restricted character set prevents OCR from producing alphabetic characters, which are not valid in UN/Kemler codes.
+**Returns:** `OCR` — `OCR(allowed_chars='0123456789xX ')`.
 
 ---
 
@@ -161,10 +139,6 @@ ocr = agent.initialize_ocr()
 
 **Returns:** `str` — `"orange"`.
 
-**Raises:**
-
-> N/A
-
 ---
 
 ##### `get_bbox_label() -> str`
@@ -176,10 +150,6 @@ ocr = agent.initialize_ocr()
 > N/A
 
 **Returns:** `str` — `"Hazard Plate"`.
-
-**Raises:**
-
-> N/A
 
 ---
 
@@ -193,10 +163,6 @@ ocr = agent.initialize_ocr()
 
 **Returns:** `str` — `<MODELS_PATH>/hazard_plate_model.pt`, where `MODELS_PATH` defaults to `/agentC/data`.
 
-**Raises:**
-
-> N/A
-
 ---
 
 ##### `get_bucket() -> str`
@@ -208,10 +174,6 @@ ocr = agent.initialize_ocr()
 > N/A
 
 **Returns:** `str` — `"agentc-<gate_id>"`.
-
-**Raises:**
-
-> N/A
 
 ---
 
@@ -225,10 +187,6 @@ ocr = agent.initialize_ocr()
 
 **Returns:** `str` — Result of `KafkaTopicFactory.truck_detected(self.config.gate_id)`.
 
-**Raises:**
-
-> N/A
-
 ---
 
 ##### `get_produce_topic() -> str`
@@ -240,10 +198,6 @@ ocr = agent.initialize_ocr()
 > N/A
 
 **Returns:** `str` — Result of `KafkaTopicFactory.hazard_plate_results(self.config.gate_id)`.
-
-**Raises:**
-
-> N/A
 
 ---
 
@@ -257,52 +211,48 @@ ocr = agent.initialize_ocr()
 
 **Returns:** `str` — `"hazard plate"`.
 
-**Raises:**
-
-> N/A
-
 ---
 
 ##### `is_valid_detection(crop, confidence, box_index) -> bool`
 
-> Accepts all detections unconditionally; increments `hazards_detected` counter.
+> Validates a detected crop. Agent C accepts all hazard plate detections without additional classification.
 
 **Parameters**
 | Name | Type | Default | Description |
 |------|------|---------|-------------|
 | `crop` | `np.ndarray` | required | Cropped image region from the detected bounding box |
 | `confidence` | `float` | required | YOLO confidence score for this box |
-| `box_index` | `int` | required | 1-based index of the bounding box (used in log messages) |
+| `box_index` | `int` | required | 1-based index of the bounding box (used in logs) |
 
 **Returns:** `bool` — Always `True`.
-
-**Raises:**
-
-> N/A
-
-**Example**
-```python
-assert agent.is_valid_detection(MagicMock(), 0.9, 0) is True
-```
 
 ---
 
 ##### `_build_message_for_detection(text, confidence, crop_url) -> Message`
 
-> Parses OCR text into UN/Kemler codes and constructs the Kafka result message.
+> Parses the extracted OCR text into UN and Kemler codes and constructs the Kafka result message.
 
 **Parameters**
 | Name | Type | Default | Description |
 |------|------|---------|-------------|
-| `text` | `str` | required | Raw OCR-extracted text (e.g., `"33 1203"`) or `"N/A"` |
+| `text` | `str` | required | OCR-extracted text (normalized) |
 | `confidence` | `float` | required | Final detection confidence |
-| `crop_url` | `Optional[str]` | required | MinIO URL of the crop image; empty string if `None` |
+| `crop_url` | `Optional[str]` | required | MinIO URL of the crop image |
 
-**Returns:** `Message` — A `KafkaMessageProto.hazard_plate_result` message object containing `un`, `kemler`, `crop_url`, and `confidence`.
+**Returns:** `Message` — A `KafkaMessageProto.hazard_plate_result` message object.
 
-**Raises:**
+---
 
-> N/A
+##### `_parse_detection_result(text) -> tuple[str, str]`
+
+> Internal helper to split consensus text into UN and Kemler components. Expected format is "KEMLER UN".
+
+**Parameters**
+| Name | Type | Default | Description |
+|------|------|---------|-------------|
+| `text` | `str` | required | Space-separated result string |
+
+**Returns:** `tuple[str, str]` — `(un, kemler)`. Returns `("N/A", "N/A")` if parsing fails.
 
 ---
 
@@ -310,59 +260,17 @@ assert agent.is_valid_detection(MagicMock(), 0.9, 0) is True
 
 > Registers Prometheus metrics for Agent C. Called once during `__init__`.
 
-**Parameters**
-
-> N/A
-
-**Returns:** `None`
-
-**Raises:**
-
-> N/A
-
 ---
 
 ##### `get_detection_metric() -> Optional[object]`
 
-> Returns the `hazards_detected` counter, which `BaseAgent` increments per detected bounding box.
+> Returns the `hazards_detected` counter to be incremented for every valid detection.
 
 **Parameters**
 
 > N/A
 
 **Returns:** `Counter` — `self.hazards_detected`.
-
-**Raises:**
-
-> N/A
-
----
-
-##### `_parse_detection_result(text) -> tuple[str, str]`
-
-> Splits OCR text into Kemler and UN codes; returns `("N/A", "N/A")` for malformed input.
-
-**Parameters**
-| Name | Type | Default | Description |
-|------|------|---------|-------------|
-| `text` | `str` | required | Space-separated string expected in `"KEMLER UN"` format (e.g., `"33 1203"`) |
-
-**Returns:** `tuple[str, str]` — `(un, kemler)`. Returns `("N/A", "N/A")` if the input does not split into exactly two parts.
-
-**Raises:**
-
-> N/A
-
-**Example**
-```python
-un, kemler = agent._parse_detection_result("33 1203")
-# un → "1203", kemler → "33"
-
-un, kemler = agent._parse_detection_result("1203")
-# un → "N/A", kemler → "N/A"
-```
-
-> ⚠️ **Note:** Text with more than two space-separated parts (e.g., `"33 1203 EXTRA"`) is treated as malformed and both codes are set to `"N/A"`.
 
 ---
 
@@ -381,14 +289,13 @@ un, kemler = agent._parse_detection_result("1203")
 | `MINIO_PASSWORD` | ✅ | — | MinIO secret key |
 | `GATE_ID` | ❌ | `"1"` | Gate identifier; used to namespace Kafka topics and MinIO bucket |
 | `MODELS_PATH` | ❌ | `/agentC/data` | Directory containing `hazard_plate_model.pt` |
-| `NGINX_HOST` | ❌ | `10.255.32.56` | RTMP server host |
-| `NGINX_PORT` | ❌ | `1935` | RTMP server port |
+| `MEDIAMTX_HOST` | ❌ | `10.255.32.56` | MediaMTX RTSP server host |
+| `MEDIAMTX_PORT` | ❌ | `8554` | MediaMTX RTSP server port |
 | `MINIO_HOST` | ❌ | `10.255.32.82` | MinIO server host |
 | `MINIO_PORT` | ❌ | `9000` | MinIO server port |
 | `MINIO_SECURE` | ❌ | `False` | Whether to use TLS for MinIO |
 | `MAX_FRAMES` | ❌ | `40` | Maximum frames to process per detection cycle |
 | `MIN_DETECTION_CONFIDENCE` | ❌ | `0.4` | Minimum YOLO confidence threshold |
-| `FRAMES_BATCH_SIZE` | ❌ | `5` | Number of frames captured per batch from the RTMP stream |
 
 ---
 
@@ -406,7 +313,7 @@ agent.start()  # Blocks: consumes Kafka events and runs detection loop
 
 ## Error Handling
 
-All exceptions raised during the main Kafka loop are caught by `BaseAgent.start()`, logged via `self.logger.exception()`, and followed by a 1-second sleep before retrying. OCR failures on individual crops are caught in `BaseAgent._process_frame()`, logged as warnings, and processing continues with the next crop. Crop upload errors are caught in `BaseAgent._process_message()` and logged as errors; a result message is still published. When `_parse_detection_result` receives unexpected input (fewer or more than two tokens), both codes are set to `"N/A"` without raising an exception.
+All exceptions raised during the main Kafka loop are caught by `BaseAgent.start()`, logged via `self.logger.exception()`, and followed by a 1-second sleep before retrying. OCR failures on individual crops are caught in `BaseAgent._process_frame()`, logged as warnings, and processing continues with the next crop. Parsing errors in `_parse_detection_result` result in `"N/A"` values. Resource cleanup (`StreamManager`, Kafka producer/consumer) is performed in `BaseAgent._cleanup()` on `stop()`.
 
 ---
 
@@ -414,7 +321,7 @@ All exceptions raised during the main Kafka loop are caught by `BaseAgent.start(
 
 | Test file | Type | What it covers |
 |-----------|------|----------------|
-| `agentC_unitTest.py` | Unit | Configuration methods, `is_valid_detection` (always accepts), `_parse_detection_result` (valid format, missing parts, extra parts), metric counters |
+| `agentC_unitTest.py` | Unit | Configuration methods, `_parse_detection_result`, result message building, metric registration |
 
 To run:
 ```bash
@@ -438,6 +345,6 @@ pytest src/AI_APP/agentC/tests/
 ## Related Docs
 
 - [`base_agent.md`](../../shared/base_agent.md)
-- [`paddle_ocr.md`](../../shared/paddle_ocr.md)
+- [`image_storage.md`](../../shared/image_storage.md)
 - [`kafka_wrapper.md`](../../../shared/kafka_wrapper.md)
 - [Architecture Overview](../../../docs/sketch_arquitetura/arquitetura_intelligent_logistics.md)

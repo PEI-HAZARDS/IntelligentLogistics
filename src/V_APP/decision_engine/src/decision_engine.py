@@ -73,7 +73,7 @@ class DecisionEngine(BaseDecisionEngine):
             self._publish_decision(
                 gate_id, truck_id, license_plate, lp_msg, hz_msg, un_number, kemler_code,
                 decision=DecisionStatus.MANUAL_REVIEW.value,
-                reason="license_plate_not_detected",
+                reason="License plate not detected",
                 start_time=start_time,
             )
             return
@@ -94,7 +94,7 @@ class DecisionEngine(BaseDecisionEngine):
             self._publish_decision(
                 gate_id, truck_id, license_plate, lp_msg, hz_msg, un_number, kemler_code,
                 decision=DecisionStatus.MANUAL_REVIEW.value,
-                reason="api_unavailable",
+                reason="API unavailable",
                 start_time=start_time,
             )
             return
@@ -104,7 +104,7 @@ class DecisionEngine(BaseDecisionEngine):
             self._publish_decision(
                 gate_id, truck_id, license_plate, lp_msg, hz_msg, un_number, kemler_code,
                 decision=DecisionStatus.MANUAL_REVIEW.value,
-                reason="empty_db_appointments",
+                reason="No appointments found",
                 start_time=start_time,
             )
             return
@@ -124,7 +124,7 @@ class DecisionEngine(BaseDecisionEngine):
             self._publish_decision(
                 gate_id, truck_id, license_plate, lp_msg, hz_msg, un_number, kemler_code,
                 decision=DecisionStatus.MANUAL_REVIEW.value,
-                reason="license_plate_not_found",
+                reason="License plate did not match",
                 start_time=start_time,
             )
         else:
@@ -135,16 +135,18 @@ class DecisionEngine(BaseDecisionEngine):
                 self._publish_decision(
                     gate_id, truck_id, license_plate, lp_msg, hz_msg, un_number, kemler_code,
                     decision=DecisionStatus.SKIPPED.value,
-                    reason="same_truck_detection",
+                    reason="Same truck detected again shortly after initial detection",
                     start_time=start_time,
                 )
                 return
 
+            alerts = [f"Truck {matched_plate} accepted."]
             self._publish_decision(
                 gate_id, truck_id, license_plate, lp_msg, hz_msg, un_number, kemler_code,
                 decision=DecisionStatus.ACCEPTED.value,
-                reason="license_plate_matched",
+                reason="License plate matched with appointment",
                 start_time=start_time,
+                alerts=alerts
             )
             # Refresh the last detected truck to prevent duplicate decisions if the same truck is detected again shortly after
             self.last_truck_detected[gate_id] = matched_plate

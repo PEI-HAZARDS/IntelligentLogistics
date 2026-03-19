@@ -14,8 +14,9 @@ from AI_APP.shared.src.bounding_box_drawer import BoundingBoxDrawer, Box
 from shared.src.kafka_wrapper import KafkaProducerWrapper, KafkaConsumerWrapper
 from AI_APP.shared.src.consensus_algorithm import ConsensusAlgorithm
 from shared.src.kafka_protocol import Message
-from queue import Queue, Empty
+from queue import Queue, Empty, Full
 import logging
+import uuid
 
 class BaseAgentConfig(BaseSettings):
     # Kafka
@@ -39,7 +40,8 @@ class BaseAgentConfig(BaseSettings):
     # Detection parameters
     max_frames: int = Field(default=40)
     min_detection_confidence: float = Field(default=0.4)
-    frames_batch_size: int = Field(default=5)
+    annotated_frames_idle_upload: bool = Field(default=True)
+    annotated_frames_buffer_size: int = Field(default=100)
 
     # Use properties to dynamically construct dependent values
     @property
@@ -58,7 +60,7 @@ class BaseAgentConfig(BaseSettings):
 class BaseAgent(ABC):
     """
     Base agent class that implements common detection and consensus logic.
-    
+
     Child classes must implement:
     - get_agent_name(): Return agent identifier
     - initialize_ocr(): Initialize and return OCR instance
@@ -91,7 +93,7 @@ class BaseAgent(ABC):
     ) -> None:
         """
         Initialize base agent with common components.
-        
+
         Args:
             config: Optional BaseAgentConfig instance (loaded from env if not provided)
             stream_manager: Optional StreamManager instance (for testing)
@@ -111,7 +113,7 @@ class BaseAgent(ABC):
 
         # Load configuration
         self.config = config or BaseAgentConfig()
-        
+
         # Initialize models - use provided dependencies or create defaults
         self.yolo = object_detector or ObjectDetector(self.get_yolo_model_path())
         self.ocr = ocr or self.initialize_ocr()
@@ -123,11 +125,11 @@ class BaseAgent(ABC):
         self.kafka_producer = kafka_producer or KafkaProducerWrapper(self.config.kafka_bootstrap)
         self.kafka_consumer = kafka_consumer or KafkaConsumerWrapper(self.config.kafka_bootstrap, f"{self.agent_name.lower()}-{self.config.gate_id}-group", [self.get_consume_topic()])
         self.consensus_algorithm = consensus_algorithm or ConsensusAlgorithm()
-        
+
         # Runtime state
         self.running = True
-        self.frames_queue = Queue()
         self.truck_id = ""
+        self.pending_annotated_uploads: Queue = Queue(maxsize=max(1, int(self.config.annotated_frames_buffer_size)))
         
         # Metrics — subclasses set real values inside init_metrics();
         # base class guarantees these attributes always exist.
@@ -147,17 +149,17 @@ class BaseAgent(ABC):
     def get_agent_name(self) -> str:
         """Return agent identifier (e.g., 'AgentB', 'AgentC')."""
         pass
-    
+
     @abstractmethod
     def initialize_ocr(self) -> OCR:
         """Initialize and return OCR instance."""
         pass
-    
+
     @abstractmethod
     def get_bbox_color(self) -> str:
         """Return bbox color (e.g., 'Red', 'Green')."""
         pass
-    
+
     @abstractmethod
     def get_bbox_label(self) -> str:
         """Return label color (e.g., 'truck', 'car')."""
@@ -187,12 +189,12 @@ class BaseAgent(ABC):
     def is_valid_detection(self, crop: np.ndarray, confidence: float, box_index: int) -> bool:
         """
         Validate detection box (e.g., check plate classification).
-        
+
         Args:
             crop: Cropped image
             confidence: Detection confidence
             box_index: Box index for logging
-            
+
         Returns:
             True if detection is valid, False otherwise
         """
@@ -202,15 +204,15 @@ class BaseAgent(ABC):
     def _build_message_for_detection(self, text: str, confidence: float, crop_url: Optional[str]) -> Message:
         """
         Build the appropriate message for this agent's detection result.
-        
+
         This method bridges between the generic detection pipeline (which returns text)
         and the agent-specific message format.
-        
+
         Args:
             text: Detected text from OCR
             confidence: Detection confidence
             crop_url: MinIO crop URL
-            
+
         Returns:
             Message object appropriate for this agent
         """
@@ -234,40 +236,42 @@ class BaseAgent(ABC):
     # ========================================================================
     # Template methods - common behavior with extension points
     # ========================================================================
-    
+
     def start(self) -> None:
         """Main loop for agent."""
 
         self.logger.info(f"Starting {self.agent_name} main loop (stream={self.config.stream_url}, kafka bootstrap={self.config.kafka_bootstrap}) …")
-        
+
         # Clear any stale messages on startup
         self.kafka_consumer.clear_stale_messages()
-        
+
         # Main processing cycle
         while self.running:
             try:
                 _, message_obj, truck_id = self.kafka_consumer.consume_typed_message(timeout=0.1)
-                
+
                 # No relevant message received, continue to next iteration
                 if truck_id is None:
+                    if self.config.annotated_frames_idle_upload:
+                        self._upload_pending_annotated_frames(max_items=1)
                     continue
-                
+
                 self.truck_id = truck_id
                 self.logger.info(f"Received message for truck_id={truck_id}, processing detection...")
-                
+
                 # Process frame for truck detection
                 self._process_message(message_obj)
 
             except Exception as e:
                 self.logger.exception(f"Exception during detection loop: {e}")
                 time.sleep(1)
-    
+
     def stop(self) -> None:
         """Gracefully stop the agent."""
         self.logger.info(f"Stopping {self.agent_name}…")
         self.running = False
         self._cleanup()
-    
+
     def _process_message(self, message_obj: Any) -> None:
         """
         Orchestrate a full detection cycle for one incoming Kafka message.
@@ -282,16 +286,16 @@ class BaseAgent(ABC):
             message_obj: Typed message object received from the Kafka consumer.
         """
         self.logger.info(f"Processing truck: {self.truck_id}")
-        
+
         self.logger.info("Connecting to video stream…")
         self.stream_manager.connect()
-    
+
         # Run detection pipeline and always use the returned crop
         text, confidence, crop = self.process_detection()  
-        
+
         self.logger.info("Releasing to video stream…")
         self.stream_manager.release()
-        
+
         crop_url = None
         if crop is not None:
             # Always upload the returned crop, even if text is N/A
@@ -318,13 +322,10 @@ class BaseAgent(ABC):
         # Publish results
         self._publish_detection(message)
 
-        # Clear frames queue for next detection
-        self._clear_frames_queue()
-    
     def process_detection(self) -> Tuple[Optional[str], Optional[float], Optional[Any]]:
         """
         Main detection pipeline.
-        
+
         Returns:
             tuple: (text, confidence, crop_image) or (None, None, None)
         """
@@ -333,68 +334,68 @@ class BaseAgent(ABC):
         self.frames_processed = 0
 
         while self._should_continue_processing():
-            frame = self._get_next_frame()
-            if frame is None:
-                return None, None, None
+            #frame = self._get_next_frame()
+            raw_frame = self.stream_manager.read()
+            if raw_frame is None:
+                continue
+
+            frame = raw_frame.copy() # decouple from StreamManager's internal buffer
             
             if self.frames_processed_metric:
                 self.frames_processed_metric.inc() # type: ignore
-            
+
             self.frames_processed += 1
             self.logger.debug(f"Frame {self.frames_processed}/{int(self.config.max_frames)} obtained, running detection…")
+
+            #self.image_storage.upload_memory_image(frame, f"{self.truck_id}_{self.frames_processed}_frame.jpg", image_type="other")
 
             result = self._process_frame(frame)
             if result:
                 text, conf, crop = result
-                self._clear_frames_queue()
                 return text, conf, crop
 
         if self.frames_processed >= self.config.max_frames:
             self.logger.info(f"Frame limit reached ({int(self.config.max_frames)}), using partial result")
-
-        return self.consensus_algorithm.get_best_partial_result(self.get_object_type())
+            return self.consensus_algorithm.get_best_partial_result(self.get_object_type())
+        
+        return None, None, None
 
     def _should_continue_processing(self) -> bool:
         """Check if frame processing should continue."""
         return self.running and not self.consensus_algorithm.consensus_reached and self.frames_processed < self.config.max_frames
 
     def _get_next_frame(self) -> Optional[np.ndarray]:
-        if self.frames_queue.empty():
-            self._add_frames_queue(self.config.frames_batch_size)
-        try:
-            return self.frames_queue.get_nowait()
-        except Empty:
-            self.logger.debug("No frame available after capture attempt")
-        return None
-    
-    def _add_frames_queue(self, num_frames: int = 30) -> None:
         """
-        Capture frames from RTMP/RTSP stream with automatic reconnection.
+        Capture the next available frame from the stream manager.
         
-        Args:
-            num_frames: Number of frames to capture
+        Retries for several seconds to allow the stream to connect initially.
+        Always returns a copy of the frame to prevent memory corruption if the
+        underlying buffer is reused by the StreamManager's background thread.
+        
+        Returns:
+            Optional[np.ndarray]: A copy of the next frame if available, else None.
         """
-        self.logger.debug(f"Reading {num_frames} frames")
-
-        captured = 0
-        while captured < num_frames and self.running:
-            try:
-                frame = self.stream_manager.read()
-                if frame is not None:
-                    self.frames_queue.put(frame)
-                    captured += 1
-                    self.logger.debug(f"Captured {captured}/{num_frames}")
-                else:
-                    time.sleep(0.1)
+        max_retries = 10
+        for i in range(max_retries):
+            frame = self.stream_manager.read(timeout=1.0)
+            if frame is not None:
+                # Always return a copy to decouple from StreamManager's internal buffers
+                return frame.copy()
             
-            except Exception as e:
-                self.logger.warning(f"Frame capture error: {e}")
-                time.sleep(0.2)
-    
+            if not self.running:
+                break
+                
+            if i < max_retries - 1:
+                self.logger.debug(f"Waiting for stream... (attempt {i+1}/{max_retries})")
+                time.sleep(0.1)
+        
+        self.logger.warning("Stream manager timed out providing a frame.")
+        return None
+
     def _process_frame(self, frame: np.ndarray) -> Optional[Tuple[str, float, np.ndarray]]:
         """
         Process a single video frame.
-        
+
         Returns:
             (text, conf, crop) if consensus is reached, else None
         """
@@ -425,11 +426,11 @@ class BaseAgent(ABC):
             raise
 
         return None
-    
+
     def _run_yolo_inference(self, frame: np.ndarray) -> Optional[List[Any]]:
         """Run YOLO detection on frame."""
         self.logger.info("Running YOLO detection...")
-        
+
         if self.inference_latency:
             with self.inference_latency.time(): # type: ignore
                 results = self.yolo.detect(frame)
@@ -449,11 +450,21 @@ class BaseAgent(ABC):
         try:
             annotated_frame = frame.copy()
             annotated_frame = self.drawer.draw_box(annotated_frame, cast(List[Box], boxes))
-            self.image_storage.upload_memory_image(annotated_frame, f"{self.truck_id}_{int(time.time())}.jpg", image_type="annotated_frames")
+            object_name = f"{self.truck_id}_{int(time.time())}.jpg"
+            if self.config.annotated_frames_idle_upload:
+                enqueued = self._enqueue_annotated_frame_upload(annotated_frame, object_name)
+                if not enqueued:
+                    self.logger.warning("Annotated frame dropped: buffer full")
+            else:
+                self.image_storage.upload_memory_image(
+                    annotated_frame,
+                    object_name,
+                    image_type="annotated_frames"
+                )
         
         except Exception as e:
             self.logger.warning(f"Error drawing boxes: {e}")
-        
+
         detection_metric = self.get_detection_metric()
         if detection_metric is not None:
             for _ in boxes:
@@ -461,11 +472,11 @@ class BaseAgent(ABC):
 
         self.logger.info(f"Detected {len(boxes)} {self.get_object_type()}")
         return boxes
-    
+
     def _extract_crop(self, box: Any, frame: np.ndarray, box_index: int) -> Tuple[Optional[np.ndarray], Optional[float]]:
         """
         Extract and validate crop from detection box.
-        
+
         Returns:
             (crop, confidence) or (None, None) if invalid
         """
@@ -476,17 +487,17 @@ class BaseAgent(ABC):
             return None, None
 
         crop = frame[int(y1):int(y2), int(x1):int(x2)]
-        
+
         if not self.is_valid_detection(crop, conf, box_index):
             return None, None
 
         self.logger.debug(f"Crop {box_index} valid")
         return crop, conf
-    
+
     def _process_ocr_result(self, crop: np.ndarray) -> Optional[Tuple[str, float, np.ndarray]]:
         """
         Run OCR on crop and process result.
-        
+
         Returns:
             (final_text, confidence, best_crop) if consensus reached, else None
         """
@@ -502,7 +513,7 @@ class BaseAgent(ABC):
         # Store candidate crop with OCR text (overwrites fallback entry)
         text_normalized = text.upper().replace("-", "")
         self.consensus_algorithm.add_candidate_crop(crop.copy(), text_normalized, ocr_conf, is_fallback=False)
-        
+
         self.logger.debug(f"Candidate: '{text_normalized}' ({ocr_conf:.2f})")
 
         self.consensus_algorithm.add_to_consensus(text_normalized, ocr_conf)
@@ -515,24 +526,13 @@ class BaseAgent(ABC):
             return final_text, confidence, best_crop # type: ignore
 
         return None
-    
-    def _clear_frames_queue(self) -> None:
-        count = 0
-        while not self.frames_queue.empty():
-            try:
-                self.frames_queue.get_nowait()
-                count += 1
-            except Empty:
-                break
-        if count:
-            self.logger.debug(f"Cleared {count} frames from queue")
-    
+
     def _publish_detection(self, message: Message) -> None:
         """
         Publish detection event to Kafka.
-        
+
         Uses self.truck_id which is set when receiving a Kafka message.
-        
+
         Args:
             message: Message object to publish
         """
@@ -542,11 +542,69 @@ class BaseAgent(ABC):
             data=message.to_dict(),
             headers={"truckId": self.truck_id}
         )
-    
+
     def _cleanup(self) -> None:
         """Release resources and perform cleanup."""
         self.logger.info(f"Cleaning up resources for {self.agent_name}…")
+        if self.config.annotated_frames_idle_upload:
+            self._upload_pending_annotated_frames()
         self.stream_manager.release()
         self.kafka_producer.flush()
         self.kafka_producer.close()
         self.kafka_consumer.close()
+
+    def _enqueue_annotated_frame_upload(self, frame: np.ndarray, object_name: str) -> bool:
+        """Queue an annotated frame for deferred MinIO upload.
+
+        This is non-blocking and intended for debug/training artifacts so
+        detection and decision flow is never delayed by annotated frame upload.
+
+        Args:
+            frame: Annotated frame to upload later.
+            object_name: Target object key/name in MinIO.
+
+        Returns:
+            True when queued successfully, False when buffer is full.
+        """
+        try:
+            self.pending_annotated_uploads.put_nowait((frame, object_name))
+            return True
+        except Full:
+            return False
+
+    def _upload_pending_annotated_frames(self, max_items: Optional[int] = None) -> int:
+        """Flush queued annotated frame uploads from the deferred buffer.
+
+        Processes at most ``max_items`` entries (or all currently queued items
+        when ``max_items`` is None), uploading each to MinIO as
+        ``image_type='annotated_frames'``.
+
+        Args:
+            max_items: Upper bound of queued items to upload in this call.
+
+        Returns:
+            Number of upload attempts processed from the queue.
+        """
+        uploaded = 0
+        limit = max_items if max_items is not None else self.pending_annotated_uploads.qsize()
+
+        while uploaded < limit:
+            try:
+                frame, object_name = self.pending_annotated_uploads.get_nowait()
+            except Empty:
+                break
+
+            try:
+                self.image_storage.upload_memory_image(
+                    frame,
+                    object_name,
+                    image_type="annotated_frames"
+                )
+            except Exception as e:
+                self.logger.warning(f"Deferred annotated frame upload failed: {e}")
+            finally:
+                self.pending_annotated_uploads.task_done()
+
+            uploaded += 1
+
+        return uploaded

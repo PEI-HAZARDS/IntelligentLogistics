@@ -51,6 +51,9 @@ cd /home/dh11/Documents/PEI/IntelligentLogistics/src/V_APP/test_newArch
 
 # 4. Verificar resultados
 ./verify_decision.sh AB-12-CD
+
+# 5. Teste específico de infração (Kafka infraction-decision)
+./run_infraction_test.sh AB-12-CD 1 true
 ```
 
 ---
@@ -147,6 +150,38 @@ Verifica se o fluxo foi processado corretamente.
 **Exemplo:**
 ```bash
 ./test_newArch/verify_decision.sh AB-12-CD
+```
+
+---
+
+### `run_infraction_test.sh` 🚛⚠️
+Script específico para validar a feature de infração no appointment (`highway_infraction`).
+
+**Uso:**
+```bash
+./test_newArch/run_infraction_test.sh <LICENSE_PLATE> [GATE_ID] [INFRACTION] [WAIT_SECONDS]
+```
+
+**Parâmetros:**
+- `LICENSE_PLATE` (default: `AB-12-CD`)
+- `GATE_ID` (default: `1`)
+- `INFRACTION` (default: `true`) — `true` ou `false`
+- `WAIT_SECONDS` (default: `6`)
+
+**O que faz:**
+1. Garante/atualiza dados de teste (`setup_test_data.sh`)
+2. Reseta appointment para baseline (`status=in_transit`, `highway_infraction=false`)
+3. Publica mensagem no tópico `infraction-decision-{gate_id}` com header `truckId`
+4. Aguarda processamento do consumer
+5. Valida no PostgreSQL se `highway_infraction` foi alterado conforme esperado
+
+**Exemplos:**
+```bash
+# Caso principal: infração detectada (espera highway_infraction=true)
+./test_newArch/run_infraction_test.sh AB-12-CD 1 true
+
+# Caso sem infração (espera manter valor anterior)
+./test_newArch/run_infraction_test.sh AB-12-CD 1 false
 ```
 
 ---

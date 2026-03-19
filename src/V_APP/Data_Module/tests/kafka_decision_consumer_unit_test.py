@@ -147,6 +147,18 @@ class TestKafkaDecisionConsumer:
     def test_init(self, consumer):
         assert consumer.running is False
 
+    def test_init_uses_multigate_env_topics(self):
+        mock_kafka = MagicMock()
+        with patch.dict(os.environ, {
+            "DECISION_GATE_IDS": '["1","3"]',
+            "INFRACTION_GATE_IDS": '["2"]',
+        }):
+            c = KafkaDecisionConsumer(consumer=mock_kafka)
+
+        assert c.agent_decision_topics == {"agent-decision-1", "agent-decision-3"}
+        assert c.operator_decision_topics == {"operator-decision-1", "operator-decision-3"}
+        assert c.infraction_decision_topics == {"infraction-decision-2"}
+
     def test_start(self, consumer):
         consumer.running = False
         # Mock _consume_loop to complete immediately
@@ -178,3 +190,68 @@ class TestKafkaDecisionConsumer:
             await consumer.stop()
             assert consumer.running is False
         asyncio.run(_run())
+
+    def test_store_infraction_decision_updates_appointment(self, consumer):
+        data = {
+            "license_plate": "AB12CD",
+            "infraction": True,
+            "un": "1203",
+            "kemler": "33",
+        }
+
+        async def _run():
+            with patch("services.kafka_decision_consumer.persist_infraction_event_from_kafka", return_value="event-123") as persist_mock, \
+                 patch("services.kafka_decision_consumer.update_appointment_after_infraction", return_value={
+                     "appointment_id": 42,
+                     "old_highway_infraction": False,
+                     "new_highway_infraction": True,
+                 }) as update_mock, \
+                 patch("services.kafka_decision_consumer.create_notification") as notif_mock:
+                await consumer._store_infraction_decision("truck-1", data)
+
+                persist_mock.assert_called_once()
+                update_mock.assert_called_once_with("AB12CD", True)
+                notif_mock.assert_called_once()
+
+        asyncio.run(_run())
+
+    def test_store_infraction_decision_without_infraction_skips_update(self, consumer):
+        data = {
+            "license_plate": "AB12CD",
+            "infraction": False,
+        }
+
+        async def _run():
+            with patch("services.kafka_decision_consumer.persist_infraction_event_from_kafka", return_value="event-456") as persist_mock, \
+                 patch("services.kafka_decision_consumer.update_appointment_after_infraction") as update_mock, \
+                 patch("services.kafka_decision_consumer.create_notification") as notif_mock:
+                await consumer._store_infraction_decision("truck-2", data)
+
+                persist_mock.assert_called_once()
+                update_mock.assert_not_called()
+                notif_mock.assert_not_called()
+
+        asyncio.run(_run())
+
+    def test_store_infraction_decision_missing_plate_skips_update(self, consumer):
+        data = {
+            "license_plate": "N/A",
+            "infraction": True,
+        }
+
+        async def _run():
+            with patch("services.kafka_decision_consumer.persist_infraction_event_from_kafka", return_value="event-789") as persist_mock, \
+                 patch("services.kafka_decision_consumer.update_appointment_after_infraction") as update_mock, \
+                 patch("services.kafka_decision_consumer.create_notification") as notif_mock:
+                await consumer._store_infraction_decision("truck-3", data)
+
+                persist_mock.assert_called_once()
+                update_mock.assert_not_called()
+                notif_mock.assert_not_called()
+
+        asyncio.run(_run())
+
+    def test_extract_gate_id_from_topic(self, consumer):
+        assert consumer._extract_gate_id_from_topic("infraction-decision-2") == "2"
+        assert consumer._extract_gate_id_from_topic("agent-decision-gateA") == "gateA"
+        assert consumer._extract_gate_id_from_topic("unknown-topic") is None

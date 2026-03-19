@@ -293,7 +293,7 @@ class VBrain:
         if not self.scale_status:
             logger.info(f"Scaling UP gate {gate_id} (reason={reason})")
             self.scale_status = True
-            #self._call_scaling_api("SCALE_UP", gate_id)
+            self._call_scaling_api("SCALE_UP", gate_id)
             return
         
         logger.info(f"Network scale already {'UP' if self.scale_status else 'DOWN'} for gate {gate_id}, no action taken (reason={reason})")
@@ -320,11 +320,11 @@ class VBrain:
         # se tiver algum truck que ainda não recebeu decisão (agent-decision ou infraction-decision)
 
         for truckId, state in self.correlator._state.items():
-            if state["decided"] is False:
+            if not self.correlator._is_results_complete(truckId):
                 logger.info(f"Truck {truckId} still needs scale-up, skipping scale-down for gate {gate_id}")
                 return 
 
-        #self._call_scaling_api("SCALE_DOWN", gate_id)
+        self._call_scaling_api("SCALE_DOWN", gate_id)
         self.scale_status = False
         logger.info(f"Scaling DOWN gate {gate_id} (reason={reason})")
 
@@ -347,17 +347,20 @@ class VBrain:
     def _call_scaling_api(self, action: str, gate_id: str) -> None:
         """Call the slice scaling API to request a SCALE_UP or SCALE_DOWN.
 
-        Posts to POST /invoker-app/v1/scaling-operation/slice with the
+        Posts to POST /napp/v1/scaling-operation/slice with the
         configured slice ID, notification destination, and the given action.
 
         Args:
             action: "SCALE_UP" or "SCALE_DOWN".
             gate_id: Gate identifier (used for logging context).
         """
-        url = f"{self.config.scaling_api_url}/invoker-app/v1/scaling-operation/slice"
+        url = f"{self.config.scaling_api_url}/napp/v1/scaling-operation/slice"
         payload = {
             "action": action,
+            "uplinkKbps": 1,
+            "downlinkKbps": 1,
             "notificationDestination": self.config.scaling_notification_destination,
+            "requestId": self.config.scaling_request_id,
             "sliceId": self.config.scaling_slice_id,
         }
         try:

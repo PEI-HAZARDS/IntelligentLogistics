@@ -9,7 +9,6 @@ Responsibilities:
 - Real-time metrics tracking
 """
 
-import json
 import time
 import logging
 from typing import Optional, Dict, Any, List
@@ -33,8 +32,6 @@ from db.redis import (
     cache_decision as redis_cache_decision,
     increment_counter,
     cache_appointment,
-    invalidate_appointment_cache,
-    cache_license_plate_appointments,
     invalidate_license_plate_cache
 )
 
@@ -662,6 +659,101 @@ def persist_decision_event_from_kafka(decision_data: Dict[str, Any]) -> str:
         decision=decision,
         decision_data=kafka_decision_data
     )
+
+
+def persist_infraction_event_from_kafka(truck_id: str, infraction_data: Dict[str, Any]) -> str:
+    """
+    Adapter function for Kafka consumer to persist infraction events. all of them in Mongo
+    Reuses decision event collection with infraction-focused payload.
+    """
+    license_plate = infraction_data.get("license_plate", "UNKNOWN")
+    gate_id = infraction_data.get("gate_id", 1)
+    appointment_id = infraction_data.get("appointment_id")
+    infraction = bool(infraction_data.get("infraction", False))
+
+    decision = "HIGHWAY_INFRACTION" if infraction else "NO_INFRACTION"
+
+    kafka_infraction_data = {
+        "decision_source": "infraction_engine",
+        "processed_at": infraction_data.get("processed_at"),
+        "truck_id": truck_id,
+        "un": infraction_data.get("un"),
+        "kemler": infraction_data.get("kemler"),
+        "alerts": ["highway_infraction"] if infraction else [],
+        "route": "highway_restricted",
+        "license_crop_url": infraction_data.get("license_crop_url"),
+        "hazard_crop_url": infraction_data.get("hazard_crop_url"),
+        "decision_reason": "hazmat_on_restricted_route" if infraction else "no_highway_infraction",
+        "final_decision": decision,
+        "appointment_updated": False,
+    }
+
+    return persist_decision_event(
+        license_plate=license_plate,
+        gate_id=int(gate_id),
+        appointment_id=appointment_id,
+        decision=decision,
+        decision_data=kafka_infraction_data,
+    )
+
+
+def update_appointment_after_infraction(
+    license_plate: str,
+    infraction: bool = True,
+) -> Optional[Dict[str, Any]]:
+    """
+    Updates the appointment highway infraction flag after Infraction Engine decision.
+    """
+    from db.postgres import SessionLocal
+    from models.sql_models import Appointment
+
+    db = SessionLocal()
+    try:
+        # Find the correspondent appointment for the license plate 
+        appointment = (
+            db.query(Appointment)
+            .filter(
+                Appointment.truck_license_plate == license_plate,
+                Appointment.status.in_(["in_transit", "delayed", "in_process"]),
+            )
+            .order_by(Appointment.scheduled_start_time.desc(), Appointment.id.desc())
+            .first()
+        )
+
+        # If no appointment means the truck doenst go to port
+        # So we ignore and dont do shit in db
+        if not appointment:
+            logger.warning(
+                f"No active appointment found for infraction update: "
+                f"license_plate={license_plate}"
+            )
+            return None
+        
+        # Gets old value its basically always false but we do it na mesma
+        # And get the infraction to true could be just true but k se lixe
+        old_highway_infraction = bool(appointment.highway_infraction)
+        new_highway_infraction = old_highway_infraction or bool(infraction)
+
+
+        # Store state on db
+        if new_highway_infraction != old_highway_infraction:
+            appointment.highway_infraction = new_highway_infraction
+            db.commit()
+            db.refresh(appointment)
+
+        return {
+            "appointment_id": appointment.id,
+            "appointment_status": appointment.status,
+            "old_highway_infraction": old_highway_infraction,
+            "new_highway_infraction": bool(appointment.highway_infraction),
+        }
+
+    except Exception as e:
+        logger.error(f"Error updating appointment highway infraction: {e}", exc_info=True)
+        db.rollback()
+        return None
+    finally:
+        db.close()
 
 
 def update_appointment_after_decision(

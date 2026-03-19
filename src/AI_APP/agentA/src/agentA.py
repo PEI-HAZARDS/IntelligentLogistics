@@ -206,12 +206,18 @@ class AgentA:
                 num_boxes = len(boxes)
                 max_conf = max((b[4] for b in boxes), default=0.0)
 
+                # Discart trucks with less than 75% confidence to reduce false positives
+                if max_conf < 0.75:
+                    logger.debug(f"Detections found but confidence too low (max_conf={max_conf:.2f}), skipping.")
+                    continue
+
                 # Draw detected boxes on the frame (labelled)
                 try:
                     frame = self.drawer.draw_box(frame, cast(List[Box], boxes))
                     self.image_storage.upload_memory_image(frame, f"{truck_id}_{int(time.time())}.jpg", image_type="annotated_frames")
                 except Exception as e:
                     logger.exception(f"Error drawing boxes: {e}")
+
 
                 # Record metrics
                 self.trucks_detected.inc(num_boxes)

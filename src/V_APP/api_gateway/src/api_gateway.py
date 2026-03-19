@@ -148,25 +148,48 @@ class APIGateway:
                 if not target_gate and topic:
                     # Extract gate ID from topic if it follows the pattern "something-gateid"
                     parts = topic.rsplit("-", 1)
-                    if len(parts) == 2 and parts[1].isdigit():
-                        target_gate = parts[1]
+                    if len(parts) == 2 and parts[1].strip():
+                        target_gate = parts[1].strip()
 
+                message_type = payload.get("message_type")
+
+                # 3. Infractions: broadcast to payload gate + gate 1
+                if message_type == "infraction_decision":
+                    infraction_target_gates: list[str] = ["1"]
+                    if target_gate:
+                        infraction_target_gates.insert(0, str(target_gate))
+                    infraction_target_gates = list(dict.fromkeys(infraction_target_gates))
+
+                    if not infraction_target_gates:
+                        logger.warning(
+                            f"Could not determine target gates for infraction topic '{topic}', skipping broadcast"
+                        )
+                        continue
+
+                    logger.info(
+                        f"Broadcasting infraction decision for truck {payload.get('truck_id')} "
+                        f"to gates {infraction_target_gates}"
+                    )
+                    self._broadcast_async(payload, infraction_target_gates)
+                    continue
+
+                # 4. Other messages: broadcast only to their target gate
                 if not target_gate:
                     logger.warning(f"Could not determine gate ID for topic '{topic}', skipping broadcast")
                     continue
-                
-                logger.info(f"Broadcasting {payload.get('message_type')} for gate {target_gate}")
-                self._broadcast_async(payload, target_gate=target_gate)
+
+                logger.info(f"Broadcasting {message_type} for gate {target_gate}")
+                self._broadcast_async(payload, str(target_gate))
                 
         except Exception as e:
             logger.error(f"Consumer loop error: {e}")
         finally:
             logger.info("[Consumer thread] Stopped")
 
-    def _broadcast_async(self, message: dict, target_gate: str):
-        """Helper to safely schedule a broadcast from the synchronous consumer thread."""
+    def _broadcast_async(self, message: dict, target_gates: str | list[str]):
+        """Helper to safely schedule a broadcast (single or multi-gate) from the consumer thread."""
         asyncio.run_coroutine_threadsafe(
-            self.ws_manager.broadcast_to_gate(target_gate, message),
+            self.ws_manager.broadcast(target_gates, message),
             self._loop,
         )
     

@@ -69,7 +69,7 @@ async def produce_manual_review(
     ws_payload = msg.to_dict()
     ws_payload["truck_id"] = truck_id
     
-    await ws_manager.broadcast_to_gate(gate_id, ws_payload)
+    await ws_manager.broadcast(gate_id, ws_payload)
     logger.info(f"Manual review decision broadcast via WebSocket for gate '{gate_id}'")
 
     return {"status": decision, "message": f"Decision '{decision}' propagated"}

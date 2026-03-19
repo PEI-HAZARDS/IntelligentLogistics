@@ -6,14 +6,14 @@ webrtcAddress: :8889
 webrtcLocalUDPAddress: :8189
 webrtcAdditionalHosts: [10.255.32.56]
 
-logLevel: 
+logLevel: info
 
 rtsp: true
 rtspAddress: :8554
 rtpAddress: :8000
 rtcpAddress: :8001
 # Server accepts UDP from downstream clients (AI agents, VLC, etc.)
-rtspTransports: [udp]
+rtspTransports: [udp, tcp]
 
 rtmp: false
 hls: false
@@ -33,13 +33,13 @@ pathDefaults:
 ###############################################
 paths:
    streams_high/gate1:
-      source: rtsp://10.16.9.6:554/stream1
+      source: rtsp://10.16.9.4:554/stream1
 
    streams_low/gate1:
-      source: rtsp://10.16.9.6:554/stream2
+      source: rtsp://10.16.9.4:554/stream2
 
    streams_high/gate2:
-      source: rtsp://10.16.9.2:554/stream1
+      source: rtsp://10.16.9.3:554/stream1
 
    streams_low/gate2:
-      source: rtsp://10.16.9.2:554/stream2
+      source: rtsp://10.16.9.3:554/stream2
