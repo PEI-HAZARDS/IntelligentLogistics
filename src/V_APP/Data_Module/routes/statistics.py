@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Query, HTTPException, status
 from datetime import datetime
 
-from services.statistics_service import (
+from application.queries.statistics_queries import (
     get_real_time_metrics,
     get_hourly_trend,
     get_detection_success_rate,
@@ -15,7 +15,7 @@ from services.statistics_service import (
     get_agent_performance,
     get_complete_truck_journey,
     get_operator_performance,
-    compute_hourly_statistics
+    compute_hourly_statistics,
 )
 
 router = APIRouter(prefix="/statistics", tags=["Statistics & Analytics"])

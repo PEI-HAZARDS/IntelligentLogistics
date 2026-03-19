@@ -45,6 +45,12 @@ notifications_collection = db["notifications"]
 # Populated by outbox worker; queried by arrivals routes instead of PostgreSQL.
 appointments_read_collection = db["appointments_read"]
 
+# CQRS Read Models — secondary entity projections
+# Populated by write-through after Postgres commit; queried by GET routes.
+alerts_read_collection = db["alerts_read"]
+drivers_read_collection = db["drivers_read"]
+workers_read_collection = db["workers_read"]
+
 
 # ==================== INDEX CREATION ====================
 
@@ -230,6 +236,59 @@ def create_indexes():
         name="idx_appt_read_status_sched",
     )
     logger.info("✓ Created appointments_read indexes")
+
+    # ===== alerts_read indexes =====
+    alerts_read_collection.create_index(
+        [("id", ASCENDING)],
+        name="idx_alert_read_id",
+        unique=True,
+    )
+    alerts_read_collection.create_index(
+        [("visit_id", ASCENDING), ("timestamp", DESCENDING)],
+        name="idx_alert_read_visit_ts",
+    )
+    alerts_read_collection.create_index(
+        [("type", ASCENDING), ("timestamp", DESCENDING)],
+        name="idx_alert_read_type_ts",
+    )
+    alerts_read_collection.create_index(
+        [("timestamp", DESCENDING)],
+        name="idx_alert_read_ts",
+    )
+    logger.info("✓ Created alerts_read indexes")
+
+    # ===== drivers_read indexes =====
+    drivers_read_collection.create_index(
+        [("drivers_license", ASCENDING)],
+        name="idx_driver_read_license",
+        unique=True,
+    )
+    drivers_read_collection.create_index(
+        [("company_nif", ASCENDING)],
+        name="idx_driver_read_company",
+    )
+    drivers_read_collection.create_index(
+        [("active", ASCENDING)],
+        name="idx_driver_read_active",
+    )
+    logger.info("✓ Created drivers_read indexes")
+
+    # ===== workers_read indexes =====
+    workers_read_collection.create_index(
+        [("num_worker", ASCENDING)],
+        name="idx_worker_read_num",
+        unique=True,
+    )
+    workers_read_collection.create_index(
+        [("email", ASCENDING)],
+        name="idx_worker_read_email",
+        unique=True,
+    )
+    workers_read_collection.create_index(
+        [("role", ASCENDING), ("active", ASCENDING)],
+        name="idx_worker_read_role_active",
+    )
+    logger.info("✓ Created workers_read indexes")
 
     logger.info("✅ All MongoDB indexes created successfully")
 

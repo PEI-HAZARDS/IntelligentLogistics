@@ -14,12 +14,12 @@ from loguru import logger
 
 from infrastructure.persistence.mongo import events_collection
 from infrastructure.persistence.postgres import get_db
-from services.decision_service import (
+from application.queries.decision_queries import (
     process_incoming_decision,
     query_appointments_for_decision,
     get_detection_events,
     get_decision_events,
-    persist_detection_event
+    persist_detection_event,
 )
 
 router = APIRouter(prefix="/decisions", tags=["Decisions"])
@@ -244,7 +244,7 @@ def manual_review(
     When rejected:
     - Updates Appointment.status to 'canceled'
     """
-    from services.arrival_service import create_visit_for_appointment, update_appointment_from_decision
+    from application.queries.arrival_queries import create_visit_for_appointment, update_appointment_from_decision
     from infrastructure.persistence.sql_models import ShiftType
     from datetime import date
     

@@ -18,11 +18,11 @@ import json
 
 from shared.src.kafka_wrapper import KafkaConsumerWrapper
 from shared.src.kafka_protocol import KafkaTopicFactory
-from services.decision_service import (
+from application.queries.decision_queries import (
     persist_infraction_event_from_kafka,
     update_appointment_after_infraction,
 )
-from services.notification_service import create_notification
+from application.queries.notification_queries import create_notification
 from config import settings
 from domain.events import EventEnvelope, ConsumeContext
 from application.use_cases.container_moved_handler import ContainerMovedHandler

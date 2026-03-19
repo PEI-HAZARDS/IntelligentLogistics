@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict
 from bson import ObjectId
 
 from infrastructure.persistence.mongo import notifications_collection
-from services.notification_service import create_notification  # re-export for convenience
+from application.queries.notification_queries import create_notification  # re-export for convenience
 
 __all__ = ["router", "create_notification"]
 

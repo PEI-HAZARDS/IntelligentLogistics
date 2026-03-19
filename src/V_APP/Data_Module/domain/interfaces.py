@@ -104,6 +104,93 @@ class IOutboxRepository(ABC):
 # =========================================================
 
 
+class IAlertRepository(ABC):
+    """Repository for alert writes within UoW."""
+
+    @abstractmethod
+    def add(
+        self,
+        *,
+        visit_id: Optional[int],
+        alert_type: str,
+        description: str,
+        image_url: Optional[str] = None,
+        appointment_id: Optional[int] = None,
+    ) -> dict[str, Any]:
+        ...
+
+    @abstractmethod
+    def get_appointment_visit_id(self, appointment_id: int) -> Optional[int]:
+        """Return the visit_id linked to an appointment, or None."""
+        ...
+
+
+class IDriverRepository(ABC):
+    """Repository for driver reads/writes within UoW."""
+
+    @abstractmethod
+    def get_by_license(self, drivers_license: str) -> Optional[dict[str, Any]]:
+        ...
+
+    @abstractmethod
+    def get_appointment_for_claim(self, arrival_id: str) -> Optional[dict[str, Any]]:
+        """Return appointment dict with eager-loaded relations for claim flow."""
+        ...
+
+    @abstractmethod
+    def get_next_active_appointment_id(self, drivers_license: str) -> Optional[int]:
+        """Return the id of the next active appointment in the sequential queue."""
+        ...
+
+
+class IWorkerRepository(ABC):
+    """Repository for worker reads/writes within UoW."""
+
+    @abstractmethod
+    def get_by_email_active(self, email: str) -> Optional[dict[str, Any]]:
+        ...
+
+    @abstractmethod
+    def get_by_num_worker(self, num_worker: str) -> Optional[dict[str, Any]]:
+        ...
+
+    @abstractmethod
+    def add_worker(
+        self,
+        *,
+        num_worker: str,
+        name: str,
+        email: str,
+        password_hash: str,
+        phone: Optional[str] = None,
+    ) -> dict[str, Any]:
+        ...
+
+    @abstractmethod
+    def add_role(self, num_worker: str, role: str, access_level: Optional[str] = None) -> None:
+        ...
+
+    @abstractmethod
+    def remove_role(self, num_worker: str, role: str) -> bool:
+        ...
+
+    @abstractmethod
+    def update_fields(self, num_worker: str, **fields: Any) -> bool:
+        ...
+
+    @abstractmethod
+    def email_exists(self, email: str, *, exclude_num_worker: Optional[str] = None) -> bool:
+        ...
+
+    @abstractmethod
+    def num_worker_exists(self, num_worker: str) -> bool:
+        ...
+
+    @abstractmethod
+    def has_role(self, num_worker: str, role: str) -> bool:
+        ...
+
+
 class IUnitOfWork(ABC):
     """
     Transactional boundary that groups Inbox + Outbox + domain
@@ -114,6 +201,9 @@ class IUnitOfWork(ABC):
 
     containers: IContainerRepository
     appointments: IAppointmentRepository
+    alerts: IAlertRepository
+    drivers: IDriverRepository
+    workers: IWorkerRepository
     inbox: IInboxRepository
     outbox: IOutboxRepository
 

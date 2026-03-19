@@ -55,7 +55,7 @@ from infrastructure.persistence.inbox_outbox_models import OutboxEvent
 from infrastructure.persistence.sql_models import Appointment as AppointmentORM
 from application.schemas import Appointment as AppointmentSchema
 from infrastructure.persistence.mongo import appointments_read_collection
-from services.arrival_service import get_appointment_detail
+from application.queries.arrival_queries import get_appointment_detail
 
 # ── Configuration ───────────────────────────────────────────────
 BATCH_SIZE = 50

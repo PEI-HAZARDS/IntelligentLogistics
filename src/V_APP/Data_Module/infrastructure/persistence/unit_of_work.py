@@ -14,16 +14,22 @@ from typing import Any
 from sqlalchemy.orm import Session, sessionmaker
 
 from domain.interfaces import (
+    IAlertRepository,
     IAppointmentRepository,
     IContainerRepository,
+    IDriverRepository,
     IInboxRepository,
     IOutboxRepository,
     IUnitOfWork,
+    IWorkerRepository,
 )
+from infrastructure.persistence.alert_repository import SqlAlchemyAlertRepository
 from infrastructure.persistence.appointment_repository import SqlAlchemyAppointmentRepository
 from infrastructure.persistence.container_repository import SqlAlchemyContainerRepository
+from infrastructure.persistence.driver_repository import SqlAlchemyDriverRepository
 from infrastructure.persistence.inbox_repository import SqlAlchemyInboxRepository
 from infrastructure.persistence.outbox_repository import SqlAlchemyOutboxRepository
+from infrastructure.persistence.worker_repository import SqlAlchemyWorkerRepository
 
 
 class SqlAlchemyUnitOfWork(IUnitOfWork):
@@ -43,6 +49,9 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
 
     containers: IContainerRepository
     appointments: IAppointmentRepository
+    alerts: IAlertRepository
+    drivers: IDriverRepository
+    workers: IWorkerRepository
     inbox: IInboxRepository
     outbox: IOutboxRepository
 
@@ -58,6 +67,9 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
         self._session = self._session_factory()
         self.containers = SqlAlchemyContainerRepository(self._session)
         self.appointments = SqlAlchemyAppointmentRepository(self._session)
+        self.alerts = SqlAlchemyAlertRepository(self._session)
+        self.drivers = SqlAlchemyDriverRepository(self._session)
+        self.workers = SqlAlchemyWorkerRepository(self._session)
         self.inbox = SqlAlchemyInboxRepository(self._session)
         self.outbox = SqlAlchemyOutboxRepository(self._session)
         return self

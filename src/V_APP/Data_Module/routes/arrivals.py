@@ -16,7 +16,7 @@ from loguru import logger
 from application.schemas import (
     Appointment, AppointmentStatusUpdate, Visit, VisitStatusUpdate, ShiftTypeEnum
 )
-from services.arrival_service import (
+from application.queries.arrival_queries import (
     get_all_appointments,
     count_all_appointments,
     get_appointment_by_id,
@@ -29,9 +29,9 @@ from services.arrival_service import (
     flag_appointment_highway_infraction,
     get_next_appointments,
     create_visit_for_appointment,
-    update_visit_status
+    update_visit_status,
 )
-from services.cache_service import get_or_cache
+from application.queries.cache_queries import get_or_cache
 from infrastructure.persistence.redis import get_cached_appointment, cache_appointment
 from infrastructure.persistence.mongo import appointments_read_collection
 
