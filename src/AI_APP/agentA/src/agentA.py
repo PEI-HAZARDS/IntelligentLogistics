@@ -134,11 +134,16 @@ class AgentA:
                         if int(now) % 10 == 0:
                             logger.info("Waiting for reset signal from V_Brain...")
                         continue
-                        
+                    
+                    # Reconnect to stream again, go back to detection loop
+                    self.stream_manager.connect()
+                    self.awaiting_reset = False
                     logger.info(f"Reset received (reason={message_obj.reason}), resuming detection...") # type: ignore
                 
-                if now - self.last_message_time > self.config.decision_timeout:
+                elif self.awaiting_reset and (now - self.last_message_time) > self.config.decision_timeout:
                     logger.info("Reset timeout exceeded while waiting for decision, resuming detection anyway...")
+                    self.stream_manager.connect()
+                    self.awaiting_reset = False
                 
                 self._process_detection()
 
@@ -218,7 +223,6 @@ class AgentA:
                 except Exception as e:
                     logger.exception(f"Error drawing boxes: {e}")
 
-
                 # Record metrics
                 self.trucks_detected.inc(num_boxes)
                 self.detection_confidence.observe(max_conf)
@@ -228,11 +232,15 @@ class AgentA:
                     topic=self.config.kafka_topic_produce,
                     data=message.to_dict(),
                     headers={"truck_id": truck_id}
-                )
+                )       
                 
                 # Force delivery callbacks to process immediately so we see the log
                 self.kafka_producer.flush(timeout=1)
                 self.last_message_time = time.time()
+
+                # Disconnect from stream to free up resources while waiting for reset
+                self.stream_manager.release()
+
                 logger.info(f"Truck detected! truck_id={truck_id}, confidence={max_conf:.2f}, num_detections={num_boxes}.")
 
                 # Truck detected and message sent; return to the main loop

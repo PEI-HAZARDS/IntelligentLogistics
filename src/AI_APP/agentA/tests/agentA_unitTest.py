@@ -35,6 +35,7 @@ def mock_dependencies():
         "object_detector": MagicMock(),
         "stream_manager": MagicMock(),
         "kafka_producer": MagicMock(),
+        "kafka_consumer": MagicMock(),
         "image_storage": MagicMock(),
         "drawer": MagicMock()
     }
@@ -68,6 +69,7 @@ class TestAgentAInit:
         assert agent.yolo is mock_dependencies["object_detector"]
         assert agent.stream_manager is mock_dependencies["stream_manager"]
         assert agent.kafka_producer is mock_dependencies["kafka_producer"]
+        assert agent.kafka_consumer is mock_dependencies["kafka_consumer"]
         assert agent.image_storage is mock_dependencies["image_storage"]
         assert agent.drawer is mock_dependencies["drawer"]
 
@@ -200,6 +202,7 @@ class TestProcessDetection:
         
         # Should not raise exception
         agent_a._process_detection()
+        agent_a.stream_manager.release.assert_not_called()
 
 # =============================================================================
 # Tests for start() loop
@@ -225,11 +228,11 @@ class TestLoop:
         agent_a.running = True
         agent_a.awaiting_reset = True
         agent_a.last_message_time = time.time() # Within timeout
+        agent_a.stream_manager.connect.reset_mock()
         
         # Simulate receiving reset message
         mock_msg = MagicMock()
         mock_msg.reason = "test"
-        agent_a.kafka_consumer = MagicMock()
         agent_a.kafka_consumer.consume_typed_message.return_value = ("topic", mock_msg, "TRK1")
         
         with patch.object(agent_a, '_process_detection') as mock_process:
@@ -237,6 +240,8 @@ class TestLoop:
             agent_a.start()
             
             agent_a.kafka_consumer.consume_typed_message.assert_called_once()
+            agent_a.stream_manager.connect.assert_called_once()
+            assert agent_a.awaiting_reset is False
             mock_process.assert_called_once()
 
     def test_start_handles_timeout(self, agent_a):
@@ -244,16 +249,16 @@ class TestLoop:
         agent_a.running = True
         agent_a.awaiting_reset = True
         agent_a.last_message_time = time.time() - 100 # Past timeout
-        
-        mock_consumer = MagicMock()
-        agent_a.kafka_consumer = mock_consumer
+        agent_a.stream_manager.connect.reset_mock()
         
         with patch.object(agent_a, '_process_detection') as mock_process:
             mock_process.side_effect = lambda: setattr(agent_a, 'running', False)
             agent_a.start()
             
             # Shouldn't consume if timed out
-            mock_consumer.consume_typed_message.assert_not_called()
+            agent_a.kafka_consumer.consume_typed_message.assert_not_called()
+            agent_a.stream_manager.connect.assert_called_once()
+            assert agent_a.awaiting_reset is False
             mock_process.assert_called_once()
 
 # =============================================================================
