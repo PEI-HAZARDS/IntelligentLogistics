@@ -138,7 +138,7 @@ class APIGateway:
                     payload["truck_id"] = truck_id
 
                 # 1. Filter out internal logic messages (SKIPPED decisions)
-                if payload.get("decision") == "SKIPPED" or payload.get("decision") == "MANUAL_REVIEW":
+                if payload.get("decision") == "SKIPPED":
                     continue
                 
                 # 2. Determine the target gate for broadcasting:

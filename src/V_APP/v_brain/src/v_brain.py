@@ -341,6 +341,7 @@ class VBrain:
     
     # Reset agentA with 5 second delay
     def _reset_agent_a(self, gate_id: str, reason: str = "unknown") -> None:
+        logger.info(f"Scheduling reset of AgentA for gate {gate_id} in 7 seconds (reason={reason})")
         def _delayed():
             time.sleep(7)
             msg = KafkaMessageProto.reset_agent_a(reason=reason)
