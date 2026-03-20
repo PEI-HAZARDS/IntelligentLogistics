@@ -330,14 +330,27 @@ class VBrain:
 
 
 
+    #def _reset_agent_a(self, gate_id: str, reason: str = "unknown") -> None:
+    #    """Publish reset-agentA to V_Broker → V_Gateway → IA_Gateway → AgentA."""
+    #    msg = KafkaMessageProto.reset_agent_a(reason=reason)
+    #    self.kafka_producer.produce(
+    #        topic=KafkaTopicFactory.reset_agent_a(gate_id),
+    #        data=msg.to_dict(),
+    #    )
+    #    logger.info(f"Reset AgentA published (reason={reason}) for gate {gate_id}")
+    
+    # Reset agentA with 5 second delay
     def _reset_agent_a(self, gate_id: str, reason: str = "unknown") -> None:
-        """Publish reset-agentA to V_Broker → V_Gateway → IA_Gateway → AgentA."""
-        msg = KafkaMessageProto.reset_agent_a(reason=reason)
-        self.kafka_producer.produce(
-            topic=KafkaTopicFactory.reset_agent_a(gate_id),
-            data=msg.to_dict(),
-        )
-        logger.info(f"Reset AgentA published (reason={reason}) for gate {gate_id}")
+        def _delayed():
+            time.sleep(7)
+            msg = KafkaMessageProto.reset_agent_a(reason=reason)
+            self.kafka_producer.produce(
+                topic=KafkaTopicFactory.reset_agent_a(gate_id),
+                data=msg.to_dict(),
+            )
+            logger.info(f"Reset AgentA published (reason={reason}) for gate {gate_id}")
+
+        threading.Thread(target=_delayed, daemon=True).start()
 
     
     def _get_scale_status(self, gate_id: str) -> bool:
