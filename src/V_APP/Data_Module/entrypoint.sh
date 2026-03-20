@@ -26,6 +26,8 @@ done
 echo "Redis is ready"
 
 # Rodar data init
+# DEMO NOTE: change to data_init_realistic.py before the Tuesday presentation
+# to load the 87AX60 / UN 1831 / X886 scenario into the database.
 echo "Running database initialization..."
 python scripts/data_init_demo.py
 if [[ $? -eq 0 ]]; then
