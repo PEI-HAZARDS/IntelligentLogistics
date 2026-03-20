@@ -66,7 +66,7 @@ class ContainerMovedHandler:
 
             # ── Step 4: Acquire aggregate lock ────────────────────
             appointment_id = int(event.aggregate_id)
-            aggregate = uow.containers.get_for_update(appointment_id)
+            aggregate = uow.appointment_state.get_for_update(appointment_id)
             if aggregate is None:
                 error_msg = f"Appointment {appointment_id} not found"
                 logger.error(error_msg)
@@ -78,7 +78,7 @@ class ContainerMovedHandler:
             new_state = self._resolve_new_state(event.payload, aggregate)
             metadata = self._extract_transition_metadata(event.payload)
 
-            uow.containers.save_state_transition(
+            uow.appointment_state.save_state_transition(
                 appointment_id, new_state, metadata
             )
 

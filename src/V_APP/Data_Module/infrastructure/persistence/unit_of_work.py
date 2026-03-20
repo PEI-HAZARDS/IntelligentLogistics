@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from domain.interfaces import (
     IAlertRepository,
     IAppointmentRepository,
-    IContainerRepository,
+    IAppointmentStateRepository,
     IDriverRepository,
     IInboxRepository,
     IOutboxRepository,
@@ -25,7 +25,7 @@ from domain.interfaces import (
 )
 from infrastructure.persistence.alert_repository import SqlAlchemyAlertRepository
 from infrastructure.persistence.appointment_repository import SqlAlchemyAppointmentRepository
-from infrastructure.persistence.container_repository import SqlAlchemyContainerRepository
+from infrastructure.persistence.appointment_state_repository import SqlAlchemyAppointmentStateRepository
 from infrastructure.persistence.driver_repository import SqlAlchemyDriverRepository
 from infrastructure.persistence.inbox_repository import SqlAlchemyInboxRepository
 from infrastructure.persistence.outbox_repository import SqlAlchemyOutboxRepository
@@ -47,7 +47,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
                 uow.commit()
     """
 
-    containers: IContainerRepository
+    appointment_state: IAppointmentStateRepository
     appointments: IAppointmentRepository
     alerts: IAlertRepository
     drivers: IDriverRepository
@@ -65,7 +65,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
 
     def __enter__(self) -> SqlAlchemyUnitOfWork:
         self._session = self._session_factory()
-        self.containers = SqlAlchemyContainerRepository(self._session)
+        self.appointment_state = SqlAlchemyAppointmentStateRepository(self._session)
         self.appointments = SqlAlchemyAppointmentRepository(self._session)
         self.alerts = SqlAlchemyAlertRepository(self._session)
         self.drivers = SqlAlchemyDriverRepository(self._session)

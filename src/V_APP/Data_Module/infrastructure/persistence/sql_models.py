@@ -261,6 +261,7 @@ class Appointment(Base):
     
     # Status
     status = Column(appointment_status_enum, default='in_transit')
+    version = Column(Integer, nullable=False, default=1, server_default="1")  # Optimistic concurrency control
     notes = Column(Text)
     highway_infraction = Column(Boolean, default=False, server_default="false")  # Hazmat truck on restricted highway route
     

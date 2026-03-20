@@ -22,8 +22,8 @@ from domain.events import ConsumeContext, EventEnvelope
 # =========================================================
 
 
-class IContainerRepository(ABC):
-    """Repository for container/appointment aggregate state transitions."""
+class IAppointmentStateRepository(ABC):
+    """Repository for appointment aggregate state transitions (lock + write)."""
 
     @abstractmethod
     def get_for_update(self, appointment_id: int) -> Optional[dict[str, Any]]:
@@ -199,7 +199,7 @@ class IUnitOfWork(ABC):
     Guardrail 6 — all persistence access goes through this abstraction.
     """
 
-    containers: IContainerRepository
+    appointment_state: IAppointmentStateRepository
     appointments: IAppointmentRepository
     alerts: IAlertRepository
     drivers: IDriverRepository
