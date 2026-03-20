@@ -75,9 +75,12 @@ def list_active_alerts(
 
 
 @router.get("/stats", response_model=Dict[str, int])
-def get_alerts_stats():
-    """Alert statistics by type (last 24h)."""
-    return get_alerts_count_by_type()
+def get_alerts_stats(
+    from_date: Optional[str] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
+):
+    """Alert statistics by type. Defaults to last 24h when no dates given."""
+    return get_alerts_count_by_type(from_date=from_date, to_date=to_date)
 
 
 @router.get("/visit/{visit_id}", response_model=List[AlertPydantic])

@@ -35,6 +35,7 @@ from application.queries.driver_queries import (
 )
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from config import settings
+from utils.auth_token import generate_internal_jwt
 
 router = APIRouter(prefix="/drivers", tags=["Drivers"])
 
@@ -63,8 +64,12 @@ def login(credentials: DriverLoginRequest):
             detail="Invalid credentials or account deactivated",
         )
 
+    # KEYCLOAK: this token will be issued by Keycloak once integrated.
+    # For now, return a signed internal JWT so the flow is functional end-to-end.
+    token = generate_internal_jwt(sub=driver["drivers_license"], role="driver")
+
     return DriverLoginResponse(
-        token="",  # Reserved for OAuth 2.0
+        token=token,
         drivers_license=driver["drivers_license"],
         name=driver["name"],
         company_nif=driver["company_nif"],

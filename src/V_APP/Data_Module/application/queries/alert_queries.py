@@ -47,10 +47,25 @@ def get_active_alerts(limit: int = 50) -> List[Dict[str, Any]]:
     )
 
 
-def get_alerts_count_by_type() -> Dict[str, int]:
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+def get_alerts_count_by_type(
+    *,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+) -> Dict[str, int]:
+    match: dict = {}
+    if from_date or to_date:
+        ts_filter: dict = {}
+        if from_date:
+            ts_filter["$gte"] = f"{from_date}T00:00:00"
+        if to_date:
+            ts_filter["$lte"] = f"{to_date}T23:59:59"
+        match["timestamp"] = ts_filter
+    else:
+        # Default: last 24 hours
+        match["timestamp"] = {"$gte": (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()}
+
     pipeline = [
-        {"$match": {"timestamp": {"$gte": cutoff}}},
+        {"$match": match},
         {"$group": {"_id": "$type", "count": {"$sum": 1}}},
     ]
     return {doc["_id"]: doc["count"] for doc in alerts_read_collection.aggregate(pipeline)}

@@ -29,6 +29,7 @@ from application.queries.worker_queries import (
     get_manager_overview,
 )
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from utils.auth_token import generate_internal_jwt
 
 router = APIRouter(prefix="/workers", tags=["Workers"])
 
@@ -107,8 +108,12 @@ def login(credentials: WorkerLoginRequest):
             detail="Invalid credentials or account deactivated",
         )
 
+    # KEYCLOAK: this token will be issued by Keycloak once integrated.
+    role = worker.get("role", "operator")
+    token = generate_internal_jwt(sub=worker["num_worker"], role=role)
+
     return WorkerLoginResponse(
-        token=worker.get("token", ""),
+        token=token,
         num_worker=worker["num_worker"],
         name=worker["name"],
         email=worker["email"],
