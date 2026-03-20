@@ -6,9 +6,8 @@ Polls the ``outbox_events`` table for PENDING rows and projects each event
 into the read models (MongoDB for history, Redis for hot cache), then marks
 the row as PUBLISHED.
 
-This is the missing piece between the write path (ContainerMovedHandler
-commits domain mutation + outbox row atomically in PostgreSQL) and the
-read path (dashboards query MongoDB/Redis).
+Failed projections are retried with exponential backoff + jitter (Guardrail 8).
+After ``MAX_RETRIES`` consecutive failures an event is moved to DEAD_LETTER.
 
 ┌────────────┐  commit   ┌──────────┐  poll   ┌──────────────────┐
 │  Command   │──────────▶│ outbox_  │◀───────│  THIS WORKER     │
@@ -28,14 +27,17 @@ Guardrails enforced:
   3 — Outbox is the ONLY source of side-effects; no direct publish.
   5 — CQRS strict split: this worker updates READ models only.
   7 — Projections are idempotent (upsert in Mongo, overwrite in Redis).
+  8 — DLQ policy: exponential backoff for transient errors, DEAD_LETTER
+      after MAX_RETRIES with full error metadata.
 """
 
 import sys
 import os
+import signal
 import time
-import json
+import random
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # ── Path setup (standalone script) ──────────────────────────────
 _script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -56,10 +58,15 @@ from infrastructure.persistence.sql_models import Appointment as AppointmentORM
 from application.schemas import Appointment as AppointmentSchema
 from infrastructure.persistence.mongo import appointments_read_collection
 from application.queries.arrival_queries import get_appointment_detail
+from sqlalchemy import or_, and_
 
 # ── Configuration ───────────────────────────────────────────────
 BATCH_SIZE = 50
 POLL_INTERVAL_SECONDS = 2
+MAX_RETRIES = 5
+BACKOFF_BASE_SECONDS = 2       # 2, 4, 8, 16, 32 seconds
+BACKOFF_MAX_SECONDS = 60       # cap backoff at 1 minute
+JITTER_MAX_SECONDS = 2         # random jitter up to 2 seconds
 
 # ── Logging ─────────────────────────────────────────────────────
 logging.basicConfig(
@@ -68,6 +75,36 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("outbox_worker")
+
+# ── Graceful shutdown ───────────────────────────────────────────
+_shutdown_requested = False
+
+
+def _handle_signal(signum, frame):
+    global _shutdown_requested
+    sig_name = signal.Signals(signum).name
+    logger.info("Received %s — finishing current batch and shutting down", sig_name)
+    _shutdown_requested = True
+
+
+signal.signal(signal.SIGTERM, _handle_signal)
+signal.signal(signal.SIGINT, _handle_signal)
+
+
+# ═══════════════════════════════════════════════════════════════
+# Backoff calculation
+# ═══════════════════════════════════════════════════════════════
+
+
+def compute_next_retry_at(retry_count: int) -> datetime:
+    """
+    Exponential backoff with jitter.
+
+    delay = min(BACKOFF_BASE ** retry_count, BACKOFF_MAX) + random(0, JITTER_MAX)
+    """
+    delay = min(BACKOFF_BASE_SECONDS ** retry_count, BACKOFF_MAX_SECONDS)
+    jitter = random.uniform(0, JITTER_MAX_SECONDS)
+    return datetime.now(timezone.utc) + timedelta(seconds=delay + jitter)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -194,24 +231,65 @@ def project_to_redis(event_row: OutboxEvent, session) -> None:
 
 
 # ═══════════════════════════════════════════════════════════════
+# Failure classification
+# ═══════════════════════════════════════════════════════════════
+
+
+# Permanent errors that should not be retried
+_PERMANENT_ERROR_TYPES = (
+    KeyError,
+    ValueError,
+    TypeError,
+)
+
+
+def _is_permanent_error(exc: Exception) -> bool:
+    """Return True if the error is a contract/domain violation (non-retryable)."""
+    return isinstance(exc, _PERMANENT_ERROR_TYPES)
+
+
+# ═══════════════════════════════════════════════════════════════
 # Main loop
 # ═══════════════════════════════════════════════════════════════
 
 
+def fetch_projectable_rows(session, batch_size: int):
+    """
+    Fetch rows eligible for projection:
+    - PENDING (new events)
+    - FAILED with retry_count < MAX_RETRIES and next_retry_at <= now
+    """
+    now = datetime.now(timezone.utc)
+
+    return (
+        session.query(OutboxEvent)
+        .filter(
+            or_(
+                OutboxEvent.status == "PENDING",
+                and_(
+                    OutboxEvent.status == "FAILED",
+                    OutboxEvent.retry_count < MAX_RETRIES,
+                    or_(
+                        OutboxEvent.next_retry_at.is_(None),
+                        OutboxEvent.next_retry_at <= now,
+                    ),
+                ),
+            )
+        )
+        .order_by(OutboxEvent.id)
+        .limit(batch_size)
+        .all()
+    )
+
+
 def process_batch(session) -> int:
     """
-    Fetch a batch of PENDING outbox rows, project each one,
+    Fetch a batch of projectable outbox rows, project each one,
     then mark as PUBLISHED inside the same Postgres session.
 
     Returns the number of events successfully projected.
     """
-    rows = (
-        session.query(OutboxEvent)
-        .filter(OutboxEvent.status == "PENDING")
-        .order_by(OutboxEvent.id)
-        .limit(BATCH_SIZE)
-        .all()
-    )
+    rows = fetch_projectable_rows(session, BATCH_SIZE)
 
     if not rows:
         return 0
@@ -230,17 +308,32 @@ def process_batch(session) -> int:
             projected += 1
 
         except Exception as exc:
-            # Transient failure on ONE event must not kill the batch.
-            # Log, mark FAILED, and continue with the next row.
-            logger.error(
-                "Projection failed for outbox_id=%s event_id=%s: %s",
-                row.id,
-                row.event_id,
-                exc,
-                exc_info=True,
-            )
-            row.status = "FAILED"
+            # Classify error: permanent → DEAD_LETTER, transient → retry
+            row.retry_count = (row.retry_count or 0) + 1
             row.last_error = str(exc)[:500]
+
+            if _is_permanent_error(exc) or row.retry_count >= MAX_RETRIES:
+                row.status = "DEAD_LETTER"
+                logger.error(
+                    "DEAD_LETTER outbox_id=%s event_id=%s retries=%d: %s",
+                    row.id,
+                    row.event_id,
+                    row.retry_count,
+                    exc,
+                )
+            else:
+                row.status = "FAILED"
+                row.next_retry_at = compute_next_retry_at(row.retry_count)
+                logger.warning(
+                    "Projection FAILED (retry %d/%d) outbox_id=%s event_id=%s "
+                    "next_retry_at=%s: %s",
+                    row.retry_count,
+                    MAX_RETRIES,
+                    row.id,
+                    row.event_id,
+                    row.next_retry_at.isoformat(),
+                    exc,
+                )
 
     # Single commit for the whole batch (status updates only).
     session.commit()
@@ -248,14 +341,15 @@ def process_batch(session) -> int:
 
 
 def main() -> None:
-    """Entry-point: infinite poll loop with graceful error handling."""
+    """Entry-point: infinite poll loop with graceful shutdown."""
     logger.info(
-        "Outbox Worker started — batch_size=%d  poll_interval=%ds",
+        "Outbox Worker started — batch_size=%d  poll_interval=%ds  max_retries=%d",
         BATCH_SIZE,
         POLL_INTERVAL_SECONDS,
+        MAX_RETRIES,
     )
 
-    while True:
+    while not _shutdown_requested:
         session = SessionLocal()
         try:
             count = process_batch(session)
@@ -269,7 +363,13 @@ def main() -> None:
         finally:
             session.close()
 
-        time.sleep(POLL_INTERVAL_SECONDS)
+        # Sleep in small increments to react to shutdown signal promptly
+        for _ in range(int(POLL_INTERVAL_SECONDS * 10)):
+            if _shutdown_requested:
+                break
+            time.sleep(0.1)
+
+    logger.info("Outbox Worker stopped gracefully")
 
 
 if __name__ == "__main__":

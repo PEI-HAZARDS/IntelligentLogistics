@@ -151,7 +151,7 @@ def persist_detection_event(event_data: Dict[str, Any]) -> str:
         raise
 
 
-def persist_decision_event(license_plate: str, gate_id: int, appointment_id: Optional[int], decision: str, decision_data: Dict[str, Any]) -> str:
+def persist_decision_event(license_plate: str, gate_id: int, appointment_id: Optional[int], decision: str, decision_data: Dict[str, Any]) -> Optional[str]:
     try:
         timestamp_str = dt.now(timezone.utc).strftime("%s")
         decision_id = f"dec_gate{gate_id}_{timestamp_str}_{appointment_id or '0'}"
@@ -191,7 +191,7 @@ def persist_decision_event(license_plate: str, gate_id: int, appointment_id: Opt
         return str(result.inserted_id)
     except Exception as e:
         logger.error(f"Failed to persist legacy decision event: {e}")
-        raise
+        return None
 
 
 def get_detection_events(license_plate: Optional[str] = None, gate_id: Optional[int] = None, event_type: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
@@ -265,7 +265,10 @@ def process_incoming_decision(
         mongo_event_id = persist_decision_event(license_plate=license_plate, gate_id=gate_id, appointment_id=None, decision=decision, decision_data={"reason": "no_appointment_found", "decision_source": (extra_data or {}).get("decision_source", "automated"), "decision_reason": (extra_data or {}).get("decision_reason", "unknown"), "alerts": alerts or [], "notes": notes, **(extra_data or {})})
         increment_counter(gate_id, "decisions:unmatched")
         increment_counter(gate_id, f"decisions:{decision.lower()}")
-        return {"status": "persisted_unmatched", "decision": decision, "license_plate": license_plate, "gate_id": gate_id, "event_id": mongo_event_id, "reason": "no_appointment_found"}
+        result = {"status": "persisted_unmatched", "decision": decision, "license_plate": license_plate, "gate_id": gate_id, "event_id": mongo_event_id, "reason": "no_appointment_found"}
+        if mongo_event_id is None:
+            result["warning"] = "mongo_write_failed"
+        return result
 
     if is_duplicate_and_mark(license_plate, gate_id, ts, event_id=event_id):
         return {"status": "skipped", "reason": "duplicate_detection", "license_plate": license_plate, "gate_id": gate_id}
@@ -293,6 +296,8 @@ def process_incoming_decision(
     # Mongo event persistence (async projection — will become outbox-driven)
     mongo_event_id = persist_decision_event(license_plate=license_plate, gate_id=gate_id, appointment_id=appointment_id, decision=decision, decision_data={"new_status": appointment_status, "delivery_state": delivery_state, "alerts_created": len(alerts) if alerts else 0, "notes": notes, **(extra_data or {})})
     result = {"status": "processed", "decision": decision, "appointment_id": appointment_id, "new_status": appointment_status, "event_id": mongo_event_id}
+    if mongo_event_id is None:
+        result["warning"] = "mongo_write_failed"
 
     # Redis cache updates (async projection — will become outbox-driven)
     cache_decision_result(license_plate, gate_id, ts, result)

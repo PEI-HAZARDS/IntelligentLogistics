@@ -76,6 +76,7 @@ class SqlAlchemyOutboxRepository(IOutboxRepository):
     def mark_publish_failed(self, outbox_id: str, error: str) -> None:
         row = self._get(outbox_id)
         row.status = "FAILED"
+        row.retry_count = (row.retry_count or 0) + 1
         row.last_error = error
         self._session.flush()
 

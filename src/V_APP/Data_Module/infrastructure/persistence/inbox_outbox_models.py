@@ -107,15 +107,17 @@ class OutboxEvent(Base):  # type: ignore[misc]
     # Payload
     payload = Column(JSONB, nullable=False)
 
-    # State machine: PENDING → PUBLISHED | FAILED
+    # State machine: PENDING → PUBLISHED | FAILED | DEAD_LETTER
     status = Column(
         String(20),
         nullable=False,
         default="PENDING",
         server_default="PENDING",
     )
+    retry_count = Column(Integer, nullable=False, default=0, server_default="0")
     last_error = Column(Text, nullable=True)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     published_at = Column(DateTime(timezone=True), nullable=True)
+    next_retry_at = Column(DateTime(timezone=True), nullable=True)
