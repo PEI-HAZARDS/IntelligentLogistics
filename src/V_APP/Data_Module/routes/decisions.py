@@ -66,7 +66,7 @@ class DetectionEventRequest(BaseModel):
 
 class QueryAppointmentsRequest(BaseModel):
     """Request from Decision Engine to query appointments."""
-    gate_id: int
+    gate_id: Optional[int] = None
 
 
 class EventResponse(BaseModel):

@@ -321,7 +321,7 @@ def process_incoming_decision(
     return result
 
 
-def query_appointments_for_decision(gate_id: int) -> Dict[str, Any]:
+def query_appointments_for_decision(gate_id: Optional[int] = None) -> Dict[str, Any]:
     from infrastructure.persistence.postgres import SessionLocal
     from application.queries.arrival_queries import get_appointments_for_decision
     db = SessionLocal()

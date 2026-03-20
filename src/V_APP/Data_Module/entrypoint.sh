@@ -29,7 +29,7 @@ echo "Redis is ready"
 # DEMO NOTE: change to data_init_realistic.py before the Tuesday presentation
 # to load the 87AX60 / UN 1831 / X886 scenario into the database.
 echo "Running database initialization..."
-python scripts/data_init_demo.py
+python scripts/data_init_realistic.py
 if [[ $? -eq 0 ]]; then
   echo "Data initialization completed successfully"
 else

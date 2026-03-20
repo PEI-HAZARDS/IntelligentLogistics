@@ -25,7 +25,7 @@ def ensure_arrival_id(db: Session, appointment: Appointment) -> Appointment:
     return appointment
 
 
-def _apply_appointment_filters(query, gate_id, shift_gate_id, shift_type, shift_date, status, scheduled_date, search):
+def _apply_appointment_filters(query, gate_id, shift_gate_id, shift_type, shift_date, status, scheduled_date, search, highway_infraction=None):
     if gate_id:
         query = query.filter(Appointment.gate_in_id == gate_id)
     if shift_gate_id and shift_type and shift_date:
@@ -46,6 +46,8 @@ def _apply_appointment_filters(query, gate_id, shift_gate_id, shift_type, shift_
     if search:
         term = f"%{search.upper()}%"
         query = query.filter(func.upper(Appointment.truck_license_plate).like(term))
+    if highway_infraction is not None:
+        query = query.filter(Appointment.highway_infraction == highway_infraction)
     return query
 
 
@@ -60,10 +62,12 @@ def get_all_appointments(
     status: Optional[str] = None,
     scheduled_date: Optional[date] = None,
     search: Optional[str] = None,
+    highway_infraction: Optional[bool] = None,
 ) -> List[Appointment]:
     query = db.query(Appointment)
     query = _apply_appointment_filters(
-        query, gate_id, shift_gate_id, shift_type, shift_date, status, scheduled_date, search
+        query, gate_id, shift_gate_id, shift_type, shift_date, status, scheduled_date, search,
+        highway_infraction=highway_infraction,
     )
     appointments = query.order_by(Appointment.scheduled_start_time.asc()).offset(skip).limit(limit).all()
     for appointment in appointments:
@@ -81,10 +85,12 @@ def count_all_appointments(
     status: Optional[str] = None,
     scheduled_date: Optional[date] = None,
     search: Optional[str] = None,
+    highway_infraction: Optional[bool] = None,
 ) -> int:
     query = db.query(func.count(Appointment.id))
     query = _apply_appointment_filters(
-        query, gate_id, shift_gate_id, shift_type, shift_date, status, scheduled_date, search
+        query, gate_id, shift_gate_id, shift_type, shift_date, status, scheduled_date, search,
+        highway_infraction=highway_infraction,
     )
     return query.scalar() or 0
 
@@ -231,7 +237,7 @@ def get_appointments_by_license_plate(
     return appointments
 
 
-def get_appointments_for_decision(db: Session, gate_id: int) -> List[Dict[str, Any]]:
+def get_appointments_for_decision(db: Session, gate_id: Optional[int] = None) -> List[Dict[str, Any]]:
     today = date.today()
     yesterday = today - timedelta(days=1)
     day_start = datetime.combine(today, datetime.min.time())
@@ -239,21 +245,23 @@ def get_appointments_for_decision(db: Session, gate_id: int) -> List[Dict[str, A
     yesterday_start = datetime.combine(yesterday, datetime.min.time())
     yesterday_end = datetime.combine(yesterday, datetime.max.time())
 
-    current_shift = db.query(Shift).filter(Shift.date == today, Shift.gate_id == gate_id).first()
+    current_shift = None
+    if gate_id:
+        current_shift = db.query(Shift).filter(Shift.date == today, Shift.gate_id == gate_id).first()
 
-    query = db.query(Appointment).filter(
-        or_(
-            and_(
-                Appointment.scheduled_start_time.between(day_start, day_end),
-                Appointment.status.in_(['in_transit', 'delayed'])
-            ),
-            and_(
-                Appointment.scheduled_start_time.between(yesterday_start, yesterday_end),
-                Appointment.status == 'delayed'
-            )
+    time_filters = or_(
+        and_(
+            Appointment.scheduled_start_time.between(day_start, day_end),
+            Appointment.status.in_(['in_transit', 'delayed'])
         ),
-        Appointment.gate_in_id == gate_id,
+        and_(
+            Appointment.scheduled_start_time.between(yesterday_start, yesterday_end),
+            Appointment.status == 'delayed'
+        )
     )
+    query = db.query(Appointment).filter(time_filters)
+    if gate_id:
+        query = query.filter(Appointment.gate_in_id == gate_id)
     appointments = query.order_by(Appointment.scheduled_start_time.asc()).all()
     for appointment in appointments:
         if appointment.arrival_id is None:

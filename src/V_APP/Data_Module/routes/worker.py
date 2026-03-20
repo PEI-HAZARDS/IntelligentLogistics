@@ -3,11 +3,15 @@ Worker Routes - Endpoints for operators and managers.
 Consumed by: Backoffice frontend, API Gateway (authentication).
 
 CQRS: GET endpoints read from MongoDB. POST/PATCH/DELETE use UoW + Outbox.
+Shift queries use PostgreSQL (shift data not yet projected to MongoDB).
 """
 
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, status, Query, Path
+from datetime import date, datetime
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
+from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from loguru import logger
 
 from application.schemas import Worker, Manager, Operator, Shift, WorkerLoginRequest, WorkerLoginResponse
 from application.use_cases.worker_handlers import (
@@ -29,7 +33,11 @@ from application.queries.worker_queries import (
     get_manager_overview,
 )
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from infrastructure.persistence.postgres import get_db
+from sqlalchemy import func as sa_func
+from infrastructure.persistence.sql_models import Shift as ShiftORM, Visit as VisitORM
 from utils.auth_token import generate_internal_jwt
+from utils.shift_utils import current_shift_type
 
 router = APIRouter(prefix="/workers", tags=["Workers"])
 
@@ -121,6 +129,82 @@ def login(credentials: WorkerLoginRequest):
     )
 
 
+# ==================== SHIFT LISTING (Manager ShiftsPage) ====================
+
+@router.get("/shifts", response_model=List[Dict[str, Any]])
+def list_shifts(
+    target_date: Optional[date] = Query(None, description="Date to query (default: today)"),
+    shift_type: Optional[str] = Query(None, description="Filter by shift type (MORNING/AFTERNOON/NIGHT)"),
+    gate_id: Optional[int] = Query(None, description="Filter by gate"),
+    db: Session = Depends(get_db),
+):
+    """
+    Lists all shifts for a given date with operator/gate details.
+    Used by the Manager ShiftsPage.
+
+    PostgreSQL — shift data not yet projected to MongoDB (Guardrail 5).
+    """
+    logger.info("PROJECTION MISS shifts-list — PostgreSQL fallback (Guardrail 5)")
+    target = target_date or date.today()
+    query = db.query(ShiftORM).filter(ShiftORM.date == target)
+    if gate_id is not None:
+        query = query.filter(ShiftORM.gate_id == gate_id)
+    if shift_type:
+        from utils.shift_utils import parse_shift_type
+        try:
+            parsed = parse_shift_type(shift_type)
+            query = query.filter(ShiftORM.shift_type == parsed)
+        except ValueError:
+            pass
+
+    shifts = query.order_by(ShiftORM.gate_id, ShiftORM.shift_type).all()
+    current_st = current_shift_type()
+    today = date.today()
+
+    result = []
+    for s in shifts:
+        # Compute status: active if today + current shift type, completed if past, pending otherwise
+        if s.date == today and s.shift_type == current_st:
+            shift_status = "active"
+        elif s.date < today or (s.date == today and _shift_before(s.shift_type, current_st)):
+            shift_status = "completed"
+        else:
+            shift_status = "pending"
+
+        if not s.operator_num_worker:
+            shift_status = "inactive"
+
+        # Count visits for this shift
+        visit_count = db.query(sa_func.count()).select_from(VisitORM).filter(
+            VisitORM.shift_gate_id == s.gate_id,
+            VisitORM.shift_type == s.shift_type,
+            VisitORM.shift_date == s.date,
+        ).scalar() or 0
+
+        result.append({
+            "id": f"{s.gate_id}-{s.shift_type.name}-{s.date.isoformat()}",
+            "gateId": s.gate_id,
+            "gateName": s.gate.label if s.gate else f"Gate {s.gate_id}",
+            "shiftType": s.shift_type.name,
+            "date": s.date.isoformat(),
+            "operatorId": s.operator_num_worker or "",
+            "operatorName": s.operator.worker.name if s.operator and s.operator.worker else "",
+            "managerId": s.manager_num_worker or "",
+            "managerName": s.manager.worker.name if s.manager and s.manager.worker else "",
+            "currentArrivals": visit_count,
+            "maxArrivals": 25,
+            "status": shift_status,
+        })
+
+    return result
+
+
+def _shift_before(a, b) -> bool:
+    """Return True if shift type `a` is earlier in the day than `b`."""
+    order = {"MORNING": 0, "AFTERNOON": 1, "NIGHT": 2}
+    return order.get(a.name, 0) < order.get(b.name, 0)
+
+
 # ==================== OPERATOR ENDPOINTS ====================
 
 @router.get("/operators", response_model=List[WorkerInfo])
@@ -167,14 +251,45 @@ def get_operator(
     return info
 
 
+def _serialize_shift(s: ShiftORM) -> Dict[str, Any]:
+    """Convert Shift ORM row to dict matching frontend contract."""
+    return {
+        "gate_id": s.gate_id,
+        "shift_type": s.shift_type.name if s.shift_type else None,
+        "date": s.date.isoformat() if s.date else None,
+        "operator_num_worker": s.operator_num_worker,
+        "manager_num_worker": s.manager_num_worker,
+        "gate": {"id": s.gate.id, "label": s.gate.label} if s.gate else None,
+    }
+
+
 @router.get("/operators/{num_worker}/current-shift/{gate_id}")
 def get_operator_shift(
     num_worker: str = Path(...),
     gate_id: int = Path(...),
+    db: Session = Depends(get_db),
 ):
-    """Gets operator's current shift for a gate."""
-    # Shift data not yet projected to MongoDB — return None for now
-    return None
+    """
+    Gets operator's current shift for a gate.
+
+    PostgreSQL fallback — shift data not yet projected to MongoDB (Guardrail 5).
+    """
+    logger.info("PROJECTION MISS current-shift — PostgreSQL fallback (Guardrail 5)")
+    today = date.today()
+    shift_type = current_shift_type()
+    shift = (
+        db.query(ShiftORM)
+        .filter(
+            ShiftORM.gate_id == gate_id,
+            ShiftORM.date == today,
+            ShiftORM.shift_type == shift_type,
+            ShiftORM.operator_num_worker == num_worker,
+        )
+        .first()
+    )
+    if not shift:
+        return None
+    return _serialize_shift(shift)
 
 
 @router.get("/operators/{num_worker}/shifts")
@@ -182,10 +297,19 @@ def list_operator_shifts(
     num_worker: str = Path(...),
     gate_id: Optional[int] = Query(None),
     limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
 ):
-    """Lists shifts for an operator."""
-    # Shift data not yet projected to MongoDB — return empty list
-    return []
+    """
+    Lists shifts for an operator.
+
+    PostgreSQL fallback — shift data not yet projected to MongoDB (Guardrail 5).
+    """
+    logger.info("PROJECTION MISS operator-shifts — PostgreSQL fallback (Guardrail 5)")
+    query = db.query(ShiftORM).filter(ShiftORM.operator_num_worker == num_worker)
+    if gate_id is not None:
+        query = query.filter(ShiftORM.gate_id == gate_id)
+    shifts = query.order_by(ShiftORM.date.desc(), ShiftORM.shift_type).limit(limit).all()
+    return [_serialize_shift(s) for s in shifts]
 
 
 @router.get("/operators/{num_worker}/dashboard/{gate_id}", response_model=OperatorDashboard)
@@ -251,10 +375,22 @@ def get_manager(
 def list_manager_shifts(
     num_worker: str = Path(...),
     limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
 ):
-    """Lists shifts supervised by a manager."""
-    # Shift data not yet projected to MongoDB — return empty list
-    return []
+    """
+    Lists shifts supervised by a manager.
+
+    PostgreSQL fallback — shift data not yet projected to MongoDB (Guardrail 5).
+    """
+    logger.info("PROJECTION MISS manager-shifts — PostgreSQL fallback (Guardrail 5)")
+    shifts = (
+        db.query(ShiftORM)
+        .filter(ShiftORM.manager_num_worker == num_worker)
+        .order_by(ShiftORM.date.desc(), ShiftORM.shift_type)
+        .limit(limit)
+        .all()
+    )
+    return [_serialize_shift(s) for s in shifts]
 
 
 @router.get("/managers/{num_worker}/overview", response_model=ManagerOverview)

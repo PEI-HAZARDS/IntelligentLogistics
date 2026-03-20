@@ -19,7 +19,7 @@ router = APIRouter(tags=["statistics"])
 
 @router.get("/statistics/summary")
 async def manager_dashboard_summary(
-    gate_id: int = Query(1, description="Gate identifier"),
+    gate_id: Optional[int] = Query(None, description="Gate identifier (omit for all gates)"),
     date: Optional[str] = Query(None, description="Date (YYYY-MM-DD)"),
 ):
     """
@@ -29,14 +29,20 @@ async def manager_dashboard_summary(
       { totalTrucks, entriesCount, exitsCount, avgPermanenceMinutes, delayRate, slaCompliance }
     """
 
-    # Fetch arrivals stats (counts by status) + realtime metrics in parallel
-    arrivals_params = {"gate_id": gate_id}
+    # Fetch arrivals stats (counts by status) + permanence in parallel
+    arrivals_params: dict = {}
+    if gate_id is not None:
+        arrivals_params["gate_id"] = gate_id
     if date:
         arrivals_params["target_date"] = date
 
+    async def _noop():
+        return {}
+
+    # Realtime endpoint requires a gate_id; skip it when querying all gates
     arrivals_stats, realtime, permanence = await asyncio.gather(
         internal_client.get("/arrivals/stats", params=arrivals_params),
-        internal_client.get(f"/statistics/realtime/{gate_id}"),
+        internal_client.get(f"/statistics/realtime/{gate_id}") if gate_id else _noop(),
         internal_client.get("/arrivals/avg-permanence", params=arrivals_params),
         return_exceptions=True,
     )

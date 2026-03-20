@@ -97,7 +97,7 @@ def _clean_mongo_doc(doc: dict) -> dict:
 
 def _build_mongo_filter(
     gate_id=None, shift_gate_id=None, shift_type=None, shift_date=None,
-    status=None, scheduled_date=None, search=None,
+    status=None, scheduled_date=None, search=None, highway_infraction=None,
 ) -> dict:
     """Build MongoDB query filter mirroring _apply_appointment_filters."""
     query: dict = {}
@@ -124,6 +124,8 @@ def _build_mongo_filter(
         }
     if search:
         query["truck_license_plate"] = {"$regex": search.upper(), "$options": "i"}
+    if highway_infraction is not None:
+        query["highway_infraction"] = highway_infraction
     return query
 
 
@@ -132,6 +134,8 @@ def _get_stats_from_mongo(
     target_date: Optional[date] = None,
 ) -> Optional[Dict[str, int]]:
     """Compute appointment status counts via MongoDB aggregation."""
+    if not _mongo_has_data():
+        return None
     try:
         today = target_date or date.today()
         day_start = f"{today.isoformat()}T00:00:00"
@@ -181,6 +185,11 @@ def _get_stats_from_mongo(
             else 0
         )
 
+        # $facet always returns a result even with 0 matches — treat
+        # an all-zero result as a projection miss so PG fallback runs.
+        if counts["total"] == 0:
+            return None
+
         return counts
     except Exception as e:
         logger.warning("MongoDB stats aggregation failed: %s", e)
@@ -201,6 +210,7 @@ def list_arrivals(
     statuses: Optional[str] = Query(None, description="Filter by multiple statuses (comma-separated)"),
     scheduled_date: Optional[date] = Query(None, description="Filter by scheduled date"),
     search: Optional[str] = Query(None, description="Search by license plate or driver name"),
+    highway_infraction: Optional[bool] = Query(None, description="Filter by highway infraction flag"),
     db: Session = Depends(get_db),
 ):
     """
@@ -234,7 +244,7 @@ def list_arrivals(
                 gate_id=gate_id, shift_gate_id=shift_gate_id,
                 shift_type=parsed_shift_type, shift_date=shift_date,
                 status=final_status, scheduled_date=scheduled_date,
-                search=search,
+                search=search, highway_infraction=highway_infraction,
             )
             total = appointments_read_collection.count_documents(mongo_filter)
             cursor = (
@@ -262,7 +272,7 @@ def list_arrivals(
         gate_id=gate_id, shift_gate_id=shift_gate_id,
         shift_type=parsed_shift_type, shift_date=shift_date,
         status=final_status, scheduled_date=scheduled_date,
-        search=search,
+        search=search, highway_infraction=highway_infraction,
     )
     total = count_all_appointments(db, **filter_kwargs)
     appointments = get_all_appointments(db, skip=skip, limit=limit, **filter_kwargs)

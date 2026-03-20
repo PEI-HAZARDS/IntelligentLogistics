@@ -26,6 +26,7 @@ async def list_all_arrivals(
     scheduled_date: Optional[date] = Query(None, description="Filter by scheduled date"),
     gate_id: Optional[int] = Query(None, description="Filter by entry gate"),
     search: Optional[str] = Query(None, description="Search by license plate or driver name"),
+    highway_infraction: Optional[bool] = Query(None, description="Filter by highway infraction flag"),
 ):
     """
     Proxy to GET /api/v1/arrivals in Data Module.
@@ -40,6 +41,7 @@ async def list_all_arrivals(
             "scheduled_date": scheduled_date.isoformat() if scheduled_date else None,
             "gate_id": gate_id,
             "search": search,
+            "highway_infraction": highway_infraction,
         }.items() if v is not None}
     }
 

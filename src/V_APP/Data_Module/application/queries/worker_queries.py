@@ -9,6 +9,8 @@ import logging
 from datetime import date, datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import func as sa_func
+
 from infrastructure.persistence.mongo import (
     alerts_read_collection,
     appointments_read_collection,
@@ -139,6 +141,23 @@ def get_operator_gate_dashboard(
     }
 
 
+def _count_shifts_today() -> int:
+    """Count today's shifts from PostgreSQL (shift data not projected to MongoDB)."""
+    try:
+        from infrastructure.persistence.postgres import SessionLocal
+        from infrastructure.persistence.sql_models import Shift as ShiftORM
+        db = SessionLocal()
+        try:
+            return db.query(sa_func.count()).select_from(ShiftORM).filter(
+                ShiftORM.date == date.today()
+            ).scalar() or 0
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning("Failed to count shifts from PG: %s", e)
+        return 0
+
+
 def get_manager_overview(num_worker: str) -> Dict[str, Any]:
     today_str = date.today().isoformat()
 
@@ -169,7 +188,7 @@ def get_manager_overview(num_worker: str) -> Dict[str, Any]:
         "manager_num_worker": num_worker,
         "date": today_str,
         "active_gates": active_gates,
-        "shifts_today": 0,  # shift data not yet projected to MongoDB
+        "shifts_today": _count_shifts_today(),
         "recent_alerts": recent_alerts,
         "statistics": statistics,
     }

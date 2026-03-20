@@ -32,6 +32,28 @@ async def worker_login(credentials: WorkerLoginRequest):
     return await internal_client.post("/workers/login", json=credentials.model_dump())
 
 
+# ==================== SHIFT LISTING ====================
+
+@router.get("/workers/shifts")
+async def list_shifts(
+    target_date: Optional[str] = Query(None),
+    shift_type: Optional[str] = Query(None),
+    gate_id: Optional[int] = Query(None),
+):
+    """
+    List all shifts for a date (manager ShiftsPage).
+    Proxy to GET /api/v1/workers/shifts
+    """
+    params: Dict[str, Any] = {}
+    if target_date:
+        params["target_date"] = target_date
+    if shift_type:
+        params["shift_type"] = shift_type
+    if gate_id is not None:
+        params["gate_id"] = gate_id
+    return await internal_client.get("/workers/shifts", params=params)
+
+
 # ==================== OPERATOR ENDPOINTS ====================
 # NOTE: These must come BEFORE /workers/{num_worker} to avoid path conflicts
 
