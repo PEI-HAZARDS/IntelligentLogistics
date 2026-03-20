@@ -1,6 +1,28 @@
-# Data Module - Intelligent Logistics
+# Data Module — Intelligent Logistics
 
-The **Data Module** is the source of truth microservice for the Intelligent Logistics system. It serves as the central data layer, managing all persistent storage (PostgreSQL, MongoDB, Redis) and providing RESTful APIs for other microservices.
+The **Data Module** is the source-of-truth microservice for the Intelligent Logistics port terminal system. It owns all persistent state and exposes RESTful APIs consumed by the Decision Engine, API Gateway, and frontend applications.
+
+The module follows a **Domain-Driven Design** layered architecture with **Polyglot Persistence** (PostgreSQL + MongoDB + Redis), applying industry patterns to guarantee data consistency, resilience, and low-latency reads across a distributed event-driven platform.
+
+---
+
+## Architecture Patterns
+
+| Pattern | Purpose | Implementation |
+|---------|---------|----------------|
+| **CQRS** | Separate read and write models for independent optimization and scaling. Write-side targets PostgreSQL; read-side serves from Redis/MongoDB projections with PostgreSQL fallback. | `application/use_cases/` (commands) vs `application/queries/` + `routes/` (reads) |
+| **Unit of Work + Repository** | Coordinate multiple repository writes in a single database transaction with explicit commit/rollback semantics. Business logic depends only on abstractions, never on ORM sessions. | `domain/interfaces.py` (ports), `infrastructure/persistence/unit_of_work.py` (adapter) |
+| **Transactional Outbox** | Guarantee that domain state changes and their corresponding events are persisted atomically. An outbox row is written in the same PostgreSQL transaction as the aggregate mutation — no dual-write risk. | `infrastructure/persistence/outbox_repository.py`, `scripts/simple_outbox_worker.py` |
+| **Idempotent Inbox** | Ensure at-least-once Kafka delivery does not produce duplicate side effects. Each consumed event is inserted into `inbox_events` with a `UNIQUE(event_id)` constraint before business logic executes. | `infrastructure/persistence/inbox_repository.py` |
+| **Strangler Fig** | Incrementally migrate legacy synchronous paths to the new event-driven architecture without rewriting the entire module at once. Legacy endpoints are preserved while new command handlers are routed through UoW+Outbox. | `kafka_decision_consumer.py` (routes `ContainerMoved` through handler while legacy paths coexist) |
+| **Polyglot Persistence** | Use the right database for each workload: PostgreSQL for ACID transactional state, MongoDB for immutable event logs and analytics, Redis for sub-millisecond cache and real-time counters. | `infrastructure/persistence/postgres.py`, `mongo.py`, `redis.py` |
+
+### References
+
+- [CQRS — Command Query Responsibility Segregation](https://www.linkedin.com/pulse/difference-between-cqrs-cors-pratheek-sridhara-i8mjc/)
+- [Unit of Work — Python DDD Patterns](https://medium.com/technology-hits/unit-of-work-python-domain-driven-design-patterns-f07a675588ee)
+- [Strangler Fig Pattern — Microsoft Azure Architecture](https://learn.microsoft.com/en-us/azure/architecture/patterns/strangler-fig)
+- [Polyglot Persistence — Modern Data Architecture](https://medium.com/@rachoork/polyglot-persistence-a-strategic-approach-to-modern-data-architecture-e2a4f957f50b)
 
 ---
 
@@ -8,23 +30,59 @@ The **Data Module** is the source of truth microservice for the Intelligent Logi
 
 ```mermaid
 flowchart TB
-    subgraph DataModule["Data Module (Port 8080)"]
-        API["FastAPI Server"]
-        
-        subgraph Databases
-            PG[(PostgreSQL)]
-            MONGO[(MongoDB)]
-            REDIS[(Redis)]
-        end
-        
-        API --> PG
-        API --> MONGO
-        API --> REDIS
+    subgraph Clients
+        DE["Decision Engine"]
+        GW["API Gateway"]
+        KF["Kafka Broker"]
     end
-    
-    DE["Decision Engine"] <--> API
-    GW["API Gateway"] <--> API
-    FE["Frontend Apps"] --> GW
+
+    subgraph DataModule["Data Module (Port 8080)"]
+        direction TB
+        API["FastAPI Routes"]
+
+        subgraph Domain["domain/"]
+            EVT["EventEnvelope"]
+            IFC["Interfaces (Ports)"]
+        end
+
+        subgraph Application["application/"]
+            CMD["Command Handlers<br/>(UoW + Outbox)"]
+            QRY["Query Functions<br/>(CQRS reads)"]
+        end
+
+        subgraph Infrastructure["infrastructure/"]
+            REPO["Repository Adapters"]
+            UOW["Unit of Work"]
+            KAFKA_C["Kafka Consumer"]
+        end
+
+        subgraph Persistence
+            PG[(PostgreSQL<br/>Source of Truth)]
+            MONGO[(MongoDB<br/>Events + Analytics)]
+            REDIS[(Redis<br/>Cache + Counters)]
+        end
+
+        subgraph Workers["scripts/"]
+            OW["Outbox Worker<br/>(poll + project)"]
+        end
+    end
+
+    DE <--> API
+    GW <--> API
+    KF --> KAFKA_C
+
+    API --> CMD
+    API --> QRY
+    KAFKA_C --> CMD
+
+    CMD --> UOW --> REPO --> PG
+    QRY --> REDIS
+    QRY -.->|fallback| PG
+    QRY -.->|fallback| MONGO
+
+    OW -->|poll PENDING| PG
+    OW -->|project| MONGO
+    OW -->|project| REDIS
 ```
 
 ---
@@ -33,574 +91,365 @@ flowchart TB
 
 ```
 Data_Module/
-├── main.py                 # FastAPI application entrypoint
-├── config.py               # Environment configuration (Pydantic Settings)
-├── Dockerfile              # Container image definition
-├── docker-compose.yml      # Local development stack
-├── entrypoint.sh           # Container startup script
-├── requirements.txt        # Python dependencies
+├── main.py                          # FastAPI entrypoint + scheduler + lifespan
+├── config.py                        # Pydantic Settings (env vars)
+├── Dockerfile                       # Container image
+├── entrypoint.sh                    # Container startup
+├── requirements.txt                 # Python dependencies
 │
-├── db/                     # Database connections
-│   ├── postgres.py         # SQLAlchemy engine + session (simulation of port terminal data)
-│   ├── mongo.py            # PyMongo client + collections (persistency of events)
-│   └── redis.py            # Redis client (caching of decisions)
+├── domain/                          # Domain Layer (pure, no framework deps)
+│   ├── events.py                    #   EventEnvelope (immutable, 11 fields)
+│   │                                #   ConsumeContext (Kafka record metadata)
+│   └── interfaces.py                #   Abstract ports: IUnitOfWork, IAppointmentStateRepository,
+│                                    #   IAppointmentRepository, IInboxRepository, IOutboxRepository,
+│                                    #   IAlertRepository, IDriverRepository, IWorkerRepository,
+│                                    #   IVisitRepository
 │
-├── models/
-│   ├── sql_models.py       # SQLAlchemy ORM models
-│   └── pydantic_models.py  # Request/Response schemas (data validation)
+├── application/                     # Application Layer (orchestration)
+│   ├── schemas.py                   #   Pydantic request/response models
+│   ├── use_cases/                   #   Write-side command handlers
+│   │   ├── container_moved_handler.py   Inbox → lock → command → Outbox → commit
+│   │   ├── appointment_commands.py      cmd_process_decision, cmd_update_status,
+│   │   │                                cmd_update_visit_state, cmd_flag_highway_infraction
+│   │   ├── worker_handlers.py           Worker CRUD via UoW
+│   │   ├── driver_handlers.py           Driver claim + session via UoW
+│   │   └── alert_handlers.py            Alert creation + hazmat via UoW
+│   └── queries/                     #   Read-side query functions
+│       ├── arrival_queries.py           Appointment reads (Redis → Mongo → PG)
+│       ├── decision_queries.py          Decision processing + MongoDB events
+│       ├── manager_statistics_queries.py Dashboard aggregations
+│       ├── statistics_queries.py        Real-time counters + timeline
+│       ├── driver_queries.py            Driver lookup + auth
+│       ├── worker_queries.py            Worker lookup + auth
+│       ├── alert_queries.py             Alert reads
+│       ├── cache_queries.py             Redis get-or-cache patterns
+│       ├── event_queries.py             MongoDB event reads
+│       └── notification_queries.py      Notification CRUD
 │
-├── routes/                 # API endpoints (FastAPI routers)
-│   ├── arrivals.py         # Appointment/arrival management
-│   ├── decisions.py        # Decision Engine integration
-│   ├── driver.py           # Driver authentication & operations
-│   ├── alerts.py           # Alert management
-│   ├── worker.py           # Operator/Manager authentication
-│   └── events.py           # Legacy events endpoint
+├── infrastructure/                  # Infrastructure Layer (adapters)
+│   ├── persistence/
+│   │   ├── postgres.py                  SQLAlchemy engine + SessionLocal
+│   │   ├── mongo.py                     PyMongo client + 12 collections
+│   │   ├── redis.py                     Redis client + dedup + cache helpers
+│   │   ├── sql_models.py               ORM models (Appointment, Driver, Worker, ...)
+│   │   ├── inbox_outbox_models.py       InboxEvent + OutboxEvent tables
+│   │   ├── unit_of_work.py             SqlAlchemyUnitOfWork (8 repositories)
+│   │   ├── inbox_repository.py          Dedup via IntegrityError + SHA256 hash
+│   │   ├── outbox_repository.py         append / fetch_batch / mark_published
+│   │   ├── appointment_state_repository.py  get_for_update (SELECT FOR UPDATE)
+│   │   ├── appointment_repository.py    Optimistic concurrency (WHERE version=)
+│   │   ├── visit_repository.py          Visit state transitions
+│   │   ├── alert_repository.py          Alert persistence
+│   │   ├── driver_repository.py         Driver persistence
+│   │   └── worker_repository.py         Worker persistence
+│   └── messaging/
+│       └── kafka_decision_consumer.py   Async consumer + DecisionCorrelator
 │
-├── services/               # Business logic layer
-│   ├── arrival_service.py  # Appointment CRUD + queries
-│   ├── decision_service.py # Decision processing logic
-│   ├── driver_service.py   # Driver authentication
-│   ├── alert_service.py    # Alert creation + hazmat handling
-│   ├── worker_service.py   # Worker/Operator authentication
-│   ├── cache_service.py    # Redis cache utilities
-│   └── event_service.py    # MongoDB event logging
+├── routes/                          # HTTP Endpoints (FastAPI routers)
+│   ├── arrivals.py                      Appointment CRUD + CQRS reads
+│   ├── decisions.py                     Decision Engine integration
+│   ├── driver.py                        Driver auth + claim + history
+│   ├── worker.py                        Operator/Manager auth
+│   ├── alerts.py                        Alert management
+│   ├── statistics.py                    Dashboard + real-time metrics
+│   ├── notifications.py                 Notification management
+│   └── events.py                        Legacy events endpoint
 │
-├── scripts/
-│   ├── data_init.py        # Database seeding (populate with sample data, simulation of port terminal data)
-│   ├── data_init_sample.py # Sample data for development (mvp)
-│   ├── triggers.sql        # PostgreSQL triggers (for events)
-│   └── indexes.sql         # PostgreSQL indexes (for performance)
+├── scripts/                         # Operations
+│   ├── simple_outbox_worker.py          Outbox relay: poll → project (Mongo+Redis)
+│   │                                    Retry: exp. backoff + jitter, DEAD_LETTER
+│   ├── migrationDBv2.sql               Schema migration (inbox, outbox, triggers, indexes)
+│   ├── triggers.sql                     PostgreSQL triggers (10 total)
+│   ├── indexes.sql                      PostgreSQL indexes (26+ total)
+│   ├── data_init_demo.py               PEI 2025 video demo data
+│   └── data_init_realistic.py          Realistic Aveiro port data (rich metrics)
 │
-└── tests/
-    └── test_integration.py # Integration tests (for development)
+├── utils/                           # Utilities
+│   ├── hashing_pass.py                  bcrypt password hashing
+│   ├── rate_limit.py                    Rate limiting
+│   └── shift_utils.py                  Shift schedule parsing
+│
+└── tests/                           # Test Suite (101 tests)
+    ├── conftest.py                      Shared fixtures
+    ├── test_appointment_commands_uow.py UoW + Outbox integration (20 tests)
+    ├── test_appointment_optimistic_concurrency.py Version checks (8 tests)
+    ├── test_arrival_id_no_orm_listener.py SQL sequence only (3 tests)
+    ├── test_event_dedup_a3.py           event_id dedup (22 tests)
+    ├── test_outbox_worker_b1.py         Retry + backoff + DEAD_LETTER (28 tests)
+    ├── test_manager_statistics_endpoints.py Dashboard contracts (16 tests)
+    ├── test_dashboard_endpoints.py      Dashboard route validation (4 tests)
+    └── test_integration.py              Full integration (requires running DBs)
 ```
 
 ---
 
-## Driver Authentication
+## Data Flow: ContainerMoved (Event-Driven Pipeline)
 
-### Current Flow (Simplified)
+The primary write path uses the full Inbox → Command → Outbox → Projection pipeline:
 
-The driver authentication uses a simple flow:
-
-1. **Login**: Driver validates credentials (license + password)
-2. **Access via PIN**: Driver uses the appointment PIN (arrival_id) to access delivery details
-
-```mermaid
-sequenceDiagram
-    participant App as Driver App
-    participant GW as API Gateway
-    participant DM as Data Module
-
-    Note over App,DM: 1. Login (validate credentials)
-    App->>GW: POST /drivers/login {license, password}
-    GW->>DM: Forward request
-    DM-->>GW: {driver_info}
-    GW-->>App: Store driver info locally
-
-    Note over App,DM: 2. View today's deliveries
-    App->>GW: GET /drivers/me/today?drivers_license=XX
-    DM-->>App: List of today's appointments
-
-    Note over App,DM: 3. Access delivery via PIN
-    App->>GW: POST /drivers/claim {arrival_id: "PRT-001"}
-    GW->>DM: Validate PIN + sequential order
-    DM-->>App: Delivery details + navigation
+```
+Kafka (agent-decision-{gate_id})
+  │
+  ▼
+KafkaDecisionConsumer._dispatch_container_moved()
+  │  builds EventEnvelope (UUIDv7 event_id, 11 fields)
+  │
+  ▼
+ContainerMovedHandler.handle(envelope, context)
+  ├─ 1. Inbox INSERT (idempotency gate — UNIQUE event_id)
+  ├─ 2. Inbox mark PROCESSING
+  ├─ 3. Acquire aggregate lock (SELECT ... FOR UPDATE)
+  ├─ 4. Execute state transition + business rules
+  ├─ 5. Outbox APPEND (same PG transaction)
+  ├─ 6. Inbox mark PROCESSED
+  ├─ 7. UoW COMMIT (single atomic transaction)
+  └─ 8. Kafka offset commit (only after PG commit)
+          │
+          ▼
+    [Outbox Worker — background process]
+      ├─ Poll outbox_events WHERE status = 'PENDING'
+      ├─ project_to_mongo()  → upsert to appointments_read
+      ├─ project_to_redis()  → invalidate + snapshot + counter
+      ├─ Mark PUBLISHED (+ published_at timestamp)
+      ├─ On failure: retry with exponential backoff + jitter
+      └─ After MAX_RETRIES (5): mark DEAD_LETTER
 ```
 
-### Sequential Delivery Control
+---
 
-Drivers must complete deliveries in order. The `/claim` endpoint validates:
-- PIN is valid and belongs to the driver
-- This is the next delivery in queue (unless debug mode is enabled)
+## Databases
 
-### Debug Mode
+### PostgreSQL — Source of Truth (ACID)
 
-For testing, sequential validation can be disabled:
+Core entities with referential integrity, triggers, and indexes.
+
+| Entity | Description |
+|--------|-------------|
+| `Appointment` | Scheduled arrivals — core aggregate with `version` (optimistic concurrency) and `arrival_id` (PRT-XXXX via SQL sequence) |
+| `Visit` | Actual gate visits with entry/exit timestamps |
+| `Driver` | Truck drivers with session-based auth |
+| `Worker` | Port staff — base for Manager and Operator roles |
+| `Company` | Transport companies (NIF) |
+| `Booking` / `Cargo` | Reservations with hazmat flags |
+| `Terminal` / `Gate` / `Dock` | Port infrastructure |
+| `Shift` | Work shifts per gate |
+| `Alert` | Safety and operational alerts |
+| `InboxEvent` | Idempotent Kafka consumer inbox (state machine: RECEIVED → PROCESSING → PROCESSED/FAILED/DEAD_LETTER) |
+| `OutboxEvent` | Transactional outbox with retry (state machine: PENDING → PUBLISHED/FAILED/DEAD_LETTER) |
+
+**Triggers (10):** arrival_id sequence, status transition validation, visit auto-completion, entry_time auto-set, alert timestamp, shift_alert_history linking, created_at for booking/worker/driver.
+
+**Migration:** `scripts/migrationDBv2.sql` — safe to re-run (IF NOT EXISTS, OR REPLACE).
+
+### MongoDB — Event Store + CQRS Read Models
+
+| Collection | Purpose |
+|------------|---------|
+| `agent_detections` | Per-agent detection events (AgentA/B/C) |
+| `decision_events` | Full decision journey documents |
+| `appointments_read` | CQRS read model (projected by outbox worker) |
+| `alerts_read` | Alert read model |
+| `drivers_read` / `workers_read` | Reference data projections |
+| `statistics_hourly` | Pre-aggregated metrics |
+| `notifications` | Operator notifications |
+
+### Redis — Cache + Counters + Dedup
+
+| Key Pattern | TTL | Purpose |
+|-------------|-----|---------|
+| `dedup:event:{event_id}` | 5min | Idempotent event processing |
+| `dedup:plate:{lp}:gate:{id}:tb:{ts}` | 5min | Detection deduplication |
+| `decision:plate:{lp}:gate:{id}:...` | 1h | Decision result cache |
+| `appointment:{id}:details` | 30min | Hot appointment cache |
+| `lp_lookup:{plate}:appointments` | 10min | License plate → appointment |
+| `counter:gate:{id}:hour:{h}:*` | 2h | Real-time gate counters |
+| `pending_review:{truck_id}` | 30min | Operator decision correlation |
+
+---
+
+## API Endpoints
+
+**Base URL:** `http://localhost:8080/api/v1`
+**Swagger UI:** `http://localhost:8080/docs`
+
+### Health & Monitoring
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Service health (PG + Mongo + Redis) |
+
+### Arrivals (Appointments)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/arrivals` | List appointments (paginated) |
+| GET | `/arrivals/{id}` | Get by ID (Redis → PG fallback) |
+| GET | `/arrivals/pin/{pin}` | Get by access PIN |
+| GET | `/arrivals/stats` | Gate statistics (includes infractions) |
+| GET | `/arrivals/next/{gate_id}` | Next arrivals for gate |
+| GET | `/arrivals/query/license-plate/{plate}` | Query by license plate |
+| POST | `/arrivals/{id}/decision` | Process operator decision |
+| PATCH | `/arrivals/{id}/highway-infraction` | Flag highway infraction |
+
+### Decisions (Decision Engine Integration)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/decisions/process` | Receive decision from DE |
+| POST | `/decisions/query-appointments` | Query candidate appointments |
+| POST | `/decisions/detection-event` | Register detection event |
+
+### Drivers (Mobile App)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/drivers/login` | Validate credentials |
+| POST | `/drivers/claim` | Claim delivery via PIN |
+| GET | `/drivers/me/active` | Active appointment |
+| GET | `/drivers/me/today` | Today's deliveries |
+| GET | `/drivers/me/history` | Delivery history |
+| GET | `/drivers` | List all (backoffice) |
+
+### Workers (Operator/Manager)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/workers/login` | Authentication |
+| GET | `/workers/me` | Current worker info |
+| GET | `/workers/shifts` | Shift listing |
+
+### Alerts
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/alerts` | List alerts |
+| GET | `/alerts/active` | Active alerts |
+| POST | `/alerts` | Create alert |
+| POST | `/alerts/hazmat` | Create hazmat alert (UN/Kemler codes) |
+| GET | `/alerts/reference/adr-codes` | ADR code reference |
+
+### Statistics (Manager Dashboard)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/statistics/summary` | Dashboard summary |
+| GET | `/statistics/by-company` | Stats by transport company |
+| GET | `/statistics/volume` | Volume over time |
+| GET | `/statistics/alerts` | Alert breakdown |
+
+### Notifications & Events
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/notifications` | List notifications |
+| POST | `/notifications` | Create notification |
+| GET | `/events` | Legacy events |
+
+---
+
+## Running
+
+### Docker (Recommended)
 
 ```bash
-export DEBUG_MODE=true
-# Then use: POST /drivers/claim?debug=true
-```
-
-### Future: OAuth 2.0 + JWT
-
-> [!NOTE]
-> **Planned Enhancement**: Full token-based authentication with OAuth 2.0 + JWT.
-> 
-> When implemented:
-> - Login will return JWT access token
-> - All `/me/*` endpoints will require `Authorization: Bearer <token>`
-> - Proper session management with refresh tokens
-> - Session fields in Driver model are reserved for this purpose
-
----
-
-## Database Schema
-
-We designed the database searching for the most common use cases and the most important data for the system to function.
-
-### PostgreSQL (Relational Data)
-
-| Entity       | Description                              |
-|--------------|------------------------------------------|
-| `Terminal`   | Port terminal with coordinates           |
-| `Gate`       | Entry/exit gates                         |
-| `Dock`       | Loading/unloading bays                   |
-| `Company`    | Transport companies (by NIF)             |
-| `Driver`     | Truck drivers with authentication        |
-| `Truck`      | Vehicles by license plate                |
-| `Worker`     | Staff (base for Manager/Operator)        |
-| `Manager`    | Logistics managers                       |
-| `Operator`   | Gate operators                           |
-| `Shift`      | Work shifts per gate                     |
-| `Booking`    | Cargo bookings with reference            |
-| `Cargo`      | Individual cargo items (hazmat flags)    |
-| `Appointment`| Scheduled arrivals (core entity)         |
-| `Visit`      | Actual gate visits                       |
-| `Alert`      | System alerts (safety/operational)       |
-
-### MongoDB (Event Logs)
-
-| Collection      | Purpose                               |
-|-----------------|---------------------------------------|
-| `detections`    | License/hazardous plate detection events        |
-| `events`        | General system events                 |
-| `system_logs`   | Application logs                      |
-| `ocr_failures`  | Failed OCR recognition attempts       |
-
-### Redis (Cache)
-
-Used for caching decision results and preventing duplicate processing, important to improve performance a critical point of the system.
-
----
-
-## Running Locally with Docker
-Here we provide a docker-compose file to run the application locally. (you would have a independent data module to experiment with the system or to use it as a standalone service)
-### Pre-requisites
-
-- Docker & Docker Compose installed
-- Ports available: `8080`, `5432`, `27017`, `6379`
-
-### Quick Start
-
-```bash
-cd src/Data_Module
-
-# Start all services (PostgreSQL, MongoDB, Redis, API)
+cd src/V_APP
 docker-compose up -d
-
-# Check logs
-docker-compose logs -f data-module
 
 # Verify health
 curl http://localhost:8080/api/v1/health
+# Expected: {"status": "ok", "components": {"postgres": true, "mongo": true, "redis": true}}
+
+# Seed demo data
+docker-compose exec data-module python scripts/data_init_demo.py
+
+# Start outbox worker (separate process)
+docker-compose exec data-module python scripts/simple_outbox_worker.py
 ```
 
-### Expected Health Response
-
-```json
-{
-  "status": "ok",
-  "components": {
-    "postgres": true,
-    "mongo": true,
-    "redis": true
-  },
-  "decision_engine_url": "http://decision-engine:8001"
-}
-```
-
----
-
-## Highway Infraction System
-
-### Overview
-The system tracks hazmat trucks detected on restricted highways before port entry.
-
-### Database Field
-```sql
-Appointment.highway_infraction BOOLEAN DEFAULT FALSE
-```
-
-### Detection Flow
-```
-Highway Camera (stream)
-  → AgentC (hazmat detection)
-  → Decision Module (external - validates infraction)
-  → PATCH /arrivals/{id}/highway-infraction
-  → WebSocket notification → Frontend
-```
-
-### Usage
-```bash
-# Flag an appointment as highway infraction
-curl -X PATCH http://localhost:8080/api/v1/arrivals/42/highway-infraction
-
-# Get statistics (includes infractions count)
-curl http://localhost:8080/api/v1/arrivals/stats?gate_id=1
-# Response: { "infractions": 2, "pending": 5, ... }
-```
-
-### Stop Services
+### Local Development
 
 ```bash
-docker-compose down
+cd src/V_APP/Data_Module
 
-# Remove volumes (reset databases)
-docker-compose down -v
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+
+# Configure (or use .env file)
+export POSTGRES_HOST=localhost POSTGRES_PORT=5432
+export POSTGRES_USER=porto POSTGRES_PASSWORD=porto_password POSTGRES_DB=porto_logistica
+export MONGO_URL=mongodb://admin:admin123@localhost:27017
+export REDIS_HOST=localhost REDIS_PORT=6379
+export DECISION_ENGINE_URL=http://localhost:8001
+
+uvicorn main:app --reload --port 8080
+```
+
+### Run Tests
+
+```bash
+cd src/V_APP/Data_Module
+
+# All tests (101 unit tests — no running DBs required)
+PYTHONPATH=. tests/.venv/bin/python -m pytest tests/ \
+  --ignore=tests/kafka_decision_consumer_unit_test.py \
+  --ignore=tests/test_integration.py -v
+
+# Integration tests (requires running PG, Mongo, Redis)
+PYTHONPATH=. tests/.venv/bin/python -m pytest tests/test_integration.py -v
+```
+
+### Database Migration
+
+```bash
+# Apply schema v2 (safe to re-run)
+psql -U porto -d porto_logistica -f scripts/migrationDBv2.sql
 ```
 
 ---
 
 ## Environment Variables
 
-| Variable               | Default                                    | Description                    |
-|------------------------|--------------------------------------------|--------------------------------|
-| `POSTGRES_HOST`        | `postgres`                                 | PostgreSQL hostname            |
-| `POSTGRES_PORT`        | `5432`                                     | PostgreSQL port                |
-| `POSTGRES_USER`        | `porto`                                    | Database user                  |
-| `POSTGRES_PASSWORD`    | `porto_password`                           | Database password              |
-| `POSTGRES_DB`          | `porto_logistica`                          | Database name                  |
-| `MONGO_URL`            | `mongodb://admin:admin123@mongo:27017`     | MongoDB connection string      |
-| `REDIS_HOST`           | `redis`                                    | Redis hostname                 |
-| `REDIS_PORT`           | `6379`                                     | Redis port                     |
-| `DECISION_ENGINE_URL`  | `http://decision-engine:8001`              | Decision Engine endpoint       |
-| `DEBUG_MODE`           | `false`                                    | Enable debug mode (bypass sequential delivery validation) |
-| `TOKEN_EXPIRY_HOURS`   | `24`                                       | Driver session token expiry (hours) |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `POSTGRES_HOST` | `postgres` | PostgreSQL hostname |
+| `POSTGRES_PORT` | `5432` | PostgreSQL port |
+| `POSTGRES_USER` | `porto` | Database user |
+| `POSTGRES_PASSWORD` | `porto_password` | Database password |
+| `POSTGRES_DB` | `porto_logistica` | Database name |
+| `MONGO_URL` | `mongodb://admin:admin123@mongo:27017` | MongoDB connection string |
+| `REDIS_HOST` | `redis` | Redis hostname |
+| `REDIS_PORT` | `6379` | Redis port |
+| `DECISION_ENGINE_URL` | `http://decision-engine:8001` | Decision Engine endpoint |
+| `DEBUG_MODE` | `false` | Bypass sequential delivery validation |
+| `TOKEN_EXPIRY_HOURS` | `24` | Driver session token expiry |
 
 ---
 
-## API Endpoints
-
-Base URL: `http://localhost:8080/api/v1`
-Swagger UI: `http://localhost:8080/docs`
-
-### Health
-
-| Method | Endpoint   | Description         |
-|--------|------------|---------------------|
-| GET    | `/health`  | Service health check|
-
-### Arrivals
-
-| Method | Endpoint                                  | Description                        |
-|--------|-------------------------------------------|------------------------------------|
-| GET    | `/arrivals`                               | List appointments (paginated)      |
-| GET    | `/arrivals/{id}`                          | Get appointment by ID              |
-| GET    | `/arrivals/pin/{pin}`                     | Get appointment by access PIN      |
-| GET    | `/arrivals/stats`                         | Appointment statistics (includes infractions count) |
-| GET    | `/arrivals/next/{gate_id}`                | Next arrivals for gate             |
-| GET    | `/arrivals/query/license-plate/{plate}`   | Query by license plate             |
-| POST   | `/arrivals/{id}/decision`                 | Process decision for appointment   |
-| PATCH  | `/arrivals/{id}/highway-infraction`       | Flag appointment as highway infraction |
-
-### Decisions
-
-| Method | Endpoint                   | Description                              |
-|--------|----------------------------|------------------------------------------|
-| POST   | `/decisions/process`       | Receive decision from Decision Engine    |
-| POST   | `/decisions/query-appointments` | Query candidate appointments        |
-| POST   | `/decisions/detection-event`    | Register detection event            |
-
-### Drivers
-
-Simple flow: Login validates credentials, then use `drivers_license` as query parameter for subsequent calls.
-
-| Method | Endpoint                      | Description                           |
-|--------|-------------------------------|---------------------------------------|
-| POST   | `/drivers/login`              | Validate credentials, get driver info |
-| POST   | `/drivers/claim`              | Claim delivery via PIN (arrival_id)   |
-| GET    | `/drivers/me/active`          | Get driver's active appointment       |
-| GET    | `/drivers/me/today`           | Get driver's today appointments       |
-| GET    | `/drivers/me/history`         | Get driver's delivery history         |
-| GET    | `/drivers`                    | List all drivers (backoffice)         |
-| GET    | `/drivers/{license}`          | Get driver details (backoffice)       |
-| GET    | `/drivers/{license}/arrivals` | Get driver history (backoffice)       |
-
-> **Note**: `/claim` validates sequential order. Use `?debug=true` with `DEBUG_MODE=true` to bypass.
-> 
-> **Future**: OAuth 2.0 + JWT will add `Authorization: Bearer <token>` to all `/me/*` endpoints.
-
-### Workers
-
-| Method | Endpoint                | Description              |
-|--------|-------------------------|--------------------------|
-| POST   | `/workers/login`        | Worker authentication    |
-| GET    | `/workers/me`           | Get current worker info  |
-| GET    | `/workers/shifts`       | List shifts              |
-
-### Alerts
-
-| Method | Endpoint                     | Description                 |
-|--------|------------------------------|-----------------------------|
-| GET    | `/alerts`                    | List alerts                 |
-| GET    | `/alerts/active`             | Get active alerts           |
-| POST   | `/alerts`                    | Create alert                |
-| POST   | `/alerts/hazmat`             | Create hazmat-specific alert|
-| GET    | `/alerts/reference/adr-codes`| ADR code reference          |
-
----
-
-## Communication with Other Microservices
+## Inter-Service Communication
 
 ### Decision Engine → Data Module
 
-The **Decision Engine** consumes these endpoints:
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /decisions/query-appointments` | Query candidates by gate + time window |
+| `POST /decisions/process` | Send final decision (ACCEPTED/REJECTED/MANUAL_REVIEW) |
+| `POST /alerts/hazmat` | Create hazmat alerts (UN/Kemler codes) |
+| `GET /arrivals/query/license-plate/*` | Lookup appointments by detected plate |
 
-| Endpoint                              | Purpose                                    |
-|---------------------------------------|--------------------------------------------|
-| `POST /decisions/query-appointments`  | Query candidate appointments by gate/time  |
-| `POST /decisions/process`             | Send final decision (approved/rejected)    |
-| `POST /alerts/hazmat`                 | Create hazmat alerts (UN/Kemler codes)     |
-| `GET /arrivals/query/license-plate/*` | Lookup appointments by detected plate      |
+### Kafka Topics Consumed
+
+| Topic | Handler | Pattern |
+|-------|---------|---------|
+| `agent-decision-{gate_id}` | `ContainerMovedHandler` | Inbox → UoW → Outbox |
+| `operator-decision-{gate_id}` | `DecisionCorrelator` | Redis correlation + process |
+| `infraction-decision-{gate_id}` | `_store_infraction_decision` | Legacy path |
 
 ### API Gateway → Data Module
 
-The **API Gateway** proxies frontend requests to:
-
-| Endpoint                    | Consumer                    |
-|-----------------------------|-----------------------------|
-| `/arrivals/*`               | Operator Dashboard          |
-| `/drivers/*`                | Driver Mobile App           |
-| `/workers/*`                | Operator/Manager Login      |
-| `/alerts/*`                 | Operator Dashboard          |
-
-### Data Flow Diagram
-
-```mermaid
-sequenceDiagram
-    participant Camera
-    participant DE as Decision Engine
-    participant DM as Data Module
-    participant GW as API Gateway
-    participant FE as Frontend
-
-    Camera->>DE: License Plate Detection
-    DE->>DM: POST /decisions/query-appointments
-    DM-->>DE: Candidate Appointments
-    DE->>DE: Evaluate (ML Agents)
-    DE->>DM: POST /decisions/process
-    DM->>DM: Update Appointment + Create Alerts
-    DM-->>DE: Confirmation
-    DE->>GW: Kafka Event (decision-results)
-    GW->>FE: WebSocket Broadcast
-```
-
-### Arrival Verification Flow
-
-Detailed flow when a truck arrives at the port gate:
-
-```mermaid
-sequenceDiagram
-    participant CAM as Camera/Sensor
-    participant AB as Agent B (LP Detection)
-    participant AC as Agent C (Hazmat Detection)
-    participant DE as Decision Engine
-    participant DM as Data Module
-    participant REDIS as Redis Cache
-    participant PG as PostgreSQL
-    participant MONGO as MongoDB
-
-    Note over CAM,MONGO: 1. Detection Phase
-    CAM->>AB: Video Stream Frame
-    AB->>AB: OCR License Plate
-    AB->>DE: Detection Event (plate, confidence)
-    
-    CAM->>AC: Video Stream Frame
-    AC->>AC: Detect Hazmat Placards
-    AC->>DE: Hazmat Event (UN code, Kemler)
-
-    Note over CAM,MONGO: 2. Query Phase
-    DE->>DM: POST /decisions/query-appointments
-    DM->>REDIS: Check cache
-    REDIS-->>DM: Cache miss
-    DM->>PG: Query appointments (gate, time window, status)
-    PG-->>DM: Candidate appointments list
-    DM->>REDIS: Cache result
-    DM-->>DE: Appointments with cargo details
-
-    Note over CAM,MONGO: 3. Decision Phase
-    DE->>DE: Match plate to appointment
-    DE->>DE: Validate hazmat vs booking
-    DE->>DE: Compute final decision
-
-    Note over CAM,MONGO: 4. Persist Phase
-    DE->>DM: POST /decisions/process
-    DM->>REDIS: Check duplicate (idempotency)
-    DM->>PG: UPDATE appointment status
-    DM->>PG: INSERT alert (if hazmat)
-    DM->>MONGO: INSERT detection event
-    DM-->>DE: Decision confirmed
-
-    Note over CAM,MONGO: 5. Notification Phase
-    DE->>DE: Publish to Kafka
-```
-
-### Operator Dashboard Flow
-
-How the gate operator dashboard receives real-time updates:
-
-```mermaid
-sequenceDiagram
-    participant OP as Operator Browser
-    participant FE as Frontend App
-    participant GW as API Gateway
-    participant WS as WebSocket Server
-    participant DM as Data Module
-    participant KF as Kafka
-
-    Note over OP,KF: 1. Initial Load
-    OP->>FE: Open Dashboard
-    FE->>GW: GET /arrivals/next/{gate_id}
-    GW->>DM: Proxy request
-    DM-->>GW: Upcoming arrivals list
-    GW-->>FE: JSON response
-    FE->>OP: Render arrivals table
-
-    Note over OP,KF: 2. WebSocket Connection
-    FE->>GW: WS Connect /ws/gate/{gate_id}
-    GW->>WS: Upgrade connection
-    WS-->>FE: Connected
-
-    Note over OP,KF: 3. Real-time Updates
-    KF->>GW: Kafka message (decision-results-{gate_id})
-    GW->>GW: Parse decision payload
-    GW->>WS: Broadcast to gate channel
-    WS->>FE: Push decision event
-    FE->>OP: Update UI (new arrival, alert badge)
-
-    Note over OP,KF: 4. Manual Actions
-    OP->>FE: Click "Approve Entry"
-    FE->>GW: POST /arrivals/{id}/decision
-    GW->>DM: Proxy request
-    DM->>DM: Update appointment status
-    DM-->>GW: Updated appointment
-    GW-->>FE: Success response
-    FE->>OP: Show confirmation
-```
-
-### Driver Mobile App Flow
-
-Complete driver journey from login to unloading assignment (with token authentication):
-
-```mermaid
-sequenceDiagram
-    participant DR as Driver Mobile App
-    participant GW as API Gateway
-    participant DM as Data Module
-    participant DB as PostgreSQL
-    participant DE as Decision Engine
-    participant CAM as Gate Camera
-
-    Note over DR,CAM: 1. Authentication & Route
-    DR->>GW: POST /drivers/login (license, password)
-    GW->>DM: Forward request
-    DM->>DB: Validate credentials
-    DM->>DB: Generate & store session_token
-    DM->>DB: Set current_appointment_id (next in queue)
-    DM-->>GW: {token, driver_info}
-    GW-->>DR: Store token locally
-    
-    DR->>GW: GET /drivers/me/today
-    Note over DR: Header: Authorization: Bearer <token>
-    GW->>DM: Forward with auth header
-    DM->>DB: Validate token + Get appointments
-    DM-->>GW: Appointments list
-    GW-->>DR: Show scheduled arrivals
-    
-    DR->>DR: Navigate to port (GPS route)
-
-    Note over DR,CAM: 2. Arrival at Gate
-    DR->>DR: Approaching gate
-    CAM->>DE: Detect license plate
-    DE->>DM: POST /decisions/query-appointments
-    DM-->>DE: Match appointment found
-    
-    Note over DR,CAM: 3. Automatic Access Decision
-    DE->>DE: Validate booking + hazmat check
-    DE->>DM: POST /decisions/process (approved)
-    DM->>DM: UPDATE appointment status = in_process
-    DM-->>DE: Confirmation
-
-    Note over DR,CAM: 4. Real-time Status Update
-    DE->>GW: Kafka (decision-results)
-    GW->>DR: Push notification (WebSocket/FCM)
-    DR->>DR: Show "Access Granted"
-    
-    DR->>GW: GET /drivers/me/active (with Bearer token)
-    GW->>DM: Forward with auth header
-    DM->>DB: Validate token + Get active appointment
-    DM-->>GW: Appointment + Terminal + Dock info
-    GW-->>DR: Display assignment
-
-    Note over DR,CAM: 5. Claim (if manual entry)
-    DR->>GW: POST /drivers/claim {arrival_id: "PRT-0001"}
-    Note over DR: Header: Authorization: Bearer <token>
-    GW->>DM: Forward with auth header
-    DM->>DB: Validate token
-    DM->>DB: Check sequential order (is this the next delivery?)
-    alt Next in queue
-        DM->>DB: UPDATE driver.current_appointment_id
-        DM-->>GW: Appointment claimed
-        GW-->>DR: Show navigation to dock
-    else Not next in queue
-        DM-->>GW: Error: Complete previous delivery first
-        GW-->>DR: Show error message
-    end
-
-    Note over DR,CAM: 6. Unloading & Completion
-    DR->>DR: Show dock location on map
-    DR->>DR: Navigate to assigned dock
-    DR->>DR: Unload cargo
-    DR->>GW: Complete delivery
-    GW->>DM: UPDATE status = completed
-    DM->>DB: Advance to next appointment in queue
-    DM-->>GW: Confirmation + next appointment
-    GW-->>DR: Show "Delivery Complete" + next delivery info
-```
-
----
-
-## Development
-
-### Run Without Docker
-
-```bash
-cd src/Data_Module
-
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set environment variables (or create .env file)
-export POSTGRES_HOST=localhost
-export MONGO_URL=mongodb://admin:admin123@localhost:27017
-export REDIS_HOST=localhost
-
-# Start server
-uvicorn main:app --reload --port 8000
-```
-
-### Run Tests
-
-```bash
-# Using the test script
-./test_api.sh all
-
-# Using pytest
-pytest tests/test_integration.py -v
-```
-
----
-
-## Key Features
-
-- **Background Scheduler**: Automatically updates `in_transit` to `delayed` status for overdue appointments (15-minute tolerance (standard in industry), runs every 5 minutes)
-- **Hazmat Detection**: Full ADR/UN and Kemler code reference for dangerous goods alerts
-- **Health Checks**: Comprehensive readiness probes for all database connections
-- **CORS Enabled**: Accepts requests from any origin (configure for production)
+| Route Prefix | Frontend Consumer |
+|--------------|-------------------|
+| `/arrivals/*` | Operator Dashboard (React) |
+| `/drivers/*` | Driver Mobile App (React Native) |
+| `/workers/*` | Operator/Manager Login |
+| `/alerts/*` | Operator Dashboard |
+| `/statistics/*` | Manager Dashboard |
