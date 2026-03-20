@@ -26,6 +26,7 @@ ADR_CODES = {
     "1789": {"description": "Hydrochloric acid", "class": "8", "hazard": "Corrosive"},
     "2031": {"description": "Nitric acid", "class": "8", "hazard": "Corrosive/Oxidizing"},
     "1830": {"description": "Sulfuric acid", "class": "8", "hazard": "Corrosive"},
+    "1831": {"description": "Sulfuric acid (fuming)", "class": "8", "hazard": "Corrosive, reacts dangerously with water"},
     "1005": {"description": "Anhydrous ammonia", "class": "2.3", "hazard": "Toxic gas"},
     "1017": {"description": "Chlorine", "class": "2.3", "hazard": "Toxic gas"},
 }
@@ -40,6 +41,9 @@ KEMLER_CODES = {
     "80": "Corrosive",
     "60": "Toxic",
     "X66": "Very toxic - reacts with water",
+    "X886": "Corrosive - reacts dangerously with water, toxic",
+    "886": "Corrosive, toxic",
+    "50": "Oxidizing substance",
 }
 
 
