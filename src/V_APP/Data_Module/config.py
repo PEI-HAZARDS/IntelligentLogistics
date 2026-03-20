@@ -43,7 +43,9 @@ class Settings(BaseSettings):
     kafka_bootstrap: str = "kafka:29092"
     gate_id: str = "1"
 
-    # Driver Authentication
+    # Authentication
+    # KEYCLOAK: this secret will be replaced by Keycloak's public key once integrated.
+    jwt_secret: str = "pei-internal-secret-replace-with-keycloak"
     debug_mode: bool = False  # When True, allows bypassing sequential delivery checks
     token_expiry_hours: int = 24  # Session token expiration time in hours
     

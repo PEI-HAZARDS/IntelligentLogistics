@@ -81,10 +81,16 @@ async def manager_dashboard_summary(
 
 @router.get("/statistics/by-company")
 async def transport_stats_proxy(
-    days: int = Query(30, ge=1, le=365),
+    from_date: Optional[str] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
 ):
     """Proxy to Data Module: per-company transport stats."""
-    return await internal_client.get("/arrivals/transport-stats", params={"days": days})
+    params = {}
+    if from_date:
+        params["from"] = from_date
+    if to_date:
+        params["to"] = to_date
+    return await internal_client.get("/statistics/by-company", params=params)
 
 
 @router.get("/statistics/volume")
@@ -111,13 +117,21 @@ async def volume_data(
 
 
 @router.get("/statistics/alerts")
-async def alerts_breakdown():
+async def alerts_breakdown(
+    from_date: Optional[str] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
+):
     """
     Proxy alerts stats and reshape as AlertsBreakdown[]:
       { type, count, percentage }
     """
     try:
-        stats = await internal_client.get("/alerts/stats")
+        params = {}
+        if from_date:
+            params["from"] = from_date
+        if to_date:
+            params["to"] = to_date
+        stats = await internal_client.get("/alerts/stats", params=params)
         if isinstance(stats, dict):
             total = sum(stats.values()) or 1
             return [

@@ -128,6 +128,35 @@ services:
     networks:
       - intelligent-logistics
 
+  # Outbox Worker — projects outbox_events to MongoDB + Redis read models
+  outbox-worker:
+    build:
+      context: ..
+      dockerfile: V_APP/Data_Module/Dockerfile
+    container_name: dm_outbox_worker
+    restart: unless-stopped
+    entrypoint: ["python", "scripts/simple_outbox_worker.py"]
+    depends_on:
+      data-module:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - MONGO_URL=${MONGO_URL}
+      - MONGO_HOST=${MONGO_HOST}
+      - MONGO_PORT=${MONGO_PORT}
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - PYTHONUNBUFFERED=1
+    networks:
+      - intelligent-logistics
+
   # API Gateway
   api-gateway:
     build:

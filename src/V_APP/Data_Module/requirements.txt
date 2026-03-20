@@ -27,6 +27,7 @@ opentelemetry-instrumentation-fastapi
 # --- Security ---
 passlib[bcrypt]
 bcrypt==4.0.1
+PyJWT>=2.8.0
 python-dotenv
 
 # --- Logging ---
