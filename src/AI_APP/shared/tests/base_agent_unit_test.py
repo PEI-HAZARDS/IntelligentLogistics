@@ -116,7 +116,7 @@ def sample_crop():
 # Helper to create a test agent
 # =============================================================================
 
-def create_test_agent(mock_deps):
+def create_test_agent(mock_deps, config=None):
     """Create a concrete test agent instance with mocked dependencies."""
     from AI_APP.shared.src.base_agent import BaseAgent
     
@@ -177,7 +177,7 @@ def create_test_agent(mock_deps):
             return "test object"
     
     # Pass mocks directly using dependency injection
-    return ConcreteTestAgent(**mock_deps)
+    return ConcreteTestAgent(config=config, **mock_deps)
 
 
 # =============================================================================
@@ -291,6 +291,22 @@ class TestLoop:
 
         # Assert
         agent._process_message.assert_called_once_with(mock_msg)
+
+    def test_loop_uploads_annotated_frames_on_idle(self, mock_dependencies):
+        """Loop flushes one deferred annotated frame upload during idle cycle."""
+        agent = create_test_agent(mock_dependencies)
+        agent.running = True
+        agent.kafka_consumer.consume_typed_message.side_effect = [(None, None, None)]
+
+        def _idle_flush(max_items=1):
+            agent.running = False
+            return 1
+
+        agent._upload_pending_annotated_frames = MagicMock(side_effect=_idle_flush)
+
+        agent.start()
+
+        agent._upload_pending_annotated_frames.assert_called_once_with(max_items=1)
 
 
 
@@ -441,6 +457,25 @@ class TestDetectionPipeline:
 
         # Assert
         assert result == [[10, 20, 50, 60, 0.9]]
+        assert agent.pending_annotated_uploads.qsize() == 1
+        agent.image_storage.upload_memory_image.assert_not_called()
+
+    def test_run_yolo_inference_sync_upload_when_idle_mode_disabled(self, mock_dependencies, sample_frame):
+        """Annotated frame upload stays synchronous when idle upload mode is disabled."""
+        from AI_APP.shared.src.base_agent import BaseAgentConfig
+
+        config = BaseAgentConfig(annotated_frames_idle_upload=False)
+        agent = create_test_agent(mock_dependencies, config=config)
+        mock_results = MagicMock()
+        agent.yolo.detect.return_value = mock_results
+        agent.yolo.object_found.return_value = True
+        agent.yolo.get_boxes.return_value = [[10, 20, 50, 60, 0.9]]
+        agent.drawer.draw_box.return_value = sample_frame
+
+        result = agent._run_yolo_inference(sample_frame)
+
+        assert result == [[10, 20, 50, 60, 0.9]]
+        agent.image_storage.upload_memory_image.assert_called_once()
 
     def test_run_yolo_inference_returns_none_no_object(self, mock_dependencies, sample_frame):
         """_run_yolo_inference returns None when no object found."""
@@ -625,6 +660,15 @@ class TestCleanup:
 
         # Assert
         agent.kafka_producer.flush.assert_called_once()
+
+    def test_cleanup_flushes_pending_annotated_uploads(self, mock_dependencies, sample_frame):
+        """Cleanup attempts deferred annotated frame uploads before closing resources."""
+        agent = create_test_agent(mock_dependencies)
+        agent._enqueue_annotated_frame_upload(sample_frame, "annotated_test.jpg")
+
+        agent._cleanup()
+
+        agent.image_storage.upload_memory_image.assert_called()
 
 
 # =============================================================================

@@ -133,7 +133,7 @@ class DecisionEngine(BaseDecisionEngine):
             if matched_plate == self.last_truck_detected.get(gate_id):
                 self.logger.info(f"Gate {gate_id} | Same truck detected: {matched_plate}, publishing SKIPPED")
                 self._publish_decision(
-                    gate_id, truck_id, license_plate, lp_msg, hz_msg, un_number, kemler_code,
+                    gate_id, truck_id, matched_plate, lp_msg, hz_msg, un_number, kemler_code,
                     decision=DecisionStatus.SKIPPED.value,
                     reason="Same truck detected again shortly after initial detection",
                     start_time=start_time,
@@ -142,7 +142,7 @@ class DecisionEngine(BaseDecisionEngine):
 
             alerts = [f"Truck {matched_plate} accepted."]
             self._publish_decision(
-                gate_id, truck_id, license_plate, lp_msg, hz_msg, un_number, kemler_code,
+                gate_id, truck_id, matched_plate, lp_msg, hz_msg, un_number, kemler_code,
                 decision=DecisionStatus.ACCEPTED.value,
                 reason="License plate matched with appointment",
                 start_time=start_time,

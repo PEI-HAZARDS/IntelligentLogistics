@@ -15,11 +15,13 @@ import asyncio
 from typing import Optional
 from datetime import datetime, timezone
 import json
+import os
 
 from shared.src.kafka_wrapper import KafkaConsumerWrapper
 from shared.src.kafka_protocol import KafkaTopicFactory
 from application.queries.decision_queries import (
     persist_infraction_event_from_kafka,
+    persist_decision_event,
     update_appointment_after_infraction,
 )
 from application.queries.notification_queries import create_notification
@@ -140,12 +142,25 @@ class KafkaDecisionConsumer:
         self.consumer_task = None
         self.correlator = DecisionCorrelator()
 
+        self.decision_gate_ids = self._parse_gate_ids_from_env("DECISION_GATE_IDS", settings.gate_id)
+        self.infraction_gate_ids = self._parse_gate_ids_from_env("INFRACTION_GATE_IDS", settings.gate_id)
+
+        self.agent_decision_topics = {
+            KafkaTopicFactory.agent_decision(gid) for gid in self.decision_gate_ids
+        }
+        self.operator_decision_topics = {
+            KafkaTopicFactory.operator_decision(gid) for gid in self.decision_gate_ids
+        }
+        self.infraction_decision_topics = {
+            KafkaTopicFactory.infraction_decision(gid) for gid in self.infraction_gate_ids
+        }
+
         # Topic names via factory — single source of truth
-        topics = [
-            KafkaTopicFactory.agent_decision(settings.gate_id),
-            KafkaTopicFactory.operator_decision(settings.gate_id),
-            KafkaTopicFactory.infraction_decision(settings.gate_id),
-        ]
+        topics = sorted(
+            self.agent_decision_topics
+            | self.operator_decision_topics
+            | self.infraction_decision_topics
+        )
         self.consumer = consumer or KafkaConsumerWrapper(
             bootstrap_servers=settings.kafka_bootstrap,
             group_id="data-module-decisions",
@@ -204,19 +219,31 @@ class KafkaDecisionConsumer:
                     continue
 
                 # Process based on topic
-                if topic == KafkaTopicFactory.agent_decision(settings.gate_id):
+                final_decision = None
+
+                if topic in self.agent_decision_topics:
                     final_decision = self.correlator.process_agent_decision(truck_id, data)
                     if final_decision:
                         await self._dispatch_container_moved(truck_id, final_decision, msg)
 
-                elif topic == KafkaTopicFactory.operator_decision(settings.gate_id):
+                elif topic in self.operator_decision_topics:
                     final_decision = self.correlator.process_operator_decision(truck_id, data)
                     if final_decision:
                         await self._dispatch_container_moved(truck_id, final_decision, msg)
 
-                elif topic == KafkaTopicFactory.infraction_decision(settings.gate_id):
+                elif topic in self.infraction_decision_topics:
+                    inferred_gate_id = self._extract_gate_id_from_topic(topic)
+                    if inferred_gate_id and not data.get("gate_id"):
+                        data = {**data, "gate_id": inferred_gate_id}
                     await self._store_infraction_decision(truck_id, data)
                     logger.info(f"Infraction decision processed for truck_id={truck_id}")
+
+                # If final decision ready, persist it
+                if final_decision:
+                    inferred_gate_id = self._extract_gate_id_from_topic(topic)
+                    if inferred_gate_id and not final_decision.get("gate_id"):
+                        final_decision = {**final_decision, "gate_id": inferred_gate_id}
+                    await self._persist_decision(truck_id, final_decision)
 
             except Exception as e:
                 logger.error(f"Error in consume loop: {e}", exc_info=True)
@@ -279,6 +306,40 @@ class KafkaDecisionConsumer:
             truck_id,
         )
 
+
+    async def _persist_decision(self, truck_id: str, decision_data: dict):
+        """Persist final decision event to MongoDB (audit trail).
+
+        Runs in executor to avoid blocking the async loop.
+        Called after ContainerMovedHandler has already committed PG state.
+        """
+        try:
+            license_plate = decision_data.get("license_plate", "UNKNOWN")
+            try:
+                gate_id = int(decision_data.get("gate_id", settings.gate_id))
+            except (TypeError, ValueError):
+                gate_id = int(settings.gate_id)
+            appointment_id = decision_data.get("appointment_id")
+            decision = decision_data.get("decision", "UNKNOWN")
+
+            event_id = await asyncio.get_event_loop().run_in_executor(
+                None,
+                persist_decision_event,
+                license_plate,
+                gate_id,
+                appointment_id,
+                decision,
+                decision_data,
+            )
+            logger.info(
+                "Decision event persisted to MongoDB for truck_id=%s event_id=%s",
+                truck_id, event_id,
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to persist decision event for truck_id=%s: %s",
+                truck_id, e, exc_info=True,
+            )
 
     async def _store_infraction_decision(self, truck_id: str, decision_data: dict):
         """Persist infraction event and flag appointment highway_infraction when needed."""
@@ -346,3 +407,33 @@ class KafkaDecisionConsumer:
             )
         except Exception as e:
             logger.error(f"Error storing infraction decision for truck_id={truck_id}: {e}", exc_info=True)
+
+    @staticmethod
+    def _extract_gate_id_from_topic(topic: str) -> Optional[str]:
+        """Extract gate_id suffix from known decision topics."""
+        if not topic:
+            return None
+
+        for prefix in ("agent-decision-", "operator-decision-", "infraction-decision-"):
+            if topic.startswith(prefix):
+                gate_id = topic[len(prefix):].strip()
+                return gate_id if gate_id else None
+        return None
+
+    @staticmethod
+    def _parse_gate_ids_from_env(env_key: str, fallback_gate_id: str) -> list[str]:
+        """Parse gate id list from JSON array env variable with safe fallback."""
+        raw = os.getenv(env_key, "").strip()
+        if not raw:
+            return [str(fallback_gate_id)]
+
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                gate_ids = [str(item).strip() for item in parsed if str(item).strip()]
+                if gate_ids:
+                    return gate_ids
+        except json.JSONDecodeError:
+            logger.warning(f"Invalid {env_key} format ('{raw}'). Falling back to GATE_ID.")
+
+        return [str(fallback_gate_id)]

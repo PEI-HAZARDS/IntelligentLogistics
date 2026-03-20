@@ -133,20 +133,20 @@ DEFAULTS = {
     # HazardPlateResultsMessage
     "hz_un":            "1202",
     "hz_kemler":        "30",
-    "hz_crop":          "https://img.iol.pt/image/id/682907c3d34ef72ee4461c1a/1024",
+    "hz_crop":          "http://10.255.32.70:9090/api/v1/buckets/teste/objects/download?preview=true&prefix=inf_1.png&version_id=null",
     "hz_confidence":    0.89,
 
     # DecisionResultsMessage
     "dr_plate":         "AA-00-BB",
-    "dr_lp_crop":       "https://img.iol.pt/image/id/682907c3d34ef72ee4461c1a/1024",
-    "dr_un":            "1202",
-    "dr_kemler":        "30",
-    "dr_hz_crop":       "https://img.iol.pt/image/id/682907c3d34ef72ee4461c1a/1024",
-    "dr_alerts":        ["FLAMMABLE LIQUID"],
+    "dr_lp_crop":       "http://10.255.32.70:9090/api/v1/download-shared-object/aHR0cDovLzEyNy4wLjAuMTo5MDAwL3Rlc3RlL1Bhc3RlZCUyMGltYWdlJTIwJTI4MiUyOS5wbmc_WC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotQ3JlZGVudGlhbD1RS0E1UlBCSzhXTjFVNklJSTIyWCUyRjIwMjYwMzE2JTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotRGF0ZT0yMDI2MDMxNlQyMzIzMjFaJlgtQW16LUV4cGlyZXM9NDMyMDAmWC1BbXotU2VjdXJpdHktVG9rZW49ZXlKaGJHY2lPaUpJVXpVeE1pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SmhZMk5sYzNOTFpYa2lPaUpSUzBFMVVsQkNTemhYVGpGVk5rbEpTVEl5V0NJc0ltVjRjQ0k2TVRjM016YzBOalV6T0N3aWNHRnlaVzUwSWpvaWNHVnBYM1Z6WlhJaWZRLkJWWVNOTzFFaFZ6dUtpTk5MX212YWhmbmVBSkNpb3NHUnQ0OW9CUkI3UUxxU0JfQ1lacmtkUlBmalRzMm5wN2VzTV9sRWoyRzdqQXdYZTJTWktEWDVRJlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCZ2ZXJzaW9uSWQ9bnVsbCZYLUFtei1TaWduYXR1cmU9YTk2NGRjYTBiOWY5N2VlZTk5ZDEzNjAwM2E4MWU3NjQ4MWU2NTM2NTk2NDY5ZjFmMjkyNzY0YmE0MTZkMGNlNg",
+    "dr_un":            "1831: Sulfuric acid, fuming with less than 30% free sulfur trioxide",
+    "dr_kemler":        "X886: Highly corrosive substance, toxic, which reacts dangerously with water (water not to be used except by approval of experts)",
+    "dr_hz_crop":       "http://10.255.32.70:9090/api/v1/download-shared-object/aHR0cDovLzEyNy4wLjAuMTo5MDAwL3Rlc3RlL1Bhc3RlZCUyMGltYWdlLnBuZz9YLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1DcmVkZW50aWFsPVFLQTVSUEJLOFdOMVU2SUlJMjJYJTJGMjAyNjAzMTYlMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1EYXRlPTIwMjYwMzE2VDIzMjI0OFomWC1BbXotRXhwaXJlcz00MzIwMCZYLUFtei1TZWN1cml0eS1Ub2tlbj1leUpoYkdjaU9pSklVelV4TWlJc0luUjVjQ0k2SWtwWFZDSjkuZXlKaFkyTmxjM05MWlhraU9pSlJTMEUxVWxCQ1N6aFhUakZWTmtsSlNUSXlXQ0lzSW1WNGNDSTZNVGMzTXpjME5qVXpPQ3dpY0dGeVpXNTBJam9pY0dWcFgzVnpaWElpZlEuQlZZU05PMUVoVnp1S2lOTkxfbXZhaGZuZUFKQ2lvc0dSdDQ5b0JSQjdRTHFTQl9DWVpya2RSUGZqVHMybnA3ZXNNX2xFajJHN2pBd1hlMlNaS0RYNVEmWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0JnZlcnNpb25JZD1udWxsJlgtQW16LVNpZ25hdHVyZT0yZTI3NTVmMTMxNTc5NTJkNWU2ZDkzMDM0ZTVhMmJjNDNlMWUwZDIyYWVhYzBjYmZjOWQwODk4MWQ2ZTUwODMy",
+    "dr_alerts":        [],
     "dr_route":         "HIGHWAY-A1",
-    "dr_decision":      "ACCEPTED",
-    "dr_reason":        "All checks passed",
-    "dr_source":        "agent",
+    "dr_decision":      "MANUAL_REVIEW",
+    "dr_reason":        "Truck Accepted",
+    "dr_source":        "automated",
 
     # ResetAgentAMessage
     "ra_reason":        "agent_decision",

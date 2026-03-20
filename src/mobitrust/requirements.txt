@@ -1,0 +1,4 @@
+paho-mqtt
+pydantic
+pydantic-settings
+python-dotenv

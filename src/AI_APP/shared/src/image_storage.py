@@ -31,7 +31,6 @@ class ImageStorage:
         logger.info("Initializing MinIO client...")
         self.client = Minio(**configs)
         self.bucket_name = bucket_name
-        self._bucket_verified = False
     
     def upload_memory_image(self, img_array: Optional[np.ndarray], object_name: str, image_type: str = "other") -> Optional[str]:
         """
@@ -109,9 +108,6 @@ class ImageStorage:
 
     def _ensure_bucket(self) -> bool:
         """Checks if bucket exists, creates it if not. Returns True if bucket is ready."""
-        if self._bucket_verified:
-            return True
-        
         try:
             if not self.client.bucket_exists(self.bucket_name):
                 try:
@@ -125,7 +121,6 @@ class ImageStorage:
                     
             # Always ensure lifecycle policies are up to date
             self._set_lifecycle_policies()
-            self._bucket_verified = True
             
             return True
         
