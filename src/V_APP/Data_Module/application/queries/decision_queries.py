@@ -19,7 +19,8 @@ from infrastructure.persistence.mongo import (
 from application.queries.notification_queries import create_notification
 
 from infrastructure.persistence.redis import (
-    is_duplicate_and_mark as redis_is_duplicate,
+    is_duplicate_event as redis_is_duplicate_event,
+    is_duplicate_and_mark as redis_is_duplicate_legacy,
     get_cached_decision as redis_get_decision,
     cache_decision as redis_cache_decision,
     increment_counter,
@@ -50,12 +51,31 @@ def decision_cache_key(license_plate: Optional[str], gate_id: Optional[int], ts:
     return "decision:" + k if k else None
 
 
-def is_duplicate_and_mark(license_plate: Optional[str], gate_id: Optional[int], ts: float) -> bool:
+def is_duplicate_and_mark(
+    license_plate: Optional[str],
+    gate_id: Optional[int],
+    ts: float,
+    *,
+    event_id: Optional[str] = None,
+) -> bool:
+    """Check for duplicate event. Prefers event_id when available (Guardrail 1)."""
+    if event_id:
+        try:
+            return redis_is_duplicate_event(event_id)
+        except Exception as e:
+            logger.error(f"Event-id dedup failed: {e}")
+            return False
+
+    # Legacy fallback: time-window dedup (deprecated)
     if not license_plate or gate_id is None:
         return False
     tb = time_bucket(ts)
+    logger.warning(
+        "dedup: falling back to time-window for plate=%s gate=%s (no event_id)",
+        license_plate, gate_id,
+    )
     try:
-        return redis_is_duplicate(license_plate, gate_id, tb)
+        return redis_is_duplicate_legacy(license_plate, gate_id, tb)
     except Exception as e:
         logger.error(f"Deduplication check failed: {e}")
         return False
@@ -229,6 +249,8 @@ def process_incoming_decision(
     appointment_status: str, delivery_state: Optional[str] = None,
     alerts: Optional[List[Dict[str, Any]]] = None, notes: Optional[str] = None,
     extra_data: Optional[Dict[str, Any]] = None,
+    *,
+    event_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     from infrastructure.persistence.postgres import SessionLocal
     from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
@@ -240,12 +262,12 @@ def process_incoming_decision(
     ts = time.time()
 
     if appointment_id is None:
-        event_id = persist_decision_event(license_plate=license_plate, gate_id=gate_id, appointment_id=None, decision=decision, decision_data={"reason": "no_appointment_found", "decision_source": (extra_data or {}).get("decision_source", "automated"), "decision_reason": (extra_data or {}).get("decision_reason", "unknown"), "alerts": alerts or [], "notes": notes, **(extra_data or {})})
+        mongo_event_id = persist_decision_event(license_plate=license_plate, gate_id=gate_id, appointment_id=None, decision=decision, decision_data={"reason": "no_appointment_found", "decision_source": (extra_data or {}).get("decision_source", "automated"), "decision_reason": (extra_data or {}).get("decision_reason", "unknown"), "alerts": alerts or [], "notes": notes, **(extra_data or {})})
         increment_counter(gate_id, "decisions:unmatched")
         increment_counter(gate_id, f"decisions:{decision.lower()}")
-        return {"status": "persisted_unmatched", "decision": decision, "license_plate": license_plate, "gate_id": gate_id, "event_id": event_id, "reason": "no_appointment_found"}
+        return {"status": "persisted_unmatched", "decision": decision, "license_plate": license_plate, "gate_id": gate_id, "event_id": mongo_event_id, "reason": "no_appointment_found"}
 
-    if is_duplicate_and_mark(license_plate, gate_id, ts):
+    if is_duplicate_and_mark(license_plate, gate_id, ts, event_id=event_id):
         return {"status": "skipped", "reason": "duplicate_detection", "license_plate": license_plate, "gate_id": gate_id}
     cached = get_cached_decision(license_plate, gate_id, ts)
     if cached:
@@ -269,8 +291,8 @@ def process_incoming_decision(
             cmd_update_visit_state(_uow_factory, appointment_id, new_state=delivery_state)
 
     # Mongo event persistence (async projection — will become outbox-driven)
-    event_id = persist_decision_event(license_plate=license_plate, gate_id=gate_id, appointment_id=appointment_id, decision=decision, decision_data={"new_status": appointment_status, "delivery_state": delivery_state, "alerts_created": len(alerts) if alerts else 0, "notes": notes, **(extra_data or {})})
-    result = {"status": "processed", "decision": decision, "appointment_id": appointment_id, "new_status": appointment_status, "event_id": event_id}
+    mongo_event_id = persist_decision_event(license_plate=license_plate, gate_id=gate_id, appointment_id=appointment_id, decision=decision, decision_data={"new_status": appointment_status, "delivery_state": delivery_state, "alerts_created": len(alerts) if alerts else 0, "notes": notes, **(extra_data or {})})
+    result = {"status": "processed", "decision": decision, "appointment_id": appointment_id, "new_status": appointment_status, "event_id": mongo_event_id}
 
     # Redis cache updates (async projection — will become outbox-driven)
     cache_decision_result(license_plate, gate_id, ts, result)

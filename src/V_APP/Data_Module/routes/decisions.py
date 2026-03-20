@@ -32,6 +32,7 @@ from application.schemas import AppointmentStatusEnum, DeliveryStatusEnum
 
 class DecisionIncomingRequest(BaseModel):
     """Request from Decision Engine to process a decision."""
+    event_id: Optional[str] = None  # Caller-provided idempotency key (Guardrail 1)
     license_plate: str
     gate_id: int
     appointment_id: Optional[int] = None   # None when no matching appointment exists
@@ -104,6 +105,7 @@ def process_decision(request: DecisionIncomingRequest):
         alerts=request.alerts,
         notes=request.notes,
         extra_data=request.extra_data,
+        event_id=request.event_id,
     )
 
     return result

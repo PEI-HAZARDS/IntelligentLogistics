@@ -81,10 +81,27 @@ def operator_session_key(operator_id: str) -> str:
 
 # ==================== DEDUPLICATION ====================
 
+def is_duplicate_event(event_id: str) -> bool:
+    """
+    Event-id based idempotency check using SET NX.
+    Returns True if event_id was already seen (duplicate), False if new.
+    Key: ``dedup:event:{event_id}``
+    """
+    key = f"dedup:event:{event_id}"
+    try:
+        set_ok = redis_client.set(key, "1", nx=True, ex=TTL_DEDUP)
+        return not set_ok  # True if already existed
+    except Exception as e:
+        logger.error(f"Event dedup check failed for {event_id}: {e}")
+        return False  # Assume not duplicate on error
+
+
 def is_duplicate_and_mark(license_plate: str, gate_id: int, time_bucket: int) -> bool:
     """
-    Mark detection as processed using SET NX.
+    Legacy time-window dedup using SET NX.
     Returns True if already existed (duplicate), False if marked (not duplicate).
+
+    .. deprecated:: Use ``is_duplicate_event`` with an explicit event_id instead.
     """
     key = dedup_key(license_plate, gate_id, time_bucket)
     try:
