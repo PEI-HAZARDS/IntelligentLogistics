@@ -89,30 +89,23 @@ async def transport_stats_proxy(
 
 @router.get("/statistics/volume")
 async def volume_data(
-    gate_id: int = Query(1, description="Gate identifier"),
     interval: str = Query("hour", description="Aggregation interval"),
-    hours: int = Query(24, ge=1, le=168, description="Hours to look back"),
+    from_date: Optional[str] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
 ):
     """
-    Proxy to statistics trend endpoint.
-    Returns data shaped as VolumeDataPoint[]:
+    Proxy to Data Module /statistics/volume.
+    Returns real Visit entry/exit data as VolumeDataPoint[]:
       { timestamp, entries, exits }
     """
     try:
-        result = await internal_client.get(
-            f"/statistics/trend/{gate_id}/detections",
-            params={"hours": hours}
-        )
-        # Data Module returns {gate_id, metric, hours, data: [...]}
-        trend = result.get("data", []) if isinstance(result, dict) else result if isinstance(result, list) else []
-        return [
-            {
-                "timestamp": point.get("hour", point.get("timestamp", "")),
-                "entries": point.get("count", 0),
-                "exits": max(0, point.get("count", 0) - 2),  # Estimate
-            }
-            for point in trend
-        ]
+        params = {"interval": interval}
+        if from_date:
+            params["from"] = from_date
+        if to_date:
+            params["to"] = to_date
+        result = await internal_client.get("/statistics/volume", params=params)
+        return result if isinstance(result, list) else []
     except Exception:
         return []
 

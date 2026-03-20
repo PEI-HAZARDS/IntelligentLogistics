@@ -25,6 +25,8 @@ from application.queries.arrival_queries import (
     get_appointments_by_license_plate,
     get_appointments_count_by_status,
     get_next_appointments,
+    get_avg_permanence_minutes,
+    get_transport_stats_by_company,
 )
 from application.use_cases.appointment_commands import (
     cmd_update_status,
@@ -296,6 +298,34 @@ def get_arrivals_stats(
         return get_appointments_count_by_status(db, gate_id=gate_id, target_date=target_date)
 
     return get_or_cache(key=cache_key, ttl=30, fallback=_fallback)
+
+
+@router.get("/avg-permanence", response_model=Dict[str, Any])
+def get_avg_permanence(
+    gate_id: Optional[int] = Query(None, description="Filter by gate"),
+    target_date: Optional[date] = Query(None, description="Date (default: today)"),
+    db: Session = Depends(get_db),
+):
+    """
+    Average permanence (minutes) for completed visits.
+    Called by API Gateway to compose /statistics/summary.
+    """
+    avg = get_avg_permanence_minutes(db, target_date=target_date or date.today())
+    return {"avgPermanenceMinutes": avg}
+
+
+@router.get("/transport-stats", response_model=List[Dict[str, Any]])
+def get_transport_stats(
+    days: int = Query(30, ge=1, le=365, description="Lookback period in days"),
+    db: Session = Depends(get_db),
+):
+    """
+    Per-company transport statistics.
+    Called by API Gateway to serve /statistics/by-company.
+    Returns: [{companyName, companyNif, avgUnloadingTime, avgWaitingTime,
+               operationsCount, slaAttendedRate}]
+    """
+    return get_transport_stats_by_company(db, days=days)
 
 
 @router.get("/next/{gate_id}", response_model=List[Appointment])
