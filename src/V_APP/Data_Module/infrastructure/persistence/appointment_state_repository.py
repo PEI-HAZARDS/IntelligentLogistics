@@ -61,4 +61,6 @@ class SqlAlchemyAppointmentStateRepository(IAppointmentStateRepository):
             row.gate_out_id = metadata["gate_out_id"]
         if "notes" in metadata:
             row.notes = metadata["notes"]
+        if "highway_infraction" in metadata:
+            row.highway_infraction = metadata["highway_infraction"]
         self._session.flush()

@@ -21,6 +21,7 @@ from domain.interfaces import (
     IInboxRepository,
     IOutboxRepository,
     IUnitOfWork,
+    IVisitRepository,
     IWorkerRepository,
 )
 from infrastructure.persistence.alert_repository import SqlAlchemyAlertRepository
@@ -29,6 +30,7 @@ from infrastructure.persistence.appointment_state_repository import SqlAlchemyAp
 from infrastructure.persistence.driver_repository import SqlAlchemyDriverRepository
 from infrastructure.persistence.inbox_repository import SqlAlchemyInboxRepository
 from infrastructure.persistence.outbox_repository import SqlAlchemyOutboxRepository
+from infrastructure.persistence.visit_repository import SqlAlchemyVisitRepository
 from infrastructure.persistence.worker_repository import SqlAlchemyWorkerRepository
 
 
@@ -52,6 +54,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
     alerts: IAlertRepository
     drivers: IDriverRepository
     workers: IWorkerRepository
+    visits: IVisitRepository
     inbox: IInboxRepository
     outbox: IOutboxRepository
 
@@ -70,6 +73,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
         self.alerts = SqlAlchemyAlertRepository(self._session)
         self.drivers = SqlAlchemyDriverRepository(self._session)
         self.workers = SqlAlchemyWorkerRepository(self._session)
+        self.visits = SqlAlchemyVisitRepository(self._session)
         self.inbox = SqlAlchemyInboxRepository(self._session)
         self.outbox = SqlAlchemyOutboxRepository(self._session)
         return self

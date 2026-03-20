@@ -231,7 +231,11 @@ def process_incoming_decision(
     extra_data: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     from infrastructure.persistence.postgres import SessionLocal
-    from application.queries.arrival_queries import update_appointment_from_decision, update_visit_status
+    from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+    from application.use_cases.appointment_commands import (
+        cmd_process_decision,
+        cmd_update_visit_state,
+    )
 
     ts = time.time()
 
@@ -247,37 +251,47 @@ def process_incoming_decision(
     if cached:
         return {"status": "cached", "decision": cached, "license_plate": license_plate, "gate_id": gate_id}
 
-    db = SessionLocal()
-    try:
+    # Skip PG write when called from manual-review (already wrote via UoW)
+    skip_pg = (extra_data or {}).get("_skip_pg_write", False)
+
+    if not skip_pg:
+        # PG writes via UoW + Outbox (Guardrails 2, 3, 6)
+        def _uow_factory():
+            return SqlAlchemyUnitOfWork(SessionLocal)
+
         decision_payload = {"decision": decision, "status": appointment_status, "notes": notes, "alerts": alerts or []}
-        appointment = update_appointment_from_decision(db, appointment_id, decision_payload)
-        if not appointment:
+        cmd_result = cmd_process_decision(_uow_factory, appointment_id, decision_payload)
+        if cmd_result is None:
             persist_decision_event(license_plate=license_plate, gate_id=gate_id, appointment_id=appointment_id, decision="not_found", decision_data={"error": "Appointment not found"})
             return {"status": "error", "reason": "appointment_not_found", "appointment_id": appointment_id}
+
         if delivery_state:
-            update_visit_status(db, appointment_id, new_state=delivery_state)
-        event_id = persist_decision_event(license_plate=license_plate, gate_id=gate_id, appointment_id=appointment_id, decision=decision, decision_data={"new_status": appointment_status, "delivery_state": delivery_state, "alerts_created": len(alerts) if alerts else 0, "notes": notes, **(extra_data or {})})
-        result = {"status": "processed", "decision": decision, "appointment_id": appointment_id, "new_status": appointment_status, "event_id": event_id}
-        cache_decision_result(license_plate, gate_id, ts, result)
-        if appointment:
-            cache_appointment(appointment_id, {"appointment_id": appointment_id, "license_plate": license_plate, "driver_name": getattr(appointment.driver, 'name', 'Unknown') if appointment.driver else 'Unknown', "status": appointment_status, "scheduled_start": appointment.scheduled_start_time.isoformat() if appointment.scheduled_start_time else None, "gate_id": gate_id})
-        invalidate_license_plate_cache(license_plate)
-        increment_counter(gate_id, "decisions:processed")
-        if alerts:
-            for alert in alerts:
-                alert_type = alert.get("type", "")
-                if alert_type == "highway_infraction":
-                    title, ntype = "Highway Infraction", "danger"
-                elif alert_type == "manual_review":
-                    title, ntype = "Manual Review Needed", "warning"
-                else:
-                    title, ntype = "Vehicle Approved", "info"
-                create_notification(gate_id=gate_id, title=title, message=alert.get("message", f"Alert for {license_plate}"), notification_type=ntype, appointment_id=appointment_id, license_plate=license_plate, extra={"alert_type": alert_type})
-        elif decision == "approved":
-            create_notification(gate_id=gate_id, title="Vehicle Approved", message=f"Truck {license_plate} approved for entry.", notification_type="info", appointment_id=appointment_id, license_plate=license_plate)
-        return result
-    finally:
-        db.close()
+            cmd_update_visit_state(_uow_factory, appointment_id, new_state=delivery_state)
+
+    # Mongo event persistence (async projection — will become outbox-driven)
+    event_id = persist_decision_event(license_plate=license_plate, gate_id=gate_id, appointment_id=appointment_id, decision=decision, decision_data={"new_status": appointment_status, "delivery_state": delivery_state, "alerts_created": len(alerts) if alerts else 0, "notes": notes, **(extra_data or {})})
+    result = {"status": "processed", "decision": decision, "appointment_id": appointment_id, "new_status": appointment_status, "event_id": event_id}
+
+    # Redis cache updates (async projection — will become outbox-driven)
+    cache_decision_result(license_plate, gate_id, ts, result)
+    cache_appointment(appointment_id, {"appointment_id": appointment_id, "license_plate": license_plate, "status": appointment_status, "gate_id": gate_id})
+    invalidate_license_plate_cache(license_plate)
+    increment_counter(gate_id, "decisions:processed")
+
+    # Notifications (async projection — will become outbox-driven)
+    if alerts:
+        for alert in alerts:
+            alert_type = alert.get("type", "")
+            if alert_type == "highway_infraction":
+                title, ntype = "Highway Infraction", "danger"
+            elif alert_type == "manual_review":
+                title, ntype = "Manual Review Needed", "warning"
+            else:
+                title, ntype = "Vehicle Approved", "info"
+            create_notification(gate_id=gate_id, title=title, message=alert.get("message", f"Alert for {license_plate}"), notification_type=ntype, appointment_id=appointment_id, license_plate=license_plate, extra={"alert_type": alert_type})
+    elif decision == "approved":
+        create_notification(gate_id=gate_id, title="Vehicle Approved", message=f"Truck {license_plate} approved for entry.", notification_type="info", appointment_id=appointment_id, license_plate=license_plate)
+    return result
 
 
 def query_appointments_for_decision(gate_id: int) -> Dict[str, Any]:
@@ -304,22 +318,28 @@ def persist_infraction_event_from_kafka(truck_id: str, infraction_data: Dict[str
 def update_appointment_after_infraction(license_plate: str, infraction: bool = True) -> Optional[Dict[str, Any]]:
     from infrastructure.persistence.postgres import SessionLocal
     from infrastructure.persistence.sql_models import Appointment
+
+    # Read: find the active appointment by license plate
     db = SessionLocal()
     try:
         appointment = db.query(Appointment).filter(Appointment.truck_license_plate == license_plate, Appointment.status.in_(["in_transit", "delayed", "in_process"])).order_by(Appointment.scheduled_start_time.desc(), Appointment.id.desc()).first()
         if not appointment:
             logger.warning(f"No active appointment found for infraction update: license_plate={license_plate}")
             return None
+        appointment_id = appointment.id
         old_highway_infraction = bool(appointment.highway_infraction)
-        new_highway_infraction = old_highway_infraction or bool(infraction)
-        if new_highway_infraction != old_highway_infraction:
-            appointment.highway_infraction = new_highway_infraction
-            db.commit()
-            db.refresh(appointment)
-        return {"appointment_id": appointment.id, "appointment_status": appointment.status, "old_highway_infraction": old_highway_infraction, "new_highway_infraction": bool(appointment.highway_infraction)}
-    except Exception as e:
-        logger.error(f"Error updating appointment highway infraction: {e}", exc_info=True)
-        db.rollback()
-        return None
     finally:
         db.close()
+
+    new_highway_infraction = old_highway_infraction or bool(infraction)
+    if new_highway_infraction != old_highway_infraction:
+        # Write via UoW + Outbox (Guardrails 2, 3, 6)
+        from application.use_cases.appointment_commands import cmd_flag_highway_infraction
+        from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+
+        def _uow_factory():
+            return SqlAlchemyUnitOfWork(SessionLocal)
+
+        cmd_flag_highway_infraction(_uow_factory, appointment_id)
+
+    return {"appointment_id": appointment_id, "appointment_status": appointment.status, "old_highway_infraction": old_highway_infraction, "new_highway_infraction": new_highway_infraction}

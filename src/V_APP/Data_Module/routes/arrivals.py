@@ -24,12 +24,14 @@ from application.queries.arrival_queries import (
     get_appointment_by_arrival_id,
     get_appointments_by_license_plate,
     get_appointments_count_by_status,
-    update_appointment_status,
-    update_appointment_from_decision,
-    flag_appointment_highway_infraction,
     get_next_appointments,
-    create_visit_for_appointment,
-    update_visit_status,
+)
+from application.use_cases.appointment_commands import (
+    cmd_update_status,
+    cmd_process_decision,
+    cmd_flag_highway_infraction,
+    cmd_create_visit,
+    cmd_update_visit_state,
 )
 from application.queries.cache_queries import get_or_cache
 from infrastructure.persistence.redis import get_cached_appointment, cache_appointment
@@ -44,8 +46,14 @@ class PaginatedResponse(BaseModel, Generic[T]):
     limit: int
     pages: int
 from infrastructure.persistence.sql_models import ShiftType
-from infrastructure.persistence.postgres import get_db
+from infrastructure.persistence.postgres import get_db, SessionLocal
+from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from utils.shift_utils import parse_shift_type
+
+
+def _uow_factory():
+    """Return a new UoW context manager (Guardrail 6)."""
+    return SqlAlchemyUnitOfWork(SessionLocal)
 
 router = APIRouter(prefix="/arrivals", tags=["Arrivals"])
 
@@ -534,9 +542,11 @@ def flag_highway_infraction(
     Flag an appointment as highway infraction.
     Hazmat truck detected on restricted highway route before port entry.
     """
-    appointment = flag_appointment_highway_infraction(db, appointment_id)
-    if not appointment:
+    result = cmd_flag_highway_infraction(_uow_factory, appointment_id)
+    if result is None:
         raise HTTPException(status_code=404, detail="Appointment not found")
+    # CQRS read-after-write: re-query for full ORM response
+    appointment = get_appointment_by_id(db, appointment_id)
     return Appointment.model_validate(appointment)
 
 
@@ -549,16 +559,18 @@ def update_status(
     db: Session = Depends(get_db)
 ):
     """
-    Updates appointment status.
+    Updates appointment status via UoW + Outbox (Guardrails 2, 3, 6).
     Used by operator or system for manual updates.
     """
-    appointment = update_appointment_status(
-        db, appointment_id=appointment_id,
+    result = cmd_update_status(
+        _uow_factory, appointment_id,
         new_status=update_data.status,
-        notes=update_data.notes
+        notes=update_data.notes,
     )
-    if not appointment:
+    if result is None:
         raise HTTPException(status_code=404, detail="Appointment not found")
+    # CQRS read-after-write
+    appointment = get_appointment_by_id(db, appointment_id)
     return Appointment.model_validate(appointment)
 
 
@@ -569,7 +581,7 @@ def process_decision(
     db: Session = Depends(get_db)
 ):
     """
-    Processes Decision Engine decision.
+    Processes Decision Engine decision via UoW + Outbox (Guardrails 2, 3, 6).
     Updates status and creates alerts if needed.
 
     Expected payload:
@@ -582,12 +594,14 @@ def process_decision(
         ]
     }
     """
-    appointment = update_appointment_from_decision(
-        db, appointment_id=appointment_id,
-        decision_payload=decision
+    result = cmd_process_decision(
+        _uow_factory, appointment_id,
+        decision_payload=decision,
     )
-    if not appointment:
+    if result is None:
         raise HTTPException(status_code=404, detail="Appointment not found")
+    # CQRS read-after-write
+    appointment = get_appointment_by_id(db, appointment_id)
     return Appointment.model_validate(appointment)
 
 
@@ -600,7 +614,7 @@ def create_visit(
     db: Session = Depends(get_db)
 ):
     """
-    Creates a visit when truck arrives.
+    Creates a visit when truck arrives via UoW + Outbox (Guardrails 2, 3, 6).
     Called when appointment starts execution.
     Uses composite FK to Shift.
     """
@@ -609,16 +623,19 @@ def create_visit(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    visit = create_visit_for_appointment(
-        db,
+    result = cmd_create_visit(
+        _uow_factory,
         appointment_id,
         shift_gate_id=request.shift_gate_id,
         shift_type=shift_type_enum,
-        shift_date=request.shift_date
+        shift_date=request.shift_date,
     )
-    if not visit:
+    if result is None:
         raise HTTPException(status_code=404, detail="Appointment not found or visit already exists")
-    return Visit.model_validate(visit)
+    # CQRS read-after-write
+    from infrastructure.persistence.sql_models import Visit as VisitORM
+    visit_orm = db.query(VisitORM).filter(VisitORM.appointment_id == appointment_id).first()
+    return Visit.model_validate(visit_orm)
 
 
 @router.patch("/{appointment_id}/visit", response_model=Visit)
@@ -628,13 +645,17 @@ def update_visit(
     db: Session = Depends(get_db)
 ):
     """
-    Updates visit status (e.g., to 'completed' when truck leaves).
+    Updates visit status via UoW + Outbox (Guardrails 2, 3, 6).
+    E.g., to 'completed' when truck leaves.
     """
-    visit = update_visit_status(
-        db, appointment_id=appointment_id,
+    result = cmd_update_visit_state(
+        _uow_factory, appointment_id,
         new_state=update_data.state,
-        out_time=update_data.out_time
+        out_time=update_data.out_time,
     )
-    if not visit:
+    if result is None:
         raise HTTPException(status_code=404, detail="Visit not found")
-    return Visit.model_validate(visit)
+    # CQRS read-after-write
+    from infrastructure.persistence.sql_models import Visit as VisitORM
+    visit_orm = db.query(VisitORM).filter(VisitORM.appointment_id == appointment_id).first()
+    return Visit.model_validate(visit_orm)

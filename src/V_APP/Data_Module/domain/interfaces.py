@@ -191,6 +191,38 @@ class IWorkerRepository(ABC):
         ...
 
 
+class IVisitRepository(ABC):
+    """Repository for visit lifecycle within UoW."""
+
+    @abstractmethod
+    def create(
+        self,
+        appointment_id: int,
+        shift_gate_id: int,
+        shift_type: str,
+        shift_date: Any,
+        entry_time: Any = None,
+    ) -> Optional[dict[str, Any]]:
+        """Create a visit row. Returns None if appointment doesn't exist.
+        Returns existing visit dict if one already exists (idempotent).
+        """
+        ...
+
+    @abstractmethod
+    def update_state(
+        self,
+        appointment_id: int,
+        new_state: str,
+        out_time: Any = None,
+    ) -> Optional[dict[str, Any]]:
+        """Update visit state. Returns None if visit not found."""
+        ...
+
+    @abstractmethod
+    def get_by_appointment(self, appointment_id: int) -> Optional[dict[str, Any]]:
+        ...
+
+
 class IUnitOfWork(ABC):
     """
     Transactional boundary that groups Inbox + Outbox + domain
@@ -204,6 +236,7 @@ class IUnitOfWork(ABC):
     alerts: IAlertRepository
     drivers: IDriverRepository
     workers: IWorkerRepository
+    visits: IVisitRepository
     inbox: IInboxRepository
     outbox: IOutboxRepository
 

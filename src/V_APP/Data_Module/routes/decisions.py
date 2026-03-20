@@ -231,67 +231,77 @@ def manual_review(
     db: Session = Depends(get_db)
 ):
     """
-    Endpoint for operator manual review.
+    Endpoint for operator manual review — UoW + Outbox (Guardrails 2, 3, 6).
     Used when Decision Engine cannot decide automatically.
-    
-    Uses a single DB session for atomicity — if visit creation fails,
-    the entire transaction is rolled back.
-    
+
     When approved:
     - Updates Appointment.status to 'in_process' (confirmed arrival)
     - Creates Visit with state='unloading' if gate_id provided
-    
+
     When rejected:
     - Updates Appointment.status to 'canceled'
     """
-    from application.queries.arrival_queries import create_visit_for_appointment, update_appointment_from_decision
+    from application.use_cases.appointment_commands import (
+        cmd_process_decision,
+        cmd_create_visit,
+    )
+    from infrastructure.persistence.postgres import SessionLocal
+    from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
     from infrastructure.persistence.sql_models import ShiftType
     from datetime import date
-    
+
+    def _uow_factory():
+        return SqlAlchemyUnitOfWork(SessionLocal)
+
     # Map decision to appointment status
     if decision == "approved":
         new_status = "in_process"
     else:
         new_status = "canceled"
-    
-    # Build decision payload for update_appointment_from_decision
+
+    # Build decision payload
     decision_payload = {
         "decision": decision,
         "status": new_status,
         "notes": f"[MANUAL REVIEW] {notes or ''}",
         "manual_review": True,
     }
-    
-    # Update appointment via canonical function (single session)
-    appointment = update_appointment_from_decision(db, appointment_id, decision_payload)
-    
+
+    # PG write via UoW + Outbox (Guardrails 2, 3, 6)
+    cmd_result = cmd_process_decision(_uow_factory, appointment_id, decision_payload)
+
     result = {
         "status": "ok",
         "appointment_id": appointment_id,
         "decision": decision,
         "new_status": new_status,
     }
-    
-    if not appointment:
+
+    if cmd_result is None:
         result["warning"] = "Appointment not found"
         return result
-    
-    # Also persist to MongoDB for audit trail
+
+    # MongoDB audit trail (async projection — will become outbox-driven later)
     try:
+        # Read license plate for Mongo audit
+        from application.queries.arrival_queries import get_appointment_by_id
+        appointment = get_appointment_by_id(db, appointment_id)
+        license_plate = appointment.truck_license_plate if appointment else "MANUAL"
+
         process_incoming_decision(
-            license_plate=appointment.truck_license_plate or "MANUAL",
+            license_plate=license_plate,
             gate_id=gate_id or 0,
             appointment_id=appointment_id,
             decision=decision,
             appointment_status=new_status,
             delivery_state=None,
             notes=f"[MANUAL REVIEW] {notes or ''}",
-            extra_data={"manual_review": True}
+            extra_data={"manual_review": True, "_skip_pg_write": True}
         )
     except Exception as e:
         logger.warning(f"MongoDB audit persistence failed for manual review: {e}")
-    
-    # If approved and gate_id provided, create Visit with 'unloading' state (same session)
+
+    # If approved and gate_id provided, create Visit via UoW + Outbox
     if decision == "approved" and gate_id:
         try:
             hour = datetime.now().hour
@@ -301,19 +311,19 @@ def manual_review(
                 shift_type = ShiftType.AFTERNOON
             else:
                 shift_type = ShiftType.NIGHT
-            
-            visit = create_visit_for_appointment(
-                db,
+
+            visit_result = cmd_create_visit(
+                _uow_factory,
                 appointment_id=appointment_id,
                 shift_gate_id=gate_id,
                 shift_type=shift_type,
-                shift_date=date.today()
+                shift_date=date.today(),
             )
-            if visit:
+            if visit_result:
                 result["visit_created"] = True
                 result["visit_state"] = "unloading"
         except Exception as e:
             result["visit_error"] = str(e)
-    
+
     return result
 
