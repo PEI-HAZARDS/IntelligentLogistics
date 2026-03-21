@@ -364,24 +364,57 @@ def init_data(db: Session):
         db.add_all(trucks)
         db.flush()
 
-        # ===== TERMINAL =====
-        print("Creating Porto de Aveiro terminal...")
-        terminal = Terminal(
-            name="Terminal Multiusos - Porto de Aveiro",
-            latitude=Decimal("40.6446"), longitude=Decimal("-8.7455"),
-            hazmat_approved=True
+        # ===== TERMINALS — Reais do Porto de Aveiro =====
+        # Fonte: Movimento_pesados_2024_PortoAveiro.xlsx
+        #   Folhas: Terminal Norte_pesados | TGraneis Solidos_pesados | TGraneis_Liquidos_pesados
+        print("Creating Porto de Aveiro terminals (Terminal Norte, Granéis Sólidos, Granéis Líquidos)...")
+
+        terminal_norte = Terminal(
+            name="Terminal Norte - Porto de Aveiro",
+            latitude=Decimal("40.6520"), longitude=Decimal("-8.7430"),
+            hazmat_approved=False
         )
-        db.add(terminal)
+        terminal_solidos = Terminal(
+            name="Terminal de Granéis Sólidos - Porto de Aveiro",
+            latitude=Decimal("40.6446"), longitude=Decimal("-8.7490"),
+            hazmat_approved=False
+        )
+        terminal_liquidos = Terminal(
+            name="Terminal de Granéis Líquidos - Porto de Aveiro",
+            latitude=Decimal("40.6360"), longitude=Decimal("-8.7520"),
+            hazmat_approved=True   # HAZMAT approved — liquid/chemical cargo
+        )
+        db.add_all([terminal_norte, terminal_solidos, terminal_liquidos])
         db.flush()
 
-        # ===== DOCKS =====
+        # Use terminal_liquidos as primary ref for HAZMAT appointments (87AX60)
+        # Other appointments spread across all 3 terminals
+        terminal = terminal_liquidos  # backward compat alias used below
+
+        # ===== DOCKS — distributed across the 3 terminals =====
         print("Creating docks...")
         docks = [
-            Dock(terminal_id=terminal.id, bay_number="CAIS-NORTE-1", latitude=Decimal("40.6450"), longitude=Decimal("-8.7460"), current_usage="operational"),
-            Dock(terminal_id=terminal.id, bay_number="CAIS-NORTE-2", latitude=Decimal("40.6451"), longitude=Decimal("-8.7461"), current_usage="operational"),
-            Dock(terminal_id=terminal.id, bay_number="CAIS-SUL-1",   latitude=Decimal("40.6440"), longitude=Decimal("-8.7450"), current_usage="operational"),
-            Dock(terminal_id=terminal.id, bay_number="CAIS-SUL-2",   latitude=Decimal("40.6441"), longitude=Decimal("-8.7451"), current_usage="operational"),
-            Dock(terminal_id=terminal.id, bay_number="CAIS-HAZMAT",  latitude=Decimal("40.6435"), longitude=Decimal("-8.7445"), current_usage="operational"),
+            # Terminal Norte — general cargo, ro-ro
+            Dock(terminal_id=terminal_norte.id, bay_number="TN-CAIS-1",
+                 latitude=Decimal("40.6522"), longitude=Decimal("-8.7428"), current_usage="operational"),
+            Dock(terminal_id=terminal_norte.id, bay_number="TN-CAIS-2",
+                 latitude=Decimal("40.6524"), longitude=Decimal("-8.7426"), current_usage="operational"),
+            Dock(terminal_id=terminal_norte.id, bay_number="TN-RORO",
+                 latitude=Decimal("40.6518"), longitude=Decimal("-8.7432"), current_usage="operational"),
+            # Terminal Granéis Sólidos — bulk solids (cork, pulp, cereals, fertilizers)
+            Dock(terminal_id=terminal_solidos.id, bay_number="TGS-CAIS-A",
+                 latitude=Decimal("40.6448"), longitude=Decimal("-8.7492"), current_usage="operational"),
+            Dock(terminal_id=terminal_solidos.id, bay_number="TGS-CAIS-B",
+                 latitude=Decimal("40.6450"), longitude=Decimal("-8.7494"), current_usage="operational"),
+            Dock(terminal_id=terminal_solidos.id, bay_number="TGS-SILO",
+                 latitude=Decimal("40.6444"), longitude=Decimal("-8.7488"), current_usage="operational"),
+            # Terminal Granéis Líquidos — liquid/chemical/HAZMAT
+            Dock(terminal_id=terminal_liquidos.id, bay_number="TGL-CAIS-1",
+                 latitude=Decimal("40.6362"), longitude=Decimal("-8.7522"), current_usage="operational"),
+            Dock(terminal_id=terminal_liquidos.id, bay_number="TGL-CAIS-2",
+                 latitude=Decimal("40.6364"), longitude=Decimal("-8.7524"), current_usage="operational"),
+            Dock(terminal_id=terminal_liquidos.id, bay_number="TGL-HAZMAT",
+                 latitude=Decimal("40.6358"), longitude=Decimal("-8.7518"), current_usage="operational"),
         ]
         db.add_all(docks)
         db.flush()
@@ -446,7 +479,7 @@ def init_data(db: Session):
             booking_reference=bk0.reference,
             driver_license="PT12345678",  # Oscar Almeida
             truck_license_plate="87AX60",
-            terminal_id=terminal.id,
+            terminal_id=terminal_liquidos.id,  # HAZMAT → Terminal de Granéis Líquidos
             gate_in_id=gate_in.id,
             gate_out_id=None,
             scheduled_start_time=appt0_time,
@@ -482,7 +515,7 @@ def init_data(db: Session):
             driver_idx = i % len(drivers)
 
             appt = _make_appointment(
-                db, bk.reference, drivers[driver_idx], trucks[i], terminal,
+                db, bk.reference, drivers[driver_idx], trucks[i], terminal_liquidos,
                 gate_in, gate_out, sched_time, status,
                 f"HAZMAT: {cargo_def[0]} [UN:{cargo_def[4]}, Kemler:{cargo_def[5]}]",
                 highway_infraction=(i == 1),  # AA00AA flagged
@@ -520,6 +553,12 @@ def init_data(db: Session):
             (19, 19, "canceled",   False, None, 60,  None),
         ]
 
+        # Rotate appointments across the 3 real Porto de Aveiro terminals:
+        #   0 → Terminal Norte (general cargo, ro-ro)
+        #   1 → Terminal de Granéis Sólidos (bulk solids: cork, pulp, cereals)
+        #   2 → Terminal de Granéis Líquidos (liquid/chemical — HAZMAT approved)
+        all_terminals = [terminal_norte, terminal_solidos, terminal_liquidos]
+
         for cfg in normal_configs:
             tidx, cidx, status, has_visit, dur, mins, alert_t = cfg
             plate, brand, comp_idx = TRUCKS[tidx]
@@ -531,8 +570,17 @@ def init_data(db: Session):
 
             sched_time = now - timedelta(minutes=mins) if mins > 0 else now + timedelta(minutes=abs(mins))
 
+            # Distribute across terminals: HAZMAT cargo goes to Granéis Líquidos,
+            # solid bulk to Granéis Sólidos, general to Terminal Norte
+            if cargo_def[3]:  # is_hazmat
+                appt_terminal = terminal_liquidos
+            elif cargo_def[2] >= 20000 and cargo_def[1] == "solid":  # heavy bulk solids
+                appt_terminal = terminal_solidos
+            else:
+                appt_terminal = all_terminals[tidx % 3]
+
             appt = _make_appointment(
-                db, bk.reference, drivers[driver_idx], trucks[tidx], terminal,
+                db, bk.reference, drivers[driver_idx], trucks[tidx], appt_terminal,
                 gate_in, gate_out, sched_time, status, f"Cargo: {cargo_def[0]}",
             )
 
@@ -606,8 +654,15 @@ def init_data(db: Session):
             else:
                 sched_time = now - timedelta(minutes=int(mins))
 
+            if cargo_def[3]:  # is_hazmat
+                appt_terminal = terminal_liquidos
+            elif cargo_def[2] >= 20000 and cargo_def[1] == "solid":
+                appt_terminal = terminal_solidos
+            else:
+                appt_terminal = all_terminals[tidx % 3]
+
             appt = _make_appointment(
-                db, bk.reference, drivers[driver_idx], trucks[tidx], terminal,
+                db, bk.reference, drivers[driver_idx], trucks[tidx], appt_terminal,
                 gate_in, gate_out, sched_time, status, f"Cargo: {cargo_def[0]}",
             )
 
@@ -642,16 +697,18 @@ def init_data(db: Session):
         print("Creating 5 days of historical data...")
         historical_counts = [10, 12, 8, 11, 9]  # appointments per day (varied)
 
+        # Rotate historical data across the 3 real terminals
+        hist_terminals = [terminal_norte, terminal_solidos, terminal_liquidos, terminal_norte, terminal_solidos]
         for day_offset in range(1, 6):
             d = today - timedelta(days=day_offset)
             count = historical_counts[day_offset - 1]
             sm = shift_map[(gate_in.id, ShiftType.MORNING, d)]
             sa = shift_map[(gate_in.id, ShiftType.AFTERNOON, d)]
             created = _generate_historical_day(
-                db, d, trucks, drivers, terminal, gate_in, gate_out, sm, sa, count,
-                f"D-{day_offset}"
+                db, d, trucks, drivers, hist_terminals[day_offset - 1],
+                gate_in, gate_out, sm, sa, count, f"D-{day_offset}"
             )
-            print(f"  Day {d}: {created} appointments")
+            print(f"  Day {d}: {created} appointments [{hist_terminals[day_offset-1].name}]")
 
         # ===== COMMIT =====
         print("\nSaving to database...")
@@ -706,11 +763,17 @@ def init_data(db: Session):
 |                    HAZMAT DEMO - STAR SCENARIO                       |
 +=====================================================================+
 |                                                                      |
+|  TERMINALS (reais Porto de Aveiro):                                  |
+|  * Terminal Norte          (40.6520N, 8.7430W) — general cargo      |
+|  * Terminal Graneis Solidos(40.6446N, 8.7490W) — bulk solids        |
+|  * Terminal Graneis Liquidos(40.6360N, 8.7520W) — liquid/HAZMAT     |
+|                                                                      |
 |  STAR SCENARIO (in_transit — approaching port):                      |
 |  Truck 87AX60 | Driver: Oscar Almeida (PT12345678)                  |
 |  Cargo: Sulfuric acid (fuming) - 22 tonnes                          |
 |  ADR Classification: UN 1831, Kemler X886                            |
 |  -> Corrosive, reacts dangerously with water                         |
+|  Destino: Terminal de Graneis Liquidos (HAZMAT approved)            |
 |                                                                      |
 |  Current state:                                                      |
 |  1. NO pre-seeded infraction (detected at runtime)                   |

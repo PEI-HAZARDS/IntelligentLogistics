@@ -265,3 +265,62 @@ class TestProcessIncomingDecisionRefactored:
         assert "cmd_create_visit" in source, (
             "decisions.py manual-review must use cmd_create_visit."
         )
+
+
+# =================================================================
+# 9. process_incoming_decision does NOT write partial Redis cache
+# =================================================================
+
+ARRIVAL_QUERIES_PATH = SRC / "application" / "queries" / "arrival_queries.py"
+
+@pytest.mark.unit
+class TestNoPartialCacheWrite:
+    """process_incoming_decision must NOT call cache_appointment directly."""
+
+    def test_no_cache_appointment_in_process_incoming_decision(self):
+        source = _read(DECISION_QUERIES_PATH)
+        func_start = source.index("def process_incoming_decision(")
+        next_func = source.index("\ndef ", func_start + 1)
+        func_body = source[func_start:next_func]
+        assert "cache_appointment(" not in func_body, (
+            "process_incoming_decision must not call cache_appointment "
+            "directly — it writes a partial snapshot that overwrites "
+            "the full projection from the outbox worker."
+        )
+
+    def test_uses_invalidate_appointment_cache(self):
+        source = _read(DECISION_QUERIES_PATH)
+        assert "invalidate_appointment_cache" in source, (
+            "decision_queries.py must use invalidate_appointment_cache "
+            "to clear stale cache entries instead of writing partial data."
+        )
+
+
+# =================================================================
+# 10. Legacy ORM functions carry deprecation warnings
+# =================================================================
+
+@pytest.mark.unit
+class TestLegacyFunctionsDeprecated:
+    """Legacy direct-ORM functions must have DEPRECATED docstrings."""
+
+    @pytest.mark.parametrize("fn_name", [
+        "update_appointment_status",
+        "create_visit_for_appointment",
+        "update_visit_status",
+        "update_appointment_from_decision",
+        "flag_appointment_highway_infraction",
+    ])
+    def test_legacy_function_has_deprecation_warning(self, fn_name):
+        source = _read(ARRIVAL_QUERIES_PATH)
+        func_start = source.index(f"def {fn_name}(")
+        # Find the next top-level function or end of file
+        try:
+            next_func = source.index("\ndef ", func_start + 1)
+        except ValueError:
+            next_func = len(source)
+        func_body = source[func_start:next_func]
+        assert "DEPRECATED" in func_body, (
+            f"{fn_name} must carry a DEPRECATED docstring — "
+            "it bypasses UoW + Outbox and changes will not sync."
+        )

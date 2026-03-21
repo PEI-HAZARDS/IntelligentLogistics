@@ -24,7 +24,7 @@ from infrastructure.persistence.redis import (
     get_cached_decision as redis_get_decision,
     cache_decision as redis_cache_decision,
     increment_counter,
-    cache_appointment,
+    invalidate_appointment_cache,
     invalidate_license_plate_cache,
 )
 
@@ -299,9 +299,12 @@ def process_incoming_decision(
     if mongo_event_id is None:
         result["warning"] = "mongo_write_failed"
 
-    # Redis cache updates (async projection — will become outbox-driven)
+    # Redis cache updates — decision result cache + counters are separate keys
+    # managed outside the outbox; appointment cache is managed by the outbox
+    # worker projection (Guardrail 3).  Invalidate stale entry so the next
+    # read falls through to the full PG/Mongo snapshot.
     cache_decision_result(license_plate, gate_id, ts, result)
-    cache_appointment(appointment_id, {"appointment_id": appointment_id, "license_plate": license_plate, "status": appointment_status, "gate_id": gate_id})
+    invalidate_appointment_cache(int(appointment_id))
     invalidate_license_plate_cache(license_plate)
     increment_counter(gate_id, "decisions:processed")
 

@@ -355,6 +355,16 @@ def get_appointments_count_by_status(
 
 
 def update_appointment_status(db: Session, appointment_id: int, new_status: str, notes: Optional[str] = None) -> Optional[Appointment]:
+    """DEPRECATED — bypasses UoW + Outbox.  Changes made here will
+    NOT propagate to MongoDB or Redis.  Use
+    ``appointment_commands.cmd_update_status`` instead.
+    """
+    import warnings
+    warnings.warn(
+        "update_appointment_status bypasses UoW + Outbox — use cmd_update_status",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appointment:
         return None
@@ -376,6 +386,16 @@ def create_visit_for_appointment(
     shift_date: date,
     entry_time: Optional[datetime] = None
 ) -> Optional[Visit]:
+    """DEPRECATED — bypasses UoW + Outbox.  Changes made here will
+    NOT propagate to MongoDB or Redis.  Use
+    ``appointment_commands.cmd_create_visit`` instead.
+    """
+    import warnings
+    warnings.warn(
+        "create_visit_for_appointment bypasses UoW + Outbox — use cmd_create_visit",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appointment:
         return None
@@ -397,6 +417,16 @@ def create_visit_for_appointment(
 
 
 def update_visit_status(db: Session, appointment_id: int, new_state: str, out_time: Optional[datetime] = None) -> Optional[Visit]:
+    """DEPRECATED — bypasses UoW + Outbox.  Changes made here will
+    NOT propagate to MongoDB or Redis.  Use
+    ``appointment_commands.cmd_update_visit_state`` instead.
+    """
+    import warnings
+    warnings.warn(
+        "update_visit_status bypasses UoW + Outbox — use cmd_update_visit_state",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     visit = db.query(Visit).filter(Visit.appointment_id == appointment_id).first()
     if not visit:
         return None
@@ -411,6 +441,16 @@ def update_visit_status(db: Session, appointment_id: int, new_state: str, out_ti
 
 
 def update_appointment_from_decision(db: Session, appointment_id: int, decision_payload: Dict[str, Any]) -> Optional[Appointment]:
+    """DEPRECATED — bypasses UoW + Outbox.  Changes made here will
+    NOT propagate to MongoDB or Redis.  Use
+    ``appointment_commands.cmd_process_decision`` instead.
+    """
+    import warnings
+    warnings.warn(
+        "update_appointment_from_decision bypasses UoW + Outbox — use cmd_process_decision",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appointment:
         return None
@@ -435,6 +475,16 @@ def update_appointment_from_decision(db: Session, appointment_id: int, decision_
 
 
 def flag_appointment_highway_infraction(db: Session, appointment_id: int) -> Optional[Appointment]:
+    """DEPRECATED — bypasses UoW + Outbox.  Changes made here will
+    NOT propagate to MongoDB or Redis.  Use
+    ``appointment_commands.cmd_flag_highway_infraction`` instead.
+    """
+    import warnings
+    warnings.warn(
+        "flag_appointment_highway_infraction bypasses UoW + Outbox — use cmd_flag_highway_infraction",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appointment:
         return None
