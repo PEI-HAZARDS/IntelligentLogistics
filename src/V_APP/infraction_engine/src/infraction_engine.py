@@ -73,8 +73,9 @@ class InfractionEngine(BaseDecisionEngine):
             )
             return
 
-        # Truck IS hazardous — check if it has a matching appointment at THIS gate.
-        has_appointment, license_plate = self._has_matching_appointment("1", license_plate)
+        # Truck IS hazardous — check against the configured operational gate.
+        operational_gate_id = self.config.decision_gate_id_list[0]
+        has_appointment, license_plate = self._has_matching_appointment(operational_gate_id, license_plate)
         infraction = True
         
         if has_appointment:
@@ -146,10 +147,13 @@ class InfractionEngine(BaseDecisionEngine):
             hazard_crop_url=hz_msg.crop_url,
             infraction=infraction,
         )
+        payload = message.to_dict()
+        payload["source_gate_id"] = str(gate_id)
+        payload["gate_id"] = str(self.config.decision_gate_id_list[0])
 
         self.kafka_producer.produce(
             topic=produce_topic,
-            data=message.to_dict(),
+            data=payload,
             headers={"truckId": truck_id},
         )
 

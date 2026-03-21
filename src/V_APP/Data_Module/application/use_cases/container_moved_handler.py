@@ -14,7 +14,7 @@ Guardrails enforced:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 from uuid import uuid4
 
@@ -82,6 +82,13 @@ class ContainerMovedHandler:
                 appointment_id, new_state, metadata
             )
 
+            # Auto-create visit when transitioning to in_process (accept)
+            visit_created = False
+            if new_state == "in_process" and aggregate["status"] != "in_process":
+                visit_created = self._auto_create_visit(
+                    uow, appointment_id, event.payload, aggregate
+                )
+
             # Persist derived domain event in Outbox (Guardrail 3)
             derived_event = EventEnvelope(
                 event_id=str(uuid4()),
@@ -98,6 +105,7 @@ class ContainerMovedHandler:
                     "appointment_id": appointment_id,
                     "previous_state": aggregate["status"],
                     "new_state": new_state,
+                    "visit_created": visit_created,
                     **metadata,
                 },
             )
@@ -114,10 +122,132 @@ class ContainerMovedHandler:
             uow.commit()
 
         logger.info(
-            "ContainerMoved processed: appointment=%s  %s → %s",
+            "ContainerMoved processed: appointment=%s  %s → %s  visit_created=%s",
             appointment_id,
             aggregate["status"],
             new_state,
+            visit_created,
+        )
+
+        # ── Post-commit: create notifications (best-effort, outside UoW) ──
+        try:
+            self._create_accept_notifications(
+                appointment_id, event.payload, aggregate, new_state
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to create notifications for appointment=%s: %s",
+                appointment_id, e,
+            )
+
+    # ------------------------------------------------------------------
+    # Auto-create visit on accept
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _auto_create_visit(
+        uow: IUnitOfWork,
+        appointment_id: int,
+        payload: dict[str, Any],
+        aggregate: dict[str, Any],
+    ) -> bool:
+        """Auto-create a Visit within the same UoW transaction on accept."""
+        gate_id = (
+            payload.get("gate_id")
+            or payload.get("gate_in_id")
+            or aggregate.get("gate_in_id")
+        )
+        if not gate_id:
+            logger.warning(
+                "Cannot auto-create visit for appointment=%s: no gate_id",
+                appointment_id,
+            )
+            return False
+
+        try:
+            gate_id_int = int(gate_id)
+        except (TypeError, ValueError):
+            logger.warning("Invalid gate_id=%s for visit auto-creation", gate_id)
+            return False
+
+        # Determine current shift type from time of day
+        now = datetime.now()
+        hour = now.hour
+        if 6 <= hour < 14:
+            shift_type = "MORNING"
+        elif 14 <= hour < 22:
+            shift_type = "AFTERNOON"
+        else:
+            shift_type = "NIGHT"
+
+        visit = uow.visits.create(
+            appointment_id=appointment_id,
+            shift_gate_id=gate_id_int,
+            shift_type=shift_type,
+            shift_date=date.today(),
+            entry_time=now,
+        )
+        if visit:
+            logger.info(
+                "Auto-created visit for appointment=%s at gate=%s shift=%s",
+                appointment_id, gate_id_int, shift_type,
+            )
+            return True
+        return False
+
+    # ------------------------------------------------------------------
+    # Post-commit notifications (best-effort MongoDB writes)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _create_accept_notifications(
+        appointment_id: int,
+        payload: dict[str, Any],
+        aggregate: dict[str, Any],
+        new_state: str,
+    ) -> None:
+        """Create gate and driver notifications after successful accept."""
+        if new_state != "in_process":
+            return
+
+        from application.queries.notification_queries import create_notification
+
+        license_plate = payload.get("license_plate", "Unknown")
+        gate_id = (
+            payload.get("gate_id")
+            or payload.get("gate_in_id")
+            or aggregate.get("gate_in_id")
+        )
+        if not gate_id:
+            return
+
+        try:
+            gate_id_int = int(gate_id)
+        except (TypeError, ValueError):
+            return
+
+        # Gate notification (operator sees truck accepted)
+        create_notification(
+            gate_id=gate_id_int,
+            title="Truck Accepted",
+            message=f"Truck {license_plate} has been accepted. Gate opening.",
+            notification_type="success",
+            appointment_id=appointment_id,
+            license_plate=license_plate,
+        )
+
+        # Driver notification (driver sees gate opening)
+        create_notification(
+            gate_id=gate_id_int,
+            title="Entry Approved",
+            message=(
+                f"Your entry has been approved. Gate is opening. "
+                f"Please proceed to the designated dock area."
+            ),
+            notification_type="success",
+            appointment_id=appointment_id,
+            license_plate=license_plate,
+            extra={"target": "driver"},
         )
 
     # ------------------------------------------------------------------

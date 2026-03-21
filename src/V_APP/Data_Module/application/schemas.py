@@ -36,6 +36,7 @@ class OperationalStatusEnum(str, Enum):
 class AppointmentStatusEnum(str, Enum):
     in_transit = "in_transit"
     in_process = "in_process"
+    unloading = "unloading"
     canceled = "canceled"
     delayed = "delayed"
     completed = "completed"

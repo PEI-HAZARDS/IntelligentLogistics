@@ -66,6 +66,15 @@ def _write_through_alert(alert_dict: dict[str, Any]) -> None:
 
 
 def _append_outbox(uow: IUnitOfWork, alert_dict: dict[str, Any], event_type: str) -> None:
+    # Normalize datetime fields before storing as JSONB payload.
+    # alert_repository.add() returns timestamp as a Python datetime object;
+    # PostgreSQL's JSONB column uses json.dumps() which cannot serialize datetime,
+    # causing the entire UoW to roll back (alert never reaches PG).
+    payload = {**alert_dict}
+    ts = payload.get("timestamp")
+    if ts is not None and not isinstance(ts, str):
+        payload["timestamp"] = ts.isoformat()
+
     envelope = EventEnvelope(
         event_id=str(uuid4()),
         correlation_id=str(uuid4()),
@@ -77,7 +86,7 @@ def _append_outbox(uow: IUnitOfWork, alert_dict: dict[str, Any], event_type: str
         occurred_at=datetime.now(timezone.utc),
         producer="data-module",
         partition_key=str(alert_dict.get("visit_id") or alert_dict["id"]),
-        payload=alert_dict,
+        payload=payload,
     )
     uow.outbox.append(envelope, topic="alert.created", key=envelope.partition_key)
 
@@ -150,7 +159,13 @@ def create_alerts_for_appointment(
     appointment_id: int,
     alerts_payload: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Bulk-create alerts for an appointment (used by arrival_service)."""
+    """Bulk-create alerts for an appointment (used by arrival_service).
+
+    Each alert is persisted to PostgreSQL and an ``AlertCreated`` outbox event
+    is appended in the same transaction (Guardrail 3).  This ensures the outbox
+    worker can re-project alerts to ``alerts_read`` if the write-through below
+    fails (e.g. transient MongoDB unavailability).
+    """
     if not alerts_payload:
         return []
 
@@ -165,6 +180,8 @@ def create_alerts_for_appointment(
                 description=data.get("description", "Alert without description"),
                 image_url=data.get("image_url"),
             )
+            # Append outbox event so the worker can re-project if write-through fails
+            _append_outbox(uow, alert, "AlertCreated")
             created.append(alert)
         uow.commit()
 

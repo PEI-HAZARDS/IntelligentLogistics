@@ -56,7 +56,7 @@ from infrastructure.persistence.redis import (
 from infrastructure.persistence.inbox_outbox_models import OutboxEvent
 from infrastructure.persistence.sql_models import Appointment as AppointmentORM
 from application.schemas import Appointment as AppointmentSchema
-from infrastructure.persistence.mongo import appointments_read_collection
+from infrastructure.persistence.mongo import appointments_read_collection, alerts_read_collection
 from application.queries.arrival_queries import get_appointment_detail
 from sqlalchemy import or_, and_
 
@@ -165,7 +165,41 @@ def project_to_redis(event_row: OutboxEvent, session) -> None:
     payload = event_row.payload or {}
     event_type = event_row.event_type
 
-    if event_type == "AppointmentStateChanged":
+    # Alert events: project payload directly into alerts_read (no PG re-read needed).
+    _ALERT_EVENT_TYPES = {"AlertCreated", "HazmatAlertCreated"}
+
+    if event_type in _ALERT_EVENT_TYPES:
+        alert_payload = dict(payload)
+        ts = alert_payload.get("timestamp")
+        if ts and not isinstance(ts, str):
+            alert_payload["timestamp"] = ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
+        alert_id = alert_payload.get("id")
+        if alert_id is not None:
+            try:
+                alerts_read_collection.update_one(
+                    {"id": alert_id},
+                    {"$set": {**alert_payload, "projected_at": datetime.now(timezone.utc)}},
+                    upsert=True,
+                )
+                logger.debug(
+                    "alerts_read projection OK: alert_id=%s event_type=%s",
+                    alert_id, event_type,
+                )
+            except Exception as exc:
+                logger.warning("alerts_read projection failed for alert_id=%s: %s", alert_id, exc)
+
+    # All appointment-related events trigger the same projection logic:
+    # re-read the appointment from PG and upsert into Redis + MongoDB.
+    _APPOINTMENT_EVENT_TYPES = {
+        "AppointmentStateChanged",
+        "AppointmentStatusUpdated",
+        "AppointmentHighwayInfractionFlagged",
+        "DecisionProcessed",
+        "VisitCreated",
+        "VisitStateUpdated",
+    }
+
+    if event_type in _APPOINTMENT_EVENT_TYPES:
         appointment_id = payload.get("appointment_id")
         if appointment_id is not None:
             # 1) Invalidate stale entry

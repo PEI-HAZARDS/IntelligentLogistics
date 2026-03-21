@@ -178,7 +178,7 @@ async def list_arrivals_in_progress(
         "skip": skip,
         "limit": limit,
         "gate_id": gate_id,
-        "status": "in_transit"
+        "statuses": "in_process,unloading"
     }
     return await internal_client.get("/arrivals", params=params)
 
@@ -258,7 +258,7 @@ async def list_arrivals_in_progress_shift(
         "limit": limit,
         "gate_id": gate_id,
         "shift_id": shift,
-        "status": "in_transit"
+        "statuses": "in_process,unloading"
     }
     return await internal_client.get("/arrivals", params=params)
 

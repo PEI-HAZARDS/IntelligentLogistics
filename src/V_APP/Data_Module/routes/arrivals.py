@@ -145,6 +145,7 @@ def _get_stats_from_mongo(
             {"scheduled_start_time": {"$gte": day_start, "$lte": day_end}},
             {"status": "delayed", "scheduled_start_time": {"$lt": day_start}},
             {"status": "in_process", "scheduled_start_time": {"$lt": day_start}},
+            {"status": "unloading", "scheduled_start_time": {"$lt": day_start}},
         ]
         match_filter: dict = {"$or": or_conditions}
         if gate_id:
@@ -169,7 +170,7 @@ def _get_stats_from_mongo(
 
         facets = result[0]
         counts: Dict[str, int] = {
-            "in_transit": 0, "in_process": 0, "delayed": 0,
+            "in_transit": 0, "in_process": 0, "unloading": 0, "delayed": 0,
             "canceled": 0, "completed": 0, "total": 0, "infractions": 0,
         }
 
@@ -247,6 +248,15 @@ def list_arrivals(
                 search=search, highway_infraction=highway_infraction,
             )
             total = appointments_read_collection.count_documents(mongo_filter)
+            # When filtered queries return zero from projections, prefer PG fallback
+            # to avoid false negatives during projection lag.
+            if total == 0 and (
+                highway_infraction is not None
+                or search is not None
+                or final_status is not None
+            ):
+                raise LookupError("Projection miss on filtered query")
+
             cursor = (
                 appointments_read_collection
                 .find(mongo_filter)

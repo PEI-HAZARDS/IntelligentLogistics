@@ -312,6 +312,20 @@ services:
           done
         done
 
+        # DLQ topics for each consumed per-gate topic
+        for GID in $$GATE_ID_LIST; do
+          for TOPIC in \
+            agent-decision-$$GID.DLQ \
+            operator-decision-$$GID.DLQ \
+            infraction-decision-$$GID.DLQ; do
+            kafka-topics --create --if-not-exists \
+              --bootstrap-server kafka:29092 \
+              --partitions 1 \
+              --replication-factor 1 \
+              --topic "$$TOPIC"
+          done
+        done
+
         # Global topics (not per-gate)
         for TOPIC in scale-up scale-down; do
           kafka-topics --create --if-not-exists \

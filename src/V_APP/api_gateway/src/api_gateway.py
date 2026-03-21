@@ -153,24 +153,20 @@ class APIGateway:
 
                 message_type = payload.get("message_type")
 
-                # 3. Infractions: broadcast to payload gate + gate 1
+                # 3. Infractions: broadcast to a single target gate.
+                #    Prefer payload gate_id (set by producer), fallback to topic suffix.
                 if message_type == "infraction_decision":
-                    infraction_target_gates: list[str] = ["1"]
-                    if target_gate:
-                        infraction_target_gates.insert(0, str(target_gate))
-                    infraction_target_gates = list(dict.fromkeys(infraction_target_gates))
-
-                    if not infraction_target_gates:
+                    if not target_gate:
                         logger.warning(
-                            f"Could not determine target gates for infraction topic '{topic}', skipping broadcast"
+                            f"Could not determine target gate for infraction topic '{topic}', skipping broadcast"
                         )
                         continue
 
                     logger.info(
                         f"Broadcasting infraction decision for truck {payload.get('truck_id')} "
-                        f"to gates {infraction_target_gates}"
+                        f"to gate {target_gate}"
                     )
-                    self._broadcast_async(payload, infraction_target_gates)
+                    self._broadcast_async(payload, str(target_gate))
                     continue
 
                 # 4. Other messages: broadcast only to their target gate

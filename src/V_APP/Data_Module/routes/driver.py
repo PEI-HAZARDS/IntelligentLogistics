@@ -34,12 +34,13 @@ from application.queries.driver_queries import (
     get_driver_appointments,
 )
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from infrastructure.persistence.postgres import SessionLocal
 from config import settings
 from utils.auth_token import generate_internal_jwt
 
 router = APIRouter(prefix="/drivers", tags=["Drivers"])
 
-_uow_factory = SqlAlchemyUnitOfWork
+_uow_factory = lambda: SqlAlchemyUnitOfWork(SessionLocal)
 
 
 # ==================== AUTH ENDPOINTS (Mobile App) ====================

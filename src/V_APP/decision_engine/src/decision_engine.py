@@ -182,10 +182,12 @@ class DecisionEngine(BaseDecisionEngine):
             decision_reason=reason,
             decision_source="automated",
         )
+        payload = message.to_dict()
+        payload["gate_id"] = str(gate_id)
 
         self.kafka_producer.produce(
             topic=produce_topic,
-            data=message.to_dict(),
+            data=payload,
             headers={"truckId": truck_id},
         )
 

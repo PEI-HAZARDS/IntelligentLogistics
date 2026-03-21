@@ -25,10 +25,11 @@ from application.use_cases.alert_handlers import (
     KEMLER_CODES,
 )
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from infrastructure.persistence.postgres import SessionLocal
 
 router = APIRouter(prefix="/alerts", tags=["Alerts"])
 
-_uow_factory = SqlAlchemyUnitOfWork
+_uow_factory = lambda: SqlAlchemyUnitOfWork(SessionLocal)
 
 
 # ==================== PYDANTIC MODELS ====================

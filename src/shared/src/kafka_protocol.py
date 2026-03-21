@@ -40,6 +40,11 @@ class KafkaTopicFactory:
     """Dont need gate_id because it is global to all network so 
        doesnt matter which gate is associated with the message"""
     @classmethod
+    def dlq(cls, topic: str) -> str:
+        """Dead-letter queue topic for a given source topic."""
+        return f"{topic}.DLQ"
+
+    @classmethod
     def scale_up(cls) -> str:
         return "scale-up"
 

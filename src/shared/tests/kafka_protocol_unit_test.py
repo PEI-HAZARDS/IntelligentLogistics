@@ -49,6 +49,9 @@ class TestKafkaTopicFactory:
     def test_infraction_decision(self):
         assert KafkaTopicFactory.infraction_decision("7") == "infraction-decision-7"
 
+    def test_dlq_topic(self):
+        assert KafkaTopicFactory.dlq("agent-decision-1") == "agent-decision-1.DLQ"
+
     def test_scale_up(self):
         assert KafkaTopicFactory.scale_up() == "scale-up"
 

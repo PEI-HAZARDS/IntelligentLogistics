@@ -319,9 +319,14 @@ def get_appointments_count_by_status(
     if gate_id:
         in_process_filter.append(Appointment.gate_in_id == gate_id)
 
+    unloading_filter = [Appointment.status == "unloading", Appointment.scheduled_start_time < start_dt]
+    if gate_id:
+        unloading_filter.append(Appointment.gate_in_id == gate_id)
+
     status_query = db.query(Appointment.status, func.count(Appointment.id)).filter(*base_filter)
     delayed_query = db.query(func.count(Appointment.id)).filter(*delayed_filter)
     in_process_query = db.query(func.count(Appointment.id)).filter(*in_process_filter)
+    unloading_query = db.query(func.count(Appointment.id)).filter(*unloading_filter)
     infractions_query = db.query(func.count(Appointment.id)).filter(*base_filter, Appointment.highway_infraction == True)  # noqa: E712
     infractions_delayed_query = db.query(func.count(Appointment.id)).filter(*delayed_filter, Appointment.highway_infraction == True)  # noqa: E712
     infractions_in_process_query = db.query(func.count(Appointment.id)).filter(*in_process_filter, Appointment.highway_infraction == True)  # noqa: E712
@@ -329,11 +334,12 @@ def get_appointments_count_by_status(
     results = status_query.group_by(Appointment.status).all()
     delayed_count = delayed_query.scalar() or 0
     in_process_count = in_process_query.scalar() or 0
+    unloading_count = unloading_query.scalar() or 0
     infractions_count = infractions_query.scalar() or 0
     infractions_delayed_count = infractions_delayed_query.scalar() or 0
     infractions_in_process_count = infractions_in_process_query.scalar() or 0
 
-    counts = {"in_transit": 0, "in_process": 0, "delayed": 0, "canceled": 0, "completed": 0, "total": 0, "infractions": 0}
+    counts = {"in_transit": 0, "in_process": 0, "unloading": 0, "delayed": 0, "canceled": 0, "completed": 0, "total": 0, "infractions": 0}
     for status, count in results:
         if status in counts:
             counts[status] = count
@@ -342,6 +348,8 @@ def get_appointments_count_by_status(
     counts["total"] += delayed_count
     counts["in_process"] += in_process_count
     counts["total"] += in_process_count
+    counts["unloading"] += unloading_count
+    counts["total"] += unloading_count
     counts["infractions"] = infractions_count + infractions_delayed_count + infractions_in_process_count
     return counts
 

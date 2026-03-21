@@ -33,7 +33,7 @@ from application.queries.worker_queries import (
     get_manager_overview,
 )
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
-from infrastructure.persistence.postgres import get_db
+from infrastructure.persistence.postgres import get_db, SessionLocal
 from sqlalchemy import func as sa_func
 from infrastructure.persistence.sql_models import Shift as ShiftORM, Visit as VisitORM
 from utils.auth_token import generate_internal_jwt
@@ -41,7 +41,7 @@ from utils.shift_utils import current_shift_type
 
 router = APIRouter(prefix="/workers", tags=["Workers"])
 
-_uow_factory = SqlAlchemyUnitOfWork
+_uow_factory = lambda: SqlAlchemyUnitOfWork(SessionLocal)
 
 
 # ==================== LOCAL PYDANTIC MODELS ====================

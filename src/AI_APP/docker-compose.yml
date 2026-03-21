@@ -192,6 +192,19 @@ services:
           done
         done
 
+        # DLQ topics for consumed decision topics
+        for GID in $$GATE_ID_LIST; do
+          for TOPIC in \
+            agent-decision-$$GID.DLQ \
+            operator-decision-$$GID.DLQ; do
+            kafka-topics --create --if-not-exists \
+              --bootstrap-server kafka:29092 \
+              --partitions 1 \
+              --replication-factor 1 \
+              --topic "$$TOPIC"
+          done
+        done
+
         echo "All topics created."
     env_file:
       - .env
