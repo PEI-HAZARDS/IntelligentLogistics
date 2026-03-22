@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Query, Path
+from fastapi import APIRouter, Query, Path, Depends
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
 
 from clients import internal_api_client as internal_client
+from auth.token_validator import require_role, get_current_user, TokenPayload
 
 router = APIRouter(tags=["drivers"])
 
@@ -28,6 +29,7 @@ class ClaimAppointmentRequest(BaseModel):
 async def list_drivers(
     limit: int = Query(default=100, ge=1, le=500),
     skip: int = Query(default=0, ge=0),
+    _user: TokenPayload = Depends(require_role("manager")),
 ):
     """
     Proxy to GET /api/v1/drivers in Data Module.
@@ -55,16 +57,15 @@ async def driver_login(credentials: DriverLoginRequest):
 @router.post("/drivers/claim")
 async def claim_appointment(
     claim_data: ClaimAppointmentRequest,
-    drivers_license: str = Query(..., description="Driver's license"),
+    current_user: TokenPayload = Depends(require_role("driver")),
     debug: bool = Query(False, description="Debug mode - bypass sequential check"),
 ):
     """
     Driver claims appointment by PIN.
     Returns delivery details for navigation.
-
-    Future: Will require Bearer token when OAuth 2.0 is implemented.
+    Driver identity extracted from JWT token.
     """
-    params = {"drivers_license": drivers_license}
+    params = {"drivers_license": current_user.sub.upper()}
     if debug:
         params["debug"] = True
     return await internal_client.post("/drivers/claim", json=claim_data.model_dump(), params=params)
@@ -72,41 +73,38 @@ async def claim_appointment(
 
 @router.get("/drivers/me/active")
 async def get_my_active_arrival(
-    drivers_license: str = Query(..., description="Driver's license"),
+    current_user: TokenPayload = Depends(require_role("driver")),
 ):
     """
     Get driver's active appointment.
-
-    Future: Will use Bearer token when OAuth 2.0 is implemented.
+    Driver identity extracted from JWT token.
     """
-    params = {"drivers_license": drivers_license}
+    params = {"drivers_license": current_user.sub.upper()}
     return await internal_client.get("/drivers/me/active", params=params)
 
 
 @router.get("/drivers/me/today")
 async def get_my_today_arrivals(
-    drivers_license: str = Query(..., description="Driver's license"),
+    current_user: TokenPayload = Depends(require_role("driver")),
 ):
     """
     Get driver's today appointments.
-
-    Future: Will use Bearer token when OAuth 2.0 is implemented.
+    Driver identity extracted from JWT token.
     """
-    params = {"drivers_license": drivers_license}
+    params = {"drivers_license": current_user.sub.upper()}
     return await internal_client.get("/drivers/me/today", params=params)
 
 
 @router.get("/drivers/me/history")
 async def get_my_history(
-    drivers_license: str = Query(..., description="Driver's license"),
+    current_user: TokenPayload = Depends(require_role("driver")),
     limit: int = Query(50, ge=1, le=200),
 ):
     """
     Get driver's delivery history.
-
-    Future: Will use Bearer token when OAuth 2.0 is implemented.
+    Driver identity extracted from JWT token.
     """
-    params = {"drivers_license": drivers_license, "limit": limit}
+    params = {"drivers_license": current_user.sub.upper(), "limit": limit}
     return await internal_client.get("/drivers/me/history", params=params)
 
 
@@ -117,6 +115,7 @@ async def get_my_history(
 @router.get("/drivers/{drivers_license}")
 async def get_driver(
     drivers_license: str = Path(..., description="Driver's License"),
+    _user: TokenPayload = Depends(require_role("driver", "manager")),
 ):
     """
     Proxy to GET /api/v1/drivers/{drivers_license}
@@ -131,6 +130,7 @@ async def get_driver(
 async def get_arrivals_for_driver(
     drivers_license: str = Path(..., description="Driver's License"),
     limit: int = Query(default=50, ge=1, le=200),
+    _user: TokenPayload = Depends(require_role("driver", "manager")),
 ):
     """
     Proxy to GET /api/v1/drivers/{drivers_license}/arrivals

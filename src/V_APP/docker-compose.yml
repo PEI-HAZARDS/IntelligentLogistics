@@ -191,10 +191,16 @@ services:
       - GATE_IDS=${GATE_IDS}
       - INFRACTION_GATE_IDS=${INFRACTION_GATE_IDS}
       - DECISION_GATE_IDS=${DECISION_GATE_IDS}
+      - KEYCLOAK_URL=${KEYCLOAK_URL}
+      - KEYCLOAK_REALM=${KEYCLOAK_REALM}
+      - KEYCLOAK_CLIENT_ID=${KEYCLOAK_CLIENT_ID}
+      - KEYCLOAK_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET}
     depends_on:
       kafka-init:
         condition: service_completed_successfully
       data-module:
+        condition: service_healthy
+      keycloak:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -394,6 +400,79 @@ services:
       - intelligent-logistics
 
   # =============================================================================
+  # KEYCLOAK - Identity & Access Management
+  # =============================================================================
+  keycloak-db:
+    image: postgres:15
+    container_name: kc_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${KC_DB_USER}
+      POSTGRES_PASSWORD: ${KC_DB_PASSWORD}
+      POSTGRES_DB: keycloak
+    volumes:
+      - kc_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${KC_DB_USER} -d keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - intelligent-logistics
+
+  keycloak:
+    build: ./keycloak
+    image: keycloak-il:26.0
+    container_name: keycloak
+    restart: unless-stopped
+    command: start-dev --import-realm --health-enabled=true
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: ${KC_DB_USER}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD}
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+    ports:
+      - "8443:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'UP'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - intelligent-logistics
+
+  keycloak-sync:
+    build:
+      context: ./keycloak
+      dockerfile: Dockerfile.sync
+    image: keycloak-sync:latest
+    container_name: keycloak-sync
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      data-module:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - KEYCLOAK_URL=http://keycloak:8080
+      - KEYCLOAK_REALM=${KEYCLOAK_REALM}
+      - KEYCLOAK_CLIENT_ID=${KEYCLOAK_CLIENT_ID}
+      - KEYCLOAK_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET}
+      - KC_ADMIN_USER=${KC_ADMIN_USER}
+      - KC_ADMIN_PASSWORD=${KC_ADMIN_PASSWORD}
+    restart: "no"
+    networks:
+      - intelligent-logistics
+
+  # =============================================================================
   # OBSERVABILITY - Node Exporter + Promtail
   # =============================================================================
   node-exporter:
@@ -429,6 +508,7 @@ volumes:
   pgdata:
   mongodata:
   miniodata:
+  kc_pgdata:
 
 networks:
   intelligent-logistics:

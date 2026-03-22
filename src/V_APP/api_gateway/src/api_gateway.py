@@ -23,6 +23,7 @@ from opentelemetry.sdk.resources import Resource # type: ignore
 
 from routers import (
     arrivals,
+    auth,
     manual_review,
     alerts,
     drivers,
@@ -31,6 +32,8 @@ from routers import (
     workers,    # Operators and Managers
     statistics, # Statistics proxy for manager dashboard
 )
+from auth.keycloak_client import KeycloakClient
+from auth.token_validator import TokenValidator
 
 logger = logging.getLogger("APIGateway")
 
@@ -51,6 +54,12 @@ class APIGatewayConfig(BaseSettings):
     cors_allow_credentials: bool = Field(default=True)
     cors_allow_methods: list[str] = Field(default=["*"])
     cors_allow_headers: list[str] = Field(default=["*"])
+
+    # Keycloak
+    keycloak_url: str = Field(default="http://keycloak:8080")
+    keycloak_realm: str = Field(default="intelligent-logistics")
+    keycloak_client_id: str = Field(default="api-gateway")
+    keycloak_client_secret: str = Field(default="api-gateway-secret")
     
     @field_validator("gate_ids", "decision_gate_ids", "infraction_gate_ids", mode="before")
     @classmethod
@@ -311,6 +320,20 @@ class APIGateway:
         app.state.stream_base_url = self.config.stream_base_url
         app.state.stream_webrtc_base_url = self.config.stream_webrtc_base_url
 
+        # Keycloak
+        app.state.keycloak_client = KeycloakClient(
+            server_url=self.config.keycloak_url,
+            realm=self.config.keycloak_realm,
+            client_id=self.config.keycloak_client_id,
+            client_secret=self.config.keycloak_client_secret,
+        )
+        jwks_url = f"{self.config.keycloak_url}/realms/{self.config.keycloak_realm}/protocol/openid-connect/certs"
+        issuer = f"{self.config.keycloak_url}/realms/{self.config.keycloak_realm}"
+        app.state.token_validator = TokenValidator(
+            jwks_url=jwks_url,
+            issuer=issuer,
+        )
+
         app.add_middleware(
             CORSMiddleware,
             allow_origins=self.config.cors_allow_origins,
@@ -320,6 +343,7 @@ class APIGateway:
         )
 
         # Routers
+        app.include_router(auth.router, prefix=self.config.api_prefix)
         app.include_router(arrivals.router, prefix=self.config.api_prefix)
         app.include_router(manual_review.router, prefix=self.config.api_prefix)
         app.include_router(alerts.router, prefix=self.config.api_prefix)

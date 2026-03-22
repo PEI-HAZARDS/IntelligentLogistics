@@ -8,8 +8,9 @@ from loguru import logger
 from clients import internal_api_client as internal_client
 from dependencies import get_ws_manager
 from web_socket_manager import WebSocketManager
+from auth.token_validator import require_role, TokenPayload
 
-router = APIRouter(tags=["arrivals"])
+router = APIRouter(tags=["arrivals"], dependencies=[Depends(require_role("operator", "manager"))])
 
 
 # ===============================

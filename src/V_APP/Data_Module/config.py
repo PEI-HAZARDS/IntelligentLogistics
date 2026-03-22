@@ -44,7 +44,8 @@ class Settings(BaseSettings):
     gate_id: str = "1"
 
     # Authentication
-    # KEYCLOAK: this secret will be replaced by Keycloak's public key once integrated.
+    # DEPRECATED: JWT is now issued by Keycloak. These fields are kept only for
+    # backward compatibility with the internal login endpoint during migration.
     jwt_secret: str = "pei-internal-secret-replace-with-keycloak"
     debug_mode: bool = False  # When True, allows bypassing sequential delivery checks
     token_expiry_hours: int = 24  # Session token expiration time in hours
