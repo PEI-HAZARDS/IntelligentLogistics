@@ -129,6 +129,13 @@ class ContainerMovedHandler:
             visit_created,
         )
 
+        # ── Post-commit: invalidate stats cache so /stats returns fresh counts ──
+        try:
+            from application.use_cases.appointment_commands import _invalidate_stats_cache
+            _invalidate_stats_cache(aggregate.get("gate_in_id"))
+        except Exception:
+            pass
+
         # ── Post-commit: create notifications (best-effort, outside UoW) ──
         try:
             self._create_accept_notifications(

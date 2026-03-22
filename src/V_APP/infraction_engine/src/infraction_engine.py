@@ -135,9 +135,17 @@ class InfractionEngine(BaseDecisionEngine):
         infraction: bool,
         start_time: float,
     ) -> None:
-        """Build and publish the infraction decision to the gate-specific topic."""
-        produce_topic = KafkaTopicFactory.infraction_decision(gate_id)
-        self.logger.info(f"Infraction result for gate {gate_id}: infraction={infraction}")
+        """Build and publish the infraction decision to the operational gate topic.
+
+        Publishes to the operational (entry) gate topic so the API Gateway
+        can broadcast the infraction to the gate-1 operator's WebSocket.
+        The source camera gate is preserved in ``source_gate_id``.
+        """
+        produce_topic = KafkaTopicFactory.infraction_decision(str(gate_id))
+        self.logger.info(
+            f"Publishing infraction decision to source gate {gate_id}: "
+            f"infraction={infraction}"
+        )
 
         message = KafkaMessageProto.infraction_decision(
             license_plate=license_plate,
@@ -149,7 +157,7 @@ class InfractionEngine(BaseDecisionEngine):
         )
         payload = message.to_dict()
         payload["source_gate_id"] = str(gate_id)
-        payload["gate_id"] = str(self.config.decision_gate_id_list[0])
+        payload["gate_id"] = str(gate_id)
 
         self.kafka_producer.produce(
             topic=produce_topic,

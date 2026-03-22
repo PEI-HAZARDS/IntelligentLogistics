@@ -43,27 +43,7 @@ class SqlAlchemyAlertRepository(IAlertRepository):
             "image_url": alert.image_url,
             "timestamp": alert.timestamp,
         }
-        # Best-effort write-through to MongoDB read model
-        self._write_through(alert_dict)
         return alert_dict
-
-    @staticmethod
-    def _write_through(alert_dict: dict) -> None:
-        """Best-effort write-through to MongoDB alerts_read collection."""
-        try:
-            from infrastructure.persistence.mongo import alerts_read_collection
-
-            doc = {**alert_dict}
-            ts = doc.get("timestamp")
-            if ts and not isinstance(ts, str):
-                doc["timestamp"] = ts.isoformat()
-            alerts_read_collection.update_one(
-                {"id": doc["id"]},
-                {"$set": doc},
-                upsert=True,
-            )
-        except Exception:
-            pass  # outbox worker will eventually catch up
 
     def get_appointment_visit_id(self, appointment_id: int) -> Optional[int]:
         visit = (

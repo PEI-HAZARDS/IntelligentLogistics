@@ -149,7 +149,7 @@ class DecisionEngine(BaseDecisionEngine):
                 alerts=alerts
             )
             # Refresh the last detected truck to prevent duplicate decisions if the same truck is detected again shortly after
-            self.last_truck_detected[gate_id] = matched_plate
+            #self.last_truck_detected[gate_id] = matched_plate
 
     def _publish_decision(
         self,

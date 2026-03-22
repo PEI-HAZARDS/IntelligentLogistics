@@ -41,26 +41,29 @@ cache_metadata_collection = db["cache_metadata"]
 # Operator UI notifications (persistent, replaces localStorage)
 notifications_collection = db["notifications"]
 
-# CQRS Read Model — Appointment aggregate projection (Guardrail 5)
-# Populated by outbox worker; queried by arrivals routes instead of PostgreSQL.
-appointments_read_collection = db["appointments_read"]
-
-# CQRS Read Models — secondary entity projections
-# Populated by write-through after Postgres commit; queried by GET routes.
-alerts_read_collection = db["alerts_read"]
-drivers_read_collection = db["drivers_read"]
-workers_read_collection = db["workers_read"]
-
 
 # ==================== INDEX CREATION ====================
+
+def _drop_index_safe(collection, index_name: str):
+    """Drop an index if it exists, ignoring errors."""
+    try:
+        collection.drop_index(index_name)
+    except Exception:
+        pass
+
 
 def create_indexes():
     """
     Creates all indexes for MongoDB collections.
     Safe to run multiple times (MongoDB ignores duplicates).
+    Drops and recreates indexes whose options may have changed.
     """
-    
+
     logger.info("Creating MongoDB indexes...")
+
+    # Drop indexes whose options changed (e.g. added sparse flag)
+    # so create_index can recreate them with the correct settings.
+    _drop_index_safe(decision_events_collection, "idx_decision_id")
 
     # ===== notifications indexes =====
     notifications_collection.create_index(
@@ -123,11 +126,12 @@ def create_indexes():
     
     # ===== decision_events indexes =====
     
-    # Unique index on decision_id
+    # Unique index on decision_id (only enforced when decision_id exists and is a string)
     decision_events_collection.create_index(
         [("decision_id", ASCENDING)],
         name="idx_decision_id",
-        unique=True
+        unique=True,
+        partialFilterExpression={"decision_id": {"$type": "string"}},
     )
     
     # Truck correlation
@@ -208,87 +212,6 @@ def create_indexes():
     )
     
     logger.info("✓ Created cache_metadata indexes")
-
-    # ===== appointments_read indexes (CQRS read model) =====
-    appointments_read_collection.create_index(
-        [("id", ASCENDING)],
-        name="idx_appt_read_id",
-        unique=True,
-    )
-    appointments_read_collection.create_index(
-        [("arrival_id", ASCENDING)],
-        name="idx_appt_read_arrival_id",
-        unique=True,
-        sparse=True,
-    )
-    appointments_read_collection.create_index(
-        [("gate_in_id", ASCENDING), ("status", ASCENDING),
-         ("scheduled_start_time", DESCENDING)],
-        name="idx_appt_read_gate_status_sched",
-    )
-    appointments_read_collection.create_index(
-        [("truck_license_plate", ASCENDING),
-         ("scheduled_start_time", DESCENDING)],
-        name="idx_appt_read_plate_sched",
-    )
-    appointments_read_collection.create_index(
-        [("status", ASCENDING), ("scheduled_start_time", DESCENDING)],
-        name="idx_appt_read_status_sched",
-    )
-    logger.info("✓ Created appointments_read indexes")
-
-    # ===== alerts_read indexes =====
-    alerts_read_collection.create_index(
-        [("id", ASCENDING)],
-        name="idx_alert_read_id",
-        unique=True,
-    )
-    alerts_read_collection.create_index(
-        [("visit_id", ASCENDING), ("timestamp", DESCENDING)],
-        name="idx_alert_read_visit_ts",
-    )
-    alerts_read_collection.create_index(
-        [("type", ASCENDING), ("timestamp", DESCENDING)],
-        name="idx_alert_read_type_ts",
-    )
-    alerts_read_collection.create_index(
-        [("timestamp", DESCENDING)],
-        name="idx_alert_read_ts",
-    )
-    logger.info("✓ Created alerts_read indexes")
-
-    # ===== drivers_read indexes =====
-    drivers_read_collection.create_index(
-        [("drivers_license", ASCENDING)],
-        name="idx_driver_read_license",
-        unique=True,
-    )
-    drivers_read_collection.create_index(
-        [("company_nif", ASCENDING)],
-        name="idx_driver_read_company",
-    )
-    drivers_read_collection.create_index(
-        [("active", ASCENDING)],
-        name="idx_driver_read_active",
-    )
-    logger.info("✓ Created drivers_read indexes")
-
-    # ===== workers_read indexes =====
-    workers_read_collection.create_index(
-        [("num_worker", ASCENDING)],
-        name="idx_worker_read_num",
-        unique=True,
-    )
-    workers_read_collection.create_index(
-        [("email", ASCENDING)],
-        name="idx_worker_read_email",
-        unique=True,
-    )
-    workers_read_collection.create_index(
-        [("role", ASCENDING), ("active", ASCENDING)],
-        name="idx_worker_read_role_active",
-    )
-    logger.info("✓ Created workers_read indexes")
 
     logger.info("✅ All MongoDB indexes created successfully")
 

@@ -114,7 +114,7 @@ def get_appointment_detail(db: Session, appointment_id: int) -> Optional[Dict[st
         driver_info = {
             "license": appointment.driver.drivers_license,
             "name": appointment.driver.name,
-            "phone": appointment.driver.phone,
+            "phone": appointment.driver.mobile_device_token,
             "company": {
                 "nif": appointment.driver.company.nif,
                 "name": appointment.driver.company.name,
@@ -127,7 +127,6 @@ def get_appointment_detail(db: Session, appointment_id: int) -> Optional[Dict[st
         truck_info = {
             "license_plate": appointment.truck.license_plate,
             "brand": appointment.truck.brand,
-            "weight": appointment.truck.weight,
         }
 
     booking_info = None
@@ -339,7 +338,7 @@ def get_appointments_count_by_status(
     infractions_delayed_count = infractions_delayed_query.scalar() or 0
     infractions_in_process_count = infractions_in_process_query.scalar() or 0
 
-    counts = {"in_transit": 0, "in_process": 0, "unloading": 0, "delayed": 0, "canceled": 0, "completed": 0, "total": 0, "infractions": 0}
+    counts = {"scheduled": 0, "in_transit": 0, "in_process": 0, "unloading": 0, "delayed": 0, "canceled": 0, "completed": 0, "total": 0, "infractions": 0}
     for status, count in results:
         if status in counts:
             counts[status] = count

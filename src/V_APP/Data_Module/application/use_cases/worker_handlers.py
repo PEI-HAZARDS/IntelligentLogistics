@@ -1,7 +1,6 @@
 """
 Command handlers for worker mutations.
 Writes to PostgreSQL via UoW + Outbox (Guardrails 2, 3, 6).
-Write-through to MongoDB workers_read after commit.
 """
 
 from __future__ import annotations
@@ -18,22 +17,6 @@ from utils.hashing_pass import hash_password, verify_password
 
 logger = logging.getLogger(__name__)
 
-
-def _write_through_worker(worker_dict: dict[str, Any]) -> None:
-    """Best-effort write-through to MongoDB (outside SQL transaction)."""
-    try:
-        from infrastructure.persistence.mongo import workers_read_collection
-
-        doc = {k: v for k, v in worker_dict.items() if k != "password_hash"}
-        if doc.get("created_at") and not isinstance(doc["created_at"], str):
-            doc["created_at"] = doc["created_at"].isoformat()
-        workers_read_collection.update_one(
-            {"num_worker": doc["num_worker"]},
-            {"$set": doc},
-            upsert=True,
-        )
-    except Exception as exc:
-        logger.warning("workers_read write-through failed: %s", exc)
 
 
 def _append_outbox(uow: IUnitOfWork, worker_dict: dict[str, Any], event_type: str) -> None:
@@ -107,7 +90,6 @@ def create_worker(
         _append_outbox(uow, w, "WorkerCreated")
         uow.commit()
 
-    _write_through_worker(w)
     return w
 
 
@@ -147,8 +129,6 @@ def update_worker_email(
         _append_outbox(uow, w, "WorkerEmailChanged")
         uow.commit()
 
-    if w:
-        _write_through_worker(w)
     return True, ""
 
 
@@ -166,7 +146,6 @@ def deactivate_worker(
         _append_outbox(uow, w, "WorkerDeactivated")
         uow.commit()
 
-    _write_through_worker(w)
     return w
 
 
@@ -189,5 +168,4 @@ def promote_to_manager(
         _append_outbox(uow, w, "WorkerPromoted")
         uow.commit()
 
-    _write_through_worker(w)
     return w

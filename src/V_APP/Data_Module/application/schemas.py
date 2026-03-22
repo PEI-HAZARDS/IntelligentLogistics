@@ -34,6 +34,7 @@ class OperationalStatusEnum(str, Enum):
 
 
 class AppointmentStatusEnum(str, Enum):
+    scheduled = "scheduled"
     in_transit = "in_transit"
     in_process = "in_process"
     unloading = "unloading"
@@ -346,7 +347,7 @@ class AppointmentBase(BaseModel):
     gate_out_id: Optional[int] = None
     scheduled_start_time: Optional[datetime] = None
     expected_duration: Optional[int] = None  # Duration in minutes
-    status: AppointmentStatusEnum = AppointmentStatusEnum.in_transit
+    status: AppointmentStatusEnum = AppointmentStatusEnum.scheduled
     notes: Optional[str] = None
     highway_infraction: Optional[bool] = False
 

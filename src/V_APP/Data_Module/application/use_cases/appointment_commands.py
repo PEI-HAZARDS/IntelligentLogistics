@@ -19,8 +19,22 @@ from uuid import uuid4
 
 from domain.events import EventEnvelope
 from domain.interfaces import IUnitOfWork
+from infrastructure.persistence.redis import redis_client
 
 logger = logging.getLogger(__name__)
+
+
+def _invalidate_stats_cache(gate_in_id: Any = None) -> None:
+    """Delete cached stats keys so the next /stats call computes fresh counts."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    keys_to_delete = [f"stats:gate:all:{today}"]
+    if gate_in_id:
+        keys_to_delete.append(f"stats:gate:{gate_in_id}:{today}")
+    for key in keys_to_delete:
+        try:
+            redis_client.delete(key)
+        except Exception:
+            pass
 
 
 def _outbox_event(
@@ -95,6 +109,7 @@ def cmd_update_status(
         "cmd_update_status: appointment=%s  %s → %s",
         appointment_id, old_status, new_status,
     )
+    _invalidate_stats_cache(aggregate.get("gate_in_id"))
     return {
         "id": appointment_id,
         "status": new_status,
@@ -167,6 +182,7 @@ def cmd_process_decision(
         "cmd_process_decision: appointment=%s  %s → %s  alerts=%d",
         appointment_id, old_status, new_status, alerts_created,
     )
+    _invalidate_stats_cache(aggregate.get("gate_in_id"))
     return {
         "id": appointment_id,
         "status": new_status,

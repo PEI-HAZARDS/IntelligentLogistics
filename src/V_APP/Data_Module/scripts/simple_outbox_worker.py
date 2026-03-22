@@ -3,8 +3,8 @@
 Simple Outbox Worker — Eventual Consistency via Transactional Outbox.
 
 Polls the ``outbox_events`` table for PENDING rows and projects each event
-into the read models (MongoDB for history, Redis for hot cache), then marks
-the row as PUBLISHED.
+into the read models (MongoDB for audit trail, Redis for hot cache), then
+marks the row as PUBLISHED.
 
 Failed projections are retried with exponential backoff + jitter (Guardrail 8).
 After ``MAX_RETRIES`` consecutive failures an event is moved to DEAD_LETTER.
@@ -13,7 +13,7 @@ After ``MAX_RETRIES`` consecutive failures an event is moved to DEAD_LETTER.
 │  Command   │──────────▶│ outbox_  │◀───────│  THIS WORKER     │
 │  Handler   │           │ events   │         │                  │
 │ (Postgres) │           │ (PG)     │────────▶│  ┌── MongoDB ──┐ │
-└────────────┘           └──────────┘  read   │  │  (history)  │ │
+└────────────┘           └──────────┘  read   │  │  (audit)    │ │
                                        batch  │  └─────────────┘ │
                                               │  ┌── Redis ────┐ │
                                               │  │  (hot cache) │ │
@@ -25,7 +25,6 @@ Usage:
 
 Guardrails enforced:
   3 — Outbox is the ONLY source of side-effects; no direct publish.
-  5 — CQRS strict split: this worker updates READ models only.
   7 — Projections are idempotent (upsert in Mongo, overwrite in Redis).
   8 — DLQ policy: exponential backoff for transient errors, DEAD_LETTER
       after MAX_RETRIES with full error metadata.
@@ -56,8 +55,6 @@ from infrastructure.persistence.redis import (
 from infrastructure.persistence.inbox_outbox_models import OutboxEvent
 from infrastructure.persistence.sql_models import Appointment as AppointmentORM
 from application.schemas import Appointment as AppointmentSchema
-from infrastructure.persistence.mongo import appointments_read_collection, alerts_read_collection
-from application.queries.arrival_queries import get_appointment_detail
 from sqlalchemy import or_, and_
 
 # ── Configuration ───────────────────────────────────────────────
@@ -108,13 +105,13 @@ def compute_next_retry_at(retry_count: int) -> datetime:
 
 
 # ═══════════════════════════════════════════════════════════════
-# Projection functions (one per event_type)
+# Projection functions
 # ═══════════════════════════════════════════════════════════════
 
 
 def project_to_mongo(event_row: OutboxEvent) -> None:
     """
-    Insert (or upsert) the event into MongoDB for historical queries.
+    Insert (or upsert) the event into MongoDB decision_events for audit trail.
 
     Uses ``event_id`` as the idempotency key so re-processing the same
     outbox row produces identical state (Guardrail 7).
@@ -132,8 +129,6 @@ def project_to_mongo(event_row: OutboxEvent) -> None:
         "projected_at": datetime.now(timezone.utc),
     }
 
-    # Upsert — idempotent: replaying the same event overwrites with
-    # identical data instead of creating a duplicate.
     decision_events_collection.update_one(
         {"event_id": event_row.event_id},
         {"$set": doc},
@@ -151,45 +146,15 @@ def project_to_redis(event_row: OutboxEvent, session) -> None:
     """
     Update Redis hot caches so dashboards reflect the latest state.
 
-    For ``AppointmentStateChanged`` events we:
+    For appointment-related events:
       1. Invalidate the stale appointment cache entry.
-      2. Query the full Appointment aggregate from PostgreSQL and write
-         a complete JSON snapshot into Redis — the Query side reads this
-         key directly via ``GET /arrivals/{id}`` (O(1), CQRS Guardrail 5).
+      2. Query the full Appointment from PostgreSQL and write a JSON
+         snapshot into Redis — GET /arrivals/{id} reads this key (O(1)).
       3. Bump the real-time counter for the gate.
-
-    The ``session`` parameter allows the projection to enrich the cache
-    with the full aggregate, so the API can serve reads without touching
-    PostgreSQL for recently-changed appointments.
     """
     payload = event_row.payload or {}
     event_type = event_row.event_type
 
-    # Alert events: project payload directly into alerts_read (no PG re-read needed).
-    _ALERT_EVENT_TYPES = {"AlertCreated", "HazmatAlertCreated"}
-
-    if event_type in _ALERT_EVENT_TYPES:
-        alert_payload = dict(payload)
-        ts = alert_payload.get("timestamp")
-        if ts and not isinstance(ts, str):
-            alert_payload["timestamp"] = ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
-        alert_id = alert_payload.get("id")
-        if alert_id is not None:
-            try:
-                alerts_read_collection.update_one(
-                    {"id": alert_id},
-                    {"$set": {**alert_payload, "projected_at": datetime.now(timezone.utc)}},
-                    upsert=True,
-                )
-                logger.debug(
-                    "alerts_read projection OK: alert_id=%s event_type=%s",
-                    alert_id, event_type,
-                )
-            except Exception as exc:
-                logger.warning("alerts_read projection failed for alert_id=%s: %s", alert_id, exc)
-
-    # All appointment-related events trigger the same projection logic:
-    # re-read the appointment from PG and upsert into Redis + MongoDB.
     _APPOINTMENT_EVENT_TYPES = {
         "AppointmentStateChanged",
         "AppointmentStatusUpdated",
@@ -206,7 +171,6 @@ def project_to_redis(event_row: OutboxEvent, session) -> None:
             invalidate_appointment_cache(int(appointment_id))
 
             # 2) Full appointment snapshot → Redis hot cache
-            #    The Query side (GET /arrivals/{id}) reads this key directly.
             appt = (
                 session.query(AppointmentORM)
                 .filter(AppointmentORM.id == int(appointment_id))
@@ -216,46 +180,24 @@ def project_to_redis(event_row: OutboxEvent, session) -> None:
                 snapshot = AppointmentSchema.model_validate(appt).model_dump(
                     mode="json"
                 )
-                # ── Redis hot cache (O(1) single-entity lookup) ────
                 cache_appointment(int(appointment_id), snapshot)
-
-                # ── MongoDB read model (queryable for lists/filters) ─
-                mongo_doc = {
-                    **snapshot,
-                    "projected_at": datetime.now(timezone.utc),
-                }
-                # Embed visit data for shift-based filtering
-                if hasattr(appt, "visit") and appt.visit:
-                    v = appt.visit
-                    mongo_doc["_visit"] = {
-                        "shift_gate_id": v.shift_gate_id,
-                        "shift_type": v.shift_type.name if v.shift_type else None,
-                        "shift_date": v.shift_date.isoformat() if v.shift_date else None,
-                        "entry_time": v.entry_time.isoformat() if v.entry_time else None,
-                        "out_time": v.out_time.isoformat() if v.out_time else None,
-                        "state": v.state,
-                    }
-                # Enriched detail for GET /arrivals/{id}/detail
-                detail = get_appointment_detail(session, int(appointment_id))
-                if detail:
-                    mongo_doc["_detail"] = detail
-
-                appointments_read_collection.update_one(
-                    {"id": int(appointment_id)},
-                    {"$set": mongo_doc},
-                    upsert=True,
-                )
             else:
                 logger.warning(
                     "Appointment %s not found during projection",
                     appointment_id,
                 )
 
-            # 3) Real-time counters (extract gate from payload metadata)
+            # 3) Real-time counters
             gate_id = payload.get("gate_in_id") or payload.get("gate_out_id")
             if gate_id is not None:
                 new_state = payload.get("new_state", "unknown")
                 increment_counter(int(gate_id), f"transitions:{new_state}")
+
+    # Alert events: just invalidate related appointment cache
+    if event_type in {"AlertCreated", "HazmatAlertCreated"}:
+        appointment_id = payload.get("appointment_id")
+        if appointment_id is not None:
+            invalidate_appointment_cache(int(appointment_id))
 
     logger.debug(
         "Redis projection OK: event_id=%s  type=%s",
@@ -374,6 +316,42 @@ def process_batch(session) -> int:
     return projected
 
 
+def warm_up_redis_cache() -> None:
+    """
+    Load ALL existing PostgreSQL appointments into Redis hot cache on startup.
+
+    Ensures the cache is warm so GET /arrivals/{id} can serve O(1) reads
+    immediately after worker restart.
+    """
+    session = SessionLocal()
+    try:
+        total_pg = session.query(AppointmentORM).count()
+        logger.info("Warm-up: caching %d PG appointments → Redis", total_pg)
+
+        appointments = session.query(AppointmentORM).all()
+        cached = 0
+
+        for appt in appointments:
+            try:
+                snapshot = AppointmentSchema.model_validate(appt).model_dump(
+                    mode="json"
+                )
+                cache_appointment(appt.id, snapshot)
+                cached += 1
+            except Exception as exc:
+                logger.warning(
+                    "Warm-up: failed to cache appointment %s: %s",
+                    appt.id,
+                    exc,
+                )
+
+        logger.info("Warm-up complete: cached %d / %d appointments", cached, total_pg)
+    except Exception as exc:
+        logger.error("Warm-up failed: %s", exc, exc_info=True)
+    finally:
+        session.close()
+
+
 def main() -> None:
     """Entry-point: infinite poll loop with graceful shutdown."""
     logger.info(
@@ -382,6 +360,9 @@ def main() -> None:
         POLL_INTERVAL_SECONDS,
         MAX_RETRIES,
     )
+
+    # ── Warm-up: ensure Redis has all PG appointments cached ───
+    warm_up_redis_cache()
 
     while not _shutdown_requested:
         session = SessionLocal()

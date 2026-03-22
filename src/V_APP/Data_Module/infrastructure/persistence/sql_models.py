@@ -18,7 +18,7 @@ delivery_status_enum = SEnum('not_started', 'unloading', 'completed', name='deli
 physical_state_enum = SEnum('liquid', 'solid', 'gaseous', 'hybrid', name='physical_state')
 access_level_enum = SEnum('admin', 'basic', name='access_level')
 operational_status_enum = SEnum('maintenance', 'operational', 'closed', name='operational_status')
-appointment_status_enum = SEnum('in_transit', 'in_process', 'unloading', 'canceled', 'delayed', 'completed', name='appointment_status')
+appointment_status_enum = SEnum('scheduled', 'in_transit', 'in_process', 'unloading', 'canceled', 'delayed', 'completed', name='appointment_status')
 type_alert_enum = SEnum('generic', 'safety', 'problem', 'operational', name='type_alert')
 direction_enum = SEnum('inbound', 'outbound', name='direction')
 
@@ -260,7 +260,7 @@ class Appointment(Base):
     expected_duration = Column(Integer)  # Expected duration in minutes
     
     # Status
-    status = Column(appointment_status_enum, default='in_transit')
+    status = Column(appointment_status_enum, default='scheduled')
     version = Column(Integer, nullable=False, default=1, server_default="1")  # Optimistic concurrency control
     notes = Column(Text)
     highway_infraction = Column(Boolean, default=False, server_default="false")  # Hazmat truck on restricted highway route
@@ -287,20 +287,20 @@ class Appointment(Base):
         """
         Calculate real-time status based on scheduled time.
         - 'completed' and 'canceled' are final states (stored in DB)
-        - 'delayed' is computed if past scheduled_start_time + tolerance
-        - 'in_transit' otherwise
+        - 'delayed' is computed if past scheduled_start_time + tolerance (only for in_transit)
+        - 'scheduled' / 'in_transit' otherwise (returns stored status as-is)
         """
         # Final and active-execution states are returned as-is
-        if self.status in ('completed', 'canceled', 'in_process', 'unloading'):
+        if self.status in ('completed', 'canceled', 'in_process', 'unloading', 'scheduled'):
             return self.status
-        
-        # Check if delayed based on time
+
+        # Check if delayed based on time (only applies to in_transit)
         if self.scheduled_start_time:
             delay_threshold = self.scheduled_start_time + timedelta(minutes=DELAY_TOLERANCE_MINUTES)
             if datetime.now() > delay_threshold:
                 return 'delayed'
-        
-        return 'in_transit'
+
+        return self.status
     
     @property
     def is_delayed(self) -> bool:

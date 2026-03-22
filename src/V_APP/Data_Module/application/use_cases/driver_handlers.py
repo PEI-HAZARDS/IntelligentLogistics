@@ -54,7 +54,7 @@ def claim_appointment_by_pin(
         if appt["driver_license"] != drivers_license:
             return None, "Not authorized for this appointment"
 
-        if appt["status"] not in ("in_transit", "delayed", "in_process"):
+        if appt["status"] not in ("scheduled", "in_transit", "delayed", "in_process"):
             return None, f"Appointment cannot be claimed (status: {appt['status']})"
 
         if not debug_mode:

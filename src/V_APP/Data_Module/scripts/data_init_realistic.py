@@ -484,7 +484,7 @@ def init_data(db: Session):
             gate_out_id=None,
             scheduled_start_time=appt0_time,
             expected_duration=60,
-            status="in_transit",
+            status="scheduled",
             highway_infraction=False,  # No pre-seeded infraction
             notes="HAZMAT: Sulfuric acid (fuming) [UN:1831, Kemler:X886] - Approaching port",
         )
@@ -541,11 +541,11 @@ def init_data(db: Session):
             (7,  7,  "completed",  True,  42,   160, "operational"),
             (8,  8,  "completed",  True,  31,   130, None),
             (9,  9,  "in_process", True,  None, 25,  None),
-            (10, 10, "in_process", True,  None, 15,  "problem"),
+            (10, 10, "completed",  True,  12,   15,  "problem"),
             (11, 11, "completed",  True,  40,   300, None),
-            (12, 12, "in_transit", False, None, -10, None),
+            (12, 12, "scheduled",  False, None, -10, None),  # Miguel already has BB11BB in_transit
             (13, 13, "in_transit", False, None, -30, None),
-            (14, 14, "in_transit", False, None, -45, None),
+            (14, 14, "scheduled",  False, None, -45, None),  # Bruno already has DD33DD in_transit
             (15, 15, "in_transit", False, None, -70, None),
             (16, 16, "in_transit", False, None, -90, None),
             (17, 17, "completed",  True,  25,   100, None),
@@ -618,14 +618,14 @@ def init_data(db: Session):
             (28, 28, "completed",  True,  33,  90,  None),
             (29, 29, "completed",  True,  27,  65,  None),
             # --- More in_process ---
-            (5,  5,  "in_process", True,  None, 35,  None),
-            (8,  8,  "in_process", True,  None, 20,  "operational"),
-            (17, 17, "in_process", True,  None, 10,  None),
+            (5,  5,  "completed",  True,  25,  35,  None),       # Carlos already has tidx=15 in_transit
+            (8,  8,  "in_process", True,  None, 20,  "operational"),  # Pierre — only active one
+            (17, 17, "completed",  True,  8,   10,  None),       # Hans already has tidx=7 in_transit
             # --- More in_transit ---
-            (6,  6,  "in_transit", False, None, -5,  None),
-            (7,  7,  "in_transit", False, None, -15, None),
-            (18, 18, "in_transit", False, None, -25, None),
-            (21, 21, "in_transit", False, None, -40, None),
+            (6,  6,  "scheduled",  False, None, -5,  None),      # Maria already has tidx=16 in_transit
+            (7,  7,  "in_transit", False, None, -15, None),      # Hans — only active one
+            (18, 18, "scheduled",  False, None, -25, None),      # Pierre already has tidx=8 in_process
+            (21, 21, "scheduled",  False, None, -40, None),      # Sofia already has AA00AA in_process
             # --- More canceled ---
             (22, 22, "canceled",   False, None, 100, None),
             (23, 23, "canceled",   False, None, 150, None),
@@ -805,143 +805,11 @@ def init_data(db: Session):
 
 def bootstrap_mongo_projections(database_url: str):
     """
-    Bootstrap MongoDB read models from PostgreSQL data.
-
-    After initial seeding, the CQRS read models (MongoDB) are empty because
-    no outbox events have been produced yet.  This function projects all
-    appointments, drivers, workers, and alerts into MongoDB so the read
-    side is immediately consistent with the write side (Guardrail 5).
+    No-op: MongoDB read models (appointments_read, drivers_read, etc.) have
+    been removed.  Operational reads now go directly to PostgreSQL.
+    MongoDB is only used for event/audit data (agent_detections, decision_events).
     """
-    try:
-        from pymongo import MongoClient
-        mongo_url = os.getenv("MONGO_URL", "mongodb://mongo:27017")
-        mongo = MongoClient(mongo_url, serverSelectionTimeoutMS=5000)
-        mdb = mongo["intelligent_logistics"]
-    except Exception as e:
-        print(f"  [WARN] MongoDB not available — skipping projection bootstrap: {e}")
-        return
-
-    engine = create_engine(database_url)
-    Session = sessionmaker(bind=engine)
-    db = Session()
-
-    try:
-        from sqlalchemy import text
-
-        # --- Project Appointments ---
-        rows = db.execute(text(
-            "SELECT id, arrival_id, booking_reference, driver_license, "
-            "truck_license_plate, terminal_id, gate_in_id, gate_out_id, "
-            "scheduled_start_time, expected_duration, status, notes, highway_infraction "
-            "FROM appointment"
-        )).fetchall()
-
-        appt_docs = []
-        for r in rows:
-            doc = {
-                "id": r.id,
-                "arrival_id": r.arrival_id,
-                "booking_reference": r.booking_reference,
-                "driver_license": r.driver_license,
-                "truck_license_plate": r.truck_license_plate,
-                "terminal_id": r.terminal_id,
-                "gate_in_id": r.gate_in_id,
-                "gate_out_id": r.gate_out_id,
-                "scheduled_start_time": r.scheduled_start_time.isoformat() if r.scheduled_start_time else None,
-                "expected_duration": r.expected_duration,
-                "status": r.status,
-                "notes": r.notes,
-                "highway_infraction": bool(r.highway_infraction) if r.highway_infraction is not None else False,
-                "projected_at": datetime.utcnow(),
-            }
-            appt_docs.append(doc)
-
-        if appt_docs:
-            coll = mdb["appointments_read"]
-            coll.delete_many({})
-            coll.insert_many(appt_docs)
-            print(f"  Projected {len(appt_docs)} appointments to MongoDB")
-
-        # --- Project Drivers ---
-        driver_rows = db.execute(text(
-            "SELECT drivers_license, name, company_nif, active FROM driver"
-        )).fetchall()
-
-        driver_docs = []
-        for r in driver_rows:
-            driver_docs.append({
-                "drivers_license": r.drivers_license,
-                "name": r.name,
-                "company_nif": r.company_nif,
-                "active": bool(r.active),
-                "projected_at": datetime.utcnow(),
-            })
-
-        if driver_docs:
-            coll = mdb["drivers_read"]
-            coll.delete_many({})
-            coll.insert_many(driver_docs)
-            print(f"  Projected {len(driver_docs)} drivers to MongoDB")
-
-        # --- Project Workers ---
-        worker_rows = db.execute(text(
-            "SELECT num_worker, name, email, phone, active FROM worker"
-        )).fetchall()
-
-        worker_docs = []
-        for r in worker_rows:
-            # Determine role
-            mgr = db.execute(text(
-                "SELECT num_worker FROM manager WHERE num_worker = :nw"
-            ), {"nw": r.num_worker}).fetchone()
-            role = "manager" if mgr else "operator"
-            worker_docs.append({
-                "num_worker": r.num_worker,
-                "name": r.name,
-                "email": r.email,
-                "phone": r.phone,
-                "active": bool(r.active),
-                "role": role,
-                "projected_at": datetime.utcnow(),
-            })
-
-        if worker_docs:
-            coll = mdb["workers_read"]
-            coll.delete_many({})
-            coll.insert_many(worker_docs)
-            print(f"  Projected {len(worker_docs)} workers to MongoDB")
-
-        # --- Project Alerts ---
-        alert_rows = db.execute(text(
-            "SELECT id, visit_id, appointment_id, timestamp, type, description FROM alert"
-        )).fetchall()
-
-        alert_docs = []
-        for r in alert_rows:
-            alert_docs.append({
-                "id": r.id,
-                "visit_id": r.visit_id,
-                "appointment_id": r.appointment_id,
-                "timestamp": r.timestamp.isoformat() if r.timestamp else None,
-                "type": r.type,
-                "description": r.description,
-                "projected_at": datetime.utcnow(),
-            })
-
-        if alert_docs:
-            coll = mdb["alerts_read"]
-            coll.delete_many({})
-            coll.insert_many(alert_docs)
-            print(f"  Projected {len(alert_docs)} alerts to MongoDB")
-
-        print("  MongoDB bootstrap projection complete")
-
-    except Exception as e:
-        print(f"  [WARN] MongoDB bootstrap projection failed: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        db.close()
+    print("  MongoDB read model projection skipped (reads go directly to PostgreSQL)")
 
 
 def create_and_seed(database_url: str):

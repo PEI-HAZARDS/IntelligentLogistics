@@ -1,7 +1,6 @@
 """
 Command handlers for alert mutations.
 Writes to PostgreSQL via UoW + Outbox (Guardrails 2, 3, 6).
-Write-through to MongoDB alerts_read after commit.
 """
 
 from __future__ import annotations
@@ -46,23 +45,6 @@ KEMLER_CODES = {
     "50": "Oxidizing substance",
 }
 
-
-def _write_through_alert(alert_dict: dict[str, Any]) -> None:
-    """Best-effort write-through to MongoDB (outside SQL transaction)."""
-    try:
-        from infrastructure.persistence.mongo import alerts_read_collection
-
-        doc = {**alert_dict}
-        ts = doc.get("timestamp")
-        if ts and not isinstance(ts, str):
-            doc["timestamp"] = ts.isoformat()
-        alerts_read_collection.update_one(
-            {"id": doc["id"]},
-            {"$set": doc},
-            upsert=True,
-        )
-    except Exception as exc:
-        logger.warning("alerts_read write-through failed (outbox will catch up): %s", exc)
 
 
 def _append_outbox(uow: IUnitOfWork, alert_dict: dict[str, Any], event_type: str) -> None:
@@ -112,7 +94,6 @@ def create_alert(
         _append_outbox(uow, alert, "AlertCreated")
         uow.commit()
 
-    _write_through_alert(alert)
     return alert
 
 
@@ -149,7 +130,6 @@ def create_hazmat_alert(
         _append_outbox(uow, alert, "HazmatAlertCreated")
         uow.commit()
 
-    _write_through_alert(alert)
     return alert
 
 
@@ -162,9 +142,7 @@ def create_alerts_for_appointment(
     """Bulk-create alerts for an appointment (used by arrival_service).
 
     Each alert is persisted to PostgreSQL and an ``AlertCreated`` outbox event
-    is appended in the same transaction (Guardrail 3).  This ensures the outbox
-    worker can re-project alerts to ``alerts_read`` if the write-through below
-    fails (e.g. transient MongoDB unavailability).
+    is appended in the same transaction (Guardrail 3).
     """
     if not alerts_payload:
         return []
@@ -185,6 +163,4 @@ def create_alerts_for_appointment(
             created.append(alert)
         uow.commit()
 
-    for a in created:
-        _write_through_alert(a)
     return created

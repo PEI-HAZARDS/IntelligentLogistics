@@ -34,3 +34,24 @@ async def ws_gate(websocket: WebSocket, gate_id: str):
     except Exception as e:
         logger.error(f"WebSocket error for gate {gate_id}: {e}")
         ws_manager.disconnect(gate_id, websocket)
+
+
+@router.websocket("/ws/driver/{drivers_license}")
+async def ws_driver(websocket: WebSocket, drivers_license: str):
+    """
+    Driver-scoped WebSocket for the mobile app.
+    Receives status_changed events targeted at this specific driver.
+    """
+    ws_manager = _get_ws_manager(websocket)
+    await ws_manager.connect_driver(drivers_license, websocket)
+    logger.info(f"Driver WebSocket connected for '{drivers_license}'")
+
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        logger.info(f"Driver WebSocket disconnected for '{drivers_license}'")
+        ws_manager.disconnect_driver(drivers_license, websocket)
+    except Exception as e:
+        logger.error(f"Driver WebSocket error for '{drivers_license}': {e}")
+        ws_manager.disconnect_driver(drivers_license, websocket)

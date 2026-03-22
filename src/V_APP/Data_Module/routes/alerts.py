@@ -2,7 +2,7 @@
 Alerts Routes - Endpoints for alert management.
 Consumed by: Operator frontend, Decision Engine.
 
-CQRS: GET endpoints read from MongoDB (alerts_read_collection).
+GET endpoints read from PostgreSQL.
 POST endpoints write via UoW + Outbox (Guardrails 2, 3, 6).
 """
 
