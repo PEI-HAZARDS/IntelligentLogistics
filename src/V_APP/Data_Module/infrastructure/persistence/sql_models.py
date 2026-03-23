@@ -245,7 +245,9 @@ class Appointment(Base):
     __tablename__ = "appointment"
     
     id = Column(Integer, primary_key=True)
-    arrival_id = Column(String(50), unique=True, index=True)  # PIN e.g.: "PRT-0001"
+    # NOTE: unique=False for demo (all PINs forced to "1234").
+    # Restore to unique=True when reverting fn_generate_arrival_id() to use the sequence.
+    arrival_id = Column(String(50), unique=False, index=True)  # PIN e.g.: "1234"
     
     # Foreign Keys
     booking_reference = Column(String(50), ForeignKey('booking.reference'), nullable=False)

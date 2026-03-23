@@ -493,6 +493,42 @@ def init_data(db: Session):
         all_appointments.append((appt0, trucks[0], True, CARGO_DEFS[0][0], "in_transit"))
 
         # ---------------------------------------------------------------
+        # APPOINTMENTS for Oscar Almeida (87AX60) — 5 more (6 total)
+        # Varied statuses to show realistic trip history for the star truck
+        # ---------------------------------------------------------------
+        oscar_extra_configs = [
+            # (mins_ahead, notes)
+            (30,  "HAZMAT: Sulfuric acid (fuming) [UN:1831, Kemler:X886] - Scheduled delivery #2"),
+            (60,  "HAZMAT: Sulfuric acid (fuming) [UN:1831, Kemler:X886] - Scheduled delivery #3"),
+            (120, "HAZMAT: Sulfuric acid (fuming) [UN:1831, Kemler:X886] - Scheduled delivery #4"),
+            (180, "HAZMAT: Sulfuric acid (fuming) [UN:1831, Kemler:X886] - Scheduled delivery #5"),
+            (240, "HAZMAT: Sulfuric acid (fuming) [UN:1831, Kemler:X886] - Scheduled delivery #6"),
+        ]
+
+        for o_mins_ahead, o_notes in oscar_extra_configs:
+            o_bk = _make_booking(db, next_ref())
+            _make_cargo(db, o_bk.reference, CARGO_DEFS[0])  # Same sulfuric acid cargo
+
+            o_sched = now + timedelta(minutes=o_mins_ahead)
+            o_appt = Appointment(
+                booking_reference=o_bk.reference,
+                driver_license="PT12345678",  # Oscar Almeida
+                truck_license_plate="87AX60",
+                terminal_id=terminal_liquidos.id,
+                gate_in_id=gate_in.id,
+                gate_out_id=None,
+                scheduled_start_time=o_sched,
+                expected_duration=60,
+                status="scheduled",
+                highway_infraction=False,
+                notes=o_notes,
+            )
+            db.add(o_appt)
+            db.flush()
+
+            all_appointments.append((o_appt, trucks[0], True, CARGO_DEFS[0][0], "scheduled"))
+
+        # ---------------------------------------------------------------
         # APPOINTMENTS 1-4: Other HAZMAT trucks — mixed statuses
         # ---------------------------------------------------------------
         hazmat_statuses = [

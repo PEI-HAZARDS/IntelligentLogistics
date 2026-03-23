@@ -80,13 +80,14 @@ class TestManagerStatisticsImportsWired:
         source = _read(ROUTES_DIR / "statistics.py")
         assert "from application.queries.manager_statistics_queries import" in source
 
-    def test_imports_all_four_functions(self):
+    def test_imports_all_functions(self):
         source = _read(ROUTES_DIR / "statistics.py")
         for fn in [
             "get_dashboard_summary",
             "get_transport_stats",
             "get_volume_data",
             "get_alerts_breakdown",
+            "get_decision_analytics",
         ]:
             assert fn in source, f"statistics.py must import {fn}"
 
@@ -99,12 +100,22 @@ class TestManagerStatisticsResponseContract:
         """get_dashboard_summary must return camelCase keys matching statistics.ts."""
         source = _read(QUERIES_DIR / "manager_statistics_queries.py")
         for key in [
-            "totalTrucks",
+            "trucksInPort",
+            "trucksInTransit",
+            "scheduledCount",
+            "unloadingCount",
+            "completedCount",
             "entriesCount",
             "exitsCount",
             "avgPermanenceMinutes",
+            "avgWaitingMinutes",
             "delayRate",
             "slaCompliance",
+            "infractionCount",
+            "peakHour",
+            "portCapacity",
+            "congestionRate",
+            "vehiclesPerHour",
         ]:
             assert f'"{key}"' in source, (
                 f'manager_statistics_queries must return "{key}" (camelCase) to match '
@@ -144,3 +155,35 @@ class TestManagerStatisticsResponseContract:
                 f'manager_statistics_queries must return "{key}" to match '
                 f"the frontend AlertsBreakdown interface."
             )
+
+    def test_decision_analytics_returns_correct_keys(self):
+        """get_decision_analytics must return keys matching DecisionAnalytics."""
+        source = _read(QUERIES_DIR / "manager_statistics_queries.py")
+        for key in [
+            "totalDecisions",
+            "accepted",
+            "rejected",
+            "manualReview",
+            "acceptanceRate",
+            "avgPipelineMs",
+            "avgDetectionToDecisionMs",
+        ]:
+            assert f'"{key}"' in source, (
+                f'manager_statistics_queries must return "{key}" to match '
+                f"the frontend DecisionAnalytics interface."
+            )
+
+
+@pytest.mark.unit
+class TestDecisionAnalyticsRouteRegistered:
+    """statistics.py must define the decision-analytics route."""
+
+    def test_decision_analytics_route_exists(self):
+        source = _read(ROUTES_DIR / "statistics.py")
+        assert '"/decision-analytics"' in source or "'/decision-analytics'" in source, (
+            "GET /statistics/decision-analytics must exist for decision event analytics."
+        )
+
+    def test_get_decision_analytics_defined(self):
+        source = _read(QUERIES_DIR / "manager_statistics_queries.py")
+        assert "def get_decision_analytics(" in source

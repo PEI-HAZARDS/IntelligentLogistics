@@ -24,6 +24,7 @@ from infrastructure.persistence.sql_models import (
     Alert,
     Appointment,
     Company,
+    Dock,
     Truck,
     Visit,
 )
@@ -73,9 +74,11 @@ def _date_range(from_str: Optional[str], to_str: Optional[str]):
 
 def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
     """
-    Returns:
-        { totalTrucks, entriesCount, exitsCount,
-          avgPermanenceMinutes, delayRate, slaCompliance }
+    Returns enriched dashboard summary:
+        { trucksInPort, trucksInTransit, scheduledCount, unloadingCount,
+          completedCount, entriesCount, exitsCount,
+          avgPermanenceMinutes, avgWaitingMinutes,
+          delayRate, slaCompliance, infractionCount, peakHour }
     """
     day_start, day_end = _today_range(target_date)
     db: Session = SessionLocal()
@@ -85,11 +88,22 @@ def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
             Appointment.scheduled_start_time.between(day_start, day_end)
         )
         total_appointments = base.count()
-        total_trucks = (
-            db.query(func.count(func.distinct(Appointment.truck_license_plate)))
-            .filter(Appointment.scheduled_start_time.between(day_start, day_end))
-            .scalar()
-        ) or 0
+
+        # Status counts
+        scheduled_count = base.filter(Appointment.status == "scheduled").count()
+        in_transit_count = base.filter(Appointment.status == "in_transit").count()
+        in_process_count = base.filter(Appointment.status == "in_process").count()
+        unloading_count = base.filter(Appointment.status == "unloading").count()
+        completed_count = base.filter(Appointment.status == "completed").count()
+        delayed_count = base.filter(Appointment.status == "delayed").count()
+
+        # Trucks actually inside the port: in_process + unloading
+        trucks_in_port = in_process_count + unloading_count
+
+        # Infraction count
+        infraction_count = base.filter(
+            Appointment.highway_infraction.is_(True)
+        ).count()
 
         # Entries / exits via Visit
         entries_count = (
@@ -122,10 +136,27 @@ def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
         )
         avg_permanence = round(float(avg_perm), 1) if avg_perm else 0.0
 
+        # Average waiting time (minutes): entry_time - scheduled_start_time
+        avg_wait = (
+            db.query(
+                func.avg(
+                    extract(
+                        "epoch",
+                        Visit.entry_time - Appointment.scheduled_start_time,
+                    )
+                    / 60
+                )
+            )
+            .join(Appointment, Visit.appointment_id == Appointment.id)
+            .filter(
+                Visit.entry_time.isnot(None),
+                Visit.entry_time.between(day_start, day_end),
+            )
+            .scalar()
+        )
+        avg_waiting = round(float(avg_wait), 1) if avg_wait else 0.0
+
         # Delay rate
-        delayed_count = base.filter(
-            Appointment.status.in_(["delayed"])
-        ).count()
         delay_rate = (
             round(delayed_count / total_appointments * 100, 1)
             if total_appointments > 0
@@ -133,7 +164,6 @@ def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
         )
 
         # SLA compliance = completed on time / (completed + delayed) * 100
-        completed_count = base.filter(Appointment.status == "completed").count()
         sla_denominator = completed_count + delayed_count
         sla_compliance = (
             round(completed_count / sla_denominator * 100, 1)
@@ -141,23 +171,80 @@ def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
             else 100.0
         )
 
+        # Peak hour: hour with the most entries today
+        peak_hour_row = (
+            db.query(
+                extract("hour", Visit.entry_time).label("hr"),
+                func.count().label("cnt"),
+            )
+            .filter(
+                Visit.entry_time.isnot(None),
+                Visit.entry_time.between(day_start, day_end),
+            )
+            .group_by("hr")
+            .order_by(func.count().desc())
+            .first()
+        )
+        peak_hour = (
+            {"hour": int(peak_hour_row.hr), "count": peak_hour_row.cnt}
+            if peak_hour_row
+            else None
+        )
+
+        # Port capacity: total dock bays in the system
+        port_capacity = db.query(func.count()).select_from(Dock).scalar() or 1
+
+        # Congestion rate: trucks currently inside vs available dock capacity
+        congestion_rate = round(
+            min(100.0, trucks_in_port / port_capacity * 100), 1
+        )
+
+        # Vehicles per hour: total movements / elapsed hours today
+        now_utc = datetime.now(timezone.utc)
+        elapsed_hours = max(
+            (now_utc - day_start).total_seconds() / 3600, 1.0
+        )
+        vehicles_per_hour = round(
+            (entries_count + exits_count) / elapsed_hours, 1
+        )
+
         return {
-            "totalTrucks": total_trucks,
+            "trucksInPort": trucks_in_port,
+            "trucksInTransit": in_transit_count,
+            "scheduledCount": scheduled_count,
+            "unloadingCount": unloading_count,
+            "completedCount": completed_count,
             "entriesCount": entries_count,
             "exitsCount": exits_count,
             "avgPermanenceMinutes": avg_permanence,
+            "avgWaitingMinutes": avg_waiting,
             "delayRate": delay_rate,
             "slaCompliance": sla_compliance,
+            "infractionCount": infraction_count,
+            "peakHour": peak_hour,
+            "portCapacity": port_capacity,
+            "congestionRate": congestion_rate,
+            "vehiclesPerHour": vehicles_per_hour,
         }
     except Exception as e:
         logger.error("get_dashboard_summary failed: %s", e)
         return {
-            "totalTrucks": 0,
+            "trucksInPort": 0,
+            "trucksInTransit": 0,
+            "scheduledCount": 0,
+            "unloadingCount": 0,
+            "completedCount": 0,
             "entriesCount": 0,
             "exitsCount": 0,
             "avgPermanenceMinutes": 0,
+            "avgWaitingMinutes": 0,
             "delayRate": 0,
             "slaCompliance": 100,
+            "infractionCount": 0,
+            "peakHour": None,
+            "portCapacity": 0,
+            "congestionRate": 0,
+            "vehiclesPerHour": 0,
         }
     finally:
         db.close()
@@ -359,3 +446,129 @@ def get_alerts_breakdown(
         return []
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# 5. GET /statistics/decision-analytics (MongoDB)
+# ---------------------------------------------------------------------------
+
+def get_decision_analytics(
+    target_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Decision analytics from MongoDB decision_events collection.
+    Returns:
+        { totalDecisions, accepted, rejected, manualReview,
+          acceptanceRate, avgPipelineMs, avgDetectionToDecisionMs }
+    """
+    from infrastructure.persistence.mongo import decision_events_collection
+
+    day_start, day_end = _today_range(target_date)
+
+    try:
+        pipeline = [
+            {"$match": {"created_at": {"$gte": day_start, "$lte": day_end}}},
+            {
+                "$group": {
+                    "_id": None,
+                    "totalDecisions": {"$sum": 1},
+                    "accepted": {
+                        "$sum": {
+                            "$cond": [
+                                {"$eq": ["$final_decision", "ACCEPTED"]},
+                                1,
+                                0,
+                            ]
+                        }
+                    },
+                    "rejected": {
+                        "$sum": {
+                            "$cond": [
+                                {"$eq": ["$final_decision", "REJECTED"]},
+                                1,
+                                0,
+                            ]
+                        }
+                    },
+                    "manualReview": {
+                        "$sum": {
+                            "$cond": [
+                                {
+                                    "$eq": [
+                                        "$decision_engine.decision",
+                                        "MANUAL_REVIEW",
+                                    ]
+                                },
+                                1,
+                                0,
+                            ]
+                        }
+                    },
+                    "avgPipelineMs": {
+                        "$avg": "$timing.total_pipeline_ms"
+                    },
+                    "avgDetectionToDecisionMs": {
+                        "$avg": "$timing.detection_to_decision_ms"
+                    },
+                }
+            },
+            {
+                "$project": {
+                    "_id": 0,
+                    "totalDecisions": 1,
+                    "accepted": 1,
+                    "rejected": 1,
+                    "manualReview": 1,
+                    "acceptanceRate": {
+                        "$cond": [
+                            {"$eq": ["$totalDecisions", 0]},
+                            0,
+                            {
+                                "$round": [
+                                    {
+                                        "$multiply": [
+                                            {
+                                                "$divide": [
+                                                    "$accepted",
+                                                    "$totalDecisions",
+                                                ]
+                                            },
+                                            100,
+                                        ]
+                                    },
+                                    1,
+                                ]
+                            },
+                        ]
+                    },
+                    "avgPipelineMs": {"$round": ["$avgPipelineMs", 0]},
+                    "avgDetectionToDecisionMs": {
+                        "$round": ["$avgDetectionToDecisionMs", 0]
+                    },
+                }
+            },
+        ]
+
+        result = list(decision_events_collection.aggregate(pipeline))
+        if result:
+            return result[0]
+        return {
+            "totalDecisions": 0,
+            "accepted": 0,
+            "rejected": 0,
+            "manualReview": 0,
+            "acceptanceRate": 0,
+            "avgPipelineMs": 0,
+            "avgDetectionToDecisionMs": 0,
+        }
+    except Exception as e:
+        logger.error("get_decision_analytics failed: %s", e)
+        return {
+            "totalDecisions": 0,
+            "accepted": 0,
+            "rejected": 0,
+            "manualReview": 0,
+            "acceptanceRate": 0,
+            "avgPipelineMs": 0,
+            "avgDetectionToDecisionMs": 0,
+        }

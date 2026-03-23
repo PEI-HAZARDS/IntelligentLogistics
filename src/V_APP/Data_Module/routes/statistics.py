@@ -22,6 +22,7 @@ from application.queries.manager_statistics_queries import (
     get_transport_stats,
     get_volume_data,
     get_alerts_breakdown,
+    get_decision_analytics,
 )
 
 router = APIRouter(prefix="/statistics", tags=["Statistics & Analytics"])
@@ -38,8 +39,10 @@ def dashboard_summary_for_manager(
 
     **Response shape** (matches statistics.ts DashboardSummary):
     ```json
-    { "totalTrucks", "entriesCount", "exitsCount",
-      "avgPermanenceMinutes", "delayRate", "slaCompliance" }
+    { "trucksInPort", "trucksInTransit", "scheduledCount", "unloadingCount",
+      "completedCount", "entriesCount", "exitsCount",
+      "avgPermanenceMinutes", "avgWaitingMinutes",
+      "delayRate", "slaCompliance", "infractionCount", "peakHour" }
     ```
     """
     return get_dashboard_summary(date)
@@ -98,6 +101,22 @@ def alerts_breakdown(
     ```
     """
     return get_alerts_breakdown(from_date, to_date)
+
+
+@router.get("/decision-analytics")
+def decision_analytics(
+    date: Optional[str] = Query(None, description="ISO date (YYYY-MM-DD), defaults to today"),
+):
+    """
+    Decision analytics from MongoDB decision_events collection.
+
+    **Response shape** (matches statistics.ts DecisionAnalytics):
+    ```json
+    { "totalDecisions", "accepted", "rejected", "manualReview",
+      "acceptanceRate", "avgPipelineMs", "avgDetectionToDecisionMs" }
+    ```
+    """
+    return get_decision_analytics(date)
 
 
 # ==================== REAL-TIME METRICS ====================
