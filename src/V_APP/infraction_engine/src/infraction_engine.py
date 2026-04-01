@@ -6,6 +6,7 @@ multiple gates.
 """
 
 import time
+from typing import Tuple
 from prometheus_client import Counter # type: ignore
 from shared.src.kafka_protocol import (
     HazardPlateResultsMessage, KafkaMessageProto,
@@ -73,7 +74,7 @@ class InfractionEngine(BaseDecisionEngine):
             return
 
         # Truck IS hazardous — check if it has a matching appointment at THIS gate.
-        has_appointment = self._has_matching_appointment(gate_id, license_plate)
+        has_appointment, license_plate = self._has_matching_appointment("1", license_plate)
         infraction = True
         
         if has_appointment:
@@ -92,10 +93,10 @@ class InfractionEngine(BaseDecisionEngine):
         """Determine if the truck carries hazardous goods."""
         return bool(raw_un and raw_un != "N/A") or bool(raw_kemler and raw_kemler != "N/A")
 
-    def _has_matching_appointment(self, gate_id: str, license_plate: str) -> bool:
+    def _has_matching_appointment(self, gate_id: str, license_plate: str) -> Tuple[bool, str]:
         """Check whether the license plate matches any scheduled appointment for this gate."""
         if license_plate == "N/A":
-            return False
+            return False, license_plate
 
         try:
             # Temporarily override gate_id for the query
@@ -105,18 +106,21 @@ class InfractionEngine(BaseDecisionEngine):
             self.database_client.gate_id = original_gid
         except Exception:
             self.logger.exception(f"Error querying appointments for gate {gate_id}")
-            return False
+            return False, license_plate
 
         if appointments is not None and self.database_client.is_api_unavailable(appointments.get("message", "")):
-            return False
+            return False, license_plate
 
         if appointments is None or appointments.get("found") is False:
-            return False
+            return False, license_plate
 
         candidate_plates = [appt["license_plate"] for appt in appointments.get("candidates", [])]
         matched_plate = self.plate_matcher.match_plate(license_plate, candidate_plates)
+        
+        if matched_plate is None:
+            return False, license_plate
 
-        return matched_plate is not None
+        return matched_plate is not None, matched_plate
 
     def _publish_infraction(
         self,
