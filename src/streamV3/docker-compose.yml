@@ -10,4 +10,5 @@ services:
     restart: unless-stopped
     network_mode: host # required for UDP RTSP and WebRTC ICE
     volumes:
-      - /home/pei_user/videos:/videos:ro
+      #- /home/pei_user/videos:/videos:ro
+      - /home/pei_user/test_videos:/test_videos:ro
