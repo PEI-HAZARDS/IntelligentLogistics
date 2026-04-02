@@ -11,6 +11,7 @@ Tests cover:
 All cv2.VideoCapture calls are mocked.
 """
 
+import queue
 import pytest
 import numpy as np
 from unittest.mock import patch, MagicMock, PropertyMock
@@ -254,8 +255,7 @@ class TestReconnect:
                 manager.retry_delay = 0.01
                 manager.running = True
                 manager.cap = old_cap
-                manager.frame = np.zeros((480, 640, 3), dtype=np.uint8)
-                manager.lock = threading.Lock()
+                manager.frame_queue = queue.Queue(maxsize=1)
 
                 # Act
                 manager._reconnect()
@@ -282,14 +282,14 @@ class TestReconnect:
                 manager.retry_delay = 0.01
                 manager.running = True
                 manager.cap = MagicMock()
-                manager.frame = np.zeros((480, 640, 3), dtype=np.uint8)
-                manager.lock = threading.Lock()
+                manager.frame_queue = queue.Queue(maxsize=1)
+                manager.frame_queue.put(np.zeros((480, 640, 3), dtype=np.uint8))
 
                 # Act
                 manager._reconnect()
 
                 # Assert
-                assert manager.frame is None
+                assert manager.frame_queue.empty()
 
 
 # =============================================================================
@@ -307,16 +307,15 @@ class TestRead:
             
             with patch.object(StreamManager, '__init__', lambda self, *args, **kwargs: None):
                 manager = StreamManager.__new__(StreamManager)
-                manager.frame = sample_frame
-                manager.lock = threading.Lock()
+                manager.frame_queue = queue.Queue(maxsize=1)
+                manager.frame_queue.put(sample_frame)
 
                 # Act
-                result = manager.read()
+                result = manager.read(timeout=1.0)
 
                 # Assert
                 assert result is not None
                 assert np.array_equal(result, sample_frame)
-                assert result is not sample_frame  # Should be a copy
 
     def test_returns_none_when_no_frame(self):
         """Returns None when no frame available."""
@@ -326,11 +325,10 @@ class TestRead:
             
             with patch.object(StreamManager, '__init__', lambda self, *args, **kwargs: None):
                 manager = StreamManager.__new__(StreamManager)
-                manager.frame = None
-                manager.lock = threading.Lock()
+                manager.frame_queue = queue.Queue(maxsize=1)
 
                 # Act
-                result = manager.read()
+                result = manager.read(timeout=0.01)
 
                 # Assert
                 assert result is None
@@ -356,8 +354,7 @@ class TestRelease:
                 manager.thread = MagicMock()
                 manager.thread.join = MagicMock()
                 manager.cap = MagicMock()
-                manager.lock = threading.Lock()
-                manager.q = MagicMock()
+                manager.frame_queue = queue.Queue(maxsize=1)
 
                 # Act
                 manager.release()
@@ -370,15 +367,14 @@ class TestRelease:
         # Arrange
         with patch("AI_APP.shared.src.stream_manager.cv2"):
             from AI_APP.shared.src.stream_manager import StreamManager
-            
+
             with patch.object(StreamManager, '__init__', lambda self, *args, **kwargs: None):
                 manager = StreamManager.__new__(StreamManager)
                 manager.url = "rtmp://test"
                 mock_thread = MagicMock()
                 manager.thread = mock_thread
                 manager.cap = MagicMock()
-                manager.lock = threading.Lock()
-                manager.q = MagicMock()
+                manager.frame_queue = queue.Queue(maxsize=1)
 
                 # Act
                 manager.release()
@@ -391,15 +387,14 @@ class TestRelease:
         # Arrange
         with patch("AI_APP.shared.src.stream_manager.cv2"):
             from AI_APP.shared.src.stream_manager import StreamManager
-            
+
             with patch.object(StreamManager, '__init__', lambda self, *args, **kwargs: None):
                 manager = StreamManager.__new__(StreamManager)
                 manager.url = "rtmp://test"
                 manager.thread = MagicMock()
                 mock_cap = MagicMock()
                 manager.cap = mock_cap
-                manager.lock = threading.Lock()
-                manager.q = MagicMock()
+                manager.frame_queue = queue.Queue(maxsize=1)
 
                 # Act
                 manager.release()
@@ -451,8 +446,7 @@ class TestInternalMethods:
                 manager.retry_delay = 0.01
                 manager.running = True
                 manager.cap = None  # Disconnected
-                manager.frame = None
-                manager.lock = threading.Lock()
+                manager.frame_queue = queue.Queue(maxsize=1)
 
                 # Act
                 result = manager._ensure_connection_active()
@@ -469,14 +463,14 @@ class TestInternalMethods:
             
             with patch.object(StreamManager, '__init__', lambda self, *args, **kwargs: None):
                 manager = StreamManager.__new__(StreamManager)
-                manager.frame = None
-                manager.lock = threading.Lock()
+                manager.frame_queue = queue.Queue(maxsize=1)
 
                 # Act
                 manager._handle_read_success(sample_frame)
 
                 # Assert
-                assert np.array_equal(manager.frame, sample_frame)
+                result = manager.frame_queue.get_nowait()
+                assert np.array_equal(result, sample_frame)
 
     def test_handle_read_failure_increments_count(self):
         """_handle_read_failure increments failure count."""
@@ -514,8 +508,7 @@ class TestInternalMethods:
                     manager.retry_delay = 0.01
                     manager.running = True
                     manager.cap = MagicMock()
-                    manager.frame = None
-                    manager.lock = threading.Lock()
+                    manager.frame_queue = queue.Queue(maxsize=1)
 
                     # Act - at max failures
                     result = manager._handle_read_failure(9, 10)

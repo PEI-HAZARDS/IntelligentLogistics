@@ -124,26 +124,36 @@ class TestIsHazardous:
 
 class TestHasMatchingAppointment:
     def test_returns_false_for_na(self, engine):
-        assert engine._has_matching_appointment("1", "N/A") is False
+        matched, plate = engine._has_matching_appointment("1", "N/A")
+        assert matched is False
+        assert plate == "N/A"
 
     def test_returns_false_on_api_error(self, engine):
         engine.database_client.get_appointments.side_effect = Exception("connection error")
-        assert engine._has_matching_appointment("1", "AB12CD") is False
+        matched, plate = engine._has_matching_appointment("1", "AB12CD")
+        assert matched is False
+        assert plate == "AB12CD"
 
     def test_returns_false_when_api_unavailable(self, engine):
         engine.database_client.get_appointments.return_value = {"message": "unavailable"}
         engine.database_client.is_api_unavailable.return_value = True
-        assert engine._has_matching_appointment("1", "AB12CD") is False
+        matched, plate = engine._has_matching_appointment("1", "AB12CD")
+        assert matched is False
+        assert plate == "AB12CD"
 
     def test_returns_false_when_no_appointments(self, engine):
         engine.database_client.get_appointments.return_value = {"found": False}
         engine.database_client.is_api_unavailable.return_value = False
-        assert engine._has_matching_appointment("1", "AB12CD") is False
+        matched, plate = engine._has_matching_appointment("1", "AB12CD")
+        assert matched is False
+        assert plate == "AB12CD"
 
     def test_returns_false_when_none(self, engine):
         engine.database_client.get_appointments.return_value = None
         engine.database_client.is_api_unavailable.return_value = False
-        assert engine._has_matching_appointment("1", "AB12CD") is False
+        matched, plate = engine._has_matching_appointment("1", "AB12CD")
+        assert matched is False
+        assert plate == "AB12CD"
 
     def test_returns_true_when_plate_matches(self, engine):
         engine.database_client.get_appointments.return_value = {
@@ -152,7 +162,9 @@ class TestHasMatchingAppointment:
         }
         engine.database_client.is_api_unavailable.return_value = False
         engine.plate_matcher.match_plate.return_value = "AB12CD"
-        assert engine._has_matching_appointment("1", "AB12CD") is True
+        matched, plate = engine._has_matching_appointment("1", "AB12CD")
+        assert matched is True
+        assert plate == "AB12CD"
 
     def test_returns_false_when_no_plate_matches(self, engine):
         engine.database_client.get_appointments.return_value = {
@@ -161,7 +173,9 @@ class TestHasMatchingAppointment:
         }
         engine.database_client.is_api_unavailable.return_value = False
         engine.plate_matcher.match_plate.return_value = None
-        assert engine._has_matching_appointment("1", "AB12CD") is False
+        matched, plate = engine._has_matching_appointment("1", "AB12CD")
+        assert matched is False
+        assert plate == "AB12CD"
 
     def test_restores_gate_id(self, engine):
         engine.database_client.gate_id = "original"

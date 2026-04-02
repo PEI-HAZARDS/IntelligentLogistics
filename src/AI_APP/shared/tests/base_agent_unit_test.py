@@ -28,34 +28,34 @@ import time
 
 class MockTestAgent:
     """A mock concrete implementation of BaseAgent for testing."""
-    
+
     def get_agent_name(self):
         return "TestAgent"
-    
+
     def get_bbox_color(self):
         return "green"
-    
+
     def get_bbox_label(self):
         return "test"
-    
+
     def get_yolo_model_path(self):
         return "/path/to/model.pt"
-    
+
     def get_annotated_frames_bucket(self):
         return "test-annotated"
-    
+
     def get_crops_bucket(self):
         return "test-crops"
-    
+
     def get_consume_topic(self):
         return "test-consume-topic"
-    
+
     def get_produce_topic(self):
         return "test-produce-topic"
-    
+
     def is_valid_detection(self, crop, confidence, box_index):
         return confidence > 0.5
-    
+
     def build_publish_payload(self, truck_id, detection_result, confidence, crop_url):
         return {
             "truckId": truck_id,
@@ -63,11 +63,11 @@ class MockTestAgent:
             "confidence": confidence,
             "cropUrl": crop_url,
         }
-    
+
     def init_metrics(self):
         self.frames_processed_metric = MagicMock()
         self.inference_latency = MagicMock()
-    
+
     def get_object_type(self):
         return "test object"
 
@@ -119,36 +119,36 @@ def sample_crop():
 def create_test_agent(mock_deps, config=None):
     """Create a concrete test agent instance with mocked dependencies."""
     from AI_APP.shared.src.base_agent import BaseAgent
-    
+
     # Create a concrete subclass
     class ConcreteTestAgent(BaseAgent):
         def get_agent_name(self):
             return "TestAgent"
-        
+
         def get_bbox_color(self):
             return "green"
-        
+
         def get_bbox_label(self):
             return "test"
-        
+
         def get_yolo_model_path(self):
             return "/path/to/model.pt"
-        
+
         def get_annotated_frames_bucket(self):
             return "test-annotated"
-        
+
         def get_crops_bucket(self):
             return "test-crops"
-        
+
         def get_consume_topic(self):
             return "test-consume-topic"
-        
+
         def get_produce_topic(self):
             return "test-produce-topic"
-        
+
         def is_valid_detection(self, crop, confidence, box_index):
             return confidence > 0.5
-        
+
         def _build_message_for_detection(self, result_text, confidence, crop_url):
             payload = {
                 "truckId": self.truck_id,
@@ -168,14 +168,14 @@ def create_test_agent(mock_deps, config=None):
 
         def initialize_ocr(self):
             pass
-        
+
         def init_metrics(self):
             self.frames_processed_metric = MagicMock()
             self.inference_latency = MagicMock()
-        
+
         def get_object_type(self):
             return "test object"
-    
+
     # Pass mocks directly using dependency injection
     return ConcreteTestAgent(config=config, **mock_deps)
 
@@ -195,7 +195,7 @@ class TestBaseAgentInit:
         # Assert
         assert agent.agent_name == "TestAgent"
         assert agent.running is True
-        assert isinstance(agent.frames_queue, Queue)
+        assert isinstance(agent.pending_annotated_uploads, Queue)
         # Verify injected mocks are used
         assert agent.stream_manager is mock_dependencies["stream_manager"]
         assert agent.yolo is mock_dependencies["object_detector"]
@@ -228,7 +228,7 @@ class TestBaseAgentInit:
             "MAX_FRAMES": "100",
             "MIN_DETECTION_CONFIDENCE": "0.6",
         }
-        
+
         with patch.dict(os.environ, env_vars, clear=True):
             # Act
             agent = create_test_agent(mock_dependencies)
@@ -254,7 +254,7 @@ class TestLoop:
         # Arrange
         agent = create_test_agent(mock_dependencies)
         agent.running = False  # Stop immediately
-        
+
         # Act
         agent.start()
 
@@ -265,27 +265,27 @@ class TestLoop:
         """Loop processes valid messages."""
         # Arrange
         agent = create_test_agent(mock_dependencies)
-        
+
         mock_msg = MagicMock()
         mock_msg.error.return_value = None
         mock_msg.headers.return_value = [("truckId", b"TRUCK123")]
-        
+
         agent.kafka_consumer.consume_typed_message.side_effect = [(None, mock_msg, "TRUCK123"), (None, None, None)]
         agent.consensus_algorithm.consensus_reached = False
         agent.consensus_algorithm.best_crop = None
         agent.consensus_algorithm.get_best_partial_result.return_value = (None, None, None)
-        
+
         # Mock _process_message to stop the loop
         call_count = [0]
         original_running = [True]
-        
+
         def stop_after_first(*args):
             call_count[0] += 1
             if call_count[0] >= 1:
                 agent.running = False
-        
+
         agent._process_message = MagicMock(side_effect=stop_after_first)
-        
+
         # Act
         agent.start()
 
@@ -338,20 +338,8 @@ class TestStop:
 class TestFrameManagement:
     """Tests for frame management methods."""
 
-    def test_get_next_frame_from_queue(self, mock_dependencies, sample_frame):
-        """_get_next_frame returns frame from queue."""
-        # Arrange
-        agent = create_test_agent(mock_dependencies)
-        agent.frames_queue.put(sample_frame)
-
-        # Act
-        result = agent._get_next_frame()
-
-        # Assert
-        assert np.array_equal(result, sample_frame)
-
-    def test_get_next_frame_captures_more_when_empty(self, mock_dependencies, sample_frame):
-        """_get_next_frame captures more frames when queue is empty."""
+    def test_get_next_frame_returns_frame(self, mock_dependencies, sample_frame):
+        """_get_next_frame returns frame from stream manager."""
         # Arrange
         agent = create_test_agent(mock_dependencies)
         agent.stream_manager.read.return_value = sample_frame
@@ -360,6 +348,7 @@ class TestFrameManagement:
         result = agent._get_next_frame()
 
         # Assert
+        assert np.array_equal(result, sample_frame)
         agent.stream_manager.read.assert_called()
 
     def test_get_next_frame_returns_none_on_empty(self, mock_dependencies):
@@ -367,27 +356,13 @@ class TestFrameManagement:
         # Arrange
         agent = create_test_agent(mock_dependencies)
         agent.stream_manager.read.return_value = None
-        agent.running = False  # Prevent infinite loop in _add_frames_queue
+        agent.running = False  # Prevent retries
 
         # Act
         result = agent._get_next_frame()
 
         # Assert
         assert result is None
-
-    def test_clear_frames_queue_empties_queue(self, mock_dependencies, sample_frame):
-        """_clear_frames_queue removes all frames."""
-        # Arrange
-        agent = create_test_agent(mock_dependencies)
-        for i in range(5):
-            agent.frames_queue.put(sample_frame)
-        assert agent.frames_queue.qsize() == 5
-
-        # Act
-        agent._clear_frames_queue()
-
-        # Assert
-        assert agent.frames_queue.empty()
 
 
 # =============================================================================
@@ -404,7 +379,6 @@ class TestDetectionPipeline:
         agent.running = True
         agent.consensus_algorithm.consensus_reached = False
         agent.frames_processed = 10
-        agent.MAX_FRAMES = 40
 
         # Act
         result = agent._should_continue_processing()
@@ -418,8 +392,7 @@ class TestDetectionPipeline:
         agent = create_test_agent(mock_dependencies)
         agent.running = True
         agent.consensus_algorithm.consensus_reached = False
-        agent.frames_processed = 40
-        agent.MAX_FRAMES = 40
+        agent.frames_processed = agent.config.max_frames
 
         # Act
         result = agent._should_continue_processing()
@@ -434,7 +407,6 @@ class TestDetectionPipeline:
         agent.running = True
         agent.consensus_algorithm.consensus_reached = True
         agent.frames_processed = 10
-        agent.MAX_FRAMES = 40
 
         # Act
         result = agent._should_continue_processing()
@@ -495,7 +467,6 @@ class TestDetectionPipeline:
         """_extract_crop returns crop for valid detection."""
         # Arrange
         agent = create_test_agent(mock_dependencies)
-        agent.MIN_DETECTION_CONFIDENCE = 0.4
         box = [10, 20, 50, 60, 0.9]  # High confidence
 
         # Act
@@ -508,8 +479,9 @@ class TestDetectionPipeline:
     def test_extract_crop_low_confidence_ignored(self, mock_dependencies, sample_frame):
         """_extract_crop returns None for low confidence."""
         # Arrange
-        agent = create_test_agent(mock_dependencies)
-        agent.MIN_DETECTION_CONFIDENCE = 0.5
+        from AI_APP.shared.src.base_agent import BaseAgentConfig
+        config = BaseAgentConfig(min_detection_confidence=0.5)
+        agent = create_test_agent(mock_dependencies, config=config)
         box = [10, 20, 50, 60, 0.3]  # Low confidence
 
         # Act
@@ -591,15 +563,15 @@ class TestMessageProcessing:
         """_process_message runs full detection pipeline."""
         # Arrange
         agent = create_test_agent(mock_dependencies)
-        
+
         mock_msg = MagicMock()
         mock_msg.headers.return_value = [("truckId", b"TRUCK-123")]
-        
+
         # Mock process_detection to return a result
         agent.consensus_algorithm.consensus_reached = False
         agent.consensus_algorithm.get_best_partial_result.return_value = ("ABC123", 0.95, sample_crop)
         agent.crop_storage.upload_memory_image.return_value = "http://minio/crop.jpg"
-        
+
         # Make process_detection return immediately
         original_process = agent.process_detection
         agent.process_detection = MagicMock(return_value=("ABC123", 0.95, sample_crop))
@@ -614,10 +586,10 @@ class TestMessageProcessing:
         """_process_message handles missing text."""
         # Arrange
         agent = create_test_agent(mock_dependencies)
-        
+
         mock_msg = MagicMock()
         mock_msg.headers.return_value = [("truckId", b"TRUCK-123")]
-        
+
         # Return no text but has crop
         agent.process_detection = MagicMock(return_value=(None, 0.5, sample_crop))
         agent.crop_storage.upload_memory_image.return_value = "http://minio/crop.jpg"
@@ -696,28 +668,32 @@ class TestProcessDetection:
         agent.consensus_algorithm.reset.assert_called_once()
 
     def test_process_detection_returns_on_consensus(self, mock_dependencies, sample_frame, sample_crop):
-        """process_detection processes frames and returns result."""
+        """process_detection returns result when consensus is reached during frame processing."""
         # Arrange
         agent = create_test_agent(mock_dependencies)
-        agent.running = False  # Stop immediately to test return path
-        agent.consensus_algorithm.get_best_partial_result.return_value = ("ABC123", 0.95, sample_crop)
+        agent.stream_manager.read.return_value = sample_frame
+
+        # Mock _process_frame to return a consensus result on first call
+        agent._process_frame = MagicMock(return_value=("ABC123", 0.95, sample_crop))
 
         # Act
         result = agent.process_detection()
 
         # Assert
-        assert agent.consensus_algorithm.reset.called
+        agent.consensus_algorithm.reset.assert_called()
         assert result == ("ABC123", 0.95, sample_crop)
 
     def test_process_detection_returns_partial_at_max_frames(self, mock_dependencies, sample_crop):
         """process_detection returns partial result at max frames."""
         # Arrange
-        agent = create_test_agent(mock_dependencies)
-        agent.MAX_FRAMES = 1
-        agent.frames_queue.put(np.zeros((480, 640, 3), dtype=np.uint8))
-        
-        # Mock no detection
-        agent.yolo.detect.return_value = None
+        from AI_APP.shared.src.base_agent import BaseAgentConfig
+        config = BaseAgentConfig(max_frames=1)
+        agent = create_test_agent(mock_dependencies, config=config)
+        agent.stream_manager.read.return_value = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        # Mock no detection from _process_frame
+        agent._process_frame = MagicMock(return_value=None)
+        agent.consensus_algorithm.consensus_reached = False
         agent.consensus_algorithm.get_best_partial_result.return_value = ("AB_123", 0.7, sample_crop)
 
         # Act
@@ -801,52 +777,6 @@ class TestProcessSingleFrame:
 
 
 # =============================================================================
-# Tests for _add_frames_queue
-# =============================================================================
-
-class TestGetFrames:
-    """Tests for _add_frames_queue method."""
-
-    def test_add_frames_queue_captures_frames(self, mock_dependencies, sample_frame):
-        """_add_frames_queue captures specified number of frames."""
-        # Arrange
-        agent = create_test_agent(mock_dependencies)
-        agent.stream_manager.read.return_value = sample_frame
-
-        # Act
-        agent._add_frames_queue(3)
-
-        # Assert
-        assert agent.frames_queue.qsize() == 3
-
-    def test_add_frames_queue_handles_none_frames(self, mock_dependencies):
-        """_add_frames_queue handles None from stream gracefully."""
-        # Arrange
-        agent = create_test_agent(mock_dependencies)
-        agent.running = False  # Prevent infinite loop
-        agent.stream_manager.read.return_value = None
-
-        # Act
-        agent._add_frames_queue(3)
-
-        # Assert
-        assert agent.frames_queue.empty()
-
-    def test_add_frames_queue_handles_exception(self, mock_dependencies):
-        """_add_frames_queue handles stream exceptions gracefully."""
-        # Arrange
-        agent = create_test_agent(mock_dependencies)
-        agent.running = False  # Prevent infinite loop
-        agent.stream_manager.read.side_effect = Exception("Stream error")
-
-        # Act - should not raise
-        agent._add_frames_queue(3)
-
-        # Assert
-        assert agent.frames_queue.empty()
-
-
-# =============================================================================
 # Tests for loop error handling
 # =============================================================================
 
@@ -892,4 +822,3 @@ class TestLoopErrorHandling:
 # =============================================================================
 # Tests for _upload_crop_to_storage error path
 # =============================================================================
-
