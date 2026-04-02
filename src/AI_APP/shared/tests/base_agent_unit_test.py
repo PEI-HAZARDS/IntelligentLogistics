@@ -672,6 +672,7 @@ class TestProcessDetection:
         # Arrange
         agent = create_test_agent(mock_dependencies)
         agent.stream_manager.read.return_value = sample_frame
+        agent.consensus_algorithm.consensus_reached = False
 
         # Mock _process_frame to return a consensus result on first call
         agent._process_frame = MagicMock(return_value=("ABC123", 0.95, sample_crop))
