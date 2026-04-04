@@ -1,4 +1,6 @@
-from models.sql_models import ShiftType
+from datetime import time
+
+from infrastructure.persistence.sql_models import ShiftType
 
 
 _ALIAS_MAP = {
@@ -23,3 +25,18 @@ def parse_shift_type(value: str) -> ShiftType:
     raise ValueError(
         "Invalid shift_type. Must be MORNING, AFTERNOON, NIGHT or 06:00-14:00, 14:00-22:00, 22:00-06:00"
     )
+
+
+def current_shift_type(now_time: time | None = None) -> ShiftType:
+    """Return the ShiftType that covers the given time (defaults to now)."""
+    from datetime import datetime as _dt
+
+    t = now_time or _dt.now().time()
+    # MORNING  06:00–14:00
+    # AFTERNOON 14:00–22:00
+    # NIGHT    22:00–06:00
+    if time(6, 0) <= t < time(14, 0):
+        return ShiftType.MORNING
+    if time(14, 0) <= t < time(22, 0):
+        return ShiftType.AFTERNOON
+    return ShiftType.NIGHT

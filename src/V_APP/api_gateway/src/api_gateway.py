@@ -2,6 +2,7 @@ import json
 import logging
 import threading
 import asyncio
+import httpx
 from web_socket_manager import WebSocketManager
 from shared.src.kafka_wrapper import KafkaConsumerWrapper, KafkaProducerWrapper
 from shared.src.kafka_protocol import Message, deserialize_message, KafkaTopicFactory
@@ -22,6 +23,7 @@ from opentelemetry.sdk.resources import Resource # type: ignore
 
 from routers import (
     arrivals,
+    auth,
     manual_review,
     alerts,
     drivers,
@@ -30,6 +32,8 @@ from routers import (
     workers,    # Operators and Managers
     statistics, # Statistics proxy for manager dashboard
 )
+from auth.keycloak_client import KeycloakClient
+from auth.token_validator import TokenValidator
 
 logger = logging.getLogger("APIGateway")
 
@@ -50,6 +54,12 @@ class APIGatewayConfig(BaseSettings):
     cors_allow_credentials: bool = Field(default=True)
     cors_allow_methods: list[str] = Field(default=["*"])
     cors_allow_headers: list[str] = Field(default=["*"])
+
+    # Keycloak
+    keycloak_url: str = Field(default="http://keycloak:8080")
+    keycloak_realm: str = Field(default="intelligent-logistics")
+    keycloak_client_id: str = Field(default="api-gateway")
+    keycloak_client_secret: str = Field(default="api-gateway-secret")
     
     @field_validator("gate_ids", "decision_gate_ids", "infraction_gate_ids", mode="before")
     @classmethod
@@ -93,9 +103,9 @@ class APIGateway:
         self.consume_topics.append(KafkaTopicFactory.scale_down())
         self.consume_topics.append(KafkaTopicFactory.scale_up())
 
-        for inf_gate_id in self.config.infraction_gate_id_list:
-            logger.info(f"Subscribing to infraction decisions for gate {inf_gate_id}")
-            self.consume_topics.append(KafkaTopicFactory.infraction_decision(inf_gate_id))
+        for infraction_gate_id in self.config.infraction_gate_id_list:
+            logger.info(f"Subscribing to infraction decisions for gate {infraction_gate_id}")
+            self.consume_topics.append(KafkaTopicFactory.infraction_decision(infraction_gate_id))
         
         for decision_gate_id in self.config.decision_gate_id_list:
             logger.info(f"Subscribing to operator decisions for gate {decision_gate_id}")
@@ -153,24 +163,37 @@ class APIGateway:
 
                 message_type = payload.get("message_type")
 
-                # 3. Infractions: broadcast to payload gate + gate 1
+                # 3. Infractions: full payload to source gate (warning sign),
+                #    lightweight status_changed to operational gates (operator UI refetch)
                 if message_type == "infraction_decision":
-                    infraction_target_gates: list[str] = ["1"]
-                    if target_gate:
-                        infraction_target_gates.insert(0, str(target_gate))
-                    infraction_target_gates = list(dict.fromkeys(infraction_target_gates))
-
-                    if not infraction_target_gates:
+                    if not target_gate:
                         logger.warning(
-                            f"Could not determine target gates for infraction topic '{topic}', skipping broadcast"
+                            f"Could not determine target gate for infraction topic '{topic}', skipping broadcast"
                         )
                         continue
 
+                    # Full payload to the source gate (e.g. gate 2 warning sign)
                     logger.info(
-                        f"Broadcasting infraction decision for truck {payload.get('truck_id')} "
-                        f"to gates {infraction_target_gates}"
+                        f"Broadcasting infraction decision to source gate {target_gate}"
                     )
-                    self._broadcast_async(payload, infraction_target_gates)
+                    self._broadcast_async(payload, str(target_gate))
+
+                    # Notify operational gates with a lightweight status_changed
+                    for op_gate in self.config.decision_gate_id_list:
+                        if str(op_gate) != str(target_gate):
+                            logger.info(
+                                f"Sending status_changed to operational gate {op_gate}"
+                            )
+                            self._broadcast_async(
+                                {"message_type": "status_changed", "reason": "infraction_decision"},
+                                str(op_gate),
+                            )
+
+                    # Notify driver of infraction via driver-scoped WS
+                    if payload.get("infraction") is True:
+                        license_plate = payload.get("license_plate")
+                        if license_plate and license_plate != "N/A":
+                            self._notify_driver_of_infraction(license_plate, target_gate)
                     continue
 
                 # 4. Other messages: broadcast only to their target gate
@@ -180,6 +203,12 @@ class APIGateway:
 
                 logger.info(f"Broadcasting {message_type} for gate {target_gate}")
                 self._broadcast_async(payload, str(target_gate))
+
+                # 5. ACCEPTED decisions: also notify the driver via driver-scoped WS
+                if message_type == "decision_results" and payload.get("decision") == "ACCEPTED":
+                    license_plate = payload.get("license_plate")
+                    if license_plate and license_plate != "N/A":
+                        self._notify_driver_of_acceptance(license_plate, target_gate)
                 
         except Exception as e:
             logger.error(f"Consumer loop error: {e}")
@@ -192,6 +221,90 @@ class APIGateway:
             self.ws_manager.broadcast(target_gates, message),
             self._loop,
         )
+
+    def _notify_driver_of_infraction(self, license_plate: str, gate_id: str):
+        """Resolve driver_license from license plate and broadcast infraction_warning to the driver WS."""
+        asyncio.run_coroutine_threadsafe(
+            self._resolve_and_notify_driver_infraction(license_plate, gate_id),
+            self._loop,
+        )
+
+    async def _resolve_and_notify_driver_infraction(self, license_plate: str, gate_id: str):
+        """Look up the appointment by license plate, then broadcast infraction warning to the driver WS."""
+        try:
+            url = f"{self.config.data_module_url}/api/v1/arrivals/query/license-plate/{license_plate}"
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(url)
+            if resp.status_code != 200:
+                logger.warning(f"Driver lookup failed for plate {license_plate} (infraction): HTTP {resp.status_code}")
+                return
+
+            appointments = resp.json()
+            if not appointments:
+                logger.warning(f"No appointments found for plate {license_plate} (infraction)")
+                return
+
+            appointment = appointments[0]
+            driver_license = appointment.get("driver_license")
+
+            if not driver_license:
+                logger.warning(f"No driver_license on appointment for plate {license_plate} (infraction)")
+                return
+
+            ws_payload = {
+                "message_type": "infraction_warning",
+                "license_plate": license_plate,
+                "gate_id": gate_id,
+            }
+            await self.ws_manager.broadcast_to_driver(driver_license, ws_payload)
+            logger.info(
+                f"Broadcast infraction_warning for plate {license_plate} → driver {driver_license}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify driver of infraction for plate {license_plate}: {e}")
+
+    def _notify_driver_of_acceptance(self, license_plate: str, gate_id: str):
+        """Resolve driver_license from license plate and broadcast status_changed to the driver WS."""
+        asyncio.run_coroutine_threadsafe(
+            self._resolve_and_notify_driver(license_plate, gate_id),
+            self._loop,
+        )
+
+    async def _resolve_and_notify_driver(self, license_plate: str, gate_id: str):
+        """Look up the appointment by license plate, then broadcast to the driver WS."""
+        try:
+            url = f"{self.config.data_module_url}/api/v1/arrivals/query/license-plate/{license_plate}"
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(url)
+            if resp.status_code != 200:
+                logger.warning(f"Driver lookup failed for plate {license_plate}: HTTP {resp.status_code}")
+                return
+
+            appointments = resp.json()
+            if not appointments:
+                logger.warning(f"No appointments found for plate {license_plate}")
+                return
+
+            # Pick the first active appointment
+            appointment = appointments[0]
+            driver_license = appointment.get("driver_license")
+            appointment_id = appointment.get("id")
+
+            if not driver_license:
+                logger.warning(f"No driver_license on appointment for plate {license_plate}")
+                return
+
+            ws_payload = {
+                "message_type": "status_changed",
+                "appointment_id": appointment_id,
+                "new_status": "in_process",
+            }
+            await self.ws_manager.broadcast_to_driver(driver_license, ws_payload)
+            logger.info(
+                f"Broadcast status_changed (ACCEPTED) for plate {license_plate} → driver {driver_license}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify driver for plate {license_plate}: {e}")
     
     def _create_app(self) -> FastAPI:
         """Factory for the FastAPI application."""
@@ -207,6 +320,20 @@ class APIGateway:
         app.state.stream_base_url = self.config.stream_base_url
         app.state.stream_webrtc_base_url = self.config.stream_webrtc_base_url
 
+        # Keycloak
+        app.state.keycloak_client = KeycloakClient(
+            server_url=self.config.keycloak_url,
+            realm=self.config.keycloak_realm,
+            client_id=self.config.keycloak_client_id,
+            client_secret=self.config.keycloak_client_secret,
+        )
+        jwks_url = f"{self.config.keycloak_url}/realms/{self.config.keycloak_realm}/protocol/openid-connect/certs"
+        issuer = f"{self.config.keycloak_url}/realms/{self.config.keycloak_realm}"
+        app.state.token_validator = TokenValidator(
+            jwks_url=jwks_url,
+            issuer=issuer,
+        )
+
         app.add_middleware(
             CORSMiddleware,
             allow_origins=self.config.cors_allow_origins,
@@ -216,6 +343,7 @@ class APIGateway:
         )
 
         # Routers
+        app.include_router(auth.router, prefix=self.config.api_prefix)
         app.include_router(arrivals.router, prefix=self.config.api_prefix)
         app.include_router(manual_review.router, prefix=self.config.api_prefix)
         app.include_router(alerts.router, prefix=self.config.api_prefix)

@@ -73,8 +73,9 @@ class InfractionEngine(BaseDecisionEngine):
             )
             return
 
-        # Truck IS hazardous — check if it has a matching appointment at THIS gate.
-        has_appointment, license_plate = self._has_matching_appointment("1", license_plate)
+        # Truck IS hazardous — check against the configured operational gate.
+        operational_gate_id = self.config.decision_gate_id_list[0]
+        has_appointment, license_plate = self._has_matching_appointment(operational_gate_id, license_plate)
         infraction = True
         
         if has_appointment:
@@ -134,9 +135,17 @@ class InfractionEngine(BaseDecisionEngine):
         infraction: bool,
         start_time: float,
     ) -> None:
-        """Build and publish the infraction decision to the gate-specific topic."""
-        produce_topic = KafkaTopicFactory.infraction_decision(gate_id)
-        self.logger.info(f"Infraction result for gate {gate_id}: infraction={infraction}")
+        """Build and publish the infraction decision to the operational gate topic.
+
+        Publishes to the operational (entry) gate topic so the API Gateway
+        can broadcast the infraction to the gate-1 operator's WebSocket.
+        The source camera gate is preserved in ``source_gate_id``.
+        """
+        produce_topic = KafkaTopicFactory.infraction_decision(str(gate_id))
+        self.logger.info(
+            f"Publishing infraction decision to source gate {gate_id}: "
+            f"infraction={infraction}"
+        )
 
         message = KafkaMessageProto.infraction_decision(
             license_plate=license_plate,
@@ -146,10 +155,13 @@ class InfractionEngine(BaseDecisionEngine):
             hazard_crop_url=hz_msg.crop_url,
             infraction=infraction,
         )
+        payload = message.to_dict()
+        payload["source_gate_id"] = str(gate_id)
+        payload["gate_id"] = str(gate_id)
 
         self.kafka_producer.produce(
             topic=produce_topic,
-            data=message.to_dict(),
+            data=payload,
             headers={"truckId": truck_id},
         )
 

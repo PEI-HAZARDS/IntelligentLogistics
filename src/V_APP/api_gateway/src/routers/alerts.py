@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Query, Path
+from fastapi import APIRouter, Query, Path, Depends
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
 
 from clients import internal_api_client as internal_client
+from auth.token_validator import require_role, TokenPayload
 
-router = APIRouter(tags=["alerts"])
+router = APIRouter(tags=["alerts"], dependencies=[Depends(require_role("operator", "manager"))])
 
 
 # ===============================

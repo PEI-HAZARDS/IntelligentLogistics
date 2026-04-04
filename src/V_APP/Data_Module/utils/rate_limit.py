@@ -1,5 +1,5 @@
 # utils/rate_limit.py
-from db.redis import redis_client
+from infrastructure.persistence.redis import redis_client
 
 def rate_limit(key: str, max_requests: int, window_seconds: int) -> bool:
     """Rate limiting usando Redis."""

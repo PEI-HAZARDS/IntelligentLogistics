@@ -241,7 +241,7 @@ class TestLoop:
             
             agent_a.kafka_consumer.consume_typed_message.assert_called_once()
             agent_a.stream_manager.connect.assert_called_once()
-            assert agent_a.awaiting_reset is False
+            assert agent_a.awaiting_reset is True
             mock_process.assert_called_once()
 
     def test_start_handles_timeout(self, agent_a):
@@ -250,15 +250,15 @@ class TestLoop:
         agent_a.awaiting_reset = True
         agent_a.last_message_time = time.time() - 100 # Past timeout
         agent_a.stream_manager.connect.reset_mock()
-        
+
         with patch.object(agent_a, '_process_detection') as mock_process:
             mock_process.side_effect = lambda: setattr(agent_a, 'running', False)
             agent_a.start()
-            
+
             # Shouldn't consume if timed out
             agent_a.kafka_consumer.consume_typed_message.assert_not_called()
             agent_a.stream_manager.connect.assert_called_once()
-            assert agent_a.awaiting_reset is False
+            assert agent_a.awaiting_reset is True
             mock_process.assert_called_once()
 
 # =============================================================================

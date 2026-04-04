@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, Request  # type: ignore
 
 from dependencies import get_stream_base_url, get_stream_webrtc_base_url
+from auth.token_validator import require_role, TokenPayload
 
-router = APIRouter(tags=["stream"])
+router = APIRouter(tags=["stream"], dependencies=[Depends(require_role("operator", "manager"))])
 
 
 def _build_hls_url(stream_base_url: str, gate_id: str, quality: str) -> str:

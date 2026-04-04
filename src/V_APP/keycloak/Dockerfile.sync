@@ -1,0 +1,4 @@
+FROM python:3.11-slim
+RUN pip install --quiet httpx psycopg2-binary
+COPY sync_users.py /app/sync_users.py
+CMD ["python", "/app/sync_users.py"]

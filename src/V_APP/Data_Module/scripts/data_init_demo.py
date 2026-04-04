@@ -27,7 +27,7 @@ try:
     )
 except Exception:
     try:
-        from models.sql_models import (
+        from infrastructure.persistence.sql_models import (
             Base, Worker, Manager, Operator, Company, Driver,
             Truck, Terminal, Dock, Gate, Shift, ShiftType,
             Booking, Cargo, Appointment, Visit, Alert, ShiftAlertHistory
@@ -232,7 +232,7 @@ def init_demo_data(db: Session):
                 gate_out_id=None,
                 scheduled_start_time=scheduled_time,
                 expected_duration=45,
-                status="in_transit",
+                status="scheduled",
                 notes=f"HAZMAT: {cargo_desc} [UN:{un_code}]" if is_hazmat else f"Cargo: {cargo_desc}",
                 highway_infraction=False,
             )
@@ -272,7 +272,7 @@ def init_demo_data(db: Session):
                 gate_out_id=None,
                 scheduled_start_time=scheduled_time,
                 expected_duration=45,
-                status="in_transit",
+                status="scheduled",
                 notes=f"Highway approach — HAZMAT: {cargo_desc} [UN:{un_code}]" if is_hazmat else f"Highway approach — Cargo: {cargo_desc}",
                 highway_infraction=is_hazmat,  # flag infraction for hazmat
             )

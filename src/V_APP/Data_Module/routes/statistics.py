@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Query, HTTPException, status
 from datetime import datetime
 
-from services.statistics_service import (
+from application.queries.statistics_queries import (
     get_real_time_metrics,
     get_hourly_trend,
     get_detection_success_rate,
@@ -15,10 +15,108 @@ from services.statistics_service import (
     get_agent_performance,
     get_complete_truck_journey,
     get_operator_performance,
-    compute_hourly_statistics
+    compute_hourly_statistics,
+)
+from application.queries.manager_statistics_queries import (
+    get_dashboard_summary,
+    get_transport_stats,
+    get_volume_data,
+    get_alerts_breakdown,
+    get_decision_analytics,
 )
 
 router = APIRouter(prefix="/statistics", tags=["Statistics & Analytics"])
+
+
+# ==================== MANAGER DASHBOARD (frontend contract) ====================
+
+@router.get("/summary")
+def dashboard_summary_for_manager(
+    date: Optional[str] = Query(None, description="ISO date (YYYY-MM-DD), defaults to today"),
+):
+    """
+    Dashboard summary consumed by the Logistics Manager frontend.
+
+    **Response shape** (matches statistics.ts DashboardSummary):
+    ```json
+    { "trucksInPort", "trucksInTransit", "scheduledCount", "unloadingCount",
+      "completedCount", "entriesCount", "exitsCount",
+      "avgPermanenceMinutes", "avgWaitingMinutes",
+      "delayRate", "slaCompliance", "infractionCount", "peakHour" }
+    ```
+    """
+    return get_dashboard_summary(date)
+
+
+@router.get("/by-company")
+def transport_stats_by_company(
+    from_date: Optional[str] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
+):
+    """
+    Per-company transport statistics consumed by the Logistics Manager frontend.
+
+    **Response shape** (matches statistics.ts TransportStats[]):
+    ```json
+    [{ "companyName", "companyNif", "avgUnloadingTime",
+       "avgWaitingTime", "operationsCount", "slaAttendedRate" }]
+    ```
+    """
+    return get_transport_stats(from_date, to_date)
+
+
+@router.get("/volume")
+def volume_time_series(
+    from_date: Optional[str] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
+    interval: str = Query("hour", description="Bucket size: hour | day | week"),
+):
+    """
+    Volume time-series data consumed by the Logistics Manager frontend.
+
+    **Response shape** (matches statistics.ts VolumeDataPoint[]):
+    ```json
+    [{ "timestamp", "entries", "exits" }]
+    ```
+    """
+    if interval not in ("hour", "day", "week"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="interval must be one of: hour, day, week",
+        )
+    return get_volume_data(from_date, to_date, interval)
+
+
+@router.get("/alerts")
+def alerts_breakdown(
+    from_date: Optional[str] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
+):
+    """
+    Alerts breakdown by type consumed by the Logistics Manager frontend.
+
+    **Response shape** (matches statistics.ts AlertsBreakdown[]):
+    ```json
+    [{ "type", "count", "percentage" }]
+    ```
+    """
+    return get_alerts_breakdown(from_date, to_date)
+
+
+@router.get("/decision-analytics")
+def decision_analytics(
+    date: Optional[str] = Query(None, description="ISO date (YYYY-MM-DD), defaults to today"),
+):
+    """
+    Decision analytics from MongoDB decision_events collection.
+
+    **Response shape** (matches statistics.ts DecisionAnalytics):
+    ```json
+    { "totalDecisions", "accepted", "rejected", "manualReview",
+      "acceptanceRate", "avgPipelineMs", "avgDetectionToDecisionMs" }
+    ```
+    """
+    return get_decision_analytics(date)
 
 
 # ==================== REAL-TIME METRICS ====================

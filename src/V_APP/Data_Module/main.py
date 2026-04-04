@@ -24,13 +24,13 @@ from routes.worker import router as workers_router
 from routes.notifications import router as notifications_router
 
 # Kafka decision consumer
-from services.kafka_decision_consumer import KafkaDecisionConsumer
+from infrastructure.messaging.kafka_decision_consumer import KafkaDecisionConsumer
 
 # DB / infra imports used for startup checks
-from db.postgres import engine, SessionLocal
-from models.sql_models import Base, Appointment
-from db.mongo import mongo_client  # MongoClient instance
-from db.redis import redis_client
+from infrastructure.persistence.postgres import engine, SessionLocal
+from infrastructure.persistence.sql_models import Base, Appointment
+from infrastructure.persistence.mongo import mongo_client  # MongoClient instance
+from infrastructure.persistence.redis import redis_client
 from config import settings
 
 # readiness flags set at startup
@@ -47,7 +47,16 @@ async def update_delayed_appointments():
     1. Updates in_transit appointments to delayed if past scheduled time + 15 min.
     2. At midnight (day change), marks ALL remaining in_transit from the previous
        day as delayed so they are never lost across day boundaries.
+
+    Uses UoW + Outbox so that status changes propagate to MongoDB/Redis
+    read models via the outbox worker (Guardrails 2, 3).
     """
+    from application.use_cases.appointment_commands import cmd_update_status
+    from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+
+    def _uow_factory():
+        return SqlAlchemyUnitOfWork(SessionLocal)
+
     current_day = datetime.now(timezone.utc).date()
 
     while True:
@@ -62,30 +71,34 @@ async def update_delayed_appointments():
                     yesterday_start = datetime.combine(current_day, datetime.min.time().replace(tzinfo=timezone.utc))
                     yesterday_end = datetime.combine(current_day, datetime.max.time().replace(tzinfo=timezone.utc))
 
-                    rolled = db.query(Appointment).filter(
+                    stale = db.query(Appointment).filter(
                         Appointment.status == 'in_transit',
                         Appointment.scheduled_start_time != None,
                         Appointment.scheduled_start_time.between(yesterday_start, yesterday_end)
-                    ).update({"status": "delayed"}, synchronize_session=False)
+                    ).all()
 
-                    if rolled > 0:
-                        db.commit()
-                        logger.info(f"Midnight rollover: marked {rolled} in_transit from {current_day} as delayed")
+                    for appt in stale:
+                        cmd_update_status(_uow_factory, appt.id, new_status="delayed")
+
+                    if stale:
+                        logger.info(f"Midnight rollover: marked {len(stale)} in_transit from {current_day} as delayed (via Outbox)")
 
                     current_day = today
 
                 # --- Normal: 15 min tolerance for today's appointments ---
                 cutoff = now - timedelta(minutes=15)
 
-                updated = db.query(Appointment).filter(
+                overdue = db.query(Appointment).filter(
                     Appointment.status == 'in_transit',
                     Appointment.scheduled_start_time != None,
                     Appointment.scheduled_start_time < cutoff
-                ).update({"status": "delayed"}, synchronize_session=False)
+                ).all()
 
-                if updated > 0:
-                    db.commit()
-                    logger.info(f"Scheduler: Updated {updated} appointments to 'delayed'")
+                for appt in overdue:
+                    cmd_update_status(_uow_factory, appt.id, new_status="delayed")
+
+                if overdue:
+                    logger.info(f"Scheduler: Updated {len(overdue)} appointments to 'delayed' (via Outbox)")
             finally:
                 db.close()
         except Exception as e:

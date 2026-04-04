@@ -1,12 +1,16 @@
 from typing import Optional, Dict, Any
 from datetime import date
 
-from fastapi import APIRouter, Query, Path, Body, Request
+from fastapi import APIRouter, Query, Path, Body, Request, Depends
 from pydantic import BaseModel
+from loguru import logger
 
 from clients import internal_api_client as internal_client
+from dependencies import get_ws_manager
+from web_socket_manager import WebSocketManager
+from auth.token_validator import require_role, TokenPayload
 
-router = APIRouter(tags=["arrivals"])
+router = APIRouter(tags=["arrivals"], dependencies=[Depends(require_role("operator", "manager"))])
 
 
 # ===============================
@@ -26,6 +30,7 @@ async def list_all_arrivals(
     scheduled_date: Optional[date] = Query(None, description="Filter by scheduled date"),
     gate_id: Optional[int] = Query(None, description="Filter by entry gate"),
     search: Optional[str] = Query(None, description="Search by license plate or driver name"),
+    highway_infraction: Optional[bool] = Query(None, description="Filter by highway infraction flag"),
 ):
     """
     Proxy to GET /api/v1/arrivals in Data Module.
@@ -40,6 +45,7 @@ async def list_all_arrivals(
             "scheduled_date": scheduled_date.isoformat() if scheduled_date else None,
             "gate_id": gate_id,
             "search": search,
+            "highway_infraction": highway_infraction,
         }.items() if v is not None}
     }
 
@@ -176,7 +182,7 @@ async def list_arrivals_in_progress(
         "skip": skip,
         "limit": limit,
         "gate_id": gate_id,
-        "status": "in_transit"
+        "statuses": "in_process,unloading"
     }
     return await internal_client.get("/arrivals", params=params)
 
@@ -256,7 +262,7 @@ async def list_arrivals_in_progress_shift(
         "limit": limit,
         "gate_id": gate_id,
         "shift_id": shift,
-        "status": "in_transit"
+        "statuses": "in_process,unloading"
     }
     return await internal_client.get("/arrivals", params=params)
 
@@ -334,14 +340,40 @@ class AppointmentStatusUpdate(BaseModel):
 async def update_arrival_status(
     appointment_id: int = Path(..., description="Appointment ID"),
     update_data: AppointmentStatusUpdate = Body(...),
+    ws_manager: WebSocketManager = Depends(get_ws_manager),
 ):
     """
-    Update appointment status.
+    Update appointment status and broadcast status_changed via WebSocket.
     """
-    return await internal_client.patch(
+    result = await internal_client.patch(
         f"/arrivals/{appointment_id}/status",
         json=update_data.model_dump(exclude_none=True)
     )
+    ws_payload = {
+        "message_type": "status_changed",
+        "appointment_id": appointment_id,
+        "new_status": update_data.status,
+    }
+
+    # Broadcast to the gate so operator UIs update instantly
+    gate_in_id = result.get("gate_in_id") if isinstance(result, dict) else None
+    if gate_in_id:
+        try:
+            await ws_manager.broadcast(str(gate_in_id), ws_payload)
+            logger.info(f"Broadcast status_changed for appointment {appointment_id} → gate {gate_in_id}")
+        except Exception as e:
+            logger.warning(f"WS gate broadcast failed for status_changed: {e}")
+
+    # Broadcast directly to the driver's mobile app
+    driver_license = result.get("driver_license") if isinstance(result, dict) else None
+    if driver_license:
+        try:
+            await ws_manager.broadcast_to_driver(driver_license, ws_payload)
+            logger.info(f"Broadcast status_changed for appointment {appointment_id} → driver {driver_license}")
+        except Exception as e:
+            logger.warning(f"WS driver broadcast failed for status_changed: {e}")
+
+    return result
 
 
 # -------------------------------

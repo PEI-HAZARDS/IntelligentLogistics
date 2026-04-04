@@ -25,17 +25,15 @@ until nc -z ${REDIS_HOST:-redis} ${REDIS_PORT:-6379}; do
 done
 echo "Redis is ready"
 
-# Rodar data init
-echo "Running database initialization..."
-python scripts/data_init_demo.py
-if [[ $? -eq 0 ]]; then
-  echo "Data initialization completed successfully"
-else
-  echo "Data initialization failed"
+# Step 1: Create tables (so triggers.sql can attach to them)
+echo "Creating database tables..."
+python scripts/create_tables.py
+if [[ $? -ne 0 ]]; then
+  echo "Table creation failed"
   exit 1
 fi
 
-# Run database triggers migration
+# Step 2: Apply triggers (tables exist now, trigger will fire on INSERT)
 echo "Running database triggers migration..."
 if [[ -f "scripts/triggers.sql" ]]; then
   PGPASSWORD=${POSTGRES_PASSWORD} psql -h ${POSTGRES_HOST:-postgres} -p ${POSTGRES_PORT:-5432} -U ${POSTGRES_USER} -d ${POSTGRES_DB} -f scripts/triggers.sql
@@ -46,6 +44,16 @@ if [[ -f "scripts/triggers.sql" ]]; then
   fi
 else
   echo "No triggers.sql found, skipping..."
+fi
+
+# Step 3: Seed data (trigger fires on INSERT, arrival_id is generated)
+echo "Running database initialization..."
+python scripts/data_init_realistic.py
+if [[ $? -eq 0 ]]; then
+  echo "Data initialization completed successfully"
+else
+  echo "Data initialization failed"
+  exit 1
 fi
 
 # Iniciar o servidor FastAPI

@@ -199,7 +199,7 @@ class TestMakeDecision:
         decision_engine._execute_logic("1", "TRUCK-1", lp, hz)
         payload = self._get_produced_payload(mock_kafka_producer)
         assert payload["decision"] == "MANUAL_REVIEW"
-        assert payload["decision_reason"] == "license_plate_not_detected"
+        assert payload["decision_reason"] == "License plate not detected"
 
     def test_manual_review_if_api_unavailable(self, decision_engine, mock_kafka_producer, mock_database_client):
         mock_database_client.get_appointments.return_value = {"message": "Connection refused"}
@@ -207,7 +207,7 @@ class TestMakeDecision:
         decision_engine._execute_logic("1", "TRUCK-1", make_lp_msg(), make_hz_msg())
         payload = self._get_produced_payload(mock_kafka_producer)
         assert payload["decision"] == "MANUAL_REVIEW"
-        assert payload["decision_reason"] == "api_unavailable"
+        assert payload["decision_reason"] == "API unavailable"
 
     def test_manual_review_if_no_appointments_found(self, decision_engine, mock_kafka_producer, mock_database_client):
         mock_database_client.get_appointments.return_value = {"found": False, "candidates": [], "message": ""}
@@ -215,7 +215,7 @@ class TestMakeDecision:
         decision_engine._execute_logic("1", "TRUCK-1", make_lp_msg(), make_hz_msg())
         payload = self._get_produced_payload(mock_kafka_producer)
         assert payload["decision"] == "MANUAL_REVIEW"
-        assert payload["decision_reason"] == "empty_db_appointments"
+        assert payload["decision_reason"] == "No appointments found"
 
     def test_manual_review_if_plate_not_matched(self, decision_engine, mock_kafka_producer, mock_database_client, mock_plate_matcher):
         mock_database_client.get_appointments.return_value = {
@@ -226,7 +226,7 @@ class TestMakeDecision:
         decision_engine._execute_logic("1", "TRUCK-1", make_lp_msg(), make_hz_msg())
         payload = self._get_produced_payload(mock_kafka_producer)
         assert payload["decision"] == "MANUAL_REVIEW"
-        assert payload["decision_reason"] == "license_plate_not_found"
+        assert payload["decision_reason"] == "License plate did not match"
 
     def test_accepted_if_plate_matched(self, decision_engine, mock_kafka_producer, mock_database_client, mock_plate_matcher):
         mock_database_client.get_appointments.return_value = {
@@ -237,7 +237,7 @@ class TestMakeDecision:
         decision_engine._execute_logic("1", "TRUCK-1", make_lp_msg(), make_hz_msg())
         payload = self._get_produced_payload(mock_kafka_producer)
         assert payload["decision"] == "ACCEPTED"
-        assert payload["decision_reason"] == "license_plate_matched"
+        assert payload["decision_reason"] == "License plate matched with appointment"
 
     def test_publish_uses_correct_topic(self, decision_engine, mock_kafka_producer):
         lp = make_lp_msg(plate="N/A")

@@ -49,7 +49,13 @@ BEGIN
     IF OLD.status IN ('completed', 'canceled') AND NEW.status != OLD.status THEN
         RAISE EXCEPTION 'Cannot change status from % to %', OLD.status, NEW.status;
     END IF;
-    
+
+    -- Valid transitions: in_process -> unloading -> completed
+    -- Cannot go back from unloading to in_transit or in_process
+    IF OLD.status = 'unloading' AND NEW.status NOT IN ('unloading', 'completed', 'canceled') THEN
+        RAISE EXCEPTION 'Cannot change status from unloading to %', NEW.status;
+    END IF;
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -144,11 +150,14 @@ CREATE SEQUENCE IF NOT EXISTS appointment_arrival_seq START 1;
 
 SELECT setval(
     'appointment_arrival_seq',
-    COALESCE(
-        (SELECT MAX(CAST(SUBSTRING(arrival_id FROM 'PRT-([0-9]+)') AS INTEGER))
-         FROM appointment
-         WHERE arrival_id LIKE 'PRT-%'),
-        0
+    GREATEST(
+        COALESCE(
+            (SELECT MAX(CAST(SUBSTRING(arrival_id FROM 'PRT-([0-9]+)') AS INTEGER))
+             FROM appointment
+             WHERE arrival_id LIKE 'PRT-%'),
+            0
+        ),
+        1
     ),
     true
 );
@@ -160,8 +169,11 @@ DECLARE
     seq_num INTEGER;
 BEGIN
     IF COALESCE(NEW.arrival_id, '') = '' THEN
-        seq_num := nextval('appointment_arrival_seq');
-        new_id := 'PRT-' || LPAD(seq_num::TEXT, 4, '0');
+        -- DEBUG/DEMO: Force all PINs to 1234 for easier testing.
+        -- To restore unique PINs, uncomment the two lines below and remove the hardcoded line.
+        -- seq_num := nextval('appointment_arrival_seq');
+        -- new_id := 'PRT-' || LPAD(seq_num::TEXT, 4, '0');
+        new_id := '1234';
         NEW.arrival_id := new_id;
     END IF;
     RETURN NEW;

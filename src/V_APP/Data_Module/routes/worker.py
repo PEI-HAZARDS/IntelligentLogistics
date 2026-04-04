@@ -1,37 +1,47 @@
 """
 Worker Routes - Endpoints for operators and managers.
 Consumed by: Backoffice frontend, API Gateway (authentication).
+
+CQRS: GET endpoints read from MongoDB. POST/PATCH/DELETE use UoW + Outbox.
+Shift queries use PostgreSQL (shift data not yet projected to MongoDB).
 """
 
 from typing import List, Optional, Dict, Any
+from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from loguru import logger
 
-from models.pydantic_models import Worker, Manager, Operator, Shift, WorkerLoginRequest, WorkerLoginResponse
-from services.worker_service import (
+from application.schemas import Worker, Manager, Operator, Shift, WorkerLoginRequest, WorkerLoginResponse
+from application.use_cases.worker_handlers import (
     authenticate_worker,
-    get_worker_by_num_worker,
-    get_worker_role,
-    get_all_workers,
-    get_operators,
-    get_managers,
-    get_operator_info,
-    get_operator_current_shift,
-    get_operator_shifts,
-    get_operator_gate_dashboard,
-    get_manager_info,
-    get_manager_shifts,
-    get_manager_overview,
     create_worker,
     update_worker_password,
     update_worker_email,
     deactivate_worker,
-    promote_to_manager
+    promote_to_manager,
 )
-from db.postgres import get_db
+from application.queries.worker_queries import (
+    get_all_workers,
+    get_operators,
+    get_managers,
+    get_worker_by_num,
+    get_operator_info,
+    get_manager_info,
+    get_operator_gate_dashboard,
+    get_manager_overview,
+)
+from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+from infrastructure.persistence.postgres import get_db, SessionLocal
+from sqlalchemy import func as sa_func
+from infrastructure.persistence.sql_models import Shift as ShiftORM, Visit as VisitORM
+from utils.auth_token import generate_internal_jwt
+from utils.shift_utils import current_shift_type
 
 router = APIRouter(prefix="/workers", tags=["Workers"])
+
+_uow_factory = lambda: SqlAlchemyUnitOfWork(SessionLocal)
 
 
 # ==================== LOCAL PYDANTIC MODELS ====================
@@ -89,37 +99,134 @@ class ManagerOverview(BaseModel):
 # ==================== AUTH ENDPOINTS ====================
 
 @router.post("/login", response_model=WorkerLoginResponse)
-def login(
-    credentials: WorkerLoginRequest,
-    db: Session = Depends(get_db)
-):
+def login(credentials: WorkerLoginRequest):
     """
     Worker login (operator or manager).
     Returns token for authentication.
     """
     worker = authenticate_worker(
-        db,
+        _uow_factory,
         email=credentials.email,
-        password=credentials.password
+        password=credentials.password,
     )
-    
+
     if not worker:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials or account deactivated"
+            detail="Invalid credentials or account deactivated",
         )
-    
-    # MVP: generate simple token (in production use JWT)
-    import secrets
-    token = secrets.token_hex(32)
-    
+
+    # KEYCLOAK: this token will be issued by Keycloak once integrated.
+    role = worker.get("role", "operator")
+    token = generate_internal_jwt(sub=worker["num_worker"], role=role)
+
     return WorkerLoginResponse(
         token=token,
-        num_worker=worker.num_worker,
-        name=worker.name,
-        email=worker.email,
-        active=worker.active
+        num_worker=worker["num_worker"],
+        name=worker["name"],
+        email=worker["email"],
+        active=worker["active"],
     )
+
+
+# ==================== PROFILE LOOKUP (used by API Gateway auth router) ====================
+
+@router.get("/by-email/{email}")
+def get_worker_by_email(email: str = Path(..., description="Worker email")):
+    """
+    Look up a worker profile by email (no password check).
+    Called by the API Gateway after Keycloak validates credentials.
+    """
+    with _uow_factory() as uow:
+        worker = uow.workers.get_by_email_active(email)
+        if not worker:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Worker not found or deactivated",
+            )
+        return {
+            "num_worker": worker["num_worker"],
+            "name": worker["name"],
+            "email": worker["email"],
+            "role": worker.get("role", "operator"),
+            "active": worker["active"],
+        }
+
+
+# ==================== SHIFT LISTING (Manager ShiftsPage) ====================
+
+@router.get("/shifts", response_model=List[Dict[str, Any]])
+def list_shifts(
+    target_date: Optional[date] = Query(None, description="Date to query (default: today)"),
+    shift_type: Optional[str] = Query(None, description="Filter by shift type (MORNING/AFTERNOON/NIGHT)"),
+    gate_id: Optional[int] = Query(None, description="Filter by gate"),
+    db: Session = Depends(get_db),
+):
+    """
+    Lists all shifts for a given date with operator/gate details.
+    Used by the Manager ShiftsPage.
+
+    PostgreSQL — shift data not yet projected to MongoDB (Guardrail 5).
+    """
+    logger.info("PROJECTION MISS shifts-list — PostgreSQL fallback (Guardrail 5)")
+    target = target_date or date.today()
+    query = db.query(ShiftORM).filter(ShiftORM.date == target)
+    if gate_id is not None:
+        query = query.filter(ShiftORM.gate_id == gate_id)
+    if shift_type:
+        from utils.shift_utils import parse_shift_type
+        try:
+            parsed = parse_shift_type(shift_type)
+            query = query.filter(ShiftORM.shift_type == parsed)
+        except ValueError:
+            pass
+
+    shifts = query.order_by(ShiftORM.gate_id, ShiftORM.shift_type).all()
+    current_st = current_shift_type()
+    today = date.today()
+
+    result = []
+    for s in shifts:
+        # Compute status: active if today + current shift type, completed if past, pending otherwise
+        if s.date == today and s.shift_type == current_st:
+            shift_status = "active"
+        elif s.date < today or (s.date == today and _shift_before(s.shift_type, current_st)):
+            shift_status = "completed"
+        else:
+            shift_status = "pending"
+
+        if not s.operator_num_worker:
+            shift_status = "inactive"
+
+        # Count visits for this shift
+        visit_count = db.query(sa_func.count()).select_from(VisitORM).filter(
+            VisitORM.shift_gate_id == s.gate_id,
+            VisitORM.shift_type == s.shift_type,
+            VisitORM.shift_date == s.date,
+        ).scalar() or 0
+
+        result.append({
+            "id": f"{s.gate_id}-{s.shift_type.name}-{s.date.isoformat()}",
+            "gateId": s.gate_id,
+            "gateName": s.gate.label if s.gate else f"Gate {s.gate_id}",
+            "shiftType": s.shift_type.name,
+            "date": s.date.isoformat(),
+            "operatorId": s.operator_num_worker or "",
+            "operatorName": s.operator.worker.name if s.operator and s.operator.worker else "",
+            "managerId": s.manager_num_worker or "",
+            "managerName": s.manager.worker.name if s.manager and s.manager.worker else "",
+            "currentArrivals": visit_count,
+            "maxArrivals": 25,
+            "status": shift_status,
+        })
+
+    return result
+
+
+def _shift_before(a, b) -> bool:
+    """Return True if shift type `a` is earlier in the day than `b`."""
+    order = {"MORNING": 0, "AFTERNOON": 1, "NIGHT": 2}
+    return order.get(a.name, 0) < order.get(b.name, 0)
 
 
 # ==================== OPERATOR ENDPOINTS ====================
@@ -128,32 +235,30 @@ def login(
 def list_operators(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    db: Session = Depends(get_db)
 ):
     """Lists operators."""
-    operators = get_operators(db, skip=skip, limit=limit)
+    operators = get_operators(skip=skip, limit=limit)
     return [
         WorkerInfo(
-            num_worker=op.worker.num_worker,
-            name=op.worker.name,
-            email=op.worker.email,
+            num_worker=op["num_worker"],
+            name=op["name"],
+            email=op["email"],
             role="operator",
-            active=op.worker.active
+            active=op.get("active", True),
         )
-        for op in operators if op.worker
+        for op in operators
     ]
 
 
 @router.get("/operators/me", response_model=Dict[str, Any])
 def get_my_operator_info(
     num_worker: str = Query(..., description="Operator num_worker (from JWT)"),
-    db: Session = Depends(get_db)
 ):
     """
     Gets authenticated operator information.
     In production: num_worker would come from JWT.
     """
-    info = get_operator_info(db, num_worker)
+    info = get_operator_info(num_worker)
     if not info:
         raise HTTPException(status_code=404, detail="Operator not found")
     return info
@@ -162,33 +267,53 @@ def get_my_operator_info(
 @router.get("/operators/{num_worker}")
 def get_operator(
     num_worker: str = Path(..., description="Operator num_worker"),
-    db: Session = Depends(get_db)
 ):
     """Gets information of a specific operator."""
-    info = get_operator_info(db, num_worker)
+    info = get_operator_info(num_worker)
     if not info:
         raise HTTPException(status_code=404, detail="Operator not found")
     return info
+
+
+def _serialize_shift(s: ShiftORM) -> Dict[str, Any]:
+    """Convert Shift ORM row to dict matching frontend contract."""
+    return {
+        "gate_id": s.gate_id,
+        "shift_type": s.shift_type.name if s.shift_type else None,
+        "date": s.date.isoformat() if s.date else None,
+        "operator_num_worker": s.operator_num_worker,
+        "manager_num_worker": s.manager_num_worker,
+        "gate": {"id": s.gate.id, "label": s.gate.label} if s.gate else None,
+    }
 
 
 @router.get("/operators/{num_worker}/current-shift/{gate_id}")
 def get_operator_shift(
     num_worker: str = Path(...),
     gate_id: int = Path(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    """Gets operator's current shift for a gate."""
-    shift = get_operator_current_shift(db, num_worker, gate_id)
+    """
+    Gets operator's current shift for a gate.
+
+    PostgreSQL fallback — shift data not yet projected to MongoDB (Guardrail 5).
+    """
+    logger.info("PROJECTION MISS current-shift — PostgreSQL fallback (Guardrail 5)")
+    today = date.today()
+    shift_type = current_shift_type()
+    shift = (
+        db.query(ShiftORM)
+        .filter(
+            ShiftORM.gate_id == gate_id,
+            ShiftORM.date == today,
+            ShiftORM.shift_type == shift_type,
+            ShiftORM.operator_num_worker == num_worker,
+        )
+        .first()
+    )
     if not shift:
         return None
-    
-    return {
-        "gate_id": shift.gate_id,
-        "shift_type": shift.shift_type.name if shift.shift_type else None,
-        "date": shift.date.isoformat(),
-        "start_time": shift.start_time.isoformat() if hasattr(shift, 'start_time') and shift.start_time else None,
-        "end_time": shift.end_time.isoformat() if hasattr(shift, 'end_time') and shift.end_time else None
-    }
+    return _serialize_shift(shift)
 
 
 @router.get("/operators/{num_worker}/shifts")
@@ -196,31 +321,31 @@ def list_operator_shifts(
     num_worker: str = Path(...),
     gate_id: Optional[int] = Query(None),
     limit: int = Query(50, ge=1, le=200),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    """Lists shifts for an operator."""
-    shifts = get_operator_shifts(db, num_worker, gate_id)
-    return [
-        {
-            "gate_id": s.gate_id,
-            "shift_type": s.shift_type.name if s.shift_type else None,
-            "date": s.date.isoformat()
-        }
-        for s in shifts[:limit]
-    ]
+    """
+    Lists shifts for an operator.
+
+    PostgreSQL fallback — shift data not yet projected to MongoDB (Guardrail 5).
+    """
+    logger.info("PROJECTION MISS operator-shifts — PostgreSQL fallback (Guardrail 5)")
+    query = db.query(ShiftORM).filter(ShiftORM.operator_num_worker == num_worker)
+    if gate_id is not None:
+        query = query.filter(ShiftORM.gate_id == gate_id)
+    shifts = query.order_by(ShiftORM.date.desc(), ShiftORM.shift_type).limit(limit).all()
+    return [_serialize_shift(s) for s in shifts]
 
 
 @router.get("/operators/{num_worker}/dashboard/{gate_id}", response_model=OperatorDashboard)
 def get_operator_dashboard(
     num_worker: str = Path(...),
     gate_id: int = Path(...),
-    db: Session = Depends(get_db)
 ):
     """
     Operator dashboard for a gate.
     Upcoming arrivals, alerts, statistics.
     """
-    dashboard = get_operator_gate_dashboard(db, num_worker, gate_id)
+    dashboard = get_operator_gate_dashboard(num_worker, gate_id)
     return OperatorDashboard(**dashboard)
 
 
@@ -230,32 +355,30 @@ def get_operator_dashboard(
 def list_managers(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    db: Session = Depends(get_db)
 ):
     """Lists managers."""
-    managers = get_managers(db, skip=skip, limit=limit)
+    managers = get_managers(skip=skip, limit=limit)
     return [
         WorkerInfo(
-            num_worker=m.worker.num_worker,
-            name=m.worker.name,
-            email=m.worker.email,
+            num_worker=m["num_worker"],
+            name=m["name"],
+            email=m["email"],
             role="manager",
-            active=m.worker.active
+            active=m.get("active", True),
         )
-        for m in managers if m.worker
+        for m in managers
     ]
 
 
 @router.get("/managers/me", response_model=Dict[str, Any])
 def get_my_manager_info(
     num_worker: str = Query(..., description="Manager num_worker (from JWT)"),
-    db: Session = Depends(get_db)
 ):
     """
     Gets authenticated manager information.
     In production: num_worker would come from JWT.
     """
-    info = get_manager_info(db, num_worker)
+    info = get_manager_info(num_worker)
     if not info:
         raise HTTPException(status_code=404, detail="Manager not found")
     return info
@@ -264,10 +387,9 @@ def get_my_manager_info(
 @router.get("/managers/{num_worker}")
 def get_manager(
     num_worker: str = Path(...),
-    db: Session = Depends(get_db)
 ):
     """Gets information of a specific manager."""
-    info = get_manager_info(db, num_worker)
+    info = get_manager_info(num_worker)
     if not info:
         raise HTTPException(status_code=404, detail="Manager not found")
     return info
@@ -277,31 +399,33 @@ def get_manager(
 def list_manager_shifts(
     num_worker: str = Path(...),
     limit: int = Query(50, ge=1, le=200),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    """Lists shifts supervised by a manager."""
-    shifts = get_manager_shifts(db, num_worker)
-    return [
-        {
-            "gate_id": s.gate_id,
-            "shift_type": s.shift_type.name if s.shift_type else None,
-            "date": s.date.isoformat(),
-            "operator_num_worker": s.operator_num_worker
-        }
-        for s in shifts[:limit]
-    ]
+    """
+    Lists shifts supervised by a manager.
+
+    PostgreSQL fallback — shift data not yet projected to MongoDB (Guardrail 5).
+    """
+    logger.info("PROJECTION MISS manager-shifts — PostgreSQL fallback (Guardrail 5)")
+    shifts = (
+        db.query(ShiftORM)
+        .filter(ShiftORM.manager_num_worker == num_worker)
+        .order_by(ShiftORM.date.desc(), ShiftORM.shift_type)
+        .limit(limit)
+        .all()
+    )
+    return [_serialize_shift(s) for s in shifts]
 
 
 @router.get("/managers/{num_worker}/overview", response_model=ManagerOverview)
 def get_manager_dashboard(
     num_worker: str = Path(...),
-    db: Session = Depends(get_db)
 ):
     """
     Manager dashboard/overview.
     Gates, shifts, alerts, performance.
     """
-    overview = get_manager_overview(db, num_worker)
+    overview = get_manager_overview(num_worker)
     return ManagerOverview(**overview)
 
 
@@ -311,44 +435,31 @@ def get_manager_dashboard(
 def list_all_workers(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    db: Session = Depends(get_db)
+    only_active: bool = Query(True),
 ):
     """Lists all workers (backoffice)."""
-    workers = get_all_workers(db, skip=skip, limit=limit, only_active=only_active)
-    results = []
-    for w in workers:
-        role = get_worker_role(db, w.num_worker) or "unknown"
-        results.append(WorkerInfo(
-            num_worker=w.num_worker,
-            name=w.name,
-            email=w.email,
-            role=role,
-            active=w.active
-        ))
-    return results
+    workers = get_all_workers(skip=skip, limit=limit, only_active=only_active)
+    return [
+        WorkerInfo(
+            num_worker=w["num_worker"],
+            name=w["name"],
+            email=w["email"],
+            role=w.get("role", "unknown"),
+            active=w.get("active", True),
+        )
+        for w in workers
+    ]
 
 
 @router.get("/{num_worker}", response_model=Dict[str, Any])
 def get_worker(
     num_worker: str = Path(...),
-    db: Session = Depends(get_db)
 ):
     """Gets worker data."""
-    worker = get_worker_by_num_worker(db, num_worker)
+    worker = get_worker_by_num(num_worker)
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
-    
-    role = get_worker_role(db, num_worker) or "unknown"
-    
-    return {
-        "num_worker": worker.num_worker,
-        "name": worker.name,
-        "email": worker.email,
-        "phone": worker.phone,
-        "role": role,
-        "active": worker.active,
-        "created_at": worker.created_at.isoformat() if worker.created_at else None
-    }
+    return worker
 
 
 # ==================== ACCOUNT MANAGEMENT ====================
@@ -357,22 +468,18 @@ def get_worker(
 def change_password(
     request: UpdatePasswordRequest,
     num_worker: str = Query(..., description="Worker num_worker (from JWT)"),
-    db: Session = Depends(get_db)
 ):
     """Updates worker's password."""
-    worker = get_worker_by_num_worker(db, num_worker)
-    if not worker:
-        raise HTTPException(status_code=404, detail="Worker not found")
-    
-    # Verify current password
-    from utils.hashing_pass import verify_password
-    if not verify_password(request.current_password, worker.password_hash):
-        raise HTTPException(status_code=401, detail="Current password incorrect")
-    
-    updated = update_worker_password(db, num_worker, request.new_password)
-    if not updated:
-        raise HTTPException(status_code=500, detail="Error updating password")
-    
+    success, error = update_worker_password(
+        _uow_factory,
+        num_worker=num_worker,
+        current_password=request.current_password,
+        new_password=request.new_password,
+    )
+    if not success:
+        status_code = 404 if error == "Worker not found" else 401
+        raise HTTPException(status_code=status_code, detail=error)
+
     return {"message": "Password updated successfully"}
 
 
@@ -380,72 +487,70 @@ def change_password(
 def change_email(
     request: UpdateEmailRequest,
     num_worker: str = Query(..., description="Worker num_worker (from JWT)"),
-    db: Session = Depends(get_db)
 ):
     """Updates worker's email."""
-    updated = update_worker_email(db, num_worker, request.new_email)
-    if not updated:
-        raise HTTPException(status_code=400, detail="Email already in use or worker not found")
-    
+    success, error = update_worker_email(
+        _uow_factory,
+        num_worker=num_worker,
+        new_email=request.new_email,
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail=error or "Email already in use or worker not found")
+
     return {"message": "Email updated successfully"}
 
 
 # ==================== ADMIN ENDPOINTS ====================
 
 @router.post("", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
-def create_new_worker(
-    request: CreateWorkerRequest,
-    db: Session = Depends(get_db)
-):
+def create_new_worker(request: CreateWorkerRequest):
     """
     Creates new worker (operator or manager).
     Requires admin authentication.
     """
     worker = create_worker(
-        db,
+        _uow_factory,
         num_worker=request.num_worker,
         name=request.name,
         email=request.email,
         password=request.password,
         role=request.role,
         access_level=request.access_level,
-        phone=request.phone
+        phone=request.phone,
     )
-    
+
     if not worker:
         raise HTTPException(status_code=400, detail="Email or num_worker already in use")
-    
+
     return {
-        "num_worker": worker.num_worker,
-        "name": worker.name,
-        "email": worker.email,
+        "num_worker": worker["num_worker"],
+        "name": worker["name"],
+        "email": worker["email"],
         "role": request.role,
-        "active": worker.active
+        "active": worker.get("active", True),
     }
 
 
 @router.delete("/{num_worker}", status_code=status.HTTP_200_OK)
 def deactivate_worker_endpoint(
     num_worker: str = Path(...),
-    db: Session = Depends(get_db)
 ):
     """Deactivates a worker."""
-    worker = deactivate_worker(db, num_worker)
+    worker = deactivate_worker(_uow_factory, num_worker=num_worker)
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
-    
-    return {"message": f"Worker {worker.name} deactivated"}
+
+    return {"message": f"Worker {worker['name']} deactivated"}
 
 
 @router.post("/{num_worker}/promote", status_code=status.HTTP_200_OK)
 def promote_operator_to_manager(
     num_worker: str = Path(...),
     access_level: str = Query("basic"),
-    db: Session = Depends(get_db)
 ):
     """Promotes an operator to manager."""
-    manager = promote_to_manager(db, num_worker, access_level)
+    manager = promote_to_manager(_uow_factory, num_worker=num_worker, access_level=access_level)
     if not manager:
         raise HTTPException(status_code=400, detail="Worker is not an operator or not found")
-    
+
     return {"message": f"Operator promoted to manager with access level {access_level}"}

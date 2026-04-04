@@ -29,14 +29,15 @@ class DatabaseClient:
     error dict so that the caller always receives a consistent return type.
     """
 
-    def __init__(self, api_url: str, gate_id: str) -> None:
+    def __init__(self, api_url: str, gate_id: str = "") -> None:
         """Initialise the client with the API base URL and gate identifier.
 
         Args:
             api_url: Base URL of the scheduling REST API, without a trailing
                 slash (e.g. ``"http://api-gateway:8080/api/v1"``).
             gate_id: Logical identifier of the gate this client serves. Sent
-                as a payload field in every appointment query.
+                as a payload field in every appointment query. When empty,
+                appointments for all gates are returned.
         """
         self.api_url = api_url
         self.gate_id = gate_id
@@ -60,9 +61,9 @@ class DatabaseClient:
                 "message": "<exception message>"}``.
         """
         url = f"{self.api_url}/decisions/query-appointments"
-        payload = {
-            "gate_id": self.gate_id
-        }
+        payload: dict = {}
+        if self.gate_id:
+            payload["gate_id"] = self.gate_id
         try:
             response = requests.post(url, json=payload, timeout=5)
             if response.status_code == 200:

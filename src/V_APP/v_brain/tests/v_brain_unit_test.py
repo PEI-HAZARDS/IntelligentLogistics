@@ -3,6 +3,7 @@ Unit tests for VBrain.
 """
 
 import json
+import threading
 import time
 from unittest.mock import MagicMock, patch, PropertyMock
 import pytest
@@ -285,7 +286,12 @@ class TestScaleDownTry:
 
 class TestResetAgentA:
     def test_publishes_reset_message(self, brain):
-        brain._reset_agent_a("1", reason="agent_decision")
+        with patch("V_APP.v_brain.src.v_brain.time.sleep"):
+            brain._reset_agent_a("1", reason="agent_decision")
+            # Wait for the background thread to finish
+            for t in threading.enumerate():
+                if t.daemon and t != threading.current_thread():
+                    t.join(timeout=5)
         brain.kafka_producer.produce.assert_called_once()
         call_kwargs = brain.kafka_producer.produce.call_args.kwargs
         assert call_kwargs["topic"] == KafkaTopicFactory.reset_agent_a("1")

@@ -8,18 +8,14 @@ logger = logging.getLogger("websocket_manager")
 
 class WebSocketManager:
     """
-    Maintains a list of WebSockets connected to the Gateway to receive
-    real-time notifications.
-
-    Internal structure:
-      _connections : Dict[str, Set[WebSocket]]
-
-    Where the key is the gate_id and the value is a set of WebSockets
-    belonging to users at that gate.
+    Maintains two WebSocket registries:
+      _connections        : Dict[gate_id, Set[WebSocket]]   — gate operators / kiosk UIs
+      _driver_connections : Dict[drivers_license, Set[WebSocket]] — driver mobile app
     """
 
     def __init__(self) -> None:
         self._connections: Dict[str, Set[WebSocket]] = defaultdict(set)
+        self._driver_connections: Dict[str, Set[WebSocket]] = defaultdict(set)
 
     async def connect(self, gate_id: str, websocket: WebSocket) -> None:
         """
@@ -50,6 +46,40 @@ class WebSocketManager:
             )
         except Exception:
             pass  # fail silent
+
+    async def connect_driver(self, drivers_license: str, websocket: WebSocket) -> None:
+        """Registers a driver WebSocket keyed by drivers_license."""
+        key = drivers_license.strip()
+        await websocket.accept()
+        self._driver_connections[key].add(websocket)
+        logger.info(
+            f"Registered driver connection for '{key}'. "
+            f"Total: {len(self._driver_connections[key])}"
+        )
+
+    def disconnect_driver(self, drivers_license: str, websocket: WebSocket) -> None:
+        """Removes a driver WebSocket."""
+        try:
+            key = drivers_license.strip()
+            conns = self._driver_connections.get(key, set())
+            conns.discard(websocket)
+            if not conns:
+                self._driver_connections.pop(key, None)
+            logger.info(f"Driver '{key}' disconnected.")
+        except Exception:
+            pass
+
+    async def broadcast_to_driver(self, drivers_license: str, message: dict) -> None:
+        """Sends a JSON message to a specific driver."""
+        key = drivers_license.strip()
+        conns = list(self._driver_connections.get(key, []))
+        logger.info(f"Broadcasting to driver '{key}': {len(conns)} connection(s)")
+        for ws in conns:
+            try:
+                await ws.send_json(message)
+            except Exception as e:
+                logger.error(f"Failed to send to driver '{key}': {e}")
+                self.disconnect_driver(key, ws)
 
     async def broadcast(self, gate_ids: str | list[str], message: dict) -> None:
         """

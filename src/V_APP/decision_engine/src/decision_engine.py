@@ -149,7 +149,7 @@ class DecisionEngine(BaseDecisionEngine):
                 alerts=alerts
             )
             # Refresh the last detected truck to prevent duplicate decisions if the same truck is detected again shortly after
-            self.last_truck_detected[gate_id] = matched_plate
+            #self.last_truck_detected[gate_id] = matched_plate
 
     def _publish_decision(
         self,
@@ -182,10 +182,12 @@ class DecisionEngine(BaseDecisionEngine):
             decision_reason=reason,
             decision_source="automated",
         )
+        payload = message.to_dict()
+        payload["gate_id"] = str(gate_id)
 
         self.kafka_producer.produce(
             topic=produce_topic,
-            data=message.to_dict(),
+            data=payload,
             headers={"truckId": truck_id},
         )
 
