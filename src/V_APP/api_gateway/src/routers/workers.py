@@ -5,31 +5,12 @@ Consumed by: Operator frontend, Manager frontend, Backoffice.
 
 from typing import Optional, Dict, Any
 
-from fastapi import APIRouter, Query, Path, Body
-from pydantic import BaseModel
+from fastapi import APIRouter, Query, Path, Depends
 
 from clients import internal_api_client as internal_client
+from auth.token_validator import require_role, TokenPayload
 
 router = APIRouter(tags=["workers"])
-
-
-# ==================== PYDANTIC MODELS ====================
-
-class WorkerLoginRequest(BaseModel):
-    """Worker login credentials."""
-    email: str
-    password: str
-
-
-# ==================== AUTH ENDPOINTS ====================
-
-@router.post("/workers/login")
-async def worker_login(credentials: WorkerLoginRequest):
-    """
-    Worker (operator/manager) login.
-    Proxy to POST /api/v1/workers/login
-    """
-    return await internal_client.post("/workers/login", json=credentials.model_dump())
 
 
 # ==================== SHIFT LISTING ====================
@@ -39,6 +20,7 @@ async def list_shifts(
     target_date: Optional[str] = Query(None),
     shift_type: Optional[str] = Query(None),
     gate_id: Optional[int] = Query(None),
+    _user: TokenPayload = Depends(require_role("operator", "manager")),
 ):
     """
     List all shifts for a date (manager ShiftsPage).
@@ -61,6 +43,7 @@ async def list_shifts(
 async def list_operators(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
+    _user: TokenPayload = Depends(require_role("operator", "manager")),
 ):
     """
     List operators.
@@ -73,6 +56,7 @@ async def list_operators(
 @router.get("/workers/operators/{num_worker}")
 async def get_operator(
     num_worker: str = Path(..., description="Operator ID"),
+    _user: TokenPayload = Depends(require_role("operator", "manager")),
 ):
     """
     Get operator details.
@@ -85,6 +69,7 @@ async def get_operator(
 async def get_operator_current_shift(
     num_worker: str = Path(...),
     gate_id: int = Path(...),
+    _user: TokenPayload = Depends(require_role("operator", "manager")),
 ):
     """
     Get operator's current shift for a gate.
@@ -98,6 +83,7 @@ async def list_operator_shifts(
     num_worker: str = Path(...),
     gate_id: Optional[int] = Query(None),
     limit: int = Query(50, ge=1, le=200),
+    _user: TokenPayload = Depends(require_role("operator", "manager")),
 ):
     """
     List shifts for an operator.
@@ -113,6 +99,7 @@ async def list_operator_shifts(
 async def get_operator_dashboard(
     num_worker: str = Path(...),
     gate_id: int = Path(...),
+    _user: TokenPayload = Depends(require_role("operator", "manager")),
 ):
     """
     Operator dashboard for a specific gate.
@@ -128,6 +115,7 @@ async def get_operator_dashboard(
 async def list_managers(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
+    _user: TokenPayload = Depends(require_role("manager")),
 ):
     """
     List managers.
@@ -140,6 +128,7 @@ async def list_managers(
 @router.get("/workers/managers/{num_worker}")
 async def get_manager(
     num_worker: str = Path(..., description="Manager ID"),
+    _user: TokenPayload = Depends(require_role("manager")),
 ):
     """
     Get manager details.
@@ -152,6 +141,7 @@ async def get_manager(
 async def list_manager_shifts(
     num_worker: str = Path(...),
     limit: int = Query(50, ge=1, le=200),
+    _user: TokenPayload = Depends(require_role("manager")),
 ):
     """
     List shifts supervised by a manager.
@@ -164,6 +154,7 @@ async def list_manager_shifts(
 @router.get("/workers/managers/{num_worker}/overview")
 async def get_manager_overview(
     num_worker: str = Path(...),
+    _user: TokenPayload = Depends(require_role("manager")),
 ):
     """
     Manager overview/dashboard.
@@ -179,6 +170,7 @@ async def get_manager_overview(
 async def list_workers(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
+    _user: TokenPayload = Depends(require_role("operator", "manager")),
 ):
     """
     List all workers.
@@ -191,6 +183,7 @@ async def list_workers(
 @router.get("/workers/{num_worker}")
 async def get_worker(
     num_worker: str = Path(..., description="Worker ID"),
+    _user: TokenPayload = Depends(require_role("operator", "manager")),
 ):
     """
     Get specific worker details.

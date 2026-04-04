@@ -6,12 +6,13 @@ Also provides a manager-focused dashboard endpoint using arrivals data.
 
 import logging
 from typing import Optional
-from fastapi import APIRouter, Query, Path
+from fastapi import APIRouter, Query, Path, Depends
 
 from clients import internal_api_client as internal_client
+from auth.token_validator import require_role, TokenPayload
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["statistics"])
+router = APIRouter(tags=["statistics"], dependencies=[Depends(require_role("manager"))])
 
 
 # ==================== MANAGER DASHBOARD ====================

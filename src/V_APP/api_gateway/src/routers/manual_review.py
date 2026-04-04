@@ -7,7 +7,9 @@ from dependencies import get_kafka_producer, get_ws_manager
 from shared.src.kafka_wrapper import KafkaProducerWrapper
 from shared.src.kafka_protocol import DecisionResultsMessage, KafkaTopicFactory
 from web_socket_manager import WebSocketManager
-router = APIRouter(tags=["manual_review"])
+from auth.token_validator import require_role, TokenPayload
+
+router = APIRouter(tags=["manual_review"], dependencies=[Depends(require_role("operator", "manager"))])
 
 
 # ---------------------------------

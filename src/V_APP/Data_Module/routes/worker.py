@@ -129,6 +129,30 @@ def login(credentials: WorkerLoginRequest):
     )
 
 
+# ==================== PROFILE LOOKUP (used by API Gateway auth router) ====================
+
+@router.get("/by-email/{email}")
+def get_worker_by_email(email: str = Path(..., description="Worker email")):
+    """
+    Look up a worker profile by email (no password check).
+    Called by the API Gateway after Keycloak validates credentials.
+    """
+    with _uow_factory() as uow:
+        worker = uow.workers.get_by_email_active(email)
+        if not worker:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Worker not found or deactivated",
+            )
+        return {
+            "num_worker": worker["num_worker"],
+            "name": worker["name"],
+            "email": worker["email"],
+            "role": worker.get("role", "operator"),
+            "active": worker["active"],
+        }
+
+
 # ==================== SHIFT LISTING (Manager ShiftsPage) ====================
 
 @router.get("/shifts", response_model=List[Dict[str, Any]])
