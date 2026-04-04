@@ -5,32 +5,12 @@ Consumed by: Operator frontend, Manager frontend, Backoffice.
 
 from typing import Optional, Dict, Any
 
-from fastapi import APIRouter, Query, Path, Body, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, Query, Path, Depends
 
 from clients import internal_api_client as internal_client
 from auth.token_validator import require_role, TokenPayload
 
 router = APIRouter(tags=["workers"])
-
-
-# ==================== PYDANTIC MODELS ====================
-
-class WorkerLoginRequest(BaseModel):
-    """Worker login credentials."""
-    email: str
-    password: str
-
-
-# ==================== AUTH ENDPOINTS ====================
-
-@router.post("/workers/login")
-async def worker_login(credentials: WorkerLoginRequest):
-    """
-    Worker (operator/manager) login.
-    Proxy to POST /api/v1/workers/login
-    """
-    return await internal_client.post("/workers/login", json=credentials.model_dump())
 
 
 # ==================== SHIFT LISTING ====================

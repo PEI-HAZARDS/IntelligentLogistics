@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Query, Path, Depends
-from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
 
 from clients import internal_api_client as internal_client
@@ -11,12 +10,6 @@ router = APIRouter(tags=["drivers"])
 # ---------------------------------
 # Models
 # ---------------------------------
-class DriverLoginRequest(BaseModel):
-    """Driver login credentials."""
-    drivers_license: str
-    password: str
-
-
 class ClaimAppointmentRequest(BaseModel):
     """Request to claim appointment by PIN."""
     arrival_id: str
@@ -42,17 +35,6 @@ async def list_drivers(
 # Static routes MUST come before the {drivers_license} catch-all
 # to avoid being shadowed by the path parameter.
 # ---------------------------------
-
-@router.post("/drivers/login")
-async def driver_login(credentials: DriverLoginRequest):
-    """
-    Driver login for mobile app.
-    Validates credentials, returns driver info.
-
-    Future: Will return JWT token when OAuth 2.0 is implemented.
-    """
-    return await internal_client.post("/drivers/login", json=credentials.model_dump())
-
 
 @router.post("/drivers/claim")
 async def claim_appointment(
