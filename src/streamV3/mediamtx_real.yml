@@ -33,13 +33,13 @@ pathDefaults:
 ###############################################
 paths:
    streams_high/gate1:
-      source: rtsp://10.16.9.4:554/stream1
-
-   streams_low/gate1:
-      source: rtsp://10.16.9.4:554/stream2
-
-   streams_high/gate2:
       source: rtsp://10.16.9.3:554/stream1
 
-   streams_low/gate2:
+   streams_low/gate1:
       source: rtsp://10.16.9.3:554/stream2
+
+   streams_high/gate2:
+      source: rtsp://10.16.9.4:554/stream1
+
+   streams_low/gate2:
+      source: rtsp://10.16.9.4:554/stream2

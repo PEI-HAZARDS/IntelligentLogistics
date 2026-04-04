@@ -22,9 +22,8 @@ class StreamManager:
         self.running = False
         self.thread = None
 
-        # REPLACED threading.Lock with a blocking Queue.
-        # maxsize=1 ensures we only ever hold the single newest frame in memory.
-        self.frame_queue = queue.Queue(maxsize=1) 
+        # Queue for frames
+        self.frame_queue = queue.Queue() 
 
         logger.info(f"Initialized for: {url}")
 
@@ -110,7 +109,7 @@ class StreamManager:
                 continue
 
             try:
-                ret, frame = self.cap.read()
+                ret, frame = self.cap.read() # type: ignore
 
                 if ret:
                     self._handle_read_success(frame)
