@@ -8,6 +8,9 @@ webrtcAdditionalHosts: [10.255.32.56]
 
 logLevel: info
 
+metrics: true
+metricsAddress: :9998
+
 rtsp: true
 rtspAddress: :8554
 rtpAddress: :8000

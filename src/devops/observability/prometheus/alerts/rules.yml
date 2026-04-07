@@ -17,13 +17,13 @@ groups:
           description: "{{ $labels.instance }} has been unreachable for more than 2 minutes."
 
       - alert: PrometheusTargetMissing
-        expr: up == 0
+        expr: absent(up{job=~".+"})
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "Prometheus target missing"
-          description: "A Prometheus target has disappeared. Job: {{ $labels.job }}"
+          description: "No scrape targets are reporting — Prometheus may have lost all targets"
 
   # =============================================================================
   # LATENCY (Golden Signal)

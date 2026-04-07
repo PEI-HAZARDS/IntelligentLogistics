@@ -4,6 +4,8 @@ import time
 import threading
 import requests
 
+from prometheus_client import Counter, Histogram, Gauge, start_http_server
+
 from shared.src.kafka_wrapper import KafkaConsumerWrapper, KafkaProducerWrapper
 from shared.src.kafka_protocol import (
     KafkaTopicFactory,
@@ -15,6 +17,44 @@ from V_APP.v_brain.src.scale_correlator import ScaleCorrelator
 
 
 logger = logging.getLogger("VBrain")
+
+# ── Prometheus Metrics ──────────────────────────────────────────
+METRICS_PORT = 8004
+
+v_brain_trucks_correlated_total = Counter(
+    "v_brain_trucks_correlated_total",
+    "Total trucks fully correlated (decision or infraction received)",
+    ["gate_id"],
+)
+v_brain_scale_up_total = Counter(
+    "v_brain_scale_up_total",
+    "Scale-up events emitted",
+    ["gate_id"],
+)
+v_brain_scale_down_total = Counter(
+    "v_brain_scale_down_total",
+    "Scale-down events emitted",
+    ["gate_id"],
+)
+v_brain_reset_signals_total = Counter(
+    "v_brain_reset_signals_total",
+    "AgentA reset signals emitted",
+    ["gate_id"],
+)
+v_brain_timeouts_total = Counter(
+    "v_brain_timeouts_total",
+    "Trucks that timed out without full correlation",
+    ["gate_id"],
+)
+v_brain_messages_processed_total = Counter(
+    "v_brain_messages_processed_total",
+    "Total Kafka messages processed by type",
+    ["topic_type"],
+)
+v_brain_up = Gauge(
+    "v_brain_up",
+    "V_Brain health (1=running, 0=stopped)",
+)
 
 
 class VBrain:
@@ -100,6 +140,12 @@ class VBrain:
     def start(self) -> None:
         """Start the V_Brain consumer loop (blocking)."""
         self.running = True
+
+        # Start Prometheus metrics HTTP server
+        start_http_server(METRICS_PORT)
+        v_brain_up.set(1)
+        logger.info(f"Prometheus metrics server started on port {METRICS_PORT}")
+
         logger.info(
             f"V_Brain starting | gates={self.config.gate_id_list} | "
             f"Consuming {len(self.consume_topics)} topics | "
@@ -147,6 +193,7 @@ class VBrain:
             logger.exception(f"V_Brain fatal error: {e}")
         finally:
             self.running = False
+            v_brain_up.set(0)
             self.kafka_consumer.close()
             self.kafka_producer.close()
             logger.info("V_Brain shut down")
@@ -167,6 +214,8 @@ class VBrain:
 
         # gate_id="1", topic_type="truck_detected"
         gate_id, topic_type = lookup
+
+        v_brain_messages_processed_total.labels(topic_type=topic_type).inc()
 
         if   topic_type == self._TRUCK_DETECTED:     self._on_truck_detected(truck_id, gate_id)
         elif topic_type == self._LP_RESULTS:         self._on_lp_results(truck_id, gate_id)
@@ -239,6 +288,7 @@ class VBrain:
         # Ve se esse truck id ja foi detetado em alguma instancia se sim, marca como decision_received
         if self.correlator.is_tracked(truck_id):
             self.correlator.decision_received(truck_id)
+            v_brain_trucks_correlated_total.labels(gate_id=gate_id).inc()
 
             # Quando deteta um tipo de decisão pode dar reset
             self._reset_agent_a(gate_id, reason="agent_decision")
@@ -262,6 +312,7 @@ class VBrain:
         # Ve se esse truck-id ja foi detetado em alguma instancia se sim, marca como decision_received
         if self.correlator.is_tracked(truck_id):
             self.correlator.decision_received(truck_id)
+            v_brain_trucks_correlated_total.labels(gate_id=gate_id).inc()
 
             # Quando deteta um tipo de decisão pode dar reset
             self._reset_agent_a(gate_id, reason="infraction_decision")
@@ -293,6 +344,7 @@ class VBrain:
         if not self.scale_status:
             logger.info(f"Scaling UP gate {gate_id} (reason={reason})")
             self.scale_status = True
+            v_brain_scale_up_total.labels(gate_id=gate_id).inc()
             self._call_scaling_api("SCALE_UP", gate_id)
             return
         
@@ -324,6 +376,7 @@ class VBrain:
                 logger.info(f"Truck {truckId} still needs scale-up, skipping scale-down for gate {gate_id}")
                 return 
 
+        v_brain_scale_down_total.labels(gate_id=gate_id).inc()
         self._call_scaling_api("SCALE_DOWN", gate_id)
         self.scale_status = False
         logger.info(f"Scaling DOWN gate {gate_id} (reason={reason})")
@@ -341,6 +394,7 @@ class VBrain:
     
     # Reset agentA with 5 second delay
     def _reset_agent_a(self, gate_id: str, reason: str = "unknown") -> None:
+        v_brain_reset_signals_total.labels(gate_id=gate_id).inc()
         logger.info(f"Scheduling reset of AgentA for gate {gate_id} in 7 seconds (reason={reason})")
         def _delayed():
             time.sleep(7)
@@ -405,6 +459,7 @@ class VBrain:
             for truck_id in timed_out:
                 gate_id = self.correlator.get_gate_id(truck_id)
                 if gate_id:
+                    v_brain_timeouts_total.labels(gate_id=gate_id).inc()
                     logger.warning(f"Timeout for {truck_id} (gate {gate_id}) — forcing scale down + reset")
                     self._reset_agent_a(gate_id, reason="timeout")
                     self.correlator.remove(truck_id)
