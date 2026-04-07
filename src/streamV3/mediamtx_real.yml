@@ -8,6 +8,12 @@ webrtcAdditionalHosts: [10.255.32.56]
 
 logLevel: info
 
+authInternalUsers:
+  - user: prometheus
+    pass: prometheus_pei
+    permissions:
+      - action: metrics
+
 metrics: true
 metricsAddress: :9998
 

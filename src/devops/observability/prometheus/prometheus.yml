@@ -72,6 +72,9 @@ scrape_configs:
   # =============================================================================
   - job_name: 'mediamtx'
     metrics_path: /metrics
+    basic_auth:
+      username: prometheus
+      password: prometheus_pei
     static_configs:
       - targets: ['10.255.32.56:9998']
         labels:
