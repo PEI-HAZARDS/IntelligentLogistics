@@ -358,7 +358,7 @@
       "id": 10,
       "targets": [
         {
-          "expr": "pg_stat_activity_count{job=\"data-module\"} or vector(0)",
+          "expr": "pg_stat_activity_count{job=\"postgres-exporter\"} or vector(0)",
           "legendFormat": "Active Connections",
           "refId": "A"
         }
@@ -389,7 +389,7 @@
       "id": 11,
       "targets": [
         {
-          "expr": "mongodb_connections_current{job=\"data-module\"} or vector(0)",
+          "expr": "mongodb_connections_current{job=\"mongodb-exporter\"} or vector(0)",
           "legendFormat": "Connections",
           "refId": "A"
         }
@@ -420,7 +420,7 @@
       "id": 12,
       "targets": [
         {
-          "expr": "redis_connected_clients{job=\"data-module\"} or vector(0)",
+          "expr": "redis_connected_clients{job=\"redis-exporter\"} or vector(0)",
           "legendFormat": "Clients",
           "refId": "A"
         }

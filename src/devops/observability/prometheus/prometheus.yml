@@ -58,14 +58,25 @@ scrape_configs:
           vm: 'V_APP'
 
   # =============================================================================
-  # NODE EXPORTER - Nginx VM (10.255.32.56)
+  # NODE EXPORTER - MediaMTX VM (10.255.32.56)
   # =============================================================================
-  - job_name: 'node-exporter-nginx'
+  - job_name: 'node-exporter-mediamtx'
     static_configs:
       - targets: ['10.255.32.56:9100']
         labels:
-          instance: 'nginx-vm'
-          vm: 'Nginx'
+          instance: 'mediamtx-vm'
+          vm: 'MediaMTX'
+
+  # =============================================================================
+  # MEDIAMTX - Streaming Server (10.255.32.56)
+  # =============================================================================
+  - job_name: 'mediamtx'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.56:9998']
+        labels:
+          service: 'mediamtx'
+          vm: 'MediaMTX'
 
   # =============================================================================
   # DATA MODULE - V_APP VM (10.255.32.70)
@@ -98,6 +109,55 @@ scrape_configs:
       - targets: ['10.255.32.70:8001']
         labels:
           service: 'decision-engine'
+          vm: 'V_APP'
+
+  # =============================================================================
+  # INFRACTION ENGINE - V_APP VM (10.255.32.70)
+  # =============================================================================
+  - job_name: 'infraction-engine'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.70:8002']
+        labels:
+          service: 'infraction-engine'
+          vm: 'V_APP'
+
+  # =============================================================================
+  # V_BRAIN ORCHESTRATOR - V_APP VM (10.255.32.70)
+  # =============================================================================
+  - job_name: 'v-brain'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.70:8004']
+        labels:
+          service: 'v-brain'
+          vm: 'V_APP'
+
+  # =============================================================================
+  # DATABASE EXPORTERS - V_APP VM (10.255.32.70)
+  # =============================================================================
+  - job_name: 'postgres-exporter'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.70:9187']
+        labels:
+          service: 'postgres-exporter'
+          vm: 'V_APP'
+
+  - job_name: 'mongodb-exporter'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.70:9216']
+        labels:
+          service: 'mongodb-exporter'
+          vm: 'V_APP'
+
+  - job_name: 'redis-exporter'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.70:9121']
+        labels:
+          service: 'redis-exporter'
           vm: 'V_APP'
 
   # =============================================================================
