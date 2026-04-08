@@ -267,7 +267,7 @@
       "targets": [
         {
           "expr": "sum(rate(http_requests_total{job=\"data-module\"}[5m])) by (handler)",
-          "legendFormat": "{{ endpoint }}",
+          "legendFormat": "{{ handler }}",
           "refId": "A"
         }
       ],
@@ -475,6 +475,51 @@
       ],
       "title": "Data Module Logs",
       "type": "logs"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "id": 15,
+      "panels": [],
+      "title": "\ud83d\udd0d Distributed Tracing",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "id": 16,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "limit": 20,
+          "queryType": "traceql",
+          "query": "{ resource.service.name = \"data-module\" }",
+          "refId": "A"
+        }
+      ],
+      "title": "Recent Traces - Data Module",
+      "type": "traces"
     }
   ],
   "refresh": "30s",

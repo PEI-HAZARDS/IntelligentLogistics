@@ -32,3 +32,40 @@ datasources:
     access: proxy
     url: http://tempo:3200
     editable: false
+    jsonData:
+      httpMethod: GET
+      # Trace → Logs correlation (Loki)
+      tracesToLogs:
+        datasourceUid: loki
+        filterByTraceID: true
+        filterBySpanID: false
+        spanStartTimeShift: '-1m'
+        spanEndTimeShift: '1m'
+        mappedTags:
+          - key: 'service.name'
+            value: 'container'
+        mapTagNamesEnabled: true
+      # Trace → Metrics correlation (Prometheus)
+      tracesToMetrics:
+        datasourceUid: prometheus
+        tags:
+          - key: 'service.name'
+            value: 'job'
+        queries:
+          - name: 'Request Rate'
+            query: 'sum(rate(http_requests_total{$$__tags}[5m]))'
+          - name: 'Error Rate'
+            query: 'sum(rate(http_requests_total{$$__tags,status="5xx"}[5m]))'
+          - name: 'P95 Latency'
+            query: 'histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{$$__tags}[5m])) by (le))'
+      # Service Map via Prometheus (Tempo metrics generator)
+      serviceMap:
+        datasourceUid: prometheus
+      # Node Graph
+      nodeGraph:
+        enabled: true
+      # Loki log search integration
+      lokiSearch:
+        datasourceUid: loki
+      search:
+        hide: false
