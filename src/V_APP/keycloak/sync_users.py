@@ -34,7 +34,10 @@ if env_path.exists():
     from dotenv import load_dotenv
     load_dotenv(env_path)
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://pei_user:peiHazards**@localhost:5432/IntelligentLogistics")
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    logger.error("DATABASE_URL environment variable is required (e.g. postgresql://user:pass@host:5432/db)")
+    sys.exit(1)
 KC_URL = os.getenv("KEYCLOAK_URL", "http://localhost:8443")
 KC_REALM = os.getenv("KEYCLOAK_REALM", "intelligent-logistics")
 KC_CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID", "api-gateway")

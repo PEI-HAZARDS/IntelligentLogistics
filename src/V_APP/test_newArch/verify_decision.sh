@@ -34,7 +34,7 @@ echo ""
 
 # 2. MongoDB Decision Event
 echo -e "${BLUE}=== 2. MongoDB Decision Event ===${NC}"
-MONGO_RESULT=$(docker exec dm_mongo mongosh --username pei_user --password "peiHazards**" --authenticationDatabase admin intelligent_logistics --quiet --eval "db.events.find({license_plate: \"$LICENSE_PLATE\"}).sort({_id: -1}).limit(1).pretty()" 2>&1)
+MONGO_RESULT=$(docker exec dm_mongo mongosh --username "${MONGO_USER:-pei_user}" --password "${MONGO_PASSWORD:?MONGO_PASSWORD env var required}" --authenticationDatabase admin intelligent_logistics --quiet --eval "db.events.find({license_plate: \"$LICENSE_PLATE\"}).sort({_id: -1}).limit(1).pretty()" 2>&1)
 if [ $? -eq 0 ]; then
   echo "$MONGO_RESULT"
   

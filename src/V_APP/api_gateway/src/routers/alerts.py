@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Query, Path, Depends
-from typing import Optional, Dict, Any, List
+from typing import Annotated, Optional, Dict, Any, List
 from pydantic import BaseModel
 
 from clients import internal_api_client as internal_client
@@ -18,9 +18,9 @@ router = APIRouter(tags=["alerts"], dependencies=[Depends(require_role("operator
 # ---------------------------------
 @router.get("/alerts")
 async def list_alerts(
-    severity: Optional[int] = Query(default=None, ge=1, le=5, alias="severidade"),
-    limit: int = Query(default=50, ge=1, le=200),
-    skip: int = Query(default=0, ge=0),
+    severity: Annotated[Optional[int], Query(ge=1, le=5, alias="severidade")] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    skip: Annotated[int, Query(ge=0)] = 0,
 ):
     """
     Proxy to GET /api/v1/alerts.
@@ -41,7 +41,7 @@ async def list_alerts(
 # ---------------------------------
 @router.get("/alerts/active")
 async def list_active_alerts(
-    limit: int = Query(50, ge=1, le=200),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     """
     Proxy to GET /api/v1/alerts/active
@@ -68,7 +68,7 @@ async def get_alerts_stats():
 # ---------------------------------
 @router.get("/alerts/visit/{visit_id}")
 async def get_visit_alerts(
-    visit_id: int = Path(..., description="Visit ID"),
+    visit_id: Annotated[int, Path(description="Visit ID")],
 ):
     """
     Get all alerts for a specific visit.

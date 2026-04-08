@@ -6,7 +6,7 @@ GET endpoints read from PostgreSQL.
 POST endpoints write via UoW + Outbox (Guardrails 2, 3, 6).
 """
 
-from typing import List, Optional, Dict, Any
+from typing import Annotated, List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException, status, Query, Path
 from pydantic import BaseModel
 
@@ -54,10 +54,10 @@ class CreateHazmatAlertRequest(BaseModel):
 
 @router.get("", response_model=List[AlertPydantic])
 def list_alerts(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
-    alert_type: Optional[str] = Query(None, description="Filter by type (safety, problem, etc.)"),
-    visit_id: Optional[int] = Query(None, description="Filter by visit"),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    alert_type: Annotated[Optional[str], Query(description="Filter by type (safety, problem, etc.)")] = None,
+    visit_id: Annotated[Optional[int], Query(description="Filter by visit")] = None,
 ):
     """Lists alerts with optional filters."""
     alerts = get_alerts(skip=skip, limit=limit, alert_type=alert_type, visit_id=visit_id)
@@ -66,7 +66,7 @@ def list_alerts(
 
 @router.get("/active", response_model=List[AlertPydantic])
 def list_active_alerts(
-    limit: int = Query(50, ge=1, le=200),
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     """
     Lists active alerts (last 24h) ordered by timestamp.
@@ -77,8 +77,8 @@ def list_active_alerts(
 
 @router.get("/stats", response_model=Dict[str, int])
 def get_alerts_stats(
-    from_date: Optional[str] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
-    to_date: Optional[str] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
+    from_date: Annotated[Optional[str], Query(alias="from", description="Start date (YYYY-MM-DD)")] = None,
+    to_date: Annotated[Optional[str], Query(alias="to", description="End date (YYYY-MM-DD)")] = None,
 ):
     """Alert statistics by type. Defaults to last 24h when no dates given."""
     return get_alerts_count_by_type(from_date=from_date, to_date=to_date)
@@ -86,7 +86,7 @@ def get_alerts_stats(
 
 @router.get("/visit/{visit_id}", response_model=List[AlertPydantic])
 def get_visit_alerts(
-    visit_id: int = Path(..., description="Visit ID (same as appointment_id)"),
+    visit_id: Annotated[int, Path(description="Visit ID (same as appointment_id)")],
 ):
     """Gets all alerts for a specific visit."""
     return get_alerts_for_visit(visit_id)
@@ -94,7 +94,7 @@ def get_visit_alerts(
 
 @router.get("/{alert_id}", response_model=AlertPydantic)
 def get_single_alert(
-    alert_id: int = Path(..., description="Alert ID"),
+    alert_id: Annotated[int, Path(description="Alert ID")],
 ):
     """Gets details of a specific alert."""
     alert = get_alert_by_id(alert_id)

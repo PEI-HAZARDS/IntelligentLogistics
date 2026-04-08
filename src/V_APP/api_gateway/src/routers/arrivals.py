@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Annotated, Optional, Dict, Any
 from datetime import date
 
 from fastapi import APIRouter, Query, Path, Body, Request, Depends
@@ -23,14 +23,14 @@ router = APIRouter(tags=["arrivals"], dependencies=[Depends(require_role("operat
 # -------------------------------
 @router.get("/arrivals")
 async def list_all_arrivals(
-    license_plate: Optional[str] = Query(None, alias="matricula"),
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    status: Optional[str] = Query(None, description="Filter by status"),
-    scheduled_date: Optional[date] = Query(None, description="Filter by scheduled date"),
-    gate_id: Optional[int] = Query(None, description="Filter by entry gate"),
-    search: Optional[str] = Query(None, description="Search by license plate or driver name"),
-    highway_infraction: Optional[bool] = Query(None, description="Filter by highway infraction flag"),
+    license_plate: Annotated[Optional[str], Query(alias="matricula")] = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    status: Annotated[Optional[str], Query(description="Filter by status")] = None,
+    scheduled_date: Annotated[Optional[date], Query(description="Filter by scheduled date")] = None,
+    gate_id: Annotated[Optional[int], Query(description="Filter by entry gate")] = None,
+    search: Annotated[Optional[str], Query(description="Search by license plate or driver name")] = None,
+    highway_infraction: Annotated[Optional[bool], Query(description="Filter by highway infraction flag")] = None,
 ):
     """
     Proxy to GET /api/v1/arrivals in Data Module.
@@ -58,8 +58,8 @@ async def list_all_arrivals(
 # -------------------------------
 @router.get("/arrivals/stats")
 async def get_arrivals_stats(
-    gate_id: Optional[int] = Query(None, description="Filter by gate"),
-    target_date: Optional[date] = Query(None, description="Date to query"),
+    gate_id: Annotated[Optional[int], Query(description="Filter by gate")] = None,
+    target_date: Annotated[Optional[date], Query(description="Date to query")] = None,
 ):
     """
     Arrival statistics by status.
@@ -79,8 +79,8 @@ async def get_arrivals_stats(
 # -------------------------------
 @router.get("/arrivals/next/{gate_id}")
 async def get_upcoming_arrivals(
-    gate_id: int = Path(..., description="Gate ID"),
-    limit: int = Query(5, ge=1, le=20),
+    gate_id: Annotated[int, Path(description="Gate ID")],
+    limit: Annotated[int, Query(ge=1, le=20)] = 5,
 ):
     """
     Next scheduled arrivals for a gate.
@@ -96,7 +96,7 @@ async def get_upcoming_arrivals(
 # -------------------------------
 @router.get("/arrivals/pin/{arrival_id}")
 async def get_arrival_by_pin(
-    arrival_id: str = Path(..., description="Arrival ID / PIN"),
+    arrival_id: Annotated[str, Path(description="Arrival ID / PIN")],
 ):
     """
     Get appointment by arrival_id/PIN.
@@ -111,7 +111,7 @@ async def get_arrival_by_pin(
 # -------------------------------
 @router.get("/arrivals/detail/{appointment_id}")
 async def get_arrival_detail(
-    appointment_id: int = Path(..., description="Appointment ID"),
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
 ):
     """
     Get enriched appointment details by ID (with driver, company, booking, cargo, gates).
@@ -126,7 +126,7 @@ async def get_arrival_detail(
 # -------------------------------
 @router.get("/arrivals/query/license-plate/{license_plate}")
 async def query_arrivals_by_license_plate(
-    license_plate: str = Path(..., description="License plate to search"),
+    license_plate: Annotated[str, Path(description="License plate to search")],
 ):
     """
     Query arrivals by license plate.
@@ -148,8 +148,8 @@ async def query_arrivals_by_license_plate(
 @router.get("/arrivals/{gate_id}/pending")
 async def list_arrivals_pending(
     gate_id: int,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
     """
     Lists pending manual review arrivals (status='delayed' or 'in_transit') by gate.
@@ -171,8 +171,8 @@ async def list_arrivals_pending(
 @router.get("/arrivals/{gate_id}/in_progress")
 async def list_arrivals_in_progress(
     gate_id: int,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
     """
     Lists in-progress arrivals (status='approved' or 'in_transit').
@@ -193,8 +193,8 @@ async def list_arrivals_in_progress(
 @router.get("/arrivals/{gate_id}/finished")
 async def list_arrivals_finished(
     gate_id: int,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
     """
     Lists finished arrivals (status='completed').
@@ -232,8 +232,8 @@ async def count_arrivals_by_gate_shift(
 async def list_arrivals_pending_shift(
     gate_id: int,
     shift: int,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
     skip = (page - 1) * limit
     params = {
@@ -253,8 +253,8 @@ async def list_arrivals_pending_shift(
 async def list_arrivals_in_progress_shift(
     gate_id: int,
     shift: int,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
     skip = (page - 1) * limit
     params = {
@@ -274,8 +274,8 @@ async def list_arrivals_in_progress_shift(
 async def list_arrivals_finished_shift(
     gate_id: int,
     shift: int,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
     skip = (page - 1) * limit
     params = {
@@ -296,8 +296,8 @@ async def list_arrivals_finished_shift(
 async def list_arrivals_by_gate_shift(
     gate_id: int,
     shift: int,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
     """
     Lists arrivals by gate and shift.
@@ -318,7 +318,7 @@ async def list_arrivals_by_gate_shift(
 # -------------------------------
 @router.patch("/arrivals/{appointment_id}/highway-infraction")
 async def flag_highway_infraction(
-    appointment_id: int = Path(..., description="Appointment ID"),
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
 ):
     """
     Flag an appointment as highway infraction.
@@ -338,9 +338,9 @@ class AppointmentStatusUpdate(BaseModel):
 
 @router.patch("/arrivals/{appointment_id}/status")
 async def update_arrival_status(
-    appointment_id: int = Path(..., description="Appointment ID"),
-    update_data: AppointmentStatusUpdate = Body(...),
-    ws_manager: WebSocketManager = Depends(get_ws_manager),
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
+    update_data: Annotated[AppointmentStatusUpdate, Body()],
+    ws_manager: Annotated[WebSocketManager, Depends(get_ws_manager)],
 ):
     """
     Update appointment status and broadcast status_changed via WebSocket.
@@ -387,8 +387,8 @@ class CreateVisitRequest(BaseModel):
 
 @router.post("/arrivals/{appointment_id}/visit")
 async def create_visit(
-    appointment_id: int = Path(..., description="Appointment ID"),
-    request: CreateVisitRequest = Body(...),
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
+    request: Annotated[CreateVisitRequest, Body()],
 ):
     """
     Create a visit when truck arrives.
@@ -408,8 +408,8 @@ class VisitStatusUpdate(BaseModel):
 
 @router.patch("/arrivals/{appointment_id}/visit")
 async def update_visit(
-    appointment_id: int = Path(..., description="Appointment ID"),
-    update_data: VisitStatusUpdate = Body(...),
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
+    update_data: Annotated[VisitStatusUpdate, Body()],
 ):
     """
     Update visit status.
@@ -427,8 +427,8 @@ async def update_visit(
 @router.get("/arrivals/{gate_id}")
 async def list_arrivals_by_gate(
     gate_id: int,
-    page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
     """
     Lists arrivals filtered by gate.

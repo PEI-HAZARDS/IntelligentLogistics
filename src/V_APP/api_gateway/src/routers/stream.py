@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Request  # type: ignore
 
 from dependencies import get_stream_base_url, get_stream_webrtc_base_url
@@ -39,8 +41,8 @@ def _build_webrtc_url(webrtc_base_url: str, gate_id: str, quality: str) -> str:
 @router.get("/stream/{gate_id}/low")
 async def get_low_stream(
     gate_id: str,
-    stream_base_url: str = Depends(get_stream_base_url),
-    webrtc_base_url: str = Depends(get_stream_webrtc_base_url),
+    stream_base_url: Annotated[str, Depends(get_stream_base_url)],
+    webrtc_base_url: Annotated[str, Depends(get_stream_webrtc_base_url)],
 ):
     """
     Returns the HLS and WebRTC URLs for the LOW quality stream of a gate.
@@ -64,8 +66,8 @@ async def get_low_stream(
 @router.get("/stream/{gate_id}/high")
 async def get_high_stream(
     gate_id: str,
-    stream_base_url: str = Depends(get_stream_base_url),
-    webrtc_base_url: str = Depends(get_stream_webrtc_base_url),
+    stream_base_url: Annotated[str, Depends(get_stream_base_url)],
+    webrtc_base_url: Annotated[str, Depends(get_stream_webrtc_base_url)],
 ):
     """
     Returns the HLS and WebRTC URLs for the HIGH quality stream of a gate.

@@ -5,7 +5,7 @@ Also provides a manager-focused dashboard endpoint using arrivals data.
 """
 
 import logging
-from typing import Optional
+from typing import Annotated, Optional
 from fastapi import APIRouter, Query, Path, Depends
 
 from clients import internal_api_client as internal_client
@@ -19,7 +19,7 @@ router = APIRouter(tags=["statistics"], dependencies=[Depends(require_role("mana
 
 @router.get("/statistics/summary")
 async def manager_dashboard_summary(
-    date: Optional[str] = Query(None, description="Date (YYYY-MM-DD)"),
+    date: Annotated[Optional[str], Query(description="Date (YYYY-MM-DD)")] = None,
 ):
     """
     Combined summary for manager dashboard.
@@ -43,7 +43,7 @@ async def manager_dashboard_summary(
 
 @router.get("/statistics/decision-analytics")
 async def decision_analytics_proxy(
-    date: Optional[str] = Query(None, description="Date (YYYY-MM-DD)"),
+    date: Annotated[Optional[str], Query(description="Date (YYYY-MM-DD)")] = None,
 ):
     """
     Proxy to Data Module: decision analytics from MongoDB.
@@ -63,8 +63,8 @@ async def decision_analytics_proxy(
 
 @router.get("/statistics/by-company")
 async def transport_stats_proxy(
-    from_date: Optional[str] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
-    to_date: Optional[str] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
+    from_date: Annotated[Optional[str], Query(alias="from", description="Start date (YYYY-MM-DD)")] = None,
+    to_date: Annotated[Optional[str], Query(alias="to", description="End date (YYYY-MM-DD)")] = None,
 ):
     """Proxy to Data Module: per-company transport stats."""
     params = {}
@@ -77,9 +77,9 @@ async def transport_stats_proxy(
 
 @router.get("/statistics/volume")
 async def volume_data(
-    interval: str = Query("hour", description="Aggregation interval"),
-    from_date: Optional[str] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
-    to_date: Optional[str] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
+    interval: Annotated[str, Query(description="Aggregation interval")] = "hour",
+    from_date: Annotated[Optional[str], Query(alias="from", description="Start date (YYYY-MM-DD)")] = None,
+    to_date: Annotated[Optional[str], Query(alias="to", description="End date (YYYY-MM-DD)")] = None,
 ):
     """
     Proxy to Data Module /statistics/volume.
@@ -100,8 +100,8 @@ async def volume_data(
 
 @router.get("/statistics/alerts")
 async def alerts_breakdown(
-    from_date: Optional[str] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
-    to_date: Optional[str] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
+    from_date: Annotated[Optional[str], Query(alias="from", description="Start date (YYYY-MM-DD)")] = None,
+    to_date: Annotated[Optional[str], Query(alias="to", description="End date (YYYY-MM-DD)")] = None,
 ):
     """
     Proxy alerts stats and reshape as AlertsBreakdown[]:
@@ -132,16 +132,16 @@ async def alerts_breakdown(
 # ==================== AI PIPELINE STATISTICS (PROXY) ====================
 
 @router.get("/statistics/realtime/{gate_id}")
-async def realtime_metrics(gate_id: int = Path(...)):
+async def realtime_metrics(gate_id: Annotated[int, Path()]):
     """Proxy to Data Module: real-time metrics for a gate."""
     return await internal_client.get(f"/statistics/realtime/{gate_id}")
 
 
 @router.get("/statistics/trend/{gate_id}/{metric}")
 async def metric_trend(
-    gate_id: int = Path(...),
-    metric: str = Path(...),
-    hours: int = Query(24, ge=1, le=168),
+    gate_id: Annotated[int, Path()],
+    metric: Annotated[str, Path()],
+    hours: Annotated[int, Query(ge=1, le=168)] = 24,
 ):
     """Proxy to Data Module: hourly trend for a specific metric."""
     return await internal_client.get(
@@ -152,7 +152,7 @@ async def metric_trend(
 
 @router.get("/statistics/dashboard/summary")
 async def full_dashboard_summary(
-    gate_id: int = Query(..., description="Gate identifier"),
+    gate_id: Annotated[int, Query(description="Gate identifier")],
 ):
     """Proxy to Data Module: comprehensive AI pipeline dashboard summary."""
     return await internal_client.get(
@@ -163,8 +163,8 @@ async def full_dashboard_summary(
 
 @router.get("/statistics/pipeline/performance")
 async def pipeline_performance(
-    gate_id: int = Query(...),
-    hours: int = Query(24, ge=1, le=168),
+    gate_id: Annotated[int, Query()],
+    hours: Annotated[int, Query(ge=1, le=168)] = 24,
 ):
     """Proxy to Data Module: decision pipeline performance."""
     return await internal_client.get(
@@ -175,8 +175,8 @@ async def pipeline_performance(
 
 @router.get("/statistics/detections/success-rate")
 async def detection_success_rate(
-    gate_id: int = Query(...),
-    hours: int = Query(24, ge=1, le=168),
+    gate_id: Annotated[int, Query()],
+    hours: Annotated[int, Query(ge=1, le=168)] = 24,
 ):
     """Proxy to Data Module: detection success rate by agent."""
     return await internal_client.get(
@@ -187,7 +187,7 @@ async def detection_success_rate(
 
 @router.get("/statistics/operators/performance")
 async def operator_performance(
-    hours: int = Query(24, ge=1, le=168),
+    hours: Annotated[int, Query(ge=1, le=168)] = 24,
 ):
     """Proxy to Data Module: operator manual review performance."""
     return await internal_client.get(

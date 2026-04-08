@@ -14,7 +14,7 @@ Future: OAuth 2.0 + JWT
 CQRS: GET endpoints read from MongoDB. POST (auth/claim) use UoW.
 """
 
-from typing import List, Optional
+from typing import Annotated, List, Optional
 from fastapi import APIRouter, HTTPException, Query, Path
 
 from application.schemas import (
@@ -81,8 +81,8 @@ def login(credentials: DriverLoginRequest):
 @router.post("/claim", response_model=ClaimAppointmentResponse)
 def claim_arrival(
     claim_data: ClaimAppointmentRequest,
-    drivers_license: str = Query(..., description="Driver's license (from login)"),
-    debug: bool = Query(False, description="Debug mode - bypass sequential check"),
+    drivers_license: Annotated[str, Query(description="Driver's license (from login)")],
+    debug: Annotated[bool, Query(description="Debug mode - bypass sequential check")] = False,
 ):
     """
     Driver uses PIN (arrival_id) to claim an appointment.
@@ -120,7 +120,7 @@ def claim_arrival(
 
 @router.get("/me/active", response_model=Optional[Appointment])
 def get_my_active_arrival(
-    drivers_license: str = Query(..., description="Driver's license"),
+    drivers_license: Annotated[str, Query(description="Driver's license")],
 ):
     """
     Gets driver's active appointment (first in queue).
@@ -132,7 +132,7 @@ def get_my_active_arrival(
 
 @router.get("/me/today", response_model=List[Appointment])
 def get_my_today_arrivals(
-    drivers_license: str = Query(..., description="Driver's license"),
+    drivers_license: Annotated[str, Query(description="Driver's license")],
 ):
     """
     Gets today's appointments for the driver.
@@ -144,8 +144,8 @@ def get_my_today_arrivals(
 
 @router.get("/me/history", response_model=List[Appointment])
 def get_my_history(
-    drivers_license: str = Query(..., description="Driver's license"),
-    limit: int = Query(50, ge=1, le=200),
+    drivers_license: Annotated[str, Query(description="Driver's license")],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     """
     Gets driver's delivery history.
@@ -159,9 +159,9 @@ def get_my_history(
 
 @router.get("", response_model=List[Driver])
 def list_all_drivers(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
-    only_active: bool = Query(True),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    only_active: Annotated[bool, Query()] = True,
 ):
     """Lists all drivers (backoffice)."""
     return get_drivers(skip=skip, limit=limit, only_active=only_active)
@@ -169,7 +169,7 @@ def list_all_drivers(
 
 @router.get("/{drivers_license}", response_model=Driver)
 def get_driver(
-    drivers_license: str = Path(...),
+    drivers_license: Annotated[str, Path()],
 ):
     """Gets driver details (backoffice)."""
     driver = get_driver_by_license(drivers_license)
@@ -180,8 +180,8 @@ def get_driver(
 
 @router.get("/{drivers_license}/arrivals", response_model=List[Appointment])
 def get_arrivals_for_driver(
-    drivers_license: str = Path(...),
-    limit: int = Query(50, ge=1, le=200),
+    drivers_license: Annotated[str, Path()],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     """Gets appointment history for driver (backoffice)."""
     return get_driver_appointments(drivers_license, limit=limit)
