@@ -1,3 +1,4 @@
+from typing import Annotated
 from fastapi import APIRouter, Query, Path, Depends
 from pydantic import BaseModel
 
@@ -20,9 +21,9 @@ class ClaimAppointmentRequest(BaseModel):
 # ---------------------------------
 @router.get("/drivers")
 async def list_drivers(
-    limit: int = Query(default=100, ge=1, le=500),
-    skip: int = Query(default=0, ge=0),
-    _user: TokenPayload = Depends(require_role("manager")),
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    skip: Annotated[int, Query(ge=0)] = 0,
 ):
     """
     Proxy to GET /api/v1/drivers in Data Module.
@@ -39,8 +40,8 @@ async def list_drivers(
 @router.post("/drivers/claim")
 async def claim_appointment(
     claim_data: ClaimAppointmentRequest,
-    current_user: TokenPayload = Depends(require_role("driver")),
-    debug: bool = Query(False, description="Debug mode - bypass sequential check"),
+    current_user: Annotated[TokenPayload, Depends(require_role("driver"))],
+    debug: Annotated[bool, Query(description="Debug mode - bypass sequential check")] = False,
 ):
     """
     Driver claims appointment by PIN.
@@ -55,7 +56,7 @@ async def claim_appointment(
 
 @router.get("/drivers/me/active")
 async def get_my_active_arrival(
-    current_user: TokenPayload = Depends(require_role("driver")),
+    current_user: Annotated[TokenPayload, Depends(require_role("driver"))],
 ):
     """
     Get driver's active appointment.
@@ -67,7 +68,7 @@ async def get_my_active_arrival(
 
 @router.get("/drivers/me/today")
 async def get_my_today_arrivals(
-    current_user: TokenPayload = Depends(require_role("driver")),
+    current_user: Annotated[TokenPayload, Depends(require_role("driver"))],
 ):
     """
     Get driver's today appointments.
@@ -79,8 +80,8 @@ async def get_my_today_arrivals(
 
 @router.get("/drivers/me/history")
 async def get_my_history(
-    current_user: TokenPayload = Depends(require_role("driver")),
-    limit: int = Query(50, ge=1, le=200),
+    current_user: Annotated[TokenPayload, Depends(require_role("driver"))],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     """
     Get driver's delivery history.
@@ -96,8 +97,8 @@ async def get_my_history(
 # ---------------------------------
 @router.get("/drivers/{drivers_license}")
 async def get_driver(
-    drivers_license: str = Path(..., description="Driver's License"),
-    _user: TokenPayload = Depends(require_role("driver", "manager")),
+    drivers_license: Annotated[str, Path(description="Driver's License")],
+    _user: Annotated[TokenPayload, Depends(require_role("driver", "manager"))],
 ):
     """
     Proxy to GET /api/v1/drivers/{drivers_license}
@@ -110,9 +111,9 @@ async def get_driver(
 # ---------------------------------
 @router.get("/drivers/{drivers_license}/arrivals")
 async def get_arrivals_for_driver(
-    drivers_license: str = Path(..., description="Driver's License"),
-    limit: int = Query(default=50, ge=1, le=200),
-    _user: TokenPayload = Depends(require_role("driver", "manager")),
+    drivers_license: Annotated[str, Path(description="Driver's License")],
+    _user: Annotated[TokenPayload, Depends(require_role("driver", "manager"))],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     """
     Proxy to GET /api/v1/drivers/{drivers_license}/arrivals

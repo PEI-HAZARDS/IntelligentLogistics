@@ -6,7 +6,7 @@ CQRS: GET endpoints read from MongoDB. POST/PATCH/DELETE use UoW + Outbox.
 Shift queries use PostgreSQL (shift data not yet projected to MongoDB).
 """
 
-from typing import List, Optional, Dict, Any
+from typing import Annotated, List, Optional, Dict, Any
 from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session
@@ -132,7 +132,7 @@ def login(credentials: WorkerLoginRequest):
 # ==================== PROFILE LOOKUP (used by API Gateway auth router) ====================
 
 @router.get("/by-email/{email}")
-def get_worker_by_email(email: str = Path(..., description="Worker email")):
+def get_worker_by_email(email: Annotated[str, Path(description="Worker email")]):
     """
     Look up a worker profile by email (no password check).
     Called by the API Gateway after Keycloak validates credentials.
@@ -157,10 +157,10 @@ def get_worker_by_email(email: str = Path(..., description="Worker email")):
 
 @router.get("/shifts", response_model=List[Dict[str, Any]])
 def list_shifts(
-    target_date: Optional[date] = Query(None, description="Date to query (default: today)"),
-    shift_type: Optional[str] = Query(None, description="Filter by shift type (MORNING/AFTERNOON/NIGHT)"),
-    gate_id: Optional[int] = Query(None, description="Filter by gate"),
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
+    target_date: Annotated[Optional[date], Query(description="Date to query (default: today)")] = None,
+    shift_type: Annotated[Optional[str], Query(description="Filter by shift type (MORNING/AFTERNOON/NIGHT)")] = None,
+    gate_id: Annotated[Optional[int], Query(description="Filter by gate")] = None,
 ):
     """
     Lists all shifts for a given date with operator/gate details.
@@ -233,8 +233,8 @@ def _shift_before(a, b) -> bool:
 
 @router.get("/operators", response_model=List[WorkerInfo])
 def list_operators(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ):
     """Lists operators."""
     operators = get_operators(skip=skip, limit=limit)
@@ -252,7 +252,7 @@ def list_operators(
 
 @router.get("/operators/me", response_model=Dict[str, Any])
 def get_my_operator_info(
-    num_worker: str = Query(..., description="Operator num_worker (from JWT)"),
+    num_worker: Annotated[str, Query(description="Operator num_worker (from JWT)")],
 ):
     """
     Gets authenticated operator information.
@@ -266,7 +266,7 @@ def get_my_operator_info(
 
 @router.get("/operators/{num_worker}")
 def get_operator(
-    num_worker: str = Path(..., description="Operator num_worker"),
+    num_worker: Annotated[str, Path(description="Operator num_worker")],
 ):
     """Gets information of a specific operator."""
     info = get_operator_info(num_worker)
@@ -289,9 +289,9 @@ def _serialize_shift(s: ShiftORM) -> Dict[str, Any]:
 
 @router.get("/operators/{num_worker}/current-shift/{gate_id}")
 def get_operator_shift(
-    num_worker: str = Path(...),
-    gate_id: int = Path(...),
-    db: Session = Depends(get_db),
+    num_worker: Annotated[str, Path()],
+    gate_id: Annotated[int, Path()],
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     Gets operator's current shift for a gate.
@@ -318,10 +318,10 @@ def get_operator_shift(
 
 @router.get("/operators/{num_worker}/shifts")
 def list_operator_shifts(
-    num_worker: str = Path(...),
-    gate_id: Optional[int] = Query(None),
-    limit: int = Query(50, ge=1, le=200),
-    db: Session = Depends(get_db),
+    num_worker: Annotated[str, Path()],
+    db: Annotated[Session, Depends(get_db)],
+    gate_id: Annotated[Optional[int], Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     """
     Lists shifts for an operator.
@@ -338,8 +338,8 @@ def list_operator_shifts(
 
 @router.get("/operators/{num_worker}/dashboard/{gate_id}", response_model=OperatorDashboard)
 def get_operator_dashboard(
-    num_worker: str = Path(...),
-    gate_id: int = Path(...),
+    num_worker: Annotated[str, Path()],
+    gate_id: Annotated[int, Path()],
 ):
     """
     Operator dashboard for a gate.
@@ -353,8 +353,8 @@ def get_operator_dashboard(
 
 @router.get("/managers", response_model=List[WorkerInfo])
 def list_managers(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ):
     """Lists managers."""
     managers = get_managers(skip=skip, limit=limit)
@@ -372,7 +372,7 @@ def list_managers(
 
 @router.get("/managers/me", response_model=Dict[str, Any])
 def get_my_manager_info(
-    num_worker: str = Query(..., description="Manager num_worker (from JWT)"),
+    num_worker: Annotated[str, Query(description="Manager num_worker (from JWT)")],
 ):
     """
     Gets authenticated manager information.
@@ -386,7 +386,7 @@ def get_my_manager_info(
 
 @router.get("/managers/{num_worker}")
 def get_manager(
-    num_worker: str = Path(...),
+    num_worker: Annotated[str, Path()],
 ):
     """Gets information of a specific manager."""
     info = get_manager_info(num_worker)
@@ -397,9 +397,9 @@ def get_manager(
 
 @router.get("/managers/{num_worker}/shifts")
 def list_manager_shifts(
-    num_worker: str = Path(...),
-    limit: int = Query(50, ge=1, le=200),
-    db: Session = Depends(get_db),
+    num_worker: Annotated[str, Path()],
+    db: Annotated[Session, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     """
     Lists shifts supervised by a manager.
@@ -419,7 +419,7 @@ def list_manager_shifts(
 
 @router.get("/managers/{num_worker}/overview", response_model=ManagerOverview)
 def get_manager_dashboard(
-    num_worker: str = Path(...),
+    num_worker: Annotated[str, Path()],
 ):
     """
     Manager dashboard/overview.
@@ -433,9 +433,9 @@ def get_manager_dashboard(
 
 @router.get("", response_model=List[WorkerInfo])
 def list_all_workers(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
-    only_active: bool = Query(True),
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    only_active: Annotated[bool, Query()] = True,
 ):
     """Lists all workers (backoffice)."""
     workers = get_all_workers(skip=skip, limit=limit, only_active=only_active)
@@ -453,7 +453,7 @@ def list_all_workers(
 
 @router.get("/{num_worker}", response_model=Dict[str, Any])
 def get_worker(
-    num_worker: str = Path(...),
+    num_worker: Annotated[str, Path()],
 ):
     """Gets worker data."""
     worker = get_worker_by_num(num_worker)
@@ -467,7 +467,7 @@ def get_worker(
 @router.post("/password", status_code=status.HTTP_200_OK)
 def change_password(
     request: UpdatePasswordRequest,
-    num_worker: str = Query(..., description="Worker num_worker (from JWT)"),
+    num_worker: Annotated[str, Query(description="Worker num_worker (from JWT)")],
 ):
     """Updates worker's password."""
     success, error = update_worker_password(
@@ -486,7 +486,7 @@ def change_password(
 @router.post("/email", status_code=status.HTTP_200_OK)
 def change_email(
     request: UpdateEmailRequest,
-    num_worker: str = Query(..., description="Worker num_worker (from JWT)"),
+    num_worker: Annotated[str, Query(description="Worker num_worker (from JWT)")],
 ):
     """Updates worker's email."""
     success, error = update_worker_email(
@@ -533,7 +533,7 @@ def create_new_worker(request: CreateWorkerRequest):
 
 @router.delete("/{num_worker}", status_code=status.HTTP_200_OK)
 def deactivate_worker_endpoint(
-    num_worker: str = Path(...),
+    num_worker: Annotated[str, Path()],
 ):
     """Deactivates a worker."""
     worker = deactivate_worker(_uow_factory, num_worker=num_worker)
@@ -545,8 +545,8 @@ def deactivate_worker_endpoint(
 
 @router.post("/{num_worker}/promote", status_code=status.HTTP_200_OK)
 def promote_operator_to_manager(
-    num_worker: str = Path(...),
-    access_level: str = Query("basic"),
+    num_worker: Annotated[str, Path()],
+    access_level: Annotated[str, Query()] = "basic",
 ):
     """Promotes an operator to manager."""
     manager = promote_to_manager(_uow_factory, num_worker=num_worker, access_level=access_level)

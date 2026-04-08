@@ -3,7 +3,7 @@ Decisions Routes - Endpoints for decision processing.
 Consumed by: Decision Engine (microservice), Operator frontend.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import Annotated, List, Optional, Dict, Any
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, status, Body, Query, Path, Depends
 from sqlalchemy.orm import Session
@@ -160,10 +160,10 @@ def register_detection_event(request: DetectionEventRequest):
 
 @router.get("/events/detections", response_model=List[Dict[str, Any]])
 def list_detection_events(
-    license_plate: Optional[str] = Query(None),
-    gate_id: Optional[int] = Query(None),
-    event_type: Optional[str] = Query(None),
-    limit: int = Query(100, ge=1, le=500)
+    license_plate: Annotated[Optional[str], Query()] = None,
+    gate_id: Annotated[Optional[int], Query()] = None,
+    event_type: Annotated[Optional[str], Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ):
     """Lists detection events from MongoDB."""
     events = get_detection_events(
@@ -181,10 +181,10 @@ def list_detection_events(
 
 @router.get("/events/decisions", response_model=List[Dict[str, Any]])
 def list_decision_events(
-    license_plate: Optional[str] = Query(None),
-    gate_id: Optional[int] = Query(None),
-    decision: Optional[str] = Query(None),
-    limit: int = Query(100, ge=1, le=500)
+    license_plate: Annotated[Optional[str], Query()] = None,
+    gate_id: Annotated[Optional[int], Query()] = None,
+    decision: Annotated[Optional[str], Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ):
     """Lists decision events from MongoDB."""
     events = get_decision_events(
@@ -201,7 +201,7 @@ def list_decision_events(
 
 
 @router.get("/events/{event_id}")
-def get_event(event_id: str = Path(...)):
+def get_event(event_id: Annotated[str, Path()]):
     """Gets a specific event by ID (MongoDB ObjectId)."""
     try:
         oid = ObjectId(event_id)
@@ -226,11 +226,11 @@ def get_event(event_id: str = Path(...)):
 
 @router.post("/manual-review/{appointment_id}")
 def manual_review(
-    appointment_id: int = Path(..., description="Appointment ID"),
-    decision: str = Query(..., description="Decision: approved, rejected"),
-    notes: Optional[str] = Query(None, description="Operator notes"),
-    gate_id: Optional[int] = Query(None, description="Gate ID for visit creation"),
-    db: Session = Depends(get_db)
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
+    decision: Annotated[str, Query(description="Decision: approved, rejected")],
+    db: Annotated[Session, Depends(get_db)],
+    notes: Annotated[Optional[str], Query(description="Operator notes")] = None,
+    gate_id: Annotated[Optional[int], Query(description="Gate ID for visit creation")] = None,
 ):
     """
     Endpoint for operator manual review — UoW + Outbox (Guardrails 2, 3, 6).

@@ -3,7 +3,7 @@ Notifications routes — persistent operator notifications stored in MongoDB.
 Replaces localStorage-based notification state in the frontend.
 """
 
-from typing import Optional, List
+from typing import Annotated, Optional, List
 from datetime import datetime as dt
 
 from fastapi import APIRouter, HTTPException, Query
@@ -49,9 +49,9 @@ class NotificationOut(BaseModel):
 
 @router.get("", response_model=List[NotificationOut])
 def list_notifications(
-    gate_id: int = Query(..., description="Gate to fetch notifications for"),
-    limit: int = Query(50, ge=1, le=200),
-    unread_only: bool = Query(False, description="Return only unread notifications"),
+    gate_id: Annotated[int, Query(description="Gate to fetch notifications for")],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    unread_only: Annotated[bool, Query(description="Return only unread notifications")] = False,
 ):
     """
     Returns the most recent notifications for a gate, newest first.
@@ -97,7 +97,7 @@ def mark_notification_read(notification_id: str):
 
 @router.patch("/read-all")
 def mark_all_notifications_read(
-    gate_id: int = Query(..., description="Gate whose notifications to clear"),
+    gate_id: Annotated[int, Query(description="Gate whose notifications to clear")],
 ):
     """Marks all unread notifications for a gate as read."""
     result = notifications_collection.update_many(

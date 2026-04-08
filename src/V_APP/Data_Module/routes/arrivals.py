@@ -5,7 +5,7 @@ Consumed by: Operator frontend, Decision Engine, Driver app.
 Reads directly from PostgreSQL (source of truth) with Redis caching.
 """
 
-from typing import List, Optional, Dict, Any, Generic, TypeVar
+from typing import Annotated, List, Optional, Dict, Any, Generic, TypeVar
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
@@ -71,18 +71,18 @@ class CreateVisitRequest(BaseModel):
 
 @router.get("", response_model=PaginatedResponse[Appointment])
 def list_arrivals(
-    page: int = Query(1, ge=1, description="Page number (1-based)"),
-    limit: int = Query(20, ge=1, le=100, description="Items per page"),
-    gate_id: Optional[int] = Query(None, description="Filter by entry gate"),
-    shift_gate_id: Optional[int] = Query(None, description="Filter by shift gate"),
-    shift_type: Optional[str] = Query(None, description="Filter by shift type"),
-    shift_date: Optional[date] = Query(None, description="Filter by shift date"),
-    status: Optional[str] = Query(None, description="Filter by single status"),
-    statuses: Optional[str] = Query(None, description="Filter by multiple statuses (comma-separated)"),
-    scheduled_date: Optional[date] = Query(None, description="Filter by scheduled date"),
-    search: Optional[str] = Query(None, description="Search by license plate or driver name"),
-    highway_infraction: Optional[bool] = Query(None, description="Filter by highway infraction flag"),
-    db: Session = Depends(get_db),
+    page: Annotated[int, Query(ge=1, description="Page number (1-based)")] = 1,
+    limit: Annotated[int, Query(ge=1, le=100, description="Items per page")] = 20,
+    gate_id: Annotated[Optional[int], Query(description="Filter by entry gate")] = None,
+    shift_gate_id: Annotated[Optional[int], Query(description="Filter by shift gate")] = None,
+    shift_type: Annotated[Optional[str], Query(description="Filter by shift type")] = None,
+    shift_date: Annotated[Optional[date], Query(description="Filter by shift date")] = None,
+    status: Annotated[Optional[str], Query(description="Filter by single status")] = None,
+    statuses: Annotated[Optional[str], Query(description="Filter by multiple statuses (comma-separated)")] = None,
+    scheduled_date: Annotated[Optional[date], Query(description="Filter by scheduled date")] = None,
+    search: Annotated[Optional[str], Query(description="Search by license plate or driver name")] = None,
+    highway_infraction: Annotated[Optional[bool], Query(description="Filter by highway infraction flag")] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
 ):
     """Lists appointments with server-side pagination, filtering and search."""
     parsed_shift_type = None
@@ -121,9 +121,9 @@ def list_arrivals(
 
 @router.get("/stats", response_model=Dict[str, int])
 def get_arrivals_stats(
-    gate_id: Optional[int] = Query(None, description="Filter by gate"),
-    target_date: Optional[date] = Query(None, description="Date to query (default: today)"),
-    db: Session = Depends(get_db),
+    gate_id: Annotated[Optional[int], Query(description="Filter by gate")] = None,
+    target_date: Annotated[Optional[date], Query(description="Date to query (default: today)")] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
 ):
     """Arrival statistics by status. Result cached 30s in Redis."""
     today = (target_date or date.today()).isoformat()
@@ -137,9 +137,9 @@ def get_arrivals_stats(
 
 @router.get("/avg-permanence", response_model=Dict[str, Any])
 def get_avg_permanence(
-    gate_id: Optional[int] = Query(None, description="Filter by gate"),
-    target_date: Optional[date] = Query(None, description="Date (default: today)"),
-    db: Session = Depends(get_db),
+    gate_id: Annotated[Optional[int], Query(description="Filter by gate")] = None,
+    target_date: Annotated[Optional[date], Query(description="Date (default: today)")] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
 ):
     """
     Average permanence (minutes) for completed visits.
@@ -151,8 +151,8 @@ def get_avg_permanence(
 
 @router.get("/transport-stats", response_model=List[Dict[str, Any]])
 def get_transport_stats(
-    days: int = Query(30, ge=1, le=365, description="Lookback period in days"),
-    db: Session = Depends(get_db),
+    days: Annotated[int, Query(ge=1, le=365, description="Lookback period in days")] = 30,
+    db: Annotated[Session, Depends(get_db)] = None,
 ):
     """
     Per-company transport statistics.
@@ -163,10 +163,10 @@ def get_transport_stats(
 
 @router.get("/next/{gate_id}", response_model=List[Appointment])
 def get_upcoming_arrivals(
-    gate_id: int = Path(..., description="Gate ID"),
-    limit: int = Query(5, ge=1, le=20, description="Number of arrivals"),
-    status: Optional[str] = Query(None, description="Filter by status"),
-    db: Session = Depends(get_db)
+    gate_id: Annotated[int, Path(description="Gate ID")],
+    limit: Annotated[int, Query(ge=1, le=20, description="Number of arrivals")] = 5,
+    status: Annotated[Optional[str], Query(description="Filter by status")] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
 ):
     """Next scheduled arrivals for a gate (operator sidebar)."""
     appointments = get_next_appointments(db, gate_id=gate_id, limit=limit, status=status)
@@ -175,8 +175,8 @@ def get_upcoming_arrivals(
 
 @router.get("/{appointment_id}/detail", response_model=Dict[str, Any])
 def get_arrival_detail(
-    appointment_id: int = Path(..., description="Appointment ID"),
-    db: Session = Depends(get_db)
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
+    db: Annotated[Session, Depends(get_db)] = None,
 ):
     """Enriched appointment details (driver, company, booking, cargo, gates, visit)."""
     cache_key = f"detail:{appointment_id}"
@@ -195,8 +195,8 @@ def get_arrival_detail(
 
 @router.get("/{appointment_id}", response_model=Appointment)
 def get_arrival(
-    appointment_id: int = Path(..., description="Appointment ID"),
-    db: Session = Depends(get_db),
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
+    db: Annotated[Session, Depends(get_db)] = None,
 ):
     """
     Gets details of a specific appointment.
@@ -223,8 +223,8 @@ def get_arrival(
 
 @router.get("/pin/{arrival_id}", response_model=Appointment)
 def get_arrival_by_pin_code(
-    arrival_id: str = Path(..., description="Arrival ID / PIN"),
-    db: Session = Depends(get_db)
+    arrival_id: Annotated[str, Path(description="Arrival ID / PIN")],
+    db: Annotated[Session, Depends(get_db)] = None,
 ):
     """Gets appointment by arrival_id/PIN (driver mobile app)."""
     appointment = get_appointment_by_arrival_id(db, arrival_id)
@@ -237,13 +237,13 @@ def get_arrival_by_pin_code(
 
 @router.get("/query/license-plate/{license_plate}", response_model=List[Appointment])
 def query_arrivals_by_license_plate(
-    license_plate: str = Path(..., description="Truck license plate"),
-    shift_gate_id: Optional[int] = Query(None, description="Filter by shift gate"),
-    shift_type: Optional[str] = Query(None, description="Filter by shift type"),
-    shift_date: Optional[date] = Query(None, description="Filter by shift date"),
-    status: Optional[str] = Query(None, description="Filter by status"),
-    scheduled_date: Optional[date] = Query(None, description="Date (default: today)"),
-    db: Session = Depends(get_db)
+    license_plate: Annotated[str, Path(description="Truck license plate")],
+    shift_gate_id: Annotated[Optional[int], Query(description="Filter by shift gate")] = None,
+    shift_type: Annotated[Optional[str], Query(description="Filter by shift type")] = None,
+    shift_date: Annotated[Optional[date], Query(description="Filter by shift date")] = None,
+    status: Annotated[Optional[str], Query(description="Filter by status")] = None,
+    scheduled_date: Annotated[Optional[date], Query(description="Date (default: today)")] = None,
+    db: Annotated[Session, Depends(get_db)] = None,
 ):
     """Query appointments by license plate (Decision Engine)."""
     parsed_shift_type = None
@@ -268,8 +268,8 @@ def query_arrivals_by_license_plate(
 
 @router.patch("/{appointment_id}/highway-infraction", response_model=Appointment)
 def flag_highway_infraction(
-    appointment_id: int = Path(..., description="Appointment ID"),
-    db: Session = Depends(get_db)
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
+    db: Annotated[Session, Depends(get_db)] = None,
 ):
     """
     Flag an appointment as highway infraction.
@@ -286,9 +286,9 @@ def flag_highway_infraction(
 
 @router.patch("/{appointment_id}/status", response_model=Appointment)
 def update_status(
-    appointment_id: int = Path(..., description="Appointment ID"),
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
     update_data: AppointmentStatusUpdate = ...,
-    db: Session = Depends(get_db)
+    db: Annotated[Session, Depends(get_db)] = None,
 ):
     """Updates appointment status via UoW + Outbox."""
     result = cmd_update_status(
@@ -304,9 +304,9 @@ def update_status(
 
 @router.post("/{appointment_id}/decision", response_model=Appointment)
 def process_decision(
-    appointment_id: int = Path(..., description="Appointment ID"),
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
     decision: Dict[str, Any] = ...,
-    db: Session = Depends(get_db)
+    db: Annotated[Session, Depends(get_db)] = None,
 ):
     """
     Processes Decision Engine decision via UoW + Outbox.
@@ -336,9 +336,9 @@ def process_decision(
 
 @router.post("/{appointment_id}/visit", response_model=Visit)
 def create_visit(
-    appointment_id: int = Path(..., description="Appointment ID"),
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
     request: CreateVisitRequest = ...,
-    db: Session = Depends(get_db)
+    db: Annotated[Session, Depends(get_db)] = None,
 ):
     """
     Creates a visit when truck arrives via UoW + Outbox.
@@ -366,9 +366,9 @@ def create_visit(
 
 @router.patch("/{appointment_id}/visit", response_model=Visit)
 def update_visit(
-    appointment_id: int = Path(..., description="Appointment ID"),
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
     update_data: VisitStatusUpdate = ...,
-    db: Session = Depends(get_db)
+    db: Annotated[Session, Depends(get_db)] = None,
 ):
     """Updates visit status via UoW + Outbox. E.g., to 'completed' when truck leaves."""
     result = cmd_update_visit_state(

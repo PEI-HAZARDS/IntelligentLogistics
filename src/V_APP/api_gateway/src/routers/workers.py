@@ -3,7 +3,7 @@ Workers Router - Proxy endpoints for operators and managers.
 Consumed by: Operator frontend, Manager frontend, Backoffice.
 """
 
-from typing import Optional, Dict, Any
+from typing import Annotated, Optional, Dict, Any
 
 from fastapi import APIRouter, Query, Path, Depends
 
@@ -17,10 +17,10 @@ router = APIRouter(tags=["workers"])
 
 @router.get("/workers/shifts")
 async def list_shifts(
-    target_date: Optional[str] = Query(None),
-    shift_type: Optional[str] = Query(None),
-    gate_id: Optional[int] = Query(None),
-    _user: TokenPayload = Depends(require_role("operator", "manager")),
+    _user: Annotated[TokenPayload, Depends(require_role("operator", "manager"))],
+    target_date: Annotated[Optional[str], Query()] = None,
+    shift_type: Annotated[Optional[str], Query()] = None,
+    gate_id: Annotated[Optional[int], Query()] = None,
 ):
     """
     List all shifts for a date (manager ShiftsPage).
@@ -41,9 +41,9 @@ async def list_shifts(
 
 @router.get("/workers/operators")
 async def list_operators(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
-    _user: TokenPayload = Depends(require_role("operator", "manager")),
+    _user: Annotated[TokenPayload, Depends(require_role("operator", "manager"))],
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ):
     """
     List operators.
@@ -55,8 +55,8 @@ async def list_operators(
 
 @router.get("/workers/operators/{num_worker}")
 async def get_operator(
-    num_worker: str = Path(..., description="Operator ID"),
-    _user: TokenPayload = Depends(require_role("operator", "manager")),
+    num_worker: Annotated[str, Path(description="Operator ID")],
+    _user: Annotated[TokenPayload, Depends(require_role("operator", "manager"))],
 ):
     """
     Get operator details.
@@ -67,9 +67,9 @@ async def get_operator(
 
 @router.get("/workers/operators/{num_worker}/current-shift/{gate_id}")
 async def get_operator_current_shift(
-    num_worker: str = Path(...),
-    gate_id: int = Path(...),
-    _user: TokenPayload = Depends(require_role("operator", "manager")),
+    num_worker: Annotated[str, Path()],
+    gate_id: Annotated[int, Path()],
+    _user: Annotated[TokenPayload, Depends(require_role("operator", "manager"))],
 ):
     """
     Get operator's current shift for a gate.
@@ -80,10 +80,10 @@ async def get_operator_current_shift(
 
 @router.get("/workers/operators/{num_worker}/shifts")
 async def list_operator_shifts(
-    num_worker: str = Path(...),
-    gate_id: Optional[int] = Query(None),
-    limit: int = Query(50, ge=1, le=200),
-    _user: TokenPayload = Depends(require_role("operator", "manager")),
+    num_worker: Annotated[str, Path()],
+    _user: Annotated[TokenPayload, Depends(require_role("operator", "manager"))],
+    gate_id: Annotated[Optional[int], Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     """
     List shifts for an operator.
@@ -97,9 +97,9 @@ async def list_operator_shifts(
 
 @router.get("/workers/operators/{num_worker}/dashboard/{gate_id}")
 async def get_operator_dashboard(
-    num_worker: str = Path(...),
-    gate_id: int = Path(...),
-    _user: TokenPayload = Depends(require_role("operator", "manager")),
+    num_worker: Annotated[str, Path()],
+    gate_id: Annotated[int, Path()],
+    _user: Annotated[TokenPayload, Depends(require_role("operator", "manager"))],
 ):
     """
     Operator dashboard for a specific gate.
@@ -113,9 +113,9 @@ async def get_operator_dashboard(
 
 @router.get("/workers/managers")
 async def list_managers(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
-    _user: TokenPayload = Depends(require_role("manager")),
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ):
     """
     List managers.
@@ -127,8 +127,8 @@ async def list_managers(
 
 @router.get("/workers/managers/{num_worker}")
 async def get_manager(
-    num_worker: str = Path(..., description="Manager ID"),
-    _user: TokenPayload = Depends(require_role("manager")),
+    num_worker: Annotated[str, Path(description="Manager ID")],
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
 ):
     """
     Get manager details.
@@ -139,9 +139,9 @@ async def get_manager(
 
 @router.get("/workers/managers/{num_worker}/shifts")
 async def list_manager_shifts(
-    num_worker: str = Path(...),
-    limit: int = Query(50, ge=1, le=200),
-    _user: TokenPayload = Depends(require_role("manager")),
+    num_worker: Annotated[str, Path()],
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     """
     List shifts supervised by a manager.
@@ -153,8 +153,8 @@ async def list_manager_shifts(
 
 @router.get("/workers/managers/{num_worker}/overview")
 async def get_manager_overview(
-    num_worker: str = Path(...),
-    _user: TokenPayload = Depends(require_role("manager")),
+    num_worker: Annotated[str, Path()],
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
 ):
     """
     Manager overview/dashboard.
@@ -168,9 +168,9 @@ async def get_manager_overview(
 
 @router.get("/workers")
 async def list_workers(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=500),
-    _user: TokenPayload = Depends(require_role("operator", "manager")),
+    _user: Annotated[TokenPayload, Depends(require_role("operator", "manager"))],
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ):
     """
     List all workers.
@@ -182,8 +182,8 @@ async def list_workers(
 
 @router.get("/workers/{num_worker}")
 async def get_worker(
-    num_worker: str = Path(..., description="Worker ID"),
-    _user: TokenPayload = Depends(require_role("operator", "manager")),
+    num_worker: Annotated[str, Path(description="Worker ID")],
+    _user: Annotated[TokenPayload, Depends(require_role("operator", "manager"))],
 ):
     """
     Get specific worker details.

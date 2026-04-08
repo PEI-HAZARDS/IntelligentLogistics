@@ -3,7 +3,7 @@ Statistics Routes - Endpoints for analytics and metrics.
 Consumed by: Dashboards, Monitoring systems, Operators.
 """
 
-from typing import Optional
+from typing import Annotated, Optional
 from fastapi import APIRouter, Query, HTTPException, status
 from datetime import datetime
 
@@ -32,7 +32,7 @@ router = APIRouter(prefix="/statistics", tags=["Statistics & Analytics"])
 
 @router.get("/summary")
 def dashboard_summary_for_manager(
-    date: Optional[str] = Query(None, description="ISO date (YYYY-MM-DD), defaults to today"),
+    date: Annotated[Optional[str], Query(description="ISO date (YYYY-MM-DD), defaults to today")] = None,
 ):
     """
     Dashboard summary consumed by the Logistics Manager frontend.
@@ -50,8 +50,8 @@ def dashboard_summary_for_manager(
 
 @router.get("/by-company")
 def transport_stats_by_company(
-    from_date: Optional[str] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
-    to_date: Optional[str] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
+    from_date: Annotated[Optional[str], Query(alias="from", description="Start date (YYYY-MM-DD)")] = None,
+    to_date: Annotated[Optional[str], Query(alias="to", description="End date (YYYY-MM-DD)")] = None,
 ):
     """
     Per-company transport statistics consumed by the Logistics Manager frontend.
@@ -67,9 +67,9 @@ def transport_stats_by_company(
 
 @router.get("/volume")
 def volume_time_series(
-    from_date: Optional[str] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
-    to_date: Optional[str] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
-    interval: str = Query("hour", description="Bucket size: hour | day | week"),
+    from_date: Annotated[Optional[str], Query(alias="from", description="Start date (YYYY-MM-DD)")] = None,
+    to_date: Annotated[Optional[str], Query(alias="to", description="End date (YYYY-MM-DD)")] = None,
+    interval: Annotated[str, Query(description="Bucket size: hour | day | week")] = "hour",
 ):
     """
     Volume time-series data consumed by the Logistics Manager frontend.
@@ -89,8 +89,8 @@ def volume_time_series(
 
 @router.get("/alerts")
 def alerts_breakdown(
-    from_date: Optional[str] = Query(None, alias="from", description="Start date (YYYY-MM-DD)"),
-    to_date: Optional[str] = Query(None, alias="to", description="End date (YYYY-MM-DD)"),
+    from_date: Annotated[Optional[str], Query(alias="from", description="Start date (YYYY-MM-DD)")] = None,
+    to_date: Annotated[Optional[str], Query(alias="to", description="End date (YYYY-MM-DD)")] = None,
 ):
     """
     Alerts breakdown by type consumed by the Logistics Manager frontend.
@@ -105,7 +105,7 @@ def alerts_breakdown(
 
 @router.get("/decision-analytics")
 def decision_analytics(
-    date: Optional[str] = Query(None, description="ISO date (YYYY-MM-DD), defaults to today"),
+    date: Annotated[Optional[str], Query(description="ISO date (YYYY-MM-DD), defaults to today")] = None,
 ):
     """
     Decision analytics from MongoDB decision_events collection.
@@ -125,13 +125,13 @@ def decision_analytics(
 def get_realtime_metrics(gate_id: int):
     """
     Get current hour real-time metrics for a gate.
-    
+
     **Returns:**
     - Detection counts (total, by agent)
     - Decision counts (accepted, rejected, manual_review)
     - Operator activity
     - Error counts
-    
+
     **Example:**
     ```
     GET /api/v1/statistics/realtime/1
@@ -156,11 +156,11 @@ def get_realtime_metrics(gate_id: int):
 def get_metric_trend(
     gate_id: int,
     metric: str,
-    hours: int = Query(24, ge=1, le=168, description="Hours to look back (1-168)")
+    hours: Annotated[int, Query(ge=1, le=168, description="Hours to look back (1-168)")] = 24,
 ):
     """
     Get hourly trend for a specific metric.
-    
+
     **Metrics:**
     - `detections` - Total detections
     - `detections:agent_a` - Agent A detections
@@ -169,7 +169,7 @@ def get_metric_trend(
     - `decisions:accepted` - Accepted decisions
     - `decisions:rejected` - Rejected decisions
     - `decisions:manual_review` - Manual review decisions
-    
+
     **Example:**
     ```
     GET /api/v1/statistics/trend/1/detections?hours=48
@@ -194,17 +194,17 @@ def get_metric_trend(
 
 @router.get("/detections/success-rate")
 def detection_success_rate(
-    gate_id: int = Query(..., description="Gate identifier"),
-    hours: int = Query(24, ge=1, le=168, description="Hours to analyze")
+    gate_id: Annotated[int, Query(description="Gate identifier")],
+    hours: Annotated[int, Query(ge=1, le=168, description="Hours to analyze")] = 24,
 ):
     """
     Get detection success rate by agent over time.
-    
+
     **Returns:**
     - Total detections per agent per hour
     - Average confidence per agent
     - Processing rate (detections consumed by Decision Engine)
-    
+
     **Example:**
     ```
     GET /api/v1/statistics/detections/success-rate?gate_id=1&hours=24
@@ -226,19 +226,19 @@ def detection_success_rate(
 
 @router.get("/pipeline/performance")
 def pipeline_performance(
-    gate_id: int = Query(..., description="Gate identifier"),
-    hours: int = Query(24, ge=1, le=168, description="Hours to analyze")
+    gate_id: Annotated[int, Query(description="Gate identifier")],
+    hours: Annotated[int, Query(ge=1, le=168, description="Hours to analyze")] = 24,
 ):
     """
     Analyze decision pipeline performance.
-    
+
     **Returns:**
     - Total decisions
     - Decisions by type (accepted, rejected, manual_review)
     - Acceptance rate
     - Manual review rate
     - Performance metrics (avg, p50, p95, p99 latency)
-    
+
     **Example:**
     ```
     GET /api/v1/statistics/pipeline/performance?gate_id=1&hours=24
@@ -268,23 +268,23 @@ def pipeline_performance(
 @router.get("/agent/{agent_type}/performance")
 def agent_performance(
     agent_type: str,
-    gate_id: int = Query(..., description="Gate identifier"),
-    hours: int = Query(24, ge=1, le=168, description="Hours to analyze")
+    gate_id: Annotated[int, Query(description="Gate identifier")],
+    hours: Annotated[int, Query(ge=1, le=168, description="Hours to analyze")] = 24,
 ):
     """
     Analyze individual agent performance.
-    
+
     **Agent Types:**
     - `AgentA` - Truck detection
     - `AgentB` - License plate detection
     - `AgentC` - Hazmat detection
-    
+
     **Returns:**
     - Total detections
     - Confidence statistics (avg, min, max)
     - Processing rate
     - Average latency
-    
+
     **Example:**
     ```
     GET /api/v1/statistics/agent/AgentB/performance?gate_id=1&hours=24
@@ -295,7 +295,7 @@ def agent_performance(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid agent_type. Must be AgentA, AgentB, or AgentC"
         )
-    
+
     try:
         stats = get_agent_performance(agent_type, gate_id, hours)
         if not stats:
@@ -318,17 +318,17 @@ def agent_performance(
 
 @router.get("/operators/performance")
 def operator_performance(
-    hours: int = Query(24, ge=1, le=168, description="Hours to analyze")
+    hours: Annotated[int, Query(ge=1, le=168, description="Hours to analyze")] = 24,
 ):
     """
     Analyze operator manual review performance.
-    
+
     **Returns:**
     - List of operators with:
       - Total reviews handled
       - Average review time
       - Override rate (% of decisions changed)
-    
+
     **Example:**
     ```
     GET /api/v1/statistics/operators/performance?hours=24
@@ -353,12 +353,12 @@ def operator_performance(
 def truck_journey(truck_id: str):
     """
     Get complete journey for a truck from detection to decision.
-    
+
     **Returns:**
     - All agent detections (chronological)
     - Decision event (if exists)
     - Timeline with key timestamps
-    
+
     **Example:**
     ```
     GET /api/v1/statistics/truck/TRUCK-12345/journey
@@ -386,13 +386,13 @@ def truck_journey(truck_id: str):
 @router.post("/compute/hourly/{gate_id}")
 def trigger_hourly_computation(
     gate_id: int,
-    hour_timestamp: Optional[str] = Query(None, description="ISO format hour (YYYY-MM-DDTHH:00:00Z)")
+    hour_timestamp: Annotated[Optional[str], Query(description="ISO format hour (YYYY-MM-DDTHH:00:00Z)")] = None,
 ):
     """
     Manually trigger hourly statistics computation.
-    
+
     **Note:** Normally runs automatically every hour via background job.
-    
+
     **Example:**
     ```
     POST /api/v1/statistics/compute/hourly/1?hour_timestamp=2025-02-16T10:00:00Z
@@ -402,15 +402,15 @@ def trigger_hourly_computation(
         hour_dt = None
         if hour_timestamp:
             hour_dt = datetime.fromisoformat(hour_timestamp.replace('Z', '+00:00'))
-        
+
         result = compute_hourly_statistics(gate_id, hour_dt)
-        
+
         if not result:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to compute hourly statistics"
             )
-        
+
         return {
             "status": "computed",
             "gate_id": gate_id,
@@ -430,17 +430,17 @@ def trigger_hourly_computation(
 
 @router.get("/dashboard/summary")
 def dashboard_summary(
-    gate_id: int = Query(..., description="Gate identifier")
+    gate_id: Annotated[int, Query(description="Gate identifier")],
 ):
     """
     Get comprehensive dashboard summary combining real-time and historical data.
-    
+
     **Returns:**
     - Current hour real-time metrics
     - Last 24h pipeline performance
     - All agents performance
     - Operator statistics
-    
+
     **Example:**
     ```
     GET /api/v1/statistics/dashboard/summary?gate_id=1
@@ -453,7 +453,7 @@ def dashboard_summary(
         agent_b = get_agent_performance("AgentB", gate_id, 24)
         agent_c = get_agent_performance("AgentC", gate_id, 24)
         operators = get_operator_performance(24)
-        
+
         return {
             "gate_id": gate_id,
             "generated_at": datetime.utcnow().isoformat(),
