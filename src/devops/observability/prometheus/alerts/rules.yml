@@ -17,13 +17,13 @@ groups:
           description: "{{ $labels.instance }} has been unreachable for more than 2 minutes."
 
       - alert: PrometheusTargetMissing
-        expr: up == 0
+        expr: absent(up{job=~".+"})
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "Prometheus target missing"
-          description: "A Prometheus target has disappeared. Job: {{ $labels.job }}"
+          description: "No scrape targets are reporting — Prometheus may have lost all targets"
 
   # =============================================================================
   # LATENCY (Golden Signal)
@@ -173,10 +173,28 @@ groups:
           description: "Redis cache is not responding"
 
       - alert: KafkaConsumerLag
-        expr: kafka_consumer_group_lag > 1000
+        expr: kafka_consumergroup_lag > 1000
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "High Kafka consumer lag"
-          description: "Consumer group {{ $labels.consumer_group }} has lag of {{ $value }} messages"
+          description: "Consumer group {{ $labels.consumergroup }} has lag of {{ $value }} messages"
+
+      - alert: InfractionEngineDown
+        expr: up{job="infraction-engine"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Infraction Engine is down"
+          description: "Infraction Engine has been unreachable for more than 2 minutes."
+
+      - alert: VBrainDown
+        expr: up{job="v-brain"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "V_Brain orchestrator is down"
+          description: "V_Brain orchestrator has been unreachable for more than 2 minutes."

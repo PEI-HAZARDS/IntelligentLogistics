@@ -260,7 +260,7 @@
       },
       "targets": [
         {
-          "expr": "rate(agent_a_frames_processed_total[5m])",
+          "expr": "sum(rate(agent_a_frames_processed_total[5m]))",
           "legendFormat": "Processed",
           "refId": "A"
         }
@@ -309,7 +309,7 @@
       },
       "targets": [
         {
-          "expr": "rate(agent_b_frames_processed_total[5m])",
+          "expr": "sum(rate(agent_b_frames_processed_total[5m]))",
           "legendFormat": "Processed",
           "refId": "A"
         }
@@ -358,7 +358,7 @@
       },
       "targets": [
         {
-          "expr": "rate(agent_c_frames_processed_total[5m])",
+          "expr": "sum(rate(agent_c_frames_processed_total[5m]))",
           "legendFormat": "Processed",
           "refId": "A"
         }
@@ -756,7 +756,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{container=\"agenta-1\"}",
+          "expr": "{container=~\"agenta-.*\"}",
           "refId": "A"
         }
       ],
@@ -791,7 +791,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{container=\"agentb\"}",
+          "expr": "{container=~\"agentb-.*\"}",
           "refId": "A"
         }
       ],
@@ -826,7 +826,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{container=\"agentc\"}",
+          "expr": "{container=~\"agentc-.*\"}",
           "refId": "A"
         }
       ],

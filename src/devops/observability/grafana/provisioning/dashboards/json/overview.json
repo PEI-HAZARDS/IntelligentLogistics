@@ -477,6 +477,178 @@
           "links": [
             {
               "targetBlank": false,
+              "title": "View Infraction Engine Dashboard",
+              "url": "/d/il-infraction-engine/intelligentlogistics-infraction-engine"
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "red",
+                  "index": 0,
+                  "text": "DOWN"
+                },
+                "1": {
+                  "color": "green",
+                  "index": 1,
+                  "text": "UP"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
+      "id": 200,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "up{job=\"infraction-engine\", vm=\"V_APP\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "Infraction Engine",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "links": [
+            {
+              "targetBlank": false,
+              "title": "View V_Brain Dashboard",
+              "url": "/d/il-v-brain/intelligentlogistics-v-brain"
+            }
+          ],
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "red",
+                  "index": 0,
+                  "text": "DOWN"
+                },
+                "1": {
+                  "color": "green",
+                  "index": 1,
+                  "text": "UP"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "id": 201,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.3.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "up{job=\"v-brain\", vm=\"V_APP\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "V_Brain",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "links": [
+            {
+              "targetBlank": false,
               "title": "View Kafka Dashboard",
               "url": "/d/il-kafka/intelligentlogistics-kafka"
             }
@@ -821,8 +993,8 @@
           "links": [
             {
               "targetBlank": false,
-              "title": "View Nginx Dashboard",
-              "url": "/d/il-nginx/intelligentlogistics-nginx"
+              "title": "View MediaMTX Dashboard",
+              "url": "/d/il-mediamtx/intelligentlogistics-mediamtx"
             }
           ],
           "mappings": [
@@ -887,11 +1059,11 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "up{job=\"node-exporter-nginx\", vm=\"Nginx\"}",
+          "expr": "up{job=\"node-exporter-mediamtx\", vm=\"MediaMTX\"}",
           "refId": "A"
         }
       ],
-      "title": "Nginx VM",
+      "title": "MediaMTX VM",
       "type": "stat"
     },
     {

@@ -114,7 +114,7 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(decisions_total{job=\"decision-engine\"}[5m])) * 60",
+          "expr": "sum(rate(decision_engine_decisions_processed_total{job=\"decision-engine\"}[5m])) * 60",
           "refId": "A"
         }
       ],
@@ -165,7 +165,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(decision_duration_seconds_bucket{job=\"decision-engine\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(decisionengine_latency_seconds_bucket{job=\"decision-engine\"}[5m])) by (le))",
           "refId": "A"
         }
       ],
@@ -200,7 +200,7 @@
       },
       "targets": [
         {
-          "expr": "(sum(rate(decisions_total{job=\"decision-engine\",result=\"approved\"}[5m])) / sum(rate(decisions_total{job=\"decision-engine\"}[5m]))) * 100",
+          "expr": "(decision_engine_approved_access_total{job=\"decision-engine\"} / decision_engine_decisions_processed_total{job=\"decision-engine\"}) * 100",
           "refId": "A"
         }
       ],
@@ -249,8 +249,8 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(decisions_total{job=\"decision-engine\"}[5m])) by (result)",
-          "legendFormat": "{{ result }}",
+          "expr": "sum(rate(decision_engine_decisions_processed_total{job=\"decision-engine\"}[5m])) by (decision_type)",
+          "legendFormat": "{{ decision_type }}",
           "refId": "A"
         }
       ],
@@ -287,17 +287,17 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(decision_duration_seconds_bucket{job=\"decision-engine\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.50, sum(rate(decisionengine_latency_seconds_bucket{job=\"decision-engine\"}[5m])) by (le))",
           "legendFormat": "P50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.95, sum(rate(decision_duration_seconds_bucket{job=\"decision-engine\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.95, sum(rate(decisionengine_latency_seconds_bucket{job=\"decision-engine\"}[5m])) by (le))",
           "legendFormat": "P95",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(decision_duration_seconds_bucket{job=\"decision-engine\"}[5m])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(decisionengine_latency_seconds_bucket{job=\"decision-engine\"}[5m])) by (le))",
           "legendFormat": "P99",
           "refId": "C"
         }
@@ -341,12 +341,12 @@
       "id": 10,
       "targets": [
         {
-          "expr": "sum(rate(kafka_messages_consumed_total{job=\"decision-engine\"}[5m]))",
-          "legendFormat": "Messages/s",
+          "expr": "sum(rate(kafka_topic_partition_current_offset{job=\"kafka\", topic=~\".*decision.*\"}[5m])) by (topic)",
+          "legendFormat": "{{ topic }}",
           "refId": "A"
         }
       ],
-      "title": "Kafka Messages Consumed",
+      "title": "Kafka Decision Topic Throughput",
       "type": "timeseries"
     },
     {
@@ -372,8 +372,8 @@
       "id": 11,
       "targets": [
         {
-          "expr": "kafka_consumer_lag{job=\"decision-engine\"}",
-          "legendFormat": "Consumer Lag",
+          "expr": "sum(kafka_consumergroup_lag{job=\"kafka\", consumergroup=~\".*decision.*\"}) by (topic)",
+          "legendFormat": "{{ topic }}",
           "refId": "A"
         }
       ],

@@ -428,7 +428,7 @@
             "uid": "prometheus"
           },
           "expr": "topk(10, sum(rate(http_requests_total{job=\"api-gateway\"}[5m])) by (handler))",
-          "legendFormat": "{{ endpoint }}",
+          "legendFormat": "{{ handler }}",
           "refId": "A"
         }
       ],

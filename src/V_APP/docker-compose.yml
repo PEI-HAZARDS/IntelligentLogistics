@@ -388,6 +388,8 @@ services:
     image: v-brain:latest
     container_name: v-brain
     restart: unless-stopped
+    ports:
+      - "8004:8004"
     environment:
       - KAFKA_BOOTSTRAP=kafka:29092
       - GATE_IDS=${GATE_IDS}
@@ -503,6 +505,52 @@ services:
       - /home/pei_user/V_APP/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  # =============================================================================
+  # DATABASE EXPORTERS (Prometheus metrics for PG, Mongo, Redis)
+  # =============================================================================
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    restart: unless-stopped
+    ports:
+      - "9187:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - intelligent-logistics
+
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.43
+    container_name: mongodb-exporter
+    restart: unless-stopped
+    ports:
+      - "9216:9216"
+    command:
+      - "--mongodb.uri=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017"
+      - "--compatible-mode"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - intelligent-logistics
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter
+    restart: unless-stopped
+    ports:
+      - "9121:9121"
+    environment:
+      REDIS_ADDR: "redis:6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - intelligent-logistics
 
 volumes:
   pgdata:
