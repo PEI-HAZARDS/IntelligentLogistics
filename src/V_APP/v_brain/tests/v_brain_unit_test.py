@@ -244,39 +244,39 @@ class TestOnInfractionDecision:
 
 class TestScaleUpTry:
     def test_publishes_scale_up_message(self, brain):
-        brain._scale_up_try("t1", "1", reason="test")
+        brain._scale_up_try("1", reason="test")
         brain.kafka_producer.produce.assert_called_once()
         call_kwargs = brain.kafka_producer.produce.call_args.kwargs
         assert call_kwargs["topic"] == KafkaTopicFactory.scale_up()
 
     def test_sets_scale_status_true(self, brain):
         brain.scale_status = False
-        brain._scale_up_try("t1", "1")
+        brain._scale_up_try("1")
         assert brain.scale_status is True
 
     def test_no_op_when_already_scaled_up(self, brain):
         brain.scale_status = True
-        brain._scale_up_try("t1", "1")
+        brain._scale_up_try("1")
         # Still produces the message (for frontend), but scale_status stays True
         assert brain.scale_status is True
 
 
 class TestScaleDownTry:
     def test_publishes_scale_down_message(self, brain):
-        brain._scale_down_try("t1", "1", reason="test")
+        brain._scale_down_try("1", reason="test")
         brain.kafka_producer.produce.assert_called_once()
         call_kwargs = brain.kafka_producer.produce.call_args.kwargs
         assert call_kwargs["topic"] == KafkaTopicFactory.scale_down()
 
     def test_sets_scale_status_false_when_no_pending(self, brain):
         brain.scale_status = True
-        brain._scale_down_try("t1", "1")
+        brain._scale_down_try("1")
         assert brain.scale_status is False
 
     def test_skips_scale_down_if_truck_still_pending(self, brain):
         brain.scale_status = True
         brain.correlator.truck_detected("t2", "1")  # undecided truck
-        brain._scale_down_try("t1", "1")
+        brain._scale_down_try("1")
         assert brain.scale_status is True  # not changed
 
 
