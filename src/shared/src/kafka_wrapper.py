@@ -35,7 +35,8 @@ class KafkaProducerWrapper:
             payload = json.dumps(data).encode("utf-8")
             
         except (TypeError, ValueError) as e:
-            logger.error(f"Failed to serialize data for topic '{topic}': {e}")
+            safe_topic = topic.replace('\n', '').replace('\r', '')
+            logger.error(f"Failed to serialize data for topic '{safe_topic}': {e}")
             raise
 
         try:
@@ -47,9 +48,10 @@ class KafkaProducerWrapper:
                 callback=self._delivery_callback
             )
             self.producer.poll(0)  # Trigger callbacks immediately
-            
+
         except KafkaException as e:
-            logger.error(f"Publish failed to '{topic}': {e}")
+            safe_topic = topic.replace('\n', '').replace('\r', '')
+            logger.error(f"Publish failed to '{safe_topic}': {e}")
             raise
 
     def flush(self, timeout: int = 10) -> None:

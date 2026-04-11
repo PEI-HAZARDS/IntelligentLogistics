@@ -16,7 +16,7 @@ router = APIRouter(tags=["manual_review"], dependencies=[Depends(require_role("o
 # POST: /api/manual-review
 # ---------------------------------
 @router.post("/manual-review/")
-async def produce_manual_review(
+async def produce_manual_review(  # NOSONAR: parameter count is a FastAPI design constraint (query params cannot be grouped into a model)
     kafka_producer: Annotated[KafkaProducerWrapper, Depends(get_kafka_producer)],
     ws_manager: Annotated[WebSocketManager, Depends(get_ws_manager)],
     gate_id: Annotated[str, Query(description="Gate ID the operator is working on")],

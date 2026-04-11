@@ -34,15 +34,18 @@ async def ws_gate(websocket: WebSocket, gate_id: str, token: str = Query(default
     ws_manager = _get_ws_manager(websocket)
 
     origin = websocket.headers.get("origin", "unknown")
-    logger.info(f"WebSocket connection attempt for gate {gate_id} from origin: {origin}")
+    safe_gate_id = gate_id.replace('\n', '').replace('\r', '')
+    logger.info(f"WebSocket connection attempt for gate {safe_gate_id} from origin: {origin}")
 
     await ws_manager.connect(gate_id, websocket)
-    logger.info(f"WebSocket connected for gate {gate_id} (user: {user.sub})")
+    safe_sub = user.sub.replace('\n', '').replace('\r', '')
+    logger.info(f"WebSocket connected for gate {safe_gate_id} (user: {safe_sub})")
 
     try:
         while True:
             data = await websocket.receive_text()
-            logger.debug(f"Received from client (gate {gate_id}): {data}")
+            safe_data = data.replace('\n', '').replace('\r', '')
+            logger.debug(f"Received from client (gate {safe_gate_id}): {safe_data}")
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for gate {gate_id}")
         ws_manager.disconnect(gate_id, websocket)

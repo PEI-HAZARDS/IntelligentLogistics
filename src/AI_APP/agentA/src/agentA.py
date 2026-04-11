@@ -166,6 +166,15 @@ class AgentA:
         self.kafka_producer.flush()
         self.kafka_producer.close()
     
+    def _wait_for_frame(self):
+        """Block until a frame is available from the stream or agent is stopped."""
+        frame = None
+        while frame is None and self.running:
+            frame = self.stream_manager.read()
+            if frame is None:
+                time.sleep(0.1)
+        return frame
+
     def _process_detection(self) -> None:
         """
         Continuously capture and process frames for truck detection.
@@ -179,12 +188,7 @@ class AgentA:
                 self.kafka_consumer.consume_typed_message(timeout=0.0)
                 last_poll = now
 
-            # Wait until stream is actually ready
-            frame = None
-            while frame is None and self.running:
-                frame = self.stream_manager.read()
-                if frame is None:
-                    time.sleep(0.1)
+            frame = self._wait_for_frame()
 
             if not self.running or frame is None:
                 break

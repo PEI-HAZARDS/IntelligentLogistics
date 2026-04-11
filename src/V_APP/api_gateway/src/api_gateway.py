@@ -37,13 +37,15 @@ from auth.token_validator import TokenValidator
 
 logger = logging.getLogger("APIGateway")
 
+DEFAULT_GATE_IDS = '["1"]'
+
 
 class APIGatewayConfig(BaseSettings):
     """Configuration for the API Gateway, loaded from environment variables."""
     kafka_bootstrap: str = Field(default="localhost:9092")
-    gate_ids: str = Field(default='["1"]')            # Master list
-    decision_gate_ids: str = Field(default='["1"]')   # Inbound/Entry gates
-    infraction_gate_ids: str = Field(default='["1"]') # Highway/Approach gates
+    gate_ids: str = Field(default=DEFAULT_GATE_IDS)            # Master list
+    decision_gate_ids: str = Field(default=DEFAULT_GATE_IDS)   # Inbound/Entry gates
+    infraction_gate_ids: str = Field(default=DEFAULT_GATE_IDS) # Highway/Approach gates
     gateway_port: int = Field(default=8000)
     data_module_url: str = Field(default="http://data-module:8000")
     stream_base_url: str = Field(default="http://mediamtx:8888")
@@ -95,10 +97,10 @@ class APIGateway:
         config: APIGatewayConfig | None = None,
         kafka_producer: KafkaProducerWrapper | None = None,
         kafka_consumer: KafkaConsumerWrapper | None = None,
-        WSManager: WebSocketManager | None = None,
+        ws_manager: WebSocketManager | None = None,
     ) -> None:
         self.config = config or APIGatewayConfig()
-        
+
         self.consume_topics = []
         self.consume_topics.append(KafkaTopicFactory.scale_down())
         self.consume_topics.append(KafkaTopicFactory.scale_up())
@@ -106,7 +108,7 @@ class APIGateway:
         for infraction_gate_id in self.config.infraction_gate_id_list:
             logger.info(f"Subscribing to infraction decisions for gate {infraction_gate_id}")
             self.consume_topics.append(KafkaTopicFactory.infraction_decision(infraction_gate_id))
-        
+
         for decision_gate_id in self.config.decision_gate_id_list:
             logger.info(f"Subscribing to operator decisions for gate {decision_gate_id}")
             self.consume_topics.append(KafkaTopicFactory.agent_decision(decision_gate_id))
@@ -115,12 +117,50 @@ class APIGateway:
         self.kafka_consumer = kafka_consumer or KafkaConsumerWrapper(
             self.config.kafka_bootstrap, "api-gateway-group", self.consume_topics
         )
-        
+
         # Unified WebSocket manager for all events (Decisions, Scale, Infractions)
-        self.ws_manager = WSManager or WebSocketManager()
+        self.ws_manager = ws_manager or WebSocketManager()
 
         self.app = self._create_app()
         self.running = False
+
+    def _resolve_target_gate(self, payload: dict, topic: str) -> str | None:
+        """Determine the target gate from payload or topic name."""
+        target_gate = payload.get("gate_id")
+        if not target_gate and topic:
+            parts = topic.rsplit("-", 1)
+            if len(parts) == 2 and parts[1].strip():
+                target_gate = parts[1].strip()
+        return target_gate
+
+    def _handle_infraction(self, payload: dict, topic: str, target_gate: str) -> None:
+        """Broadcast infraction decision to source gate, notify operational gates, and alert driver."""
+        logger.info(f"Broadcasting infraction decision to source gate {target_gate}")
+        self._broadcast_async(payload, str(target_gate))
+
+        for op_gate in self.config.decision_gate_id_list:
+            if str(op_gate) != str(target_gate):
+                logger.info(f"Sending status_changed to operational gate {op_gate}")
+                self._broadcast_async(
+                    {"message_type": "status_changed", "reason": "infraction_decision"},
+                    str(op_gate),
+                )
+
+        if payload.get("infraction") is True:
+            license_plate = payload.get("license_plate")
+            if license_plate and license_plate != "N/A":
+                self._notify_driver_of_infraction(license_plate, target_gate)
+
+    def _handle_decision(self, payload: dict, target_gate: str) -> None:
+        """Broadcast a decision to its gate and notify the driver if ACCEPTED."""
+        message_type = payload.get("message_type")
+        logger.info(f"Broadcasting {message_type} for gate {target_gate}")
+        self._broadcast_async(payload, str(target_gate))
+
+        if message_type == "decision_results" and payload.get("decision") == "ACCEPTED":
+            license_plate = payload.get("license_plate")
+            if license_plate and license_plate != "N/A":
+                self._notify_driver_of_acceptance(license_plate)
 
     def _consumer_loop(self):
         """Consume from Kafka, process, and send via a unified WebSocket channel."""
@@ -142,74 +182,30 @@ class APIGateway:
                 except ValueError as e:
                     logger.warning(f"Could not deserialize message from topic '{topic}': {e}")
                     continue
-                
+
                 payload = typed_message.to_dict()
                 if truck_id:
                     payload["truck_id"] = truck_id
 
-                # 1. Filter out internal logic messages (SKIPPED decisions)
                 if payload.get("decision") == "SKIPPED":
                     continue
-                
-                # 2. Determine the target gate for broadcasting:
-                #    a) From the payload (scale_network messages carry gate_id)
-                #    b) From the topic name (e.g. infraction-decision-2 → gate "2")
-                target_gate = payload.get("gate_id")
-                if not target_gate and topic:
-                    # Extract gate ID from topic if it follows the pattern "something-gateid"
-                    parts = topic.rsplit("-", 1)
-                    if len(parts) == 2 and parts[1].strip():
-                        target_gate = parts[1].strip()
 
+                target_gate = self._resolve_target_gate(payload, topic)
                 message_type = payload.get("message_type")
 
-                # 3. Infractions: full payload to source gate (warning sign),
-                #    lightweight status_changed to operational gates (operator UI refetch)
                 if message_type == "infraction_decision":
                     if not target_gate:
-                        logger.warning(
-                            f"Could not determine target gate for infraction topic '{topic}', skipping broadcast"
-                        )
+                        logger.warning(f"Could not determine target gate for infraction topic '{topic}', skipping broadcast")
                         continue
-
-                    # Full payload to the source gate (e.g. gate 2 warning sign)
-                    logger.info(
-                        f"Broadcasting infraction decision to source gate {target_gate}"
-                    )
-                    self._broadcast_async(payload, str(target_gate))
-
-                    # Notify operational gates with a lightweight status_changed
-                    for op_gate in self.config.decision_gate_id_list:
-                        if str(op_gate) != str(target_gate):
-                            logger.info(
-                                f"Sending status_changed to operational gate {op_gate}"
-                            )
-                            self._broadcast_async(
-                                {"message_type": "status_changed", "reason": "infraction_decision"},
-                                str(op_gate),
-                            )
-
-                    # Notify driver of infraction via driver-scoped WS
-                    if payload.get("infraction") is True:
-                        license_plate = payload.get("license_plate")
-                        if license_plate and license_plate != "N/A":
-                            self._notify_driver_of_infraction(license_plate, target_gate)
+                    self._handle_infraction(payload, topic, target_gate)
                     continue
 
-                # 4. Other messages: broadcast only to their target gate
                 if not target_gate:
                     logger.warning(f"Could not determine gate ID for topic '{topic}', skipping broadcast")
                     continue
 
-                logger.info(f"Broadcasting {message_type} for gate {target_gate}")
-                self._broadcast_async(payload, str(target_gate))
+                self._handle_decision(payload, target_gate)
 
-                # 5. ACCEPTED decisions: also notify the driver via driver-scoped WS
-                if message_type == "decision_results" and payload.get("decision") == "ACCEPTED":
-                    license_plate = payload.get("license_plate")
-                    if license_plate and license_plate != "N/A":
-                        self._notify_driver_of_acceptance(license_plate, target_gate)
-                
         except Exception as e:
             logger.error(f"Consumer loop error: {e}")
         finally:
@@ -263,14 +259,14 @@ class APIGateway:
         except Exception as e:
             logger.error(f"Failed to notify driver of infraction for plate {license_plate}: {e}")
 
-    def _notify_driver_of_acceptance(self, license_plate: str, gate_id: str):
+    def _notify_driver_of_acceptance(self, license_plate: str):
         """Resolve driver_license from license plate and broadcast status_changed to the driver WS."""
         asyncio.run_coroutine_threadsafe(
-            self._resolve_and_notify_driver(license_plate, gate_id),
+            self._resolve_and_notify_driver(license_plate),
             self._loop,
         )
 
-    async def _resolve_and_notify_driver(self, license_plate: str, gate_id: str):
+    async def _resolve_and_notify_driver(self, license_plate: str):
         """Look up the appointment by license plate, then broadcast to the driver WS."""
         try:
             url = f"{self.config.data_module_url}/api/v1/arrivals/query/license-plate/{license_plate}"

@@ -46,7 +46,7 @@ class TokenValidator:
         try:
             # Debug: log token header to diagnose kid mismatch
             try:
-                header = jwt.get_unverified_header(token)
+                header = jwt.get_unverified_header(token)  # NOSONAR: used only for diagnostic logging, signature is verified via jwt.decode() below
                 logger.debug("JWT header: alg=%s kid=%s", header.get("alg"), header.get("kid"))
             except Exception:
                 logger.warning("Could not decode JWT header from token (len=%d): %.40s...", len(token), token)
@@ -113,7 +113,7 @@ class TokenValidator:
 # FastAPI dependencies
 # ------------------------------------------------------------------ #
 
-async def get_current_user(
+def get_current_user(
     request: Request,
     token: str | None = Depends(oauth2_scheme),
 ) -> TokenPayload:
@@ -142,7 +142,7 @@ def require_role(*allowed_roles: str) -> Callable:
             ...
     """
 
-    async def _check_role(
+    def _check_role(
         current_user: TokenPayload = Depends(get_current_user),
     ) -> TokenPayload:
         user_roles = set(current_user.roles)

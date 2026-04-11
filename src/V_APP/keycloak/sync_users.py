@@ -43,7 +43,20 @@ KC_REALM = os.getenv("KEYCLOAK_REALM", "intelligent-logistics")
 KC_CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID", "api-gateway")
 KC_CLIENT_SECRET = os.getenv("KEYCLOAK_CLIENT_SECRET", "api-gateway-secret")
 KC_ADMIN_USER = os.getenv("KC_ADMIN_USER", "admin")
-KC_ADMIN_PASSWORD = os.getenv("KC_ADMIN_PASSWORD", "admin")
+KC_ADMIN_PASSWORD = os.getenv("KC_ADMIN_PASSWORD")
+if not KC_ADMIN_PASSWORD:
+    logger.error("KC_ADMIN_PASSWORD environment variable is required")
+    sys.exit(1)
+
+DEFAULT_WORKER_PASSWORD = os.getenv("DEFAULT_WORKER_PASSWORD")
+if not DEFAULT_WORKER_PASSWORD:
+    logger.error("DEFAULT_WORKER_PASSWORD environment variable is required")
+    sys.exit(1)
+
+DEFAULT_DRIVER_PASSWORD = os.getenv("DEFAULT_DRIVER_PASSWORD")
+if not DEFAULT_DRIVER_PASSWORD:
+    logger.error("DEFAULT_DRIVER_PASSWORD environment variable is required")
+    sys.exit(1)
 
 
 def get_admin_token() -> str:
@@ -108,35 +121,45 @@ def create_kc_user(
     if resp.status_code not in (200, 204):
         logger.error("  Failed to set password for '%s': %s %s", username, resp.status_code, resp.text)
 
-    # Assign realm roles
-    if realm_roles:
-        resp = httpx.get(f"{admin_base}/roles", headers=headers)
-        all_roles = {r["name"]: r for r in resp.json()}
-        roles_to_assign = [all_roles[r] for r in realm_roles if r in all_roles]
-        if roles_to_assign:
-            httpx.post(
-                f"{admin_base}/users/{user_id}/role-mappings/realm",
-                json=roles_to_assign,
-                headers=headers,
-            )
-
-    # Assign client roles
-    if client_roles:
-        resp = httpx.get(f"{admin_base}/clients", params={"clientId": KC_CLIENT_ID}, headers=headers)
-        clients = resp.json()
-        if clients:
-            client_internal_id = clients[0]["id"]
-            resp = httpx.get(f"{admin_base}/clients/{client_internal_id}/roles", headers=headers)
-            all_client_roles = {r["name"]: r for r in resp.json()}
-            roles_to_assign = [all_client_roles[r] for r in client_roles if r in all_client_roles]
-            if roles_to_assign:
-                httpx.post(
-                    f"{admin_base}/users/{user_id}/role-mappings/clients/{client_internal_id}",
-                    json=roles_to_assign,
-                    headers=headers,
-                )
+    _assign_realm_roles(admin_base, headers, user_id, realm_roles)
+    _assign_client_roles(admin_base, headers, user_id, client_roles)
 
     logger.info("  Created '%s' with roles %s %s", username, realm_roles, client_roles or [])
+
+
+def _assign_realm_roles(admin_base: str, headers: dict, user_id: str, realm_roles: list[str] | None) -> None:
+    """Assign realm-level roles to a Keycloak user."""
+    if not realm_roles:
+        return
+    resp = httpx.get(f"{admin_base}/roles", headers=headers)
+    all_roles = {r["name"]: r for r in resp.json()}
+    roles_to_assign = [all_roles[r] for r in realm_roles if r in all_roles]
+    if roles_to_assign:
+        httpx.post(
+            f"{admin_base}/users/{user_id}/role-mappings/realm",
+            json=roles_to_assign,
+            headers=headers,
+        )
+
+
+def _assign_client_roles(admin_base: str, headers: dict, user_id: str, client_roles: list[str] | None) -> None:
+    """Assign client-level roles to a Keycloak user."""
+    if not client_roles:
+        return
+    resp = httpx.get(f"{admin_base}/clients", params={"clientId": KC_CLIENT_ID}, headers=headers)
+    clients = resp.json()
+    if not clients:
+        return
+    client_internal_id = clients[0]["id"]
+    resp = httpx.get(f"{admin_base}/clients/{client_internal_id}/roles", headers=headers)
+    all_client_roles = {r["name"]: r for r in resp.json()}
+    roles_to_assign = [all_client_roles[r] for r in client_roles if r in all_client_roles]
+    if roles_to_assign:
+        httpx.post(
+            f"{admin_base}/users/{user_id}/role-mappings/clients/{client_internal_id}",
+            json=roles_to_assign,
+            headers=headers,
+        )
 
 
 def sync_workers(conn, token: str) -> int:
@@ -165,7 +188,7 @@ def sync_workers(conn, token: str) -> int:
             create_kc_user(
                 token=token,
                 username=email,
-                password="password123",
+                password=DEFAULT_WORKER_PASSWORD,
                 email=email,
                 first_name=name,
                 realm_roles=realm_roles,
@@ -191,7 +214,7 @@ def sync_drivers(conn, token: str) -> int:
             create_kc_user(
                 token=token,
                 username=drivers_license,
-                password="driver123",
+                password=DEFAULT_DRIVER_PASSWORD,
                 first_name=name,
                 realm_roles=["driver"],
             )

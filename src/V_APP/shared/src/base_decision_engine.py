@@ -22,17 +22,19 @@ from shared.src.kafka_protocol import (
 from V_APP.shared.src.plate_matcher import PlateMatcher
 from V_APP.shared.src.database_client import DatabaseClient
 
+DEFAULT_GATE_IDS = '["1"]'
+
 
 class BaseDecisionEngineConfig(BaseSettings):
     """Common configuration for all decision engines.
-    
+
     Supports three gate ID arrays to allow engines to subscribe to different
     physical cameras (e.g., port entry vs. highway approach).
     """
     kafka_bootstrap: str = Field(default="10.255.32.70:9092")
-    gate_ids: str = Field(default='["1"]')            # Master list
-    decision_gate_ids: str = Field(default='["1"]')   # Inbound/Entry gates
-    infraction_gate_ids: str = Field(default='["1"]') # Highway/Approach gates
+    gate_ids: str = Field(default=DEFAULT_GATE_IDS)            # Master list
+    decision_gate_ids: str = Field(default=DEFAULT_GATE_IDS)   # Inbound/Entry gates
+    infraction_gate_ids: str = Field(default=DEFAULT_GATE_IDS) # Highway/Approach gates
     
     api_url: str = Field(default="http://localhost:8080/api/v1")
     time_tolerance_minutes: int = Field(default=30)
@@ -120,7 +122,7 @@ class BaseDecisionEngine(ABC):
         self.database_client = database_client or DatabaseClient(self.config.api_url, default_gid)
 
         # Last Truck detected used to prevent duplicate processing where detection starts before last truck leaves the camera view
-        self.last_truck_detected = dict[str, str]()  # gate_id -> license_plate
+        self.last_truck_detected: dict[str, str] = {}  # gate_id -> license_plate
 
         self._init_base_metrics()
         self._init_specific_metrics()
@@ -219,7 +221,7 @@ class BaseDecisionEngine(ABC):
     def _clear_stale_buffer_entries(self) -> None:
         current_time = time.time()
         for buffer in [self.lp_buffer, self.hz_buffer]:
-            for key in list(buffer.keys()):
+            for key in list(buffer.keys()):  # NOSONAR: list() copy needed to safely mutate dict during iteration
                 if current_time - buffer[key].timestamp > self.expiration_time_seconds:
                     del buffer[key]
                     self.logger.debug(f"Cleared stale entry for {key}")

@@ -212,7 +212,6 @@ class VBrain:
             logger.debug(f"Unhandled topic: {topic}")
             return
 
-        # gate_id="1", topic_type="truck_detected"
         gate_id, topic_type = lookup
 
         v_brain_messages_processed_total.labels(topic_type=topic_type).inc()
@@ -237,7 +236,7 @@ class VBrain:
 
         logger.info(f"Truck detected: {truck_id} (gate {gate_id})")
         self.correlator.truck_detected(truck_id, gate_id)
-        self._scale_up_try(truck_id, gate_id, reason="truck_detected")
+        self._scale_up_try(gate_id, reason="truck_detected")
 
     def _on_lp_results(self, truck_id: str | None, gate_id: str) -> None:
         """
@@ -254,7 +253,7 @@ class VBrain:
         # Dá scale-down se ja tiver o hz_results
         # Não da automaticamente pois precisa de checkar se mais algum truck ja não esta a precisar desse slice na rede
         if ready:
-            self._scale_down_try(truck_id, gate_id, reason="results_complete")
+            self._scale_down_try(gate_id, reason="results_complete")
 
     def _on_hz_results(self, truck_id: str | None, gate_id: str) -> None:
         """
@@ -272,7 +271,7 @@ class VBrain:
         # Não da automaticamente pois precisa de checkar se mais algum truck 
         # ja não esta a precisar desse slice na rede
         if ready:
-            self._scale_down_try(truck_id, gate_id, reason="results_complete")
+            self._scale_down_try(gate_id, reason="results_complete")
 
 
     def _on_agent_decision(self, truck_id: str | None, gate_id: str) -> None:
@@ -325,7 +324,7 @@ class VBrain:
     # ─── Scale Actions ───────────────────────────────────────────
 
 
-    def _scale_up_try(self, truck_id: str, gate_id: str, reason: str = "unknown") -> None:
+    def _scale_up_try(self, gate_id: str, reason: str = "unknown") -> None:
         """Publish scale-up event to V_Broker → API_Gateway → Frontend."""
 
         # Mandar a mensagem serve so para mudar qual stream é servida para o frontend, 
@@ -354,7 +353,7 @@ class VBrain:
 
 
 
-    def _scale_down_try(self, truck_id: str, gate_id: str, reason: str = "unknown") -> None:
+    def _scale_down_try(self, gate_id: str, reason: str = "unknown") -> None:
         """Publish scale-down event to V_Broker → API_Gateway → Frontend."""
 
         # Mandar a mensagem serve so para mudar qual stream é servida para o frontend, 
@@ -371,9 +370,9 @@ class VBrain:
         # Evita dar scale-down se ainda tiver algum truck a precisar do slice dedicado, ou seja, 
         # se tiver algum truck que ainda não recebeu decisão (agent-decision ou infraction-decision)
 
-        for truckId, state in self.correlator._state.items():
-            if not self.correlator._is_results_complete(truckId):
-                logger.info(f"Truck {truckId} still needs scale-up, skipping scale-down for gate {gate_id}")
+        for truck_id, state in self.correlator._state.items():
+            if not self.correlator._is_results_complete(truck_id):
+                logger.info(f"Truck {truck_id} still needs scale-up, skipping scale-down for gate {gate_id}")
                 return 
 
         v_brain_scale_down_total.labels(gate_id=gate_id).inc()
@@ -383,15 +382,6 @@ class VBrain:
 
 
 
-    #def _reset_agent_a(self, gate_id: str, reason: str = "unknown") -> None:
-    #    """Publish reset-agentA to V_Broker → V_Gateway → IA_Gateway → AgentA."""
-    #    msg = KafkaMessageProto.reset_agent_a(reason=reason)
-    #    self.kafka_producer.produce(
-    #        topic=KafkaTopicFactory.reset_agent_a(gate_id),
-    #        data=msg.to_dict(),
-    #    )
-    #    logger.info(f"Reset AgentA published (reason={reason}) for gate {gate_id}")
-    
     # Reset agentA with 5 second delay
     def _reset_agent_a(self, gate_id: str, reason: str = "unknown") -> None:
         v_brain_reset_signals_total.labels(gate_id=gate_id).inc()
@@ -408,7 +398,7 @@ class VBrain:
         threading.Thread(target=_delayed, daemon=True).start()
 
     
-    def _get_scale_status(self, gate_id: str) -> bool:
+    def _get_scale_status(self) -> bool:
         """Returns the current scale status for the gate (True=UP, False=DOWN)."""
         return self.scale_status
 
@@ -463,7 +453,7 @@ class VBrain:
                     logger.warning(f"Timeout for {truck_id} (gate {gate_id}) — forcing scale down + reset")
                     self._reset_agent_a(gate_id, reason="timeout")
                     self.correlator.remove(truck_id)
-                    self._scale_down_try(truck_id, gate_id, reason="timeout")
+                    self._scale_down_try(gate_id, reason="timeout")
                 else:
                     logger.error(f"Timeout for {truck_id} but no gate_id found, skipping")
                     self.correlator.remove(truck_id)

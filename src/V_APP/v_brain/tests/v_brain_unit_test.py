@@ -353,6 +353,6 @@ class TestTimeoutLoop:
 class TestGetScaleStatus:
     def test_returns_scale_status(self, brain):
         brain.scale_status = False
-        assert brain._get_scale_status("1") is False
+        assert brain._get_scale_status() is False
         brain.scale_status = True
-        assert brain._get_scale_status("1") is True
+        assert brain._get_scale_status() is True
