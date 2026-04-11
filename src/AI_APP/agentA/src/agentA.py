@@ -128,7 +128,7 @@ class AgentA:
             try:
                 if self.awaiting_reset and (now - self.last_message_time) <= self.config.decision_timeout:
                     # Wait for reset-agentA before resuming detection
-                    topic, message_obj, truck_id = self.kafka_consumer.consume_typed_message(timeout=0.1)
+                    topic, message_obj, _ = self.kafka_consumer.consume_typed_message(timeout=0.1)
                     if topic is None:
                         # No message received (timeout)
                         if int(now) % 10 == 0:
@@ -185,69 +185,74 @@ class AgentA:
                 frame = self.stream_manager.read()
                 if frame is None:
                     time.sleep(0.1)
-            
+
             if not self.running or frame is None:
                 break
 
-            # Run YOLO inference
             logger.debug("Frame captured, running truck detection…")
             try:
-                with self.inference_latency.time():
-                    results = self.yolo.detect(frame)
-                
-                self.frames_processed.inc()
-
-                if results is None:
-                    logger.warning("YOLO model returned no results (None).")
-                    continue
-
-                # Check for positive detection
-                if not self.yolo.object_found(results):
-                    logger.debug("No truck detected in this frame.")
-                    continue
-                
-                truck_id = "TRK" + str(uuid.uuid4())[:8]
-                boxes = self.yolo.get_boxes(results)  # [x1,y1,x2,y2,conf]
-                num_boxes = len(boxes)
-                max_conf = max((b[4] for b in boxes), default=0.0)
-
-                # Discart trucks with less than 75% confidence to reduce false positives
-                if max_conf < 0.75:
-                    logger.debug(f"Detections found but confidence too low (max_conf={max_conf:.2f}), skipping.")
-                    continue
-
-                # Draw detected boxes on the frame (labelled)
-                try:
-                    frame = self.drawer.draw_box(frame, cast(List[Box], boxes))
-                    self.image_storage.upload_memory_image(frame, f"{truck_id}_{int(time.time())}.jpg", image_type="annotated_frames")
-                except Exception as e:
-                    logger.exception(f"Error drawing boxes: {e}")
-
-                # Record metrics
-                self.trucks_detected.inc(num_boxes)
-                self.detection_confidence.observe(max_conf)
-
-                message = KafkaMessageProto.truck_detected(confidence=max_conf, num_detections=num_boxes)
-                self.kafka_producer.produce(
-                    topic=self.config.kafka_topic_produce,
-                    data=message.to_dict(),
-                    headers={"truck_id": truck_id}
-                )       
-                
-                # Force delivery callbacks to process immediately so we see the log
-                self.kafka_producer.flush(timeout=1)
-                self.last_message_time = time.time()
-
-                # Disconnect from stream to free up resources while waiting for reset
-                self.stream_manager.release()
-
-                logger.info(f"Truck detected! truck_id={truck_id}, confidence={max_conf:.2f}, num_detections={num_boxes}.")
-
-                # Truck detected and message sent; return to the main loop
-                return
-
+                if self._detect_and_publish(frame):
+                    return
             except Exception as e:
                 logger.exception(f"Error preparing Kafka event: {e}")
                 time.sleep(0.1)
+
+    def _detect_and_publish(self, frame) -> bool:
+        """
+        Run YOLO inference on a frame and publish a Kafka event if a truck is detected.
+        Returns True if a truck was detected and the event was published, False otherwise.
+        """
+        with self.inference_latency.time():
+            results = self.yolo.detect(frame)
+
+        self.frames_processed.inc()
+
+        if results is None:
+            logger.warning("YOLO model returned no results (None).")
+            return False
+
+        # Check for positive detection
+        if not self.yolo.object_found(results):
+            logger.debug("No truck detected in this frame.")
+            return False
+
+        truck_id = "TRK" + str(uuid.uuid4())[:8]
+        boxes = self.yolo.get_boxes(results)  # [x1,y1,x2,y2,conf]
+        num_boxes = len(boxes)
+        max_conf = max((b[4] for b in boxes), default=0.0)
+
+        # Discard trucks with less than 75% confidence to reduce false positives
+        if max_conf < 0.75:
+            logger.debug(f"Detections found but confidence too low (max_conf={max_conf:.2f}), skipping.")
+            return False
+
+        # Draw detected boxes on the frame (labelled)
+        try:
+            frame = self.drawer.draw_box(frame, cast(List[Box], boxes))
+            self.image_storage.upload_memory_image(frame, f"{truck_id}_{int(time.time())}.jpg", image_type="annotated_frames")
+        except Exception as e:
+            logger.exception(f"Error drawing boxes: {e}")
+
+        # Record metrics
+        self.trucks_detected.inc(num_boxes)
+        self.detection_confidence.observe(max_conf)
+
+        message = KafkaMessageProto.truck_detected(confidence=max_conf, num_detections=num_boxes)
+        self.kafka_producer.produce(
+            topic=self.config.kafka_topic_produce,
+            data=message.to_dict(),
+            headers={"truck_id": truck_id}
+        )
+
+        # Force delivery callbacks to process immediately so we see the log
+        self.kafka_producer.flush(timeout=1)
+        self.last_message_time = time.time()
+
+        # Disconnect from stream to free up resources while waiting for reset
+        self.stream_manager.release()
+
+        logger.info(f"Truck detected! truck_id={truck_id}, confidence={max_conf:.2f}, num_detections={num_boxes}.")
+
+        return True
 
 

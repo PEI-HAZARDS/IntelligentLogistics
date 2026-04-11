@@ -334,7 +334,6 @@ class BaseAgent(ABC):
         self.frames_processed = 0
 
         while self._should_continue_processing():
-            #frame = self._get_next_frame()
             raw_frame = self.stream_manager.read()
             if raw_frame is None:
                 continue
