@@ -35,16 +35,16 @@ pathDefaults:
 paths:
    streams_high/gate1:
       #alwaysAvailableFile: ./videos/gate.mp4
-      alwaysAvailableFile: ./test_videos/gate.mp4
+      alwaysAvailableFile: ./videos/gate.mp4
 
    streams_low/gate1:
       #alwaysAvailableFile: ./videos/gate.mp4
-      alwaysAvailableFile: ./test_videos/gate.mp4
+      alwaysAvailableFile: ./videos/gate.mp4
 
    streams_high/gate2:
       #alwaysAvailableFile: ./videos/highway.mp4
-      alwaysAvailableFile: ./test_videos/highway.mp4
+      alwaysAvailableFile: ./videos/highway.mp4
 
    streams_low/gate2:
       #alwaysAvailableFile: ./videos/highway.mp4
-      alwaysAvailableFile: ./test_videos/highway.mp4
+      alwaysAvailableFile: ./videos/highway.mp4
