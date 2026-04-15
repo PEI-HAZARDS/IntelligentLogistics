@@ -17,7 +17,6 @@ from unittest.mock import patch, MagicMock
 
 from AI_APP.shared.src.consensus_algorithm import (
     ConsensusAlgorithm,
-    CONSENSUS_PERCENTAGE,
     DECISION_THRESHOLD,
     MIN_TEXT_LENGTH,
     MIN_CONFIDENCE_CONSENSUS,
@@ -332,9 +331,9 @@ class TestCheckFullConsensus:
         assert result is False
         assert algorithm.consensus_reached is False
 
-    def test_consensus_reached_at_threshold(self, algorithm):
-        """Consensus reached when enough positions decided."""
-        # Arrange - 10 positions, 8 decided (80% = CONSENSUS_PERCENTAGE)
+    def test_consensus_not_reached_until_all_expected_positions_decided(self, algorithm):
+        """Consensus requires 100% of expected positions, not 80%."""
+        # Arrange - 10 positions, 8 decided (should still be False)
         algorithm.counter = {i: {'A': 10} for i in range(10)}
         algorithm.decided_chars = {i: 'A' for i in range(8)}
 
@@ -342,14 +341,27 @@ class TestCheckFullConsensus:
         result = algorithm.check_full_consensus()
 
         # Assert
-        assert result is True
-        assert algorithm.consensus_reached is True
+        assert result is False
+        assert algorithm.consensus_reached is False
 
-    def test_consensus_reached_above_threshold(self, algorithm):
-        """Consensus reached when more than threshold decided."""
+    def test_consensus_reached_when_all_expected_positions_decided(self, algorithm):
+        """Consensus reached only when all expected positions are decided."""
         # Arrange - 10 positions, 10 decided (100%)
         algorithm.counter = {i: {'A': 10} for i in range(10)}
         algorithm.decided_chars = {i: 'A' for i in range(10)}
+
+        # Act
+        result = algorithm.check_full_consensus()
+
+        # Assert
+        assert result is True
+
+    def test_consensus_uses_most_common_length_as_expected_positions(self, algorithm):
+        """Outlier positions do not block consensus when most common length is complete."""
+        # Arrange - raw counter includes outlier 7th position, but expected length is 6
+        algorithm.length_counter = {6: 5, 7: 1}
+        algorithm.counter = {i: {'A': 10} for i in range(7)}
+        algorithm.decided_chars = {i: 'A' for i in range(6)}
 
         # Act
         result = algorithm.check_full_consensus()
@@ -394,6 +406,21 @@ class TestBuildFinalText:
 
         # Assert
         assert result == "XYZ"
+
+    def test_uses_expected_length_when_available(self, algorithm):
+        """Build final text uses most common expected length and ignores outlier positions."""
+        # Arrange
+        algorithm.length_counter = {6: 5, 7: 1}
+        algorithm.counter = {i: {'A': 10} for i in range(7)}
+        algorithm.decided_chars = {
+            0: 'A', 1: 'B', 2: 'C', 3: '1', 4: '2', 5: '3', 6: 'Z'
+        }
+
+        # Act
+        result = algorithm.build_final_text()
+
+        # Assert
+        assert result == "ABC123"
 
 
 # =============================================================================
@@ -632,3 +659,4 @@ class TestInternalMethods:
 
         # Assert
         assert result is False
+
