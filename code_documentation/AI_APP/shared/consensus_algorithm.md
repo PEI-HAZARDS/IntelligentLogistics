@@ -337,7 +337,7 @@ best = ca.select_best_crop("AB12CD")
 
 | Scenario | text | confidence | crop |
 |----------|------|------------|------|
-| Partial consensus data exists | Partial text (undecided positions filled with best guess or `_`) | `len(decided_chars) / total_positions` (capped at 0.95) | Best matching crop |
+| Partial consensus data exists | Partial text (undecided positions filled with best guess or `_`) | Count of decided positions within `range(total_positions)` divided by `total_positions` (capped at 0.95) | Best matching crop |
 | No text consensus, but crops exist | `"N/A"` | YOLO confidence | Highest confidence crop |
 | No crops at all | `None` | `None` | `None` |
 
