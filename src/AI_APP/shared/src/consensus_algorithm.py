@@ -80,9 +80,14 @@ class ConsensusAlgorithm:
         if self.counter[pos][char] < DECISION_THRESHOLD:
             return
 
+        # If a position inst already decided we just add that entry in the 
+        # Decided chars dictionary, 
         if pos not in self.decided_chars:
             self.decided_chars[pos] = char
             self.logger.debug(f"Position {pos} decided: '{char}'")
+
+        # Otherwise we check if the new char is different from 
+        # the already decided one and update it if necessary
         elif self.decided_chars[pos] != char:
             old_char = self.decided_chars[pos]
             self.decided_chars[pos] = char
@@ -283,7 +288,8 @@ class ConsensusAlgorithm:
                     text_chars.append("_")
 
             partial_text = "".join(text_chars)
-            decided_count = len(self.decided_chars)
+            # Avoid getting already decided chars out of bonds if that char is already out of the most common length
+            decided_count = sum(1 for pos in range(total_positions) if pos in self.decided_chars)
             confidence = decided_count / total_positions
             confidence = min(confidence, 0.95)
 
