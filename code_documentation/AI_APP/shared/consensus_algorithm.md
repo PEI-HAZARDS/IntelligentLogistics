@@ -198,7 +198,8 @@ ca.add_to_consensus("XY99ZZ", 0.60)  # skipped (confidence < 0.80)
 **Returns:** `bool` — `True` only if all expected positions are decided.
 
 Expected positions are inferred by `_get_expected_positions()`:
-- Prefer the most common accepted OCR length (`length_counter`)
+- Prefer the most common observed OCR length in `length_counter`
+: `length_counter` is updated before mismatch rejection, so it may include lengths later skipped from position voting.
 - Fallback to `max(counter.keys()) + 1` when no length history exists
 
 Counting logic uses only the expected range (`0..expected_positions-1`) to avoid out-of-range decided positions causing false positives.
@@ -360,10 +361,10 @@ These helper methods are internal (`_`-prefixed) and are used by the public API 
 |--------|---------|
 | `_normalize_text(text)` | Normalizes OCR text before voting (uppercase, removes dashes). |
 | `_is_valid_for_consensus(text_normalized, confidence)` | Applies basic validation gates (`MIN_CONFIDENCE_CONSENSUS`, `MIN_TEXT_LENGTH`). |
-| `_track_text_length(text_len)` | Tracks accepted text lengths and rejects outliers once length consensus stabilizes (after at least 3 accepted readings). |
+| `_track_text_length(text_len)` | Tracks observed text lengths and rejects outliers once length consensus stabilizes (after at least 3 observed readings). |
 | `_get_vote_weight(confidence)` | Returns vote weight per reading (`2` if confidence >= `0.95`, otherwise `1`). |
-| `_get_expected_positions()` | Determines expected text length for full-consensus and text building logic (prefers most common accepted length). |
-| `_get_most_common_length()` | Returns the most frequent accepted text length; ties prefer shorter length to reduce outlier impact. |
+| `_get_expected_positions()` | Determines expected text length for full-consensus and text building logic (prefers most common observed length in `length_counter`). |
+| `_get_most_common_length()` | Returns the most frequent observed text length; ties prefer shorter length to reduce outlier impact. |
 
 ---
 
@@ -450,7 +451,7 @@ pytest src/AI_APP/shared/tests/consensus_algorithm_unit_test.py
 
 | Version / Date | Change |
 |----------------|--------|
-| `2026-04-15` | Updated full-consensus semantics: now requires 100% of expected positions (inferred from most common accepted text length). Removed percentage-threshold documentation and `math.ceil()` references. Clarified `build_final_text()` and partial fallback behavior. |
+| `2026-04-15` | Updated full-consensus semantics: now requires 100% of expected positions (inferred from most common observed text length). Removed percentage-threshold documentation and `math.ceil()` references. Clarified `build_final_text()` and partial fallback behavior. |
 | `2025-02-22` | Added `compute_consensus_confidence()` method and `accepted_confidences` tracking. Replaced hardcoded `1.0` confidence in `base_agent.py` with composite score based on position dominance × average OCR confidence. |
 
 ---

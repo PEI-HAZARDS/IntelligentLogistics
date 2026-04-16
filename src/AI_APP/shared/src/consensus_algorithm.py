@@ -131,7 +131,7 @@ class ConsensusAlgorithm:
         Check if full consensus reached.
 
         Full consensus requires all expected positions to be decided.
-        Expected positions are inferred from the most common accepted text length.
+        Expected positions are inferred from the most common observed text length.
         """
         if not self.counter:
             return False
@@ -360,7 +360,13 @@ class ConsensusAlgorithm:
         return 2 if confidence >= 0.95 else 1
 
     def _get_expected_positions(self) -> int:
-        """Return expected text length based on observed accepted OCR lengths."""
+        """Return expected text length based on the most common observed OCR length.
+
+        Note:
+            ``length_counter`` is incremented before mismatch rejection in
+            ``_track_text_length``, so it can include lengths that were later
+            skipped from character voting to avoid misalignment.
+        """
         if self.length_counter:
             return self._get_most_common_length()
 
@@ -370,7 +376,7 @@ class ConsensusAlgorithm:
         return 0
 
     def _get_most_common_length(self) -> int:
-        """Return most frequent accepted text length.
+        """Return most frequent observed text length.
 
         Tie-breaker prefers shorter length to reduce outlier impact.
         """
