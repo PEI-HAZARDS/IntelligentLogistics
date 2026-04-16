@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="S5WVsMglphUFKxuRfND1" name="Página-1">
-        <mxGraphModel dx="1724" dy="1559" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+        <mxGraphModel dx="2317" dy="1504" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -715,7 +715,7 @@
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="281" value="V_Broker" style="shape=table;startSize=30;container=1;collapsible=0;childLayout=tableLayout;strokeColor=default;fontSize=16;points=[[0,0,0,0,0],[0,0.25,0,0,0],[0,0.5,0,0,0],[0,0.75,0,0,0],[0,1,0,0,0],[0.25,0,0,0,0],[0.25,1,0,0,0],[0.5,0,0,0,0],[0.5,1,0,0,0],[0.75,0,0,0,0],[0.75,1,0,0,0],[1,0,0,0,0],[1,0.25,0,0,0],[1,0.5,0,0,0],[1,0.75,0,0,0],[1,1,0,0,0]];rowLines=1;" parent="1" vertex="1">
-                    <mxGeometry x="3030" y="1684" width="1210" height="991.2599157404015" as="geometry"/>
+                    <mxGeometry x="3027" y="1680" width="1210" height="991.2599157404015" as="geometry"/>
                 </mxCell>
                 <mxCell id="282" value="" style="shape=tableRow;horizontal=0;startSize=0;swimlaneHead=0;swimlaneBody=0;strokeColor=inherit;top=0;left=0;bottom=0;right=0;collapsible=0;dropTarget=0;fillColor=none;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;fontSize=16;" parent="281" vertex="1">
                     <mxGeometry y="30" width="1210" height="45" as="geometry"/>
@@ -809,7 +809,7 @@
                         <mxRectangle width="186" height="204" as="alternateBounds"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="299" value="&lt;div style=&quot;text-align: start;&quot;&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;agent-decision-&lt;/span&gt;&lt;span style=&quot;color: rgb(63, 63, 63); background-color: transparent;&quot;&gt;{GATE_ID}&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: rgb(63, 63, 63);&quot;&gt;;&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: start;&quot;&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;operator-decision&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251);&quot;&gt;-&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251);&quot;&gt;{GATE_ID}&lt;/span&gt;&lt;/div&gt;" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;strokeColor=inherit;overflow=hidden;fillColor=none;top=0;left=0;bottom=0;right=0;pointerEvents=1;fontSize=16;" parent="297" vertex="1">
+                <mxCell id="299" value="&lt;div style=&quot;text-align: start;&quot;&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;agent-decision-&lt;/span&gt;&lt;span style=&quot;color: rgb(63, 63, 63); background-color: transparent;&quot;&gt;{GATE_ID}&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: rgb(63, 63, 63);&quot;&gt;;&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: start;&quot;&gt;&lt;span style=&quot;background-color: transparent;&quot;&gt;operator-decision&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251);&quot;&gt;-&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251);&quot;&gt;{GATE_ID};&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: start;&quot;&gt;&lt;span style=&quot;background-color: transparent; color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251);&quot;&gt;infraction-decision-{GATE_ID};&lt;/span&gt;&lt;/div&gt;" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;strokeColor=inherit;overflow=hidden;fillColor=none;top=0;left=0;bottom=0;right=0;pointerEvents=1;fontSize=16;" parent="297" vertex="1">
                     <mxGeometry x="186" width="264" height="204" as="geometry">
                         <mxRectangle width="264" height="204" as="alternateBounds"/>
                     </mxGeometry>
@@ -837,7 +837,7 @@
                         <mxRectangle width="186" height="145" as="alternateBounds"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="304" value="agent-decision&lt;span style=&quot;color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251); text-align: start; background-color: transparent;&quot;&gt;-&lt;/span&gt;&lt;span style=&quot;color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251); text-align: start; background-color: transparent;&quot;&gt;{GATE_ID}&lt;/span&gt;&lt;div style=&quot;text-align: start;&quot;&gt;scale-up&lt;/div&gt;&lt;div style=&quot;text-align: start;&quot;&gt;scale-down&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251); text-align: start; background-color: transparent;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/div&gt;" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;strokeColor=inherit;overflow=hidden;fillColor=none;top=0;left=0;bottom=0;right=0;pointerEvents=1;fontSize=16;" parent="302" vertex="1">
+                <mxCell id="304" value="agent-decision&lt;span style=&quot;color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251); text-align: start; background-color: transparent;&quot;&gt;-&lt;/span&gt;&lt;span style=&quot;color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251); text-align: start; background-color: transparent;&quot;&gt;{GATE_ID}&lt;/span&gt;&lt;div&gt;&lt;div style=&quot;text-align: start;&quot;&gt;&lt;span style=&quot;color: rgb(63, 63, 63);&quot;&gt;infraction-decision-{GATE_ID};&lt;/span&gt;&lt;/div&gt;&lt;div style=&quot;text-align: start;&quot;&gt;scale-up&lt;/div&gt;&lt;div style=&quot;text-align: start;&quot;&gt;scale-down&lt;/div&gt;&lt;div&gt;&lt;span style=&quot;color: rgb(63, 63, 63); scrollbar-color: rgb(226, 226, 226) rgb(251, 251, 251); text-align: start; background-color: transparent;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;strokeColor=inherit;overflow=hidden;fillColor=none;top=0;left=0;bottom=0;right=0;pointerEvents=1;fontSize=16;" parent="302" vertex="1">
                     <mxGeometry x="186" width="264" height="145" as="geometry">
                         <mxRectangle width="264" height="145" as="alternateBounds"/>
                     </mxGeometry>
@@ -893,7 +893,7 @@
                         <mxRectangle width="186" height="192" as="alternateBounds"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="329" value="lp-results-highway&lt;span style=&quot;color: rgb(63, 63, 63);&quot;&gt;-{GATE_ID}&lt;/span&gt;&lt;div&gt;hz-results-{GATE_ID}&lt;/div&gt;" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;strokeColor=inherit;overflow=hidden;fillColor=none;top=0;left=0;bottom=0;right=0;pointerEvents=1;fontSize=16;" parent="327" vertex="1">
+                <mxCell id="329" value="lp-results&lt;span style=&quot;color: rgb(63, 63, 63);&quot;&gt;-{GATE_ID}&lt;/span&gt;&lt;div&gt;hz-results-{GATE_ID}&lt;/div&gt;" style="shape=partialRectangle;html=1;whiteSpace=wrap;connectable=0;strokeColor=inherit;overflow=hidden;fillColor=none;top=0;left=0;bottom=0;right=0;pointerEvents=1;fontSize=16;" parent="327" vertex="1">
                     <mxGeometry x="186" width="264" height="192" as="geometry">
                         <mxRectangle width="264" height="192" as="alternateBounds"/>
                     </mxGeometry>

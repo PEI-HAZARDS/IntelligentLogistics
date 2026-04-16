@@ -1,11 +1,9 @@
 from typing import Any
 from logging import getLogger
-import math
 from shared.src.utils import levenshtein_distance
 
 # Consensus configuration
 DECISION_THRESHOLD = 8
-CONSENSUS_PERCENTAGE = 0.8
 MIN_TEXT_LENGTH = 4
 MIN_CONFIDENCE_CONSENSUS = 0.80
 
@@ -82,9 +80,14 @@ class ConsensusAlgorithm:
         if self.counter[pos][char] < DECISION_THRESHOLD:
             return
 
+        # If a position inst already decided we just add that entry in the 
+        # Decided chars dictionary, 
         if pos not in self.decided_chars:
             self.decided_chars[pos] = char
             self.logger.debug(f"Position {pos} decided: '{char}'")
+
+        # Otherwise we check if the new char is different from 
+        # the already decided one and update it if necessary
         elif self.decided_chars[pos] != char:
             old_char = self.decided_chars[pos]
             self.decided_chars[pos] = char
@@ -125,32 +128,52 @@ class ConsensusAlgorithm:
 
     def check_full_consensus(self) -> bool:
         """
-        Check if consensus reached based on percentage of decided positions.
+        Check if full consensus reached.
+
+        Full consensus requires all expected positions to be decided.
+        Expected positions are inferred from the most common observed text length.
         """
         if not self.counter:
             return False
 
-        total_positions = len(self.counter)
-        decided_count = len(self.decided_chars)
+        expected_positions = self._get_expected_positions()
+        if expected_positions <= 0:
+            return False
 
-        required_positions = math.ceil(total_positions * CONSENSUS_PERCENTAGE)
+        # Count only positions within expected range to avoid out-of-range false positives.
+        decided_count = sum(1 for pos in range(expected_positions) if pos in self.decided_chars)
 
-        if decided_count >= required_positions:
+        if decided_count >= expected_positions:
             self.logger.info(
-                f"Consensus reached! {decided_count}/{total_positions} "
-                f"positions decided (need {required_positions}) ✓")
+                f"Consensus reached! {decided_count}/{expected_positions} "
+                "positions decided ✓")
             self.consensus_reached = True
             return True
 
         self.logger.debug(
-            f"Consensus check: {decided_count}/{total_positions} "
-            f"positions decided (need {required_positions})")
+            f"Consensus check: {decided_count}/{expected_positions} "
+            "positions decided")
         return False
 
     def build_final_text(self) -> str:
         """Build final text from decided characters."""
         if not self.decided_chars:
             return ""
+        # This gives us the expected text length of the detection
+        expected_positions = self._get_expected_positions()
+        if expected_positions > 0:
+
+            #The missing positions on the text
+            missing_positions = [pos for pos in range(expected_positions) if pos not in self.decided_chars]
+            if missing_positions:
+                self.logger.debug(
+                    f"Cannot build full text yet, missing positions: {missing_positions}")
+                return ""
+
+            text_chars = [self.decided_chars[pos] for pos in range(expected_positions)]
+            final_text = "".join(text_chars)
+            self.logger.debug(f"Built final text: '{final_text}'")
+            return final_text
 
         text_chars = []
         for pos in sorted(self.decided_chars.keys()):
@@ -251,7 +274,9 @@ class ConsensusAlgorithm:
         # If we have text consensus data, build partial result
         if self.counter:
             text_chars = []
-            total_positions = max(self.counter.keys()) + 1
+            total_positions = self._get_expected_positions()
+            if total_positions <= 0:
+                total_positions = max(self.counter.keys()) + 1
 
             for pos in range(total_positions):
                 if pos in self.decided_chars:
@@ -263,7 +288,8 @@ class ConsensusAlgorithm:
                     text_chars.append("_")
 
             partial_text = "".join(text_chars)
-            decided_count = len(self.decided_chars)
+            # Avoid getting already decided chars out of bonds if that char is already out of the most common length
+            decided_count = sum(1 for pos in range(total_positions) if pos in self.decided_chars)
             confidence = decided_count / total_positions
             confidence = min(confidence, 0.95)
 
@@ -320,7 +346,7 @@ class ConsensusAlgorithm:
         if sum(self.length_counter.values()) < 3:
             return True
 
-        most_common_length = max(self.length_counter.items(), key=lambda x: x[1])[0]
+        most_common_length = self._get_most_common_length()
         if text_len != most_common_length:
             self.logger.debug(
                 f"Text length mismatch: {text_len} chars, "
@@ -332,3 +358,29 @@ class ConsensusAlgorithm:
     def _get_vote_weight(self, confidence: float) -> int:
         """Return vote weight based on confidence level."""
         return 2 if confidence >= 0.95 else 1
+
+    def _get_expected_positions(self) -> int:
+        """Return expected text length based on the most common observed OCR length.
+
+        Note:
+            ``length_counter`` is incremented before mismatch rejection in
+            ``_track_text_length``, so it can include lengths that were later
+            skipped from character voting to avoid misalignment.
+        """
+        if self.length_counter:
+            return self._get_most_common_length()
+
+        if self.counter:
+            return max(self.counter.keys()) + 1
+
+        return 0
+
+    def _get_most_common_length(self) -> int:
+        """Return most frequent observed text length.
+
+        Tie-breaker prefers shorter length to reduce outlier impact.
+        """
+        if not self.length_counter:
+            return 0
+
+        return max(self.length_counter.items(), key=lambda x: (x[1], -x[0]))[0]

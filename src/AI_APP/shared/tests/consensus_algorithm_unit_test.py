@@ -17,7 +17,6 @@ from unittest.mock import patch, MagicMock
 
 from AI_APP.shared.src.consensus_algorithm import (
     ConsensusAlgorithm,
-    CONSENSUS_PERCENTAGE,
     DECISION_THRESHOLD,
     MIN_TEXT_LENGTH,
     MIN_CONFIDENCE_CONSENSUS,
@@ -260,6 +259,30 @@ class TestAddToConsensus:
         assert 4 not in algorithm.counter
         assert set(algorithm.counter.keys()) == positions_before
 
+    def test_most_common_length_can_shift_and_then_accept_new_length(self, algorithm):
+        """Length 5 is accepted only after it overtakes length 4 as most common."""
+        # Arrange - establish 4 as most common (3 accepted samples)
+        algorithm.add_to_consensus("ABCD", 0.95)
+        algorithm.add_to_consensus("EFGH", 0.95)
+        algorithm.add_to_consensus("IJKL", 0.95)
+
+        # Act - add three length-5 samples; still tied or behind, should be skipped
+        algorithm.add_to_consensus("ABCDE", 0.95)  # counts: 4->3, 5->1
+        algorithm.add_to_consensus("FGHIJ", 0.95)  # counts: 4->3, 5->2
+        algorithm.add_to_consensus("KLMNO", 0.95)  # counts: 4->3, 5->3 (tie -> prefer 4)
+
+        # Tie-breaker: when counts are equal, the algorithm prefers the larger
+        # negative length value; for example, -4 > -5, so length 4 is chosen.
+        # Assert - still using length 4, so position 4 must not exist yet
+        assert 4 not in algorithm.counter
+
+        # Act - fourth length-5 sample makes 5 the most common and should be accepted
+        algorithm.add_to_consensus("PQRST", 0.95)  # counts: 4->3, 5->4
+
+        # Assert - now length 5 is accepted, adding the 5th character position
+        assert 4 in algorithm.counter
+        assert algorithm._get_most_common_length() == 5
+
 
 # =============================================================================
 # Tests for update_position_decision
@@ -332,9 +355,9 @@ class TestCheckFullConsensus:
         assert result is False
         assert algorithm.consensus_reached is False
 
-    def test_consensus_reached_at_threshold(self, algorithm):
-        """Consensus reached when enough positions decided."""
-        # Arrange - 10 positions, 8 decided (80% = CONSENSUS_PERCENTAGE)
+    def test_consensus_not_reached_until_all_expected_positions_decided(self, algorithm):
+        """Consensus requires 100% of expected positions, not 80%."""
+        # Arrange - 10 positions, 8 decided (should still be False)
         algorithm.counter = {i: {'A': 10} for i in range(10)}
         algorithm.decided_chars = {i: 'A' for i in range(8)}
 
@@ -342,14 +365,27 @@ class TestCheckFullConsensus:
         result = algorithm.check_full_consensus()
 
         # Assert
-        assert result is True
-        assert algorithm.consensus_reached is True
+        assert result is False
+        assert algorithm.consensus_reached is False
 
-    def test_consensus_reached_above_threshold(self, algorithm):
-        """Consensus reached when more than threshold decided."""
+    def test_consensus_reached_when_all_expected_positions_decided(self, algorithm):
+        """Consensus reached only when all expected positions are decided."""
         # Arrange - 10 positions, 10 decided (100%)
         algorithm.counter = {i: {'A': 10} for i in range(10)}
         algorithm.decided_chars = {i: 'A' for i in range(10)}
+
+        # Act
+        result = algorithm.check_full_consensus()
+
+        # Assert
+        assert result is True
+
+    def test_consensus_uses_most_common_length_as_expected_positions(self, algorithm):
+        """Outlier positions do not block consensus when most common length is complete."""
+        # Arrange - raw counter includes outlier 7th position, but expected length is 6
+        algorithm.length_counter = {6: 5, 7: 1}
+        algorithm.counter = {i: {'A': 10} for i in range(7)}
+        algorithm.decided_chars = {i: 'A' for i in range(6)}
 
         # Act
         result = algorithm.check_full_consensus()
@@ -394,6 +430,36 @@ class TestBuildFinalText:
 
         # Assert
         assert result == "XYZ"
+
+    def test_uses_expected_length_when_available(self, algorithm):
+        """Build final text uses most common expected length and ignores outlier positions."""
+        # Arrange
+        algorithm.length_counter = {6: 5, 7: 1}
+        algorithm.counter = {i: {'A': 10} for i in range(7)}
+        algorithm.decided_chars = {
+            0: 'A', 1: 'B', 2: 'C', 3: '1', 4: '2', 5: '3', 6: 'Z'
+        }
+
+        # Act
+        result = algorithm.build_final_text()
+
+        # Assert
+        assert result == "ABC123"
+
+    def test_returns_empty_string_when_expected_length_has_missing_position(self, algorithm):
+        """Returns empty string when expected length is known but a required position is undecided."""
+        # Arrange
+        algorithm.length_counter = {6: 5, 7: 1}
+        algorithm.counter = {i: {'A': 10} for i in range(6)}
+        algorithm.decided_chars = {
+            0: 'A', 1: 'B', 2: 'C', 4: '2', 5: '3'
+        }
+
+        # Act
+        result = algorithm.build_final_text()
+
+        # Assert
+        assert result == ""
 
 
 # =============================================================================
@@ -528,6 +594,26 @@ class TestGetBestPartialResult:
         assert 'B' in text  # Decided char should be present
         assert conf <= 0.95  # Confidence capped at 0.95
 
+    @patch("AI_APP.shared.src.consensus_algorithm.levenshtein_distance")
+    def test_partial_confidence_ignores_out_of_range_decisions(self, mock_distance, algorithm, sample_crop):
+        """Confidence should count only decided positions within expected range."""
+        # Arrange: expected length is 6, but decided chars include outlier positions 6 and 7.
+        algorithm.length_counter = {6: 5, 7: 1}
+        algorithm.counter = {i: {'A': 3} for i in range(8)}
+        algorithm.decided_chars = {
+            0: 'A', 1: 'B', 2: 'C', 3: '1', 6: 'X', 7: 'Y'
+        }
+        algorithm.candidate_crops = [
+            {"crop": sample_crop, "text": "ABC1XY", "confidence": 0.9},
+        ]
+        mock_distance.return_value = 1
+
+        # Act
+        _, conf, _ = algorithm.get_best_partial_result("license plate")
+
+        # Assert: only positions 0..5 count -> 4/6, not 6/6.
+        assert conf == pytest.approx(4 / 6, rel=1e-6)
+
     def test_uses_underscore_for_missing_positions(self, algorithm, sample_crop):
         """Uses underscore for positions with no votes."""
         # Arrange
@@ -632,3 +718,4 @@ class TestInternalMethods:
 
         # Assert
         assert result is False
+

@@ -6,7 +6,7 @@
 
 ## Overview
 
-`consensus_algorithm.py` implements a position-based character voting system to produce a single, high-confidence text result from many OCR readings across consecutive video frames. Because OCR on individual frames is often noisy — characters get misread, confidence varies, and text length may fluctuate — the algorithm aggregates votes for each character position across multiple readings and only "decides" a position once a character reaches a configurable vote threshold.
+`consensus_algorithm.py` implements a position-based character voting system to produce a single, high-confidence text result from many OCR readings across consecutive video frames. Because OCR on individual frames is often noisy — characters get misread, confidence varies, and text length may fluctuate — the algorithm aggregates votes for each character position across multiple readings and only "decides" a position once a character reaches a configurable vote threshold. Full consensus is considered reached only when **all expected positions** are decided.
 
 The module is consumed exclusively by `base_agent.py`, which creates one `ConsensusAlgorithm` instance per detection cycle. When `AgentB` or `AgentC` detects a plate, the base agent calls `add_to_consensus()` on every OCR reading and `add_candidate_crop()` for every detected crop. After a maximum number of frames or when early consensus is reached, it calls `build_final_text()` to produce the result and `select_best_crop()` to pick the image whose OCR text most closely matches the consensus.
 
@@ -29,7 +29,7 @@ src/AI_APP/shared/src/consensus_algorithm.py
 ### External
 | Package | Version | Why it's used |
 |---------|---------|---------------|
-| `math` | stdlib | `math.ceil()` for computing required consensus positions |
+| _N/A_ | _N/A_ | No external packages are imported directly by this module |
 
 ---
 
@@ -51,7 +51,7 @@ Frame N OCR → add_to_consensus("AB12CD", 0.91)  ──┘  per position
               pos 5: {D:8}  → decided 'D'
                           │
                           ▼
-              check_full_consensus() → True (6/6 ≥ 80%)
+              check_full_consensus() → True (6/6 = 100% of expected positions)
                           │
                           ▼
               build_final_text() → "AB12CD"
@@ -72,7 +72,6 @@ Frame N OCR → add_to_consensus("AB12CD", 0.91)  ──┘  per position
 | Constant | Value | Description |
 |----------|-------|-------------|
 | `DECISION_THRESHOLD` | `8` | Number of votes a character needs at a position to be "decided" |
-| `CONSENSUS_PERCENTAGE` | `0.8` | Fraction of positions that must be decided for full consensus (80%) |
 | `MIN_TEXT_LENGTH` | `4` | Minimum normalized text length for a reading to count |
 | `MIN_CONFIDENCE_CONSENSUS` | `0.80` | Minimum OCR confidence for a reading to count |
 
@@ -192,28 +191,39 @@ ca.add_to_consensus("XY99ZZ", 0.60)  # skipped (confidence < 0.80)
 
 ##### `check_full_consensus()`
 
-> Check if enough positions have been decided to declare full consensus.
+> Check if full consensus has been reached.
 
 **Parameters:** None
 
-**Returns:** `bool` — `True` if `decided_count / total_positions ≥ CONSENSUS_PERCENTAGE` (80%).
+**Returns:** `bool` — `True` only if all expected positions are decided.
+
+Expected positions are inferred by `_get_expected_positions()`:
+- Prefer the most common observed OCR length in `length_counter`
+: `length_counter` is updated before mismatch rejection, so it may include lengths later skipped from position voting.
+- Fallback to `max(counter.keys()) + 1` when no length history exists
+
+Counting logic uses only the expected range (`0..expected_positions-1`) to avoid out-of-range decided positions causing false positives.
 
 **Example**
 ```python
-# With 6 positions and CONSENSUS_PERCENTAGE=0.8
-# Need ceil(6 * 0.8) = 5 positions decided
-ca.check_full_consensus()  # True if ≥ 5 positions have decided characters
+# With expected_positions = 6
+# Need all 6 positions decided
+ca.check_full_consensus()  # True only when 6/6 are decided
 ```
 
 ---
 
 ##### `build_final_text()`
 
-> Build the final consensus text from decided characters, sorted by position.
+> Build the final consensus text from decided characters.
 
 **Parameters:** None
 
-**Returns:** `str` — Concatenated decided characters, or `""` if no positions decided.
+**Returns:** `str`
+- Returns `""` if no positions are decided.
+- If expected length is known, returns `""` until **every** expected position is decided.
+- When complete, returns characters in expected position order.
+- If expected length cannot be inferred, falls back to concatenating decided positions sorted by index.
 
 **Example**
 ```python
@@ -327,9 +337,11 @@ best = ca.select_best_crop("AB12CD")
 
 | Scenario | text | confidence | crop |
 |----------|------|------------|------|
-| Partial consensus data exists | Partial text (undecided positions filled with best guess or `_`) | `decided / total` (capped at 0.95) | Best matching crop |
+| Partial consensus data exists | Partial text (undecided positions filled with best guess or `_`) | Count of decided positions within `range(total_positions)` divided by `total_positions` (capped at 0.95) | Best matching crop |
 | No text consensus, but crops exist | `"N/A"` | YOLO confidence | Highest confidence crop |
 | No crops at all | `None` | `None` | `None` |
+
+`total_positions` is derived from `_get_expected_positions()`; if unavailable, it falls back to `max(counter.keys()) + 1`.
 
 **Example**
 ```python
@@ -341,6 +353,21 @@ text, conf, crop = ca.get_best_partial_result("license plate")
 
 ---
 
+##### Internal Helper Methods
+
+These helper methods are internal (`_`-prefixed) and are used by the public API above:
+
+| Method | Purpose |
+|--------|---------|
+| `_normalize_text(text)` | Normalizes OCR text before voting (uppercase, removes dashes). |
+| `_is_valid_for_consensus(text_normalized, confidence)` | Applies basic validation gates (`MIN_CONFIDENCE_CONSENSUS`, `MIN_TEXT_LENGTH`). |
+| `_track_text_length(text_len)` | Tracks observed text lengths and rejects outliers once length consensus stabilizes (after at least 3 observed readings). |
+| `_get_vote_weight(confidence)` | Returns vote weight per reading (`2` if confidence >= `0.95`, otherwise `1`). |
+| `_get_expected_positions()` | Determines expected text length for full-consensus and text building logic (prefers most common observed length in `length_counter`). |
+| `_get_most_common_length()` | Returns the most frequent observed text length; ties prefer shorter length to reduce outlier impact. |
+
+---
+
 ## Standalone Functions
 
 > N/A
@@ -349,7 +376,7 @@ text, conf, crop = ca.get_best_partial_result("license plate")
 
 ## Configuration & Environment Variables
 
-> N/A — All configuration is through module-level constants (`DECISION_THRESHOLD`, `CONSENSUS_PERCENTAGE`, `MIN_TEXT_LENGTH`, `MIN_CONFIDENCE_CONSENSUS`).
+> N/A — All configuration is through module-level constants (`DECISION_THRESHOLD`, `MIN_TEXT_LENGTH`, `MIN_CONFIDENCE_CONSENSUS`).
 
 ---
 
@@ -415,7 +442,7 @@ pytest src/AI_APP/shared/tests/consensus_algorithm_unit_test.py
 
 ## Known Issues / TODOs
 
-- [ ] `DECISION_THRESHOLD` and other constants are module-level globals — consider making them configurable via constructor parameters or environment variables for different use cases (e.g., highway camera vs. gate camera may need different thresholds).
+- [ ] `DECISION_THRESHOLD`, `MIN_TEXT_LENGTH`, and `MIN_CONFIDENCE_CONSENSUS` are module-level globals — consider making them configurable via constructor parameters or environment variables for different use cases (e.g., highway camera vs. gate camera may need different thresholds).
 - [ ] The length tracking rejects outliers after 3 samples, which may discard valid readings if the first few frames had OCR errors that set a wrong "most common length".
 
 ---
@@ -424,6 +451,7 @@ pytest src/AI_APP/shared/tests/consensus_algorithm_unit_test.py
 
 | Version / Date | Change |
 |----------------|--------|
+| `2026-04-15` | Updated full-consensus semantics: now requires 100% of expected positions (inferred from most common observed text length). Removed percentage-threshold documentation and `math.ceil()` references. Clarified `build_final_text()` and partial fallback behavior. |
 | `2025-02-22` | Added `compute_consensus_confidence()` method and `accepted_confidences` tracking. Replaced hardcoded `1.0` confidence in `base_agent.py` with composite score based on position dominance × average OCR confidence. |
 
 ---
