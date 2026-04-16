@@ -270,9 +270,9 @@ class TestAddToConsensus:
         algorithm.add_to_consensus("ABCDE", 0.95)  # counts: 4->3, 5->1
         algorithm.add_to_consensus("FGHIJ", 0.95)  # counts: 4->3, 5->2
         algorithm.add_to_consensus("KLMNO", 0.95)  # counts: 4->3, 5->3 (tie -> prefer 4)
-        
-        # Second criteria of choice is the bigest value of the negatives lenghts
-        # Eg -4 > -5 so it chooses the lenght 4
+
+        # Tie-breaker: when counts are equal, the algorithm prefers the larger
+        # negative length value; for example, -4 > -5, so length 4 is chosen.
         # Assert - still using length 4, so position 4 must not exist yet
         assert 4 not in algorithm.counter
 
