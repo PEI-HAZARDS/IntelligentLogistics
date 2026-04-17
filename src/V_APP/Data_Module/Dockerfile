@@ -9,8 +9,8 @@ ENV PYTHONUNBUFFERED=1
 # curl for Docker healthcheck, netcat for entrypoint wait loops
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    libpq-dev \
     curl \
+    libpq-dev \
     netcat-openbsd \
     postgresql-client \
     && rm -rf /var/lib/apt/lists/*

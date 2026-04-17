@@ -210,7 +210,7 @@ def init_data(db: Session):
         print("\n" + "=" * 70)
         print("  TEST DATA INITIALIZED")
         print("=" * 70)
-        print(f"""
+        print("""
 +=====================================================================+
 |                        LOGIN CREDENTIALS                             |
 +=====================================================================+
@@ -241,7 +241,7 @@ def init_data(db: Session):
         raise
 
 
-def bootstrap_mongo_projections(database_url: str):
+def bootstrap_mongo_projections(_database_url: str):
     """
     No-op: MongoDB read models (appointments_read, drivers_read, etc.) have
     been removed.  Operational reads now go directly to PostgreSQL.

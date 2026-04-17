@@ -5,7 +5,7 @@ Consumed by: Dashboards, Monitoring systems, Operators.
 
 from typing import Annotated, Optional
 from fastapi import APIRouter, Query, HTTPException, status
-from datetime import datetime
+from datetime import datetime, timezone
 
 from application.queries.statistics_queries import (
     get_real_time_metrics,
@@ -456,7 +456,7 @@ def dashboard_summary(
 
         return {
             "gate_id": gate_id,
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "realtime": realtime,
             "pipeline_24h": pipeline,
             "agents_24h": {

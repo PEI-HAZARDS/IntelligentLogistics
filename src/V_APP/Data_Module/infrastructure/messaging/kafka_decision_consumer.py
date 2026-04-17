@@ -178,9 +178,10 @@ class KafkaDecisionConsumer:
         if self.running:
             logger.warning("Consumer already running")
             return
-        
+
         self.running = True
         self.consumer_task = asyncio.create_task(self._consume_loop())
+        await asyncio.sleep(0)
         logger.info("KafkaDecisionConsumer started")
     
     async def stop(self):
@@ -191,7 +192,7 @@ class KafkaDecisionConsumer:
             try:
                 await self.consumer_task
             except asyncio.CancelledError:
-                pass
+                raise
         logger.info("KafkaDecisionConsumer stopped")
     
     async def _consume_loop(self):
@@ -266,8 +267,8 @@ class KafkaDecisionConsumer:
                         src_offset = msg.offset() if callable(getattr(msg, "offset", None)) else -1
                         raw_headers = msg.headers() if callable(getattr(msg, "headers", None)) else []
                         hdr_dict = {
-                            k: (v.decode("utf-8") if isinstance(v, bytes) else v)
-                            for k, v in (raw_headers or [])
+                            k: v.decode("utf-8") if isinstance(v, bytes) else v
+                            for k, v in raw_headers or []
                         }
                         raw_value = msg.value()
                         try:

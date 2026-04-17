@@ -44,13 +44,6 @@ class TokenValidator:
     def decode(self, token: str) -> TokenPayload:
         """Decode and validate a JWT, returning a TokenPayload."""
         try:
-            # Debug: log token header to diagnose kid mismatch
-            try:
-                header = jwt.get_unverified_header(token)  # NOSONAR: used only for diagnostic logging, signature is verified via jwt.decode() below
-                logger.debug("JWT header: alg=%s kid=%s", header.get("alg"), header.get("kid"))
-            except Exception:
-                logger.warning("Could not decode JWT header from token (len=%d): %.40s...", len(token), token)
-
             signing_key: PyJWK = self._jwks_client.get_signing_key_from_jwt(token)
         except Exception as exc:
             logger.warning("JWKS key lookup failed: %s (jwks_url=%s)", exc, self._jwks_client.uri)

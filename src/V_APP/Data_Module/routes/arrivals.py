@@ -103,12 +103,12 @@ def list_arrivals(
             )
         final_status = statuses
 
-    filter_kwargs = dict(
-        gate_id=gate_id, shift_gate_id=shift_gate_id,
-        shift_type=parsed_shift_type, shift_date=shift_date,
-        status=final_status, scheduled_date=scheduled_date,
-        search=search, highway_infraction=highway_infraction,
-    )
+    filter_kwargs = {
+        "gate_id": gate_id, "shift_gate_id": shift_gate_id,
+        "shift_type": parsed_shift_type, "shift_date": shift_date,
+        "status": final_status, "scheduled_date": scheduled_date,
+        "search": search, "highway_infraction": highway_infraction,
+    }
     total = count_all_appointments(db, **filter_kwargs)
     appointments = get_all_appointments(db, skip=skip, limit=limit, **filter_kwargs)
 

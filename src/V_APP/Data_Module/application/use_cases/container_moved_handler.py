@@ -248,8 +248,8 @@ class ContainerMovedHandler:
             gate_id=gate_id_int,
             title="Entry Approved",
             message=(
-                f"Your entry has been approved. Gate is opening. "
-                f"Please proceed to the designated dock area."
+                "Your entry has been approved. Gate is opening. "
+                "Please proceed to the designated dock area."
             ),
             notification_type="success",
             appointment_id=appointment_id,

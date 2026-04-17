@@ -45,7 +45,7 @@ LOG_CONFIG: dict = {
 logging.config.dictConfig(LOG_CONFIG)
 
 # Create the gateway instance (reads config from env vars)
-gateway = APIGateway(kafka_producer=None, kafka_consumer=None, WSManager=None)
+gateway = APIGateway(kafka_producer=None, kafka_consumer=None, ws_manager=None)
 
 # Expose the FastAPI app for uvicorn
 app = gateway.app

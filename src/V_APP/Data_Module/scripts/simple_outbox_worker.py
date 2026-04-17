@@ -285,7 +285,8 @@ def process_batch(session) -> int:
 
         except Exception as exc:
             # Classify error: permanent → DEAD_LETTER, transient → retry
-            row.retry_count = (row.retry_count or 0) + 1
+            retry_count = row.retry_count or 0
+            row.retry_count = retry_count + 1
             row.last_error = str(exc)[:500]
 
             if _is_permanent_error(exc) or row.retry_count >= MAX_RETRIES:

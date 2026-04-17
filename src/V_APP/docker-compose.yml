@@ -156,6 +156,12 @@ services:
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
       - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "simple_outbox_worker.py"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
     networks:
       - intelligent-logistics
 
@@ -470,6 +476,8 @@ services:
       - KEYCLOAK_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET}
       - KC_ADMIN_USER=${KC_ADMIN_USER}
       - KC_ADMIN_PASSWORD=${KC_ADMIN_PASSWORD}
+      - DEFAULT_WORKER_PASSWORD=${DEFAULT_WORKER_PASSWORD}
+      - DEFAULT_DRIVER_PASSWORD=${DEFAULT_DRIVER_PASSWORD}
     restart: "no"
     networks:
       - intelligent-logistics

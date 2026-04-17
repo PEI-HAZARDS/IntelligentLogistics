@@ -221,7 +221,7 @@ class BaseDecisionEngine(ABC):
     def _clear_stale_buffer_entries(self) -> None:
         current_time = time.time()
         for buffer in [self.lp_buffer, self.hz_buffer]:
-            for key in list(buffer.keys()):  # NOSONAR: list() copy needed to safely mutate dict during iteration
+            for key in list(buffer.keys()):  # NOSONAR
                 if current_time - buffer[key].timestamp > self.expiration_time_seconds:
                     del buffer[key]
                     self.logger.debug(f"Cleared stale entry for {key}")

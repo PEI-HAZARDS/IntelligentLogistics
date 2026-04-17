@@ -225,7 +225,6 @@ def _make_alert(db: Session, visit, appt, shift, timestamp, alert_type, descript
 def _generate_historical_day(db, day_date, trucks, drivers, terminal, gate_in, gate_out,
                              shifts_morning, shifts_afternoon, num_appointments, day_label):
     """Generate a full day of historical completed appointments with visits and alerts."""
-    base_time = datetime.combine(day_date, time(7, 0))
     created = 0
 
     for h in range(num_appointments):
@@ -389,8 +388,6 @@ def init_data(db: Session):
 
         # Use terminal_liquidos as primary ref for HAZMAT appointments (87AX60)
         # Other appointments spread across all 3 terminals
-        terminal = terminal_liquidos  # backward compat alias used below
-
         # ===== DOCKS — distributed across the 3 terminals =====
         print("Creating docks...")
         docks = [
@@ -540,7 +537,7 @@ def init_data(db: Session):
         ]
 
         for i in range(1, 5):
-            plate, brand, cidx_c = TRUCKS[i]
+            plate, brand, _ = TRUCKS[i]
             cargo_def = CARGO_DEFS[i]
             status, has_visit, dur, mins_ago = hazmat_statuses[i - 1]
 
@@ -597,7 +594,7 @@ def init_data(db: Session):
 
         for cfg in normal_configs:
             tidx, cidx, status, has_visit, dur, mins, alert_t = cfg
-            plate, brand, comp_idx = TRUCKS[tidx]
+            plate, brand, _ = TRUCKS[tidx]
             cargo_def = CARGO_DEFS[cidx]
             driver_idx = tidx % len(drivers)
 
@@ -762,7 +759,7 @@ def init_data(db: Session):
         print("  DATABASE INITIALIZED - PORTO DE AVEIRO REALISTIC")
         print("=" * 70)
 
-        print(f"""
+        print("""
 +=====================================================================+
 |                        LOGIN CREDENTIALS                             |
 +=====================================================================+
@@ -839,7 +836,7 @@ def init_data(db: Session):
         raise
 
 
-def bootstrap_mongo_projections(database_url: str):
+def bootstrap_mongo_projections(_database_url: str):
     """
     No-op: MongoDB read models (appointments_read, drivers_read, etc.) have
     been removed.  Operational reads now go directly to PostgreSQL.

@@ -166,13 +166,10 @@ CREATE OR REPLACE FUNCTION fn_generate_arrival_id()
 RETURNS TRIGGER AS $$
 DECLARE
     new_id TEXT;
-    seq_num INTEGER;
 BEGIN
     IF COALESCE(NEW.arrival_id, '') = '' THEN
         -- DEBUG/DEMO: Force all PINs to 1234 for easier testing.
-        -- To restore unique PINs, uncomment the two lines below and remove the hardcoded line.
-        -- seq_num := nextval('appointment_arrival_seq');
-        -- new_id := 'PRT-' || LPAD(seq_num::TEXT, 4, '0');
+        -- To restore unique PINs: new_id := 'PRT-' || LPAD(nextval('appointment_arrival_seq')::TEXT, 4, '0');
         new_id := '1234';
         NEW.arrival_id := new_id;
     END IF;

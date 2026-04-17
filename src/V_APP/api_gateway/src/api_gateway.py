@@ -133,7 +133,7 @@ class APIGateway:
                 target_gate = parts[1].strip()
         return target_gate
 
-    def _handle_infraction(self, payload: dict, topic: str, target_gate: str) -> None:
+    def _handle_infraction(self, payload: dict, target_gate: str) -> None:
         """Broadcast infraction decision to source gate, notify operational gates, and alert driver."""
         logger.info(f"Broadcasting infraction decision to source gate {target_gate}")
         self._broadcast_async(payload, str(target_gate))
@@ -197,7 +197,7 @@ class APIGateway:
                     if not target_gate:
                         logger.warning(f"Could not determine target gate for infraction topic '{topic}', skipping broadcast")
                         continue
-                    self._handle_infraction(payload, topic, target_gate)
+                    self._handle_infraction(payload, target_gate)
                     continue
 
                 if not target_gate:

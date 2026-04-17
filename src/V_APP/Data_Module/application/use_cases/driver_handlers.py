@@ -60,6 +60,6 @@ def claim_appointment_by_pin(
         if not debug_mode:
             next_id = uow.drivers.get_next_active_appointment_id(drivers_license)
             if next_id and next_id != appt["id"]:
-                return None, f"Must complete earlier delivery first"
+                return None, "Must complete earlier delivery first"
 
         return appt, ""

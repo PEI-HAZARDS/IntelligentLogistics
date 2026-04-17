@@ -102,7 +102,7 @@ class ScaleCorrelator:
         """
         now = time.time()
         timed_out = []
-        for truck_id, state in list(self._state.items()):  # NOSONAR: list() copy needed to safely mutate dict during iteration
+        for truck_id, state in list(self._state.items()):  # NOSONAR
             if now - state["ts"] > self._timeout:
                 logger.warning(
                     f"Truck {truck_id} timed out after {self._timeout}s "
