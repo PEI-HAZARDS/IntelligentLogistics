@@ -411,6 +411,20 @@ class TestCheckFullConsensus:
         assert result is False
         assert algorithm.consensus_reached is False
 
+    def test_resets_stale_consensus_flag_when_current_state_has_no_consensus(self, algorithm):
+        """A previously True consensus flag should be cleared when current check fails."""
+        # Arrange - stale state from an older cycle without calling reset().
+        algorithm.consensus_reached = True
+        algorithm.counter = {i: {'A': 10} for i in range(6)}
+        algorithm.decided_chars = {0: 'A', 1: 'B'}  # not enough for full consensus
+
+        # Act
+        result = algorithm.check_full_consensus()
+
+        # Assert
+        assert result is False
+        assert algorithm.consensus_reached is False
+
 
 # =============================================================================
 # Tests for build_final_text
@@ -567,6 +581,25 @@ class TestSelectBestCrop:
         # Assert
         assert np.array_equal(result, crop2)
 
+    def test_no_final_text_updates_best_crop_and_confidence(self, algorithm):
+        """Selecting without final text should still keep internal best state synchronized."""
+        # Arrange
+        crop1 = np.zeros((50, 100, 3), dtype=np.uint8)
+        crop2 = np.ones((50, 100, 3), dtype=np.uint8)
+
+        algorithm.candidate_crops = [
+            {"crop": crop1, "text": "ABC", "confidence": 0.7},
+            {"crop": crop2, "text": "DEF", "confidence": 0.9},
+        ]
+
+        # Act
+        result = algorithm.select_best_crop("")
+
+        # Assert
+        assert np.array_equal(result, crop2)
+        assert np.array_equal(algorithm.best_crop, crop2)
+        assert algorithm.best_confidence == pytest.approx(0.9, rel=1e-6)
+
     @patch("AI_APP.shared.src.consensus_algorithm.levenshtein_distance")
     def test_selects_crop_with_highest_similarity(self, mock_distance, algorithm, sample_crop):
         """Select crop with text most similar to final text."""
@@ -642,6 +675,8 @@ class TestGetBestPartialResult:
         assert text == "N/A"
         assert conf == pytest.approx(0.85, rel=1e-6)
         assert crop is not None
+        assert np.array_equal(algorithm.best_crop, crop)
+        assert algorithm.best_confidence == pytest.approx(conf, rel=1e-6)
 
     @patch("AI_APP.shared.src.consensus_algorithm.levenshtein_distance")
     def test_falls_back_to_counter_range_when_expected_positions_is_zero(self, mock_distance, algorithm, sample_crop):

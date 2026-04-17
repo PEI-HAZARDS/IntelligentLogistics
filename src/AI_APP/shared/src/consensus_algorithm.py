@@ -133,6 +133,9 @@ class ConsensusAlgorithm:
         Full consensus requires all expected positions to be decided.
         Expected positions are inferred from the most common observed text length.
         """
+        # Keep state aligned with this method's evaluation, even if caller mutates
+        # internal dictionaries without calling reset().
+        self.consensus_reached = False
 
         # Verify if the consensus dictionary has any entries, if not we cannot have consensus
         if not self.counter:
@@ -231,6 +234,8 @@ class ConsensusAlgorithm:
             best = max(self.candidate_crops, key=lambda x: x["confidence"])
             self.logger.debug(
                 f"No final text, using highest confidence crop: '{best['text']}'")
+            self.best_crop = best["crop"]
+            self.best_confidence = best["confidence"]
             return best["crop"]
         
         # Calculate scores for each candidate
@@ -314,8 +319,7 @@ class ConsensusAlgorithm:
         
         # Fallback: return best crop based on YOLO confidence with no text
         best_crop = self.select_best_crop("")
-        fallback_confidence = max(self.candidate_crops, key=lambda x: x["confidence"])["confidence"]
-        self.best_confidence = fallback_confidence
+        fallback_confidence = self.best_confidence
         self.logger.debug(
             f"No text consensus - using best YOLO detection (conf={fallback_confidence:.2f})")
 
