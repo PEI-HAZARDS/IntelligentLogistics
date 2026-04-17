@@ -133,9 +133,12 @@ class ConsensusAlgorithm:
         Full consensus requires all expected positions to be decided.
         Expected positions are inferred from the most common observed text length.
         """
+
+        # Verify if the consensus dictionary has any entries, if not we cannot have consensus
         if not self.counter:
             return False
 
+        # Get expected text length based on most common observed length
         expected_positions = self._get_expected_positions()
         if expected_positions <= 0:
             return False
@@ -143,6 +146,7 @@ class ConsensusAlgorithm:
         # Count only positions within expected range to avoid out-of-range false positives.
         decided_count = sum(1 for pos in range(expected_positions) if pos in self.decided_chars)
 
+        # If we have the necessary amont of positions decided we can consider that we have reached consensus,
         if decided_count >= expected_positions:
             self.logger.info(
                 f"Consensus reached! {decided_count}/{expected_positions} "
@@ -150,6 +154,7 @@ class ConsensusAlgorithm:
             self.consensus_reached = True
             return True
 
+        # Otherwise we keep waiting for more frames to be processed
         self.logger.debug(
             f"Consensus check: {decided_count}/{expected_positions} "
             "positions decided")
@@ -170,6 +175,7 @@ class ConsensusAlgorithm:
                     f"Cannot build full text yet, missing positions: {missing_positions}")
                 return ""
 
+            # Gets the characters in the right order and builds the final text
             text_chars = [self.decided_chars[pos] for pos in range(expected_positions)]
             final_text = "".join(text_chars)
             self.logger.debug(f"Built final text: '{final_text}'")
@@ -195,20 +201,11 @@ class ConsensusAlgorithm:
         if not self.decided_chars or not self.counter:
             return 0.0
 
-        # Compute dominance per decided position
-        position_dominances = []
-        for pos, char in self.decided_chars.items():
-            total_votes = sum(self.counter[pos].values())
-            winner_votes = self.counter[pos].get(char, 0)
-            position_dominances.append(winner_votes / total_votes if total_votes > 0 else 0.0)
-
-        agreement_score = sum(position_dominances) / len(position_dominances)
-
-        # Combine with average OCR confidence
-        if self.accepted_confidences:
-            avg_ocr_confidence = sum(self.accepted_confidences) / len(self.accepted_confidences)
-        else:
-            avg_ocr_confidence = 0.0
+        agreement_score = self._compute_agreement_score(
+            positions=self.decided_chars.keys(),
+            use_decided_chars=True,
+        )
+        avg_ocr_confidence = self._average_ocr_confidence()
 
         confidence = agreement_score * avg_ocr_confidence
 
@@ -274,13 +271,22 @@ class ConsensusAlgorithm:
         # If we have text consensus data, build partial result
         if self.counter:
             text_chars = []
+
+            # Gets the expected text length based on the most common observed length
+            # to avoid out-of-range false positives
             total_positions = self._get_expected_positions()
             if total_positions <= 0:
                 total_positions = max(self.counter.keys()) + 1
 
+            # Fill in characters based on decided chars or most voted char, 
+            # or placeholder if no data
             for pos in range(total_positions):
+                # First try decided chars, then most voted char, then placeholder
                 if pos in self.decided_chars:
                     text_chars.append(self.decided_chars[pos])
+
+                # Secondly goes for the most voted char, but only if we have some votes for that position,
+                # otherwise we can end up with out-of-range false positives
                 elif pos in self.counter and self.counter[pos]:
                     best_char = max(self.counter[pos].items(), key=lambda x: x[1])[0]
                     text_chars.append(best_char)
@@ -290,8 +296,7 @@ class ConsensusAlgorithm:
             partial_text = "".join(text_chars)
             # Avoid getting already decided chars out of bonds if that char is already out of the most common length
             decided_count = sum(1 for pos in range(total_positions) if pos in self.decided_chars)
-            confidence = decided_count / total_positions
-            confidence = min(confidence, 0.95)
+            confidence = self._compute_partial_confidence(total_positions, decided_count)
 
             best_crop = self.select_best_crop(partial_text)
 
@@ -309,10 +314,12 @@ class ConsensusAlgorithm:
         
         # Fallback: return best crop based on YOLO confidence with no text
         best_crop = self.select_best_crop("")
+        fallback_confidence = max(self.candidate_crops, key=lambda x: x["confidence"])["confidence"]
+        self.best_confidence = fallback_confidence
         self.logger.debug(
-            f"No text consensus - using best YOLO detection (conf={self.best_confidence:.2f})")
-        
-        return "N/A", self.best_confidence, best_crop
+            f"No text consensus - using best YOLO detection (conf={fallback_confidence:.2f})")
+
+        return "N/A", fallback_confidence, best_crop
     
     def _normalize_text(self, text: str) -> str:
         """Normalize text for consensus: uppercase and remove dashes."""
@@ -384,3 +391,73 @@ class ConsensusAlgorithm:
             return 0
 
         return max(self.length_counter.items(), key=lambda x: (x[1], -x[0]))[0]
+
+    def _average_ocr_confidence(self) -> float:
+        """Return average accepted OCR confidence, or 0.0 when unavailable.
+
+        This helper centralizes OCR confidence aggregation so all confidence
+        calculations (full and partial) use the same baseline signal.
+        """
+        if not self.accepted_confidences:
+            return 0.0
+
+        return sum(self.accepted_confidences) / len(self.accepted_confidences)
+
+    def _compute_agreement_score(self, positions, use_decided_chars: bool) -> float:
+        """Compute mean dominance score for the provided positions.
+
+        Dominance for a position is winner_votes / total_votes.
+        - When use_decided_chars=True, the winner is the currently decided char.
+        - When use_decided_chars=False, the winner is simply the most voted char.
+        """
+        position_dominances = []
+        for pos in positions:
+            if pos not in self.counter or not self.counter[pos]:
+                continue
+
+            total_votes = sum(self.counter[pos].values())
+            if total_votes <= 0:
+                continue
+
+            # For full-consensus confidence we evaluate the chosen decided char.
+            # For partial confidence we evaluate best available char per position.
+            if use_decided_chars and pos in self.decided_chars:
+                winner_votes = self.counter[pos].get(self.decided_chars[pos], 0)
+            else:
+                winner_votes = max(self.counter[pos].values())
+
+            position_dominances.append(winner_votes / total_votes)
+
+        if not position_dominances:
+            return 0.0
+
+        return sum(position_dominances) / len(position_dominances)
+
+    def _compute_partial_confidence(self, total_positions: int, decided_count: int) -> float:
+        """Compute partial confidence from completeness plus optional quality signal.
+
+        Formula:
+            completeness = decided_count / total_positions
+            quality = agreement_score * average_ocr_confidence
+            partial_confidence = (completeness + quality) / 2
+
+        If OCR confidence data is unavailable, this falls back to completeness.
+        The final score is capped at 0.95 to keep partial results below full consensus.
+        """
+        if total_positions <= 0:
+            return 0.0
+
+        completeness_ratio = decided_count / total_positions
+        confidence = completeness_ratio
+
+        # Keep confidence simple and stable while reusing existing consensus-quality logic.
+        if self.accepted_confidences:
+            agreement_score = self._compute_agreement_score(
+                positions=range(total_positions),
+                use_decided_chars=False,
+            )
+            if agreement_score > 0:
+                quality_score = agreement_score * self._average_ocr_confidence()
+                confidence = (completeness_ratio + quality_score) / 2
+
+        return min(confidence, 0.95)

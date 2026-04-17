@@ -8,6 +8,10 @@
 
 `consensus_algorithm.py` implements a position-based character voting system to produce a single, high-confidence text result from many OCR readings across consecutive video frames. Because OCR on individual frames is often noisy — characters get misread, confidence varies, and text length may fluctuate — the algorithm aggregates votes for each character position across multiple readings and only "decides" a position once a character reaches a configurable vote threshold. Full consensus is considered reached only when **all expected positions** are decided.
 
+When full consensus is not reached, partial results use a bounded confidence model that blends:
+- completeness of decided positions, and
+- quality signal (`agreement_score × average_ocr_confidence`).
+
 The module is consumed exclusively by `base_agent.py`, which creates one `ConsensusAlgorithm` instance per detection cycle. When `AgentB` or `AgentC` detects a plate, the base agent calls `add_to_consensus()` on every OCR reading and `add_candidate_crop()` for every detected crop. After a maximum number of frames or when early consensus is reached, it calls `build_final_text()` to produce the result and `select_best_crop()` to pick the image whose OCR text most closely matches the consensus.
 
 The algorithm does **not** perform OCR itself — that is the responsibility of `paddle_ocr.py`. It also does not handle plate detection (handled by `object_detector.py`) or image storage (handled by `image_storage.py`).
@@ -337,7 +341,7 @@ best = ca.select_best_crop("AB12CD")
 
 | Scenario | text | confidence | crop |
 |----------|------|------------|------|
-| Partial consensus data exists | Partial text (undecided positions filled with best guess or `_`) | Count of decided positions within `range(total_positions)` divided by `total_positions` (capped at 0.95) | Best matching crop |
+| Partial consensus data exists | Partial text (undecided positions filled with best guess or `_`) | Blended score: `((decided_count/total_positions) + (agreement_score × avg_ocr_confidence)) / 2`, capped at `0.95` (falls back to completeness-only when OCR confidence history is empty) | Best matching crop |
 | No text consensus, but crops exist | `"N/A"` | YOLO confidence | Highest confidence crop |
 | No crops at all | `None` | `None` | `None` |
 
@@ -347,8 +351,24 @@ best = ca.select_best_crop("AB12CD")
 ```python
 text, conf, crop = ca.get_best_partial_result("license plate")
 # text → "AB_2CD" (position 2 undecided, filled with best guess)
-# conf → 0.83
+# conf → blended partial confidence (<= 0.95)
 # crop → best matching crop image
+```
+
+**Partial confidence details**
+
+For partial results:
+
+```python
+completeness = decided_count / total_positions
+quality = agreement_score * average_ocr_confidence
+partial_confidence = min((completeness + quality) / 2, 0.95)
+```
+
+If there are no accepted OCR confidences yet, the algorithm uses only:
+
+```python
+partial_confidence = min(completeness, 0.95)
 ```
 
 ---
@@ -365,6 +385,9 @@ These helper methods are internal (`_`-prefixed) and are used by the public API 
 | `_get_vote_weight(confidence)` | Returns vote weight per reading (`2` if confidence >= `0.95`, otherwise `1`). |
 | `_get_expected_positions()` | Determines expected text length for full-consensus and text building logic (prefers most common observed length in `length_counter`). |
 | `_get_most_common_length()` | Returns the most frequent observed text length; ties prefer shorter length to reduce outlier impact. |
+| `_average_ocr_confidence()` | Returns the arithmetic mean of accepted OCR confidence values (or `0.0` if none). |
+| `_compute_agreement_score(positions, use_decided_chars)` | Computes average per-position dominance (`winner_votes/total_votes`) for a target set of positions. |
+| `_compute_partial_confidence(total_positions, decided_count)` | Computes bounded partial confidence by blending completeness and quality signal. |
 
 ---
 
@@ -431,7 +454,7 @@ Logging uses the `"ConsensusAlgorithm"` logger name.
 
 | Test file | Type | What it covers |
 |-----------|------|----------------|
-| `consensus_algorithm_unit_test.py` | Unit | Initialization, reset, voting mechanics, consensus checking, text building, crop selection, partial results, length tracking, confidence weighting |
+| `consensus_algorithm_unit_test.py` | Unit | Initialization, reset, voting mechanics, consensus checking, text building, crop selection, partial results, length tracking, confidence weighting, helper-method calculations, and noisy real-world OCR scenarios |
 
 To run:
 ```bash
@@ -451,6 +474,7 @@ pytest src/AI_APP/shared/tests/consensus_algorithm_unit_test.py
 
 | Version / Date | Change |
 |----------------|--------|
+| `2026-04-17` | Refactored partial-confidence logic with internal helper methods (`_average_ocr_confidence`, `_compute_agreement_score`, `_compute_partial_confidence`). Updated partial fallback documentation with blended confidence formula and documented noisy real-world test scenarios. |
 | `2026-04-15` | Updated full-consensus semantics: now requires 100% of expected positions (inferred from most common observed text length). Removed percentage-threshold documentation and `math.ceil()` references. Clarified `build_final_text()` and partial fallback behavior. |
 | `2025-02-22` | Added `compute_consensus_confidence()` method and `accepted_confidences` tracking. Replaced hardcoded `1.0` confidence in `base_agent.py` with composite score based on position dominance × average OCR confidence. |
 
