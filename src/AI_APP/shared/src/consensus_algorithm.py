@@ -149,7 +149,7 @@ class ConsensusAlgorithm:
         # Count only positions within expected range to avoid out-of-range false positives.
         decided_count = sum(1 for pos in range(expected_positions) if pos in self.decided_chars)
 
-        # If we have the necessary amont of positions decided we can consider that we have reached consensus,
+        # If we have the necessary amount of positions decided we can consider that we have reached consensus,
         if decided_count >= expected_positions:
             self.logger.info(
                 f"Consensus reached! {decided_count}/{expected_positions} "
