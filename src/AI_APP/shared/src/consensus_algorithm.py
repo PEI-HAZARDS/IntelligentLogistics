@@ -299,7 +299,7 @@ class ConsensusAlgorithm:
                     text_chars.append("_")
 
             partial_text = "".join(text_chars)
-            # Avoid getting already decided chars out of bonds if that char is already out of the most common length
+            # Avoid getting already decided chars out of bounds if that char is already out of the most common length
             decided_count = sum(1 for pos in range(total_positions) if pos in self.decided_chars)
             confidence = self._compute_partial_confidence(total_positions, decided_count)
 
