@@ -79,6 +79,23 @@ class TestPlateClassifierInit:
 class TestClassify:
     """Tests for the classify method."""
 
+    def test_wide_near_white_with_noise_still_classified_as_license_plate(self, classifier):
+        """A wide mostly-white crop with mild noise should still classify as license plate."""
+        # Arrange
+        rng = np.random.default_rng(42)
+        base = np.full((60, 220, 3), 235, dtype=np.uint8)  # wide and mostly white
+        noise = rng.integers(-25, 26, size=base.shape, dtype=np.int16)
+        img = np.clip(base.astype(np.int16) + noise, 0, 255).astype(np.uint8)
+
+        # Add sparse warm pixels to simulate reflections/scene noise.
+        img[::9, ::9] = [0, 165, 255]
+
+        # Act
+        result = classifier.classify(img)
+
+        # Assert
+        assert result == classifier.LICENSE_PLATE
+
     def test_none_input_returns_unknown(self, classifier):
         """None input returns UNKNOWN."""
         # Act

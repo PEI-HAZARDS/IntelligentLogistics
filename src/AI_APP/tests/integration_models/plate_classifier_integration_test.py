@@ -1,36 +1,28 @@
 """
 Integration test: validate PlateClassifier against real crop images.
 
-Setup (one-time):
-    conda create -n plate_test python=3.11 opencv numpy pytest -y
+Run from repository root:
 
-Run from: cd src/shared
+    # Default (license plates, default crops folder)
+    PYTHONPATH=src uv run --active pytest -q \
+        src/AI_APP/tests/integration_models/plate_classifier_integration_test.py \
+        -m integration_model
 
-Usage:
-    # Test license plates (default, uses src/crops/)
-    conda run -n plate_test python -m pytest tests/plate_classifier_integration_test.py -v -s
-
-    # Test license plates from custom directory
-    conda run -n plate_test python -m pytest tests/plate_classifier_integration_test.py -v -s \
-        --crops-dir ../licence_plate_crops
-
-    # Test hazard plates
-    conda run -n plate_test python -m pytest tests/plate_classifier_integration_test.py -v -s \
-        --plate-type hazard_plate --crops-dir ../hazard_plate_crops
-
-Cleanup:
-    conda env remove -n plate_test
-
-Datasets:
-    https://www.kaggle.com/datasets/abdelhamidzakaria/european-license-plates-dataset?resource=download
+    # Hazard plates from custom folder
+    PYTHONPATH=src uv run --active pytest -q \
+        src/AI_APP/tests/integration_models/plate_classifier_integration_test.py \
+        -m integration_model --plate-type hazard_plate --crops-dir ../hazard_plate_crops
 """
+
+from pathlib import Path
 
 import cv2
 import pytest
-from pathlib import Path
 
 from AI_APP.shared.src.plate_classifier import PlateClassifier
 
+
+pytestmark = pytest.mark.integration_model
 
 
 # =============================================================================
@@ -102,9 +94,9 @@ def test_classify_all_crops(classifier, crop_files, expected_type):
     print(f"{'=' * 50}")
 
     if failed:
-        print(f"\n  Misclassified:")
+        print("\n  Misclassified:")
         for line in failed:
-            print(f"    ✗ {line}")
+            print(f"    - {line}")
         print()
 
     assert wrong == 0, f"{wrong}/{total} crops misclassified (see above)"

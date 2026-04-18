@@ -545,12 +545,30 @@ class TestOCRProcessing:
 
 
 # =============================================================================
-# Tests for truck ID extraction
-# =============================================================================
-
-# =============================================================================
 # Tests for upload and publish
 # =============================================================================
+
+class TestPublishDetection:
+    """Tests for publishing detection messages."""
+
+    def test_publish_detection_uses_topic_and_truck_header(self, mock_dependencies):
+        """_publish_detection should send data to the expected topic with truckId header."""
+        # Arrange
+        agent = create_test_agent(mock_dependencies)
+        agent.truck_id = "TRUCK-123"
+
+        message = MagicMock()
+        message.to_dict.return_value = {"result": {"text": "ABC123"}}
+
+        # Act
+        agent._publish_detection(message)
+
+        # Assert
+        agent.kafka_producer.produce.assert_called_once_with(
+            topic="test-produce-topic",
+            data={"result": {"text": "ABC123"}},
+            headers={"truckId": "TRUCK-123"},
+        )
 
 # =============================================================================
 # Tests for message processing
@@ -603,6 +621,22 @@ class TestMessageProcessing:
         payload = call_args.kwargs["data"]
         assert payload["result"]["text"] == "N/A"
 
+    def test_process_message_handles_crop_upload_error_and_still_publishes(self, mock_dependencies, sample_crop):
+        """Crop upload failures should not block publish flow."""
+        # Arrange
+        agent = create_test_agent(mock_dependencies)
+        agent.truck_id = "TRUCK-123"
+        agent.process_detection = MagicMock(return_value=("ABC123", 0.9, sample_crop))
+        agent.crop_storage.upload_memory_image.side_effect = RuntimeError("upload failed")
+
+        # Act
+        agent._process_message(MagicMock())
+
+        # Assert
+        agent.kafka_producer.produce.assert_called_once()
+        published_payload = agent.kafka_producer.produce.call_args.kwargs["data"]
+        assert published_payload["cropUrl"] is None
+
 
 # =============================================================================
 # Tests for cleanup
@@ -633,6 +667,18 @@ class TestCleanup:
         # Assert
         agent.kafka_producer.flush.assert_called_once()
 
+    def test_cleanup_closes_kafka_resources(self, mock_dependencies):
+        """_cleanup should close producer and consumer wrappers."""
+        # Arrange
+        agent = create_test_agent(mock_dependencies)
+
+        # Act
+        agent._cleanup()
+
+        # Assert
+        agent.kafka_producer.close.assert_called_once()
+        agent.kafka_consumer.close.assert_called_once()
+
     def test_cleanup_flushes_pending_annotated_uploads(self, mock_dependencies, sample_frame):
         """Cleanup attempts deferred annotated frame uploads before closing resources."""
         agent = create_test_agent(mock_dependencies)
@@ -644,8 +690,25 @@ class TestCleanup:
 
 
 # =============================================================================
-# Tests for parse_detection_result
+# Tests for deferred upload buffer
 # =============================================================================
+
+class TestDeferredAnnotatedUploads:
+    """Tests for deferred annotated frame uploads."""
+
+    def test_upload_pending_annotated_frames_respects_max_items(self, mock_dependencies, sample_frame):
+        """Only max_items uploads should be processed in one flush call."""
+        # Arrange
+        agent = create_test_agent(mock_dependencies)
+        agent._enqueue_annotated_frame_upload(sample_frame, "frame_1.jpg")
+        agent._enqueue_annotated_frame_upload(sample_frame, "frame_2.jpg")
+
+        # Act
+        uploaded = agent._upload_pending_annotated_frames(max_items=1)
+
+        # Assert
+        assert uploaded == 1
+        assert agent.pending_annotated_uploads.qsize() == 1
 
 # =============================================================================
 # Tests for process_detection

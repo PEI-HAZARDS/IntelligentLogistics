@@ -1,6 +1,7 @@
-# AI_APP Shared Tests - Quick Guide
+# AI_APP Shared Tests - Quick Guide (Unit Focus)
 
-This folder contains unit and integration tests for AI_APP shared modules.
+This folder contains unit tests for AI_APP shared modules.
+Integration tests were moved to `src/AI_APP/tests` and are run explicitly.
 
 ## 1) Environment Setup (uv)
 
@@ -22,7 +23,7 @@ PYTHONPATH=src uv run --active pytest -q src/AI_APP/shared/tests
 
 ## 3) Common Commands
 
-Run all shared tests:
+Run all shared unit tests:
 
 ```bash
 PYTHONPATH=src uv run --active pytest -q src/AI_APP/shared/tests
@@ -91,3 +92,17 @@ Error: `pytest: command not found`
 ---
 
 Tip: Keep `-q` for normal local runs, and switch to `-vv` or log modes only when debugging.
+
+## 6) Integration Tests (moved out of shared/tests)
+
+For system/model integration tests, use the dedicated suite:
+
+```bash
+PYTHONPATH=src uv run --active pytest -q src/AI_APP/tests
+```
+
+Model-focused integration tests only:
+
+```bash
+PYTHONPATH=src uv run --active pytest -q src/AI_APP/tests/integration_models -m integration_model
+```
