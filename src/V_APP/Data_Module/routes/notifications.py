@@ -73,7 +73,7 @@ def list_notifications(
 # PATCH /notifications/{notification_id}/read
 # ---------------------------------------------------------------------------
 
-@router.patch("/{notification_id}/read", response_model=NotificationOut)
+@router.patch("/{notification_id}/read", response_model=NotificationOut, responses={400: {"description": "Invalid notification id"}, 404: {"description": "Notification not found"}})
 def mark_notification_read(notification_id: str):
     """Marks a single notification as read."""
     try:

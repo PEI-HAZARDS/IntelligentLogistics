@@ -192,6 +192,7 @@ class KafkaDecisionConsumer:
             try:
                 await self.consumer_task
             except asyncio.CancelledError:
+                logger.debug("Consumer task cancelled cleanly")
                 raise
         logger.info("KafkaDecisionConsumer stopped")
     

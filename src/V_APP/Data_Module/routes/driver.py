@@ -45,7 +45,7 @@ _uow_factory = lambda: SqlAlchemyUnitOfWork(SessionLocal)
 
 # ==================== AUTH ENDPOINTS (Mobile App) ====================
 
-@router.post("/login", response_model=DriverLoginResponse)
+@router.post("/login", response_model=DriverLoginResponse, responses={401: {"description": "Invalid credentials or account deactivated"}})
 def login(credentials: DriverLoginRequest):
     """
     Driver login for mobile app.
@@ -78,7 +78,7 @@ def login(credentials: DriverLoginRequest):
     )
 
 
-@router.post("/claim", response_model=ClaimAppointmentResponse)
+@router.post("/claim", response_model=ClaimAppointmentResponse, responses={400: {"description": "Invalid PIN or appointment not available"}})
 def claim_arrival(
     claim_data: ClaimAppointmentRequest,
     drivers_license: Annotated[str, Query(description="Driver's license (from login)")],
@@ -167,7 +167,7 @@ def list_all_drivers(
     return get_drivers(skip=skip, limit=limit, only_active=only_active)
 
 
-@router.get("/{drivers_license}", response_model=Driver)
+@router.get("/{drivers_license}", response_model=Driver, responses={404: {"description": "Driver not found"}})
 def get_driver(
     drivers_license: Annotated[str, Path()],
 ):

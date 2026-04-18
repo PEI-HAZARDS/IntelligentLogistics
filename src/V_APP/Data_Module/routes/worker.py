@@ -250,7 +250,7 @@ def list_operators(
     ]
 
 
-@router.get("/operators/me", response_model=Dict[str, Any])
+@router.get("/operators/me", response_model=Dict[str, Any], responses={404: {"description": "Operator not found"}})
 def get_my_operator_info(
     num_worker: Annotated[str, Query(description="Operator num_worker (from JWT)")],
 ):
@@ -264,7 +264,7 @@ def get_my_operator_info(
     return info
 
 
-@router.get("/operators/{num_worker}")
+@router.get("/operators/{num_worker}", responses={404: {"description": "Operator not found"}})
 def get_operator(
     num_worker: Annotated[str, Path(description="Operator num_worker")],
 ):
@@ -370,7 +370,7 @@ def list_managers(
     ]
 
 
-@router.get("/managers/me", response_model=Dict[str, Any])
+@router.get("/managers/me", response_model=Dict[str, Any], responses={404: {"description": "Manager not found"}})
 def get_my_manager_info(
     num_worker: Annotated[str, Query(description="Manager num_worker (from JWT)")],
 ):
@@ -384,7 +384,7 @@ def get_my_manager_info(
     return info
 
 
-@router.get("/managers/{num_worker}")
+@router.get("/managers/{num_worker}", responses={404: {"description": "Manager not found"}})
 def get_manager(
     num_worker: Annotated[str, Path()],
 ):
@@ -451,7 +451,7 @@ def list_all_workers(
     ]
 
 
-@router.get("/{num_worker}", response_model=Dict[str, Any])
+@router.get("/{num_worker}", response_model=Dict[str, Any], responses={404: {"description": "Worker not found"}})
 def get_worker(
     num_worker: Annotated[str, Path()],
 ):
@@ -483,7 +483,7 @@ def change_password(
     return {"message": "Password updated successfully"}
 
 
-@router.post("/email", status_code=status.HTTP_200_OK)
+@router.post("/email", status_code=status.HTTP_200_OK, responses={400: {"description": "Email already in use or worker not found"}})
 def change_email(
     request: UpdateEmailRequest,
     num_worker: Annotated[str, Query(description="Worker num_worker (from JWT)")],
@@ -502,7 +502,7 @@ def change_email(
 
 # ==================== ADMIN ENDPOINTS ====================
 
-@router.post("", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED, responses={400: {"description": "Email or num_worker already in use"}})
 def create_new_worker(request: CreateWorkerRequest):
     """
     Creates new worker (operator or manager).
@@ -531,7 +531,7 @@ def create_new_worker(request: CreateWorkerRequest):
     }
 
 
-@router.delete("/{num_worker}", status_code=status.HTTP_200_OK)
+@router.delete("/{num_worker}", status_code=status.HTTP_200_OK, responses={404: {"description": "Worker not found"}})
 def deactivate_worker_endpoint(
     num_worker: Annotated[str, Path()],
 ):
@@ -543,7 +543,7 @@ def deactivate_worker_endpoint(
     return {"message": f"Worker {worker['name']} deactivated"}
 
 
-@router.post("/{num_worker}/promote", status_code=status.HTTP_200_OK)
+@router.post("/{num_worker}/promote", status_code=status.HTTP_200_OK, responses={400: {"description": "Worker is not an operator or not found"}})
 def promote_operator_to_manager(
     num_worker: Annotated[str, Path()],
     access_level: Annotated[str, Query()] = "basic",

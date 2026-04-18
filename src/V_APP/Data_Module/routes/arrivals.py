@@ -69,7 +69,7 @@ class CreateVisitRequest(BaseModel):
 
 # ==================== GET ENDPOINTS ====================
 
-@router.get("", response_model=PaginatedResponse[Appointment])
+@router.get("", response_model=PaginatedResponse[Appointment], responses={400: {"description": "Invalid shift type"}})
 def list_arrivals(
     page: Annotated[int, Query(ge=1, description="Page number (1-based)")] = 1,
     limit: Annotated[int, Query(ge=1, le=100, description="Items per page")] = 20,
@@ -173,7 +173,7 @@ def get_upcoming_arrivals(
     return [Appointment.model_validate(a) for a in appointments]
 
 
-@router.get("/{appointment_id}/detail", response_model=Dict[str, Any])
+@router.get("/{appointment_id}/detail", response_model=Dict[str, Any], responses={404: {"description": "Appointment not found"}})
 def get_arrival_detail(
     appointment_id: Annotated[int, Path(description="Appointment ID")],
     db: Annotated[Session, Depends(get_db)] = None,
@@ -193,7 +193,7 @@ def get_arrival_detail(
     return result
 
 
-@router.get("/{appointment_id}", response_model=Appointment)
+@router.get("/{appointment_id}", response_model=Appointment, responses={404: {"description": "Appointment not found"}})
 def get_arrival(
     appointment_id: Annotated[int, Path(description="Appointment ID")],
     db: Annotated[Session, Depends(get_db)] = None,
@@ -221,7 +221,7 @@ def get_arrival(
     return result
 
 
-@router.get("/pin/{arrival_id}", response_model=Appointment)
+@router.get("/pin/{arrival_id}", response_model=Appointment, responses={404: {"description": "Invalid PIN or appointment not found"}})
 def get_arrival_by_pin_code(
     arrival_id: Annotated[str, Path(description="Arrival ID / PIN")],
     db: Annotated[Session, Depends(get_db)] = None,
@@ -235,7 +235,7 @@ def get_arrival_by_pin_code(
 
 # ==================== DECISION ENGINE ENDPOINTS ====================
 
-@router.get("/query/license-plate/{license_plate}", response_model=List[Appointment])
+@router.get("/query/license-plate/{license_plate}", response_model=List[Appointment], responses={400: {"description": "Invalid shift type"}})
 def query_arrivals_by_license_plate(
     license_plate: Annotated[str, Path(description="Truck license plate")],
     shift_gate_id: Annotated[Optional[int], Query(description="Filter by shift gate")] = None,
@@ -266,7 +266,7 @@ def query_arrivals_by_license_plate(
 
 # ==================== HIGHWAY INFRACTION ====================
 
-@router.patch("/{appointment_id}/highway-infraction", response_model=Appointment)
+@router.patch("/{appointment_id}/highway-infraction", response_model=Appointment, responses={404: {"description": "Appointment not found"}})
 def flag_highway_infraction(
     appointment_id: Annotated[int, Path(description="Appointment ID")],
     db: Annotated[Session, Depends(get_db)] = None,
@@ -284,7 +284,7 @@ def flag_highway_infraction(
 
 # ==================== UPDATE ENDPOINTS ====================
 
-@router.patch("/{appointment_id}/status", response_model=Appointment)
+@router.patch("/{appointment_id}/status", response_model=Appointment, responses={404: {"description": "Appointment not found"}})
 def update_status(
     appointment_id: Annotated[int, Path(description="Appointment ID")],
     update_data: AppointmentStatusUpdate = ...,
@@ -302,7 +302,7 @@ def update_status(
     return Appointment.model_validate(appointment)
 
 
-@router.post("/{appointment_id}/decision", response_model=Appointment)
+@router.post("/{appointment_id}/decision", response_model=Appointment, responses={404: {"description": "Appointment not found"}})
 def process_decision(
     appointment_id: Annotated[int, Path(description="Appointment ID")],
     decision: Dict[str, Any] = ...,
@@ -334,7 +334,7 @@ def process_decision(
 
 # ==================== VISIT ENDPOINTS ====================
 
-@router.post("/{appointment_id}/visit", response_model=Visit)
+@router.post("/{appointment_id}/visit", response_model=Visit, responses={400: {"description": "Invalid shift type"}, 404: {"description": "Appointment not found or visit already exists"}})
 def create_visit(
     appointment_id: Annotated[int, Path(description="Appointment ID")],
     request: CreateVisitRequest = ...,
@@ -364,7 +364,7 @@ def create_visit(
     return Visit.model_validate(visit_orm)
 
 
-@router.patch("/{appointment_id}/visit", response_model=Visit)
+@router.patch("/{appointment_id}/visit", response_model=Visit, responses={404: {"description": "Visit not found"}})
 def update_visit(
     appointment_id: Annotated[int, Path(description="Appointment ID")],
     update_data: VisitStatusUpdate = ...,
