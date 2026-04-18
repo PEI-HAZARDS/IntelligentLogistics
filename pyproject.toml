@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 python_files = ["test_*.py", "*_unitTest.py", "*_unit_test.py", "*_integrationTest.py", "*_integration_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-testpaths = ["tests"]
+testpaths = ["src"]
 markers = [
     "integration: marks tests as integration tests (require running services)",
     "integration_system: marks end-to-end system integration tests",

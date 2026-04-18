@@ -8,7 +8,7 @@
 
 `ObjectDetector` encapsulates model loading, inference, result parsing, and resource cleanup for Ultralytics YOLO models. It provides a simple API where consumers call `detect()` on a frame and inspect results through `object_found()` and `get_boxes()`.
 
-Within the IntelligentLogistics pipeline, `AgentA` uses this module with a truck-detection model (class ID `7`) to identify trucks in low-quality RTMP stream frames. `BaseAgent` also instantiates it as a shared dependency for agents that need YOLO inference. The module supports filtering detections to a single YOLO class ID and implements the context-manager protocol (`with` statement) for automatic resource cleanup.
+Within the IntelligentLogistics pipeline, `AgentA` uses this module with a truck-detection model (class ID `7`) to identify trucks in low-quality RTSP stream frames. `BaseAgent` also instantiates it as a shared dependency for agents that need YOLO inference. The module supports filtering detections to a single YOLO class ID and implements the context-manager protocol (`with` statement) for automatic resource cleanup.
 
 It does **not** handle frame acquisition (see `stream_manager.py`), image storage (see `image_storage.py`), or result publishing (see `kafka_wrapper.py`).
 
@@ -16,7 +16,7 @@ It does **not** handle frame acquisition (see `stream_manager.py`), image storag
 
 ## Location
 ```
-src/shared/src/object_detector.py
+src/AI_APP/shared/src/object_detector.py
 ```
 
 ## Dependencies
@@ -279,7 +279,7 @@ Logging uses a named logger (`ObjectDetector`). The `ultralytics` library logger
 
 To run:
 ```bash
-pytest src/shared/tests/object_detector_unit_test.py
+pytest src/AI_APP/shared/tests/object_detector_unit_test.py
 ```
 
 ---
@@ -292,7 +292,9 @@ pytest src/shared/tests/object_detector_unit_test.py
 
 ## Changelog
 
-> N/A
+| Version / Date | Change |
+|----------------|--------|
+| `2026-04-18` | Reviewed AI_APP documentation for consistency, aligned paths/test commands, and validated deployment host mapping (AI_APP `10.255.32.107`, Streaming `10.255.32.56`, UI `10.255.32.108`, V_APP `10.255.32.70`). |
 
 ---
 

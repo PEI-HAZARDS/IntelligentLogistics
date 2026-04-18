@@ -14,7 +14,7 @@ The module is consumed by `base_agent.py` in the shared library, which exposes t
 
 ## Location
 ```
-src/shared/src/paddle_ocr.py
+src/AI_APP/shared/src/paddle_ocr.py
 ```
 
 ## Dependencies
@@ -316,7 +316,7 @@ Logging uses the `"PlateOCR"` logger name.
 
 To run:
 ```bash
-pytest src/shared/tests/paddle_ocr_unit_test.py
+pytest src/AI_APP/shared/tests/paddle_ocr_unit_test.py
 ```
 
 ---
@@ -329,12 +329,14 @@ pytest src/shared/tests/paddle_ocr_unit_test.py
 
 ## Changelog
 
-> N/A
+| Version / Date | Change |
+|----------------|--------|
+| `2026-04-18` | Reviewed AI_APP documentation for consistency, aligned paths/test commands, and validated deployment host mapping (AI_APP `10.255.32.107`, Streaming `10.255.32.56`, UI `10.255.32.108`, V_APP `10.255.32.70`). |
 
 ---
 
 ## Related Docs
 
-- [`base_agent.md`](../../docs_v2/shared/base_agent.md)
+- [`base_agent.md`](.././base_agent.md)
 - [`object_detector.md`](./object_detector.md)
 - [`bounding_box_drawer.md`](./bounding_box_drawer.md)

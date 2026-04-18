@@ -6,7 +6,7 @@
 
 ## Overview
 
-`agentB.py` defines `AgentB`, a concrete implementation of `BaseAgent` that specialises the generic detection pipeline for license plate recognition. On receiving a Kafka `truck_detected` event, it reads frames from an MediaMTX RTSP stream, runs YOLO inference to locate license plates, and applies PaddleOCR through the consensus algorithm to extract the plate text. Detections classified as hazard plates by `PlateClassifier` are rejected and their crops are uploaded to a dedicated MinIO bucket (`failed-crops`) for later analysis; accepted plates are published as `license_plate_results` messages.
+`agentB.py` defines `AgentB`, a concrete implementation of `BaseAgent` that specialises the generic detection pipeline for license plate recognition. On receiving a Kafka `truck_detected` event, it reads frames from a MediaMTX RTSP stream, runs YOLO inference to locate license plates, and applies PaddleOCR through the consensus algorithm to extract the plate text. Detections classified as hazard plates by `PlateClassifier` are rejected and their crops are uploaded to a dedicated MinIO bucket (`failed-crops`) for later analysis; accepted plates are published as `license_plate_results` messages.
 
 The module acts as a downstream consumer of the truck detection stage (Agent A or equivalent) and an upstream producer for any component that acts on license plate data — including the `AIGateway`. It does not handle stream acquisition, Kafka I/O, or model training; those concerns are managed by `BaseAgent`, `StreamManager`, `KafkaWrapper`, and `ObjectDetector` respectively.
 
@@ -46,8 +46,8 @@ src/AI_APP/agentB/src/agentB.py
        AgentB.start()
           │  consumes Kafka message
           ▼
-   BaseAgent._process_message()
-          │  captures RTMP frames
+      BaseAgent._process_message()
+         │  captures RTSP frames
           ├─► BaseAgent._run_yolo_inference()   (license_plate_model.pt)
           │         │  bbox crops
           │         ▼
@@ -352,7 +352,7 @@ assert agent.is_valid_detection(crop, 0.9, 1) is False
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `KAFKA_BOOTSTRAP` | ✅ | — | Kafka broker address (`BaseAgentConfig.kafka_bootstrap`) |
+| `KAFKA_BOOTSTRAP` | ❌ | `10.255.32.107:9092` | Kafka broker address (`BaseAgentConfig.kafka_bootstrap`) |
 | `MINIO_USER` | ✅ | — | MinIO access key |
 | `MINIO_PASSWORD` | ✅ | — | MinIO secret key |
 | `GATE_ID` | ❌ | `"1"` | Gate identifier; used to namespace Kafka topics and MinIO bucket |
@@ -364,6 +364,12 @@ assert agent.is_valid_detection(crop, 0.9, 1) is False
 | `MINIO_SECURE` | ❌ | `False` | Whether to use TLS for MinIO |
 | `MAX_FRAMES` | ❌ | `40` | Maximum frames to process per detection cycle |
 | `MIN_DETECTION_CONFIDENCE` | ❌ | `0.4` | Minimum YOLO confidence threshold |
+
+Deployment reference (April 2026):
+- `GPU_AI_APP` host: `10.255.32.107` (Agent A/B/C, AI Gateway, Kafka)
+- `Streaming Middleware` host: `10.255.32.56` (MediaMTX)
+- `V_APP` host: `10.255.32.70` (receiver gateway and downstream services)
+- `UI` host: `10.255.32.108`
 
 ---
 
@@ -406,14 +412,16 @@ pytest src/AI_APP/agentB/tests/
 
 ## Changelog
 
-> N/A
+| Version / Date | Change |
+|----------------|--------|
+| `2026-04-18` | Reviewed AI_APP documentation for consistency, aligned paths/test commands, and validated deployment host mapping (AI_APP `10.255.32.107`, Streaming `10.255.32.56`, UI `10.255.32.108`, V_APP `10.255.32.70`). |
 
 ---
 
 ## Related Docs
 
-- [`base_agent.md`](../../shared/base_agent.md)
-- [`plate_classifier.md`](../../shared/plate_classifier.md)
-- [`image_storage.md`](../../shared/image_storage.md)
-- [`kafka_wrapper.md`](../../../shared/kafka_wrapper.md)
+- [`base_agent.md`](../shared/base_agent.md)
+- [`plate_classifier.md`](../shared/plate_classifier.md)
+- [`image_storage.md`](../shared/image_storage.md)
+- [`kafka_wrapper.md`](../../shared/kafka_wrapper.md)
 - [Architecture Overview](../../../docs/sketch_arquitetura/arquitetura_intelligent_logistics.md)

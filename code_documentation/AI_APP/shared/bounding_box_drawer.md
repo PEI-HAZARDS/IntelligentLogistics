@@ -16,7 +16,7 @@ It does **not** perform detection (see `object_detector.py`) or image storage (s
 
 ## Location
 ```
-src/shared/src/bounding_box_drawer.py
+src/AI_APP/shared/src/bounding_box_drawer.py
 ```
 
 ## Dependencies
@@ -233,7 +233,7 @@ Logging uses a named logger (`BoundingBoxDrawer`) at `DEBUG` and `WARNING` level
 
 To run:
 ```bash
-pytest src/shared/tests/bounding_box_drawer_unit_test.py
+pytest src/AI_APP/shared/tests/bounding_box_drawer_unit_test.py
 ```
 
 ---
@@ -246,7 +246,9 @@ pytest src/shared/tests/bounding_box_drawer_unit_test.py
 
 ## Changelog
 
-> N/A
+| Version / Date | Change |
+|----------------|--------|
+| `2026-04-18` | Reviewed AI_APP documentation for consistency, aligned paths/test commands, and validated deployment host mapping (AI_APP `10.255.32.107`, Streaming `10.255.32.56`, UI `10.255.32.108`, V_APP `10.255.32.70`). |
 
 ---
 

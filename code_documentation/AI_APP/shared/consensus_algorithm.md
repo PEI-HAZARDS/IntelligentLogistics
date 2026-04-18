@@ -477,6 +477,7 @@ pytest src/AI_APP/shared/tests/consensus_algorithm_unit_test.py
 
 | Version / Date | Change |
 |----------------|--------|
+| `2026-04-18` | Reviewed AI_APP documentation for consistency, aligned paths/test commands, and validated deployment host mapping (AI_APP `10.255.32.107`, Streaming `10.255.32.56`, UI `10.255.32.108`, V_APP `10.255.32.70`). |
 | `2026-04-17` | Hardened `check_full_consensus()` state consistency: method now explicitly clears stale `consensus_reached=True` when current state does not satisfy full consensus. |
 | `2026-04-17` | Refactored partial-confidence logic with internal helper methods (`_average_ocr_confidence`, `_compute_agreement_score`, `_compute_partial_confidence`). Updated partial fallback documentation with blended confidence formula and documented noisy real-world test scenarios. |
 | `2026-04-17` | Synchronized fallback crop state: `select_best_crop("")` now updates both `best_crop` and `best_confidence`; `get_best_partial_result()` reuses that state to avoid duplicate candidate scans. |
