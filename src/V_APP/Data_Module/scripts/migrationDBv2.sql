@@ -139,7 +139,7 @@ DECLARE
     new_id TEXT;
     seq_num INTEGER;
 BEGIN
-    IF NEW.arrival_id IS NULL OR NEW.arrival_id = '' THEN
+    IF NEW.arrival_id IS NULL THEN
         seq_num := nextval('appointment_arrival_seq');
         new_id := 'PRT-' || LPAD(seq_num::TEXT, 4, '0');
         NEW.arrival_id := new_id;

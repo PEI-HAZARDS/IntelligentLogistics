@@ -47,10 +47,10 @@ async def ws_gate(websocket: WebSocket, gate_id: str, token: str = Query(default
             safe_data = data.replace('\n', '').replace('\r', '')
             logger.debug(f"Received from client (gate {safe_gate_id}): {safe_data}")
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected for gate {gate_id}")
+        logger.info(f"WebSocket disconnected for gate {safe_gate_id}")
         ws_manager.disconnect(gate_id, websocket)
     except Exception as e:
-        logger.error(f"WebSocket error for gate {gate_id}: {e}")
+        logger.error(f"WebSocket error for gate {safe_gate_id}: {e}")
         ws_manager.disconnect(gate_id, websocket)
 
 
