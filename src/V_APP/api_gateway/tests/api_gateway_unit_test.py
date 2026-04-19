@@ -107,7 +107,7 @@ class TestAPIGatewayInit:
             config=config,
             kafka_producer=MagicMock(),
             kafka_consumer=MagicMock(),
-            WSManager=MagicMock(),
+            ws_manager=MagicMock(),
         )
 
     def test_running_false(self, gateway):
@@ -156,7 +156,7 @@ class TestConsumerLoop:
             config=config,
             kafka_producer=MagicMock(),
             kafka_consumer=MagicMock(),
-            WSManager=MagicMock(),
+            ws_manager=MagicMock(),
         )
         return gw
 

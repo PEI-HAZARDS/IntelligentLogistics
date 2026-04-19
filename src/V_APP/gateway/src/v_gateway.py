@@ -7,7 +7,7 @@ class VGateway(BaseGateway):
         topics = []
         for gate_id in self.config.gate_ids:
             # Consume reset-agentA from V_Broker (produced by V_Brain)
-            # → BaseGateway forwards via HTTP to IA_Gateway → AI_Broker → AgentA
+            # → BaseGateway forwards via HTTP to AI_Gateway → AI_Broker → AgentA
             topics.append(KafkaTopicFactory.reset_agent_a(gate_id))
         return topics
 
