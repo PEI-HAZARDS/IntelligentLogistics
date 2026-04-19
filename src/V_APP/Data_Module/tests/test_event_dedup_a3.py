@@ -141,13 +141,24 @@ class TestProcessIncomingDecisionEventId:
         )
 
     def test_no_variable_name_collision(self):
-        """event_id param must not be overwritten before dedup call."""
+        """event_id param must not be overwritten before the dedup call."""
         source = _read(DECISION_QUERIES_PATH)
         func_start = source.index("def process_incoming_decision(")
         next_func = source.index("\ndef ", func_start + 1)
         func_body = source[func_start:next_func]
-        # Mongo persist should use a different variable name
-        assert "mongo_event_id" in func_body or "event_id =" not in func_body.split("is_duplicate_and_mark")[0].split("event_id: Optional")[1] if "is_duplicate_and_mark" in func_body else True
+
+        if "is_duplicate_and_mark" not in func_body:
+            return  # dedup not present — nothing to check
+
+        before_dedup = func_body.split("is_duplicate_and_mark")[0]
+        # Strip the function signature (which contains "event_id: Optional") from the check
+        after_signature = before_dedup.split("event_id: Optional", 1)[-1]
+        # If event_id is reassigned before dedup, it shadows the parameter.
+        # The code must either use a distinct name (mongo_event_id) or not reassign.
+        assert "mongo_event_id" in func_body or "event_id =" not in after_signature, (
+            "event_id must not be re-assigned before the is_duplicate_and_mark call — "
+            "use a different variable name (e.g. mongo_event_id) for the Mongo persist ID."
+        )
 
 
 # =================================================================
