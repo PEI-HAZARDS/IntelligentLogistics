@@ -3,6 +3,7 @@ python_files = ["test_*.py", "*_unitTest.py", "*_unit_test.py", "*_integrationTe
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 testpaths = ["tests"]
+addopts = "-m 'not integration'"
 markers = [
     "integration: marks tests as integration tests (require running services)",
     "unit: marks tests as unit tests (mocked)",

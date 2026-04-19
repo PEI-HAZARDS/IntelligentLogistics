@@ -202,11 +202,14 @@ def cache_license_plate_appointments(license_plate: str, appointment_ids: List[i
     """
     key = license_plate_lookup_key(license_plate)
     try:
-        # Use Redis Set for O(1) membership checks
-        redis_client.delete(key)  # Clear existing
-        if appointment_ids:
-            redis_client.sadd(key, *[str(aid) for aid in appointment_ids])
-        redis_client.expire(key, TTL_LICENSE_PLATE_LOOKUP)
+        # SETEX with JSON is a single atomic command: no window between write and
+        # TTL assignment, unlike the previous delete+sadd+expire sequence which
+        # could leave the key without a TTL if the process died after sadd.
+        redis_client.setex(
+            key,
+            TTL_LICENSE_PLATE_LOOKUP,
+            json.dumps([str(aid) for aid in appointment_ids]),
+        )
         logger.debug(f"Cached {len(appointment_ids)} appointments for LP {license_plate}")
     except Exception as e:
         logger.error(f"Failed to cache license plate lookup: {e}")
@@ -224,10 +227,10 @@ def get_cached_license_plate_appointments(license_plate: str) -> Optional[List[i
     """
     key = license_plate_lookup_key(license_plate)
     try:
-        members = redis_client.smembers(key)
-        if members:
+        value = redis_client.get(key)
+        if value:
             logger.debug(f"Cache HIT for LP {license_plate}")
-            return [int(aid) for aid in members]
+            return [int(aid) for aid in json.loads(value)]
         logger.debug(f"Cache MISS for LP {license_plate}")
     except Exception as e:
         logger.error(f"Failed to get cached license plate appointments: {e}")
@@ -262,8 +265,12 @@ def increment_counter(gate_id: int, metric: str, amount: int = 1):
     """
     key = counter_key(gate_id, metric)
     try:
-        redis_client.incrby(key, amount)
-        redis_client.expire(key, TTL_COUNTER_REALTIME)
+        # Only set TTL when the key is created (incrby returns == amount).
+        # Calling expire on every increment would reset the window on busy gates,
+        # preventing the key from ever expiring.
+        new_val = redis_client.incrby(key, amount)
+        if new_val == amount:
+            redis_client.expire(key, TTL_COUNTER_REALTIME)
     except Exception as e:
         logger.error(f"Failed to increment counter {key}: {e}")
 
@@ -329,18 +336,15 @@ def check_rate_limit(endpoint: str, client_id: str, limit: int = 60) -> bool:
     """
     key = rate_limit_key(endpoint, client_id)
     try:
-        current = redis_client.get(key)
-        if current is None:
-            # First request in window
-            redis_client.setex(key, TTL_RATE_LIMIT, "1")
-            return True
-        
-        current_count = int(current)
-        if current_count >= limit:
+        # Atomic INCR + EXPIRE in a pipeline avoids the GET→SETEX TOCTOU race
+        # where two simultaneous first requests both see None and both pass.
+        pipe = redis_client.pipeline()
+        pipe.incr(key)
+        pipe.expire(key, TTL_RATE_LIMIT)
+        count, _ = pipe.execute()
+        if count > limit:
             logger.warning(f"Rate limit exceeded for {endpoint} by {client_id}")
             return False
-        
-        redis_client.incr(key)
         return True
     except Exception as e:
         logger.error(f"Rate limit check failed: {e}")
