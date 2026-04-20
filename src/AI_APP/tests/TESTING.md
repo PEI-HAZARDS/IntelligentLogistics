@@ -49,5 +49,5 @@ PYTHONPATH=src uv run --active pytest -q src/AI_APP/tests/integration_models/pla
 or
 
 ```bash
-PYTHONPATH=src uv run --active pytest -q src/AI_APP/tests/integration_models/plate_classifier_integration_test.py -m integration_model --plate-type license_plate --crops-dir ../licence_plate_crops/
+PYTHONPATH=src uv run --active pytest -q src/AI_APP/tests/integration_models/plate_classifier_integration_test.py -m integration_model --plate-type license_plate --crops-dir ../license_plate_crops/
 ```
