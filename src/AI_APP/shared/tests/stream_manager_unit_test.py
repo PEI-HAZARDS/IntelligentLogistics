@@ -15,7 +15,6 @@ import queue
 import pytest
 import numpy as np
 from unittest.mock import patch, MagicMock, PropertyMock
-import threading
 
 
 # =============================================================================
@@ -85,29 +84,27 @@ class TestStreamManagerInit:
             assert manager.running is False
 
     def test_connect_starts_update_thread(self):
-        """Connect method starts the update thread."""
+        """Connect method creates and starts the update thread."""
         # Arrange & Act
-        with patch("AI_APP.shared.src.stream_manager.cv2") as mock_cv2:
+        with patch("AI_APP.shared.src.stream_manager.cv2") as mock_cv2, \
+             patch("AI_APP.shared.src.stream_manager.threading.Thread") as mock_thread_cls:
             mock_cap = MagicMock()
             mock_cap.isOpened.return_value = True
             mock_cap.read.return_value = (True, np.zeros((480, 640, 3), dtype=np.uint8))
             mock_cv2.VideoCapture.return_value = mock_cap
             mock_cv2.CAP_FFMPEG = 1900
             mock_cv2.CAP_PROP_BUFFERSIZE = 38
+            mock_thread = MagicMock()
+            mock_thread_cls.return_value = mock_thread
             
             from AI_APP.shared.src.stream_manager import StreamManager
             manager = StreamManager("rtmp://test")
             manager.connect()
-            
-            import time
-            time.sleep(0.2)
 
             # Assert
-            assert manager.thread.is_alive()
-
-            # Cleanup
-            manager.running = False
-            manager.thread.join(timeout=1.0)
+            mock_thread_cls.assert_called_once()
+            mock_thread.start.assert_called_once()
+            assert manager.thread is mock_thread
 
 
 # =============================================================================
@@ -304,34 +301,32 @@ class TestRead:
         # Arrange
         with patch("AI_APP.shared.src.stream_manager.cv2"):
             from AI_APP.shared.src.stream_manager import StreamManager
-            
-            with patch.object(StreamManager, '__init__', lambda self, *args, **kwargs: None):
-                manager = StreamManager.__new__(StreamManager)
-                manager.frame_queue = queue.Queue(maxsize=1)
-                manager.frame_queue.put(sample_frame)
 
-                # Act
-                result = manager.read(timeout=1.0)
+            manager = StreamManager("rtmp://test")
+            manager.frame_queue = queue.Queue(maxsize=1)
+            manager.frame_queue.put(sample_frame)
 
-                # Assert
-                assert result is not None
-                assert np.array_equal(result, sample_frame)
+            # Act
+            result = manager.read(timeout=1.0)
+
+            # Assert
+            assert result is not None
+            assert np.array_equal(result, sample_frame)
 
     def test_returns_none_when_no_frame(self):
         """Returns None when no frame available."""
         # Arrange
         with patch("AI_APP.shared.src.stream_manager.cv2"):
             from AI_APP.shared.src.stream_manager import StreamManager
-            
-            with patch.object(StreamManager, '__init__', lambda self, *args, **kwargs: None):
-                manager = StreamManager.__new__(StreamManager)
-                manager.frame_queue = queue.Queue(maxsize=1)
 
-                # Act
-                result = manager.read(timeout=0.01)
+            manager = StreamManager("rtmp://test")
+            manager.frame_queue = queue.Queue(maxsize=1)
 
-                # Assert
-                assert result is None
+            # Act
+            result = manager.read(timeout=0.01)
+
+            # Assert
+            assert result is None
 
 
 # =============================================================================
@@ -346,21 +341,18 @@ class TestRelease:
         # Arrange
         with patch("AI_APP.shared.src.stream_manager.cv2"):
             from AI_APP.shared.src.stream_manager import StreamManager
-            
-            with patch.object(StreamManager, '__init__', lambda self, *args, **kwargs: None):
-                manager = StreamManager.__new__(StreamManager)
-                manager.url = "rtmp://test"
-                manager.running = True
-                manager.thread = MagicMock()
-                manager.thread.join = MagicMock()
-                manager.cap = MagicMock()
-                manager.frame_queue = queue.Queue(maxsize=1)
 
-                # Act
-                manager.release()
+            manager = StreamManager("rtmp://test")
+            manager.running = True
+            manager.thread = MagicMock()
+            manager.thread.join = MagicMock()
+            manager.cap = MagicMock()
 
-                # Assert
-                assert manager.running is False
+            # Act
+            manager.release()
+
+            # Assert
+            assert manager.running is False
 
     def test_joins_thread(self):
         """Waits for thread to complete."""
@@ -368,19 +360,16 @@ class TestRelease:
         with patch("AI_APP.shared.src.stream_manager.cv2"):
             from AI_APP.shared.src.stream_manager import StreamManager
 
-            with patch.object(StreamManager, '__init__', lambda self, *args, **kwargs: None):
-                manager = StreamManager.__new__(StreamManager)
-                manager.url = "rtmp://test"
-                mock_thread = MagicMock()
-                manager.thread = mock_thread
-                manager.cap = MagicMock()
-                manager.frame_queue = queue.Queue(maxsize=1)
+            manager = StreamManager("rtmp://test")
+            mock_thread = MagicMock()
+            manager.thread = mock_thread
+            manager.cap = MagicMock()
 
-                # Act
-                manager.release()
+            # Act
+            manager.release()
 
-                # Assert
-                mock_thread.join.assert_called_once_with(timeout=1.0)
+            # Assert
+            mock_thread.join.assert_called_once_with(timeout=1.0)
 
     def test_releases_capture(self):
         """Releases the video capture."""
@@ -388,19 +377,16 @@ class TestRelease:
         with patch("AI_APP.shared.src.stream_manager.cv2"):
             from AI_APP.shared.src.stream_manager import StreamManager
 
-            with patch.object(StreamManager, '__init__', lambda self, *args, **kwargs: None):
-                manager = StreamManager.__new__(StreamManager)
-                manager.url = "rtmp://test"
-                manager.thread = MagicMock()
-                mock_cap = MagicMock()
-                manager.cap = mock_cap
-                manager.frame_queue = queue.Queue(maxsize=1)
+            manager = StreamManager("rtmp://test")
+            manager.thread = MagicMock()
+            mock_cap = MagicMock()
+            manager.cap = mock_cap
 
-                # Act
-                manager.release()
+            # Act
+            manager.release()
 
-                # Assert
-                mock_cap.release.assert_called_once()
+            # Assert
+            mock_cap.release.assert_called_once()
 
 
 # =============================================================================

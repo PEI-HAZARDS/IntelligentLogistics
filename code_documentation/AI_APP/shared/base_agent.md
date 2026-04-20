@@ -6,7 +6,7 @@
 
 ## Overview
 
-`BaseAgent` encapsulates the full lifecycle of an AI detection agent: consuming trigger messages from Kafka, capturing video frames from an RTMP stream, running YOLO object detection, performing OCR on cropped regions, reaching consensus across multiple readings, uploading results to MinIO, and publishing detection outcomes back to Kafka.
+`BaseAgent` encapsulates the full lifecycle of an AI detection agent: consuming trigger messages from Kafka, capturing video frames from an RTSP stream, running YOLO object detection, performing OCR on cropped regions, reaching consensus across multiple readings, uploading results to MinIO, and publishing detection outcomes back to Kafka.
 
 The module also defines `BaseAgentConfig`, a Pydantic settings class that centralises all environment-driven configuration (Kafka, MediaMTX RTSP, MinIO, detection parameters). Concrete subclasses—`AgentA` (`src/AI_APP/agentA/src/agentA.py`), `AgentB` (`src/AI_APP/agentB/src/agentB.py`), and `AgentC` (`src/AI_APP/agentC/src/agentC.py`)—implement the abstract hooks to specialise detection targets (e.g. license plates, hazard plates), YOLO models, OCR initialization, bounding-box styling, Kafka topics, and Prometheus metrics.
 
@@ -16,7 +16,7 @@ The module also defines `BaseAgentConfig`, a Pydantic settings class that centra
 
 ## Location
 ```
-src/shared/src/base_agent.py
+src/AI_APP/shared/src/base_agent.py
 ```
 
 ## Dependencies
@@ -24,12 +24,12 @@ src/shared/src/base_agent.py
 ### Internal
 | Module | Why it's used |
 |--------|---------------|
-| `shared/src/stream_manager.py` | RTMP/RTSP frame capture |
-| `shared/src/object_detector.py` | YOLO-based object detection |
-| `shared/src/paddle_ocr.py` | OCR text extraction from image crops |
-| `shared/src/plate_classifier.py` | Plate type classification for detection validation |
-| `shared/src/image_storage.py` | MinIO image upload (annotated frames and crops) |
-| `shared/src/bounding_box_drawer.py` | Drawing bounding boxes on annotated frames |
+| `AI_APP/shared/src/stream_manager.py` | RTSP frame capture |
+| `AI_APP/shared/src/object_detector.py` | YOLO-based object detection |
+| `AI_APP/shared/src/paddle_ocr.py` | OCR text extraction from image crops |
+| `AI_APP/shared/src/plate_classifier.py` | Plate type classification for detection validation |
+| `AI_APP/shared/src/image_storage.py` | MinIO image upload (annotated frames and crops) |
+| `AI_APP/shared/src/bounding_box_drawer.py` | Drawing bounding boxes on annotated frames |
 | `shared/src/kafka_wrapper.py` | Kafka consuming and producing |
 | `shared/src/consensus_algorithm.py` | Multi-reading consensus logic |
 | `shared/src/kafka_protocol.py` | `Message` base dataclass |
@@ -90,7 +90,7 @@ src/shared/src/base_agent.py
 **Constructor**
 ```python
 BaseAgentConfig(
-    kafka_bootstrap: str = "10.255.32.143:9092",
+    kafka_bootstrap: str = "10.255.32.107:9092",
     mediamtx_host: str = "10.255.32.56",
     mediamtx_port: int = 8554,
     minio_host: str = "10.255.32.82",
@@ -107,7 +107,7 @@ BaseAgentConfig(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `kafka_bootstrap` | `str` | `"10.255.32.143:9092"` | Kafka broker address |
+| `kafka_bootstrap` | `str` | `"10.255.32.107:9092"` | Kafka broker address |
 | `mediamtx_host` | `str` | `"10.255.32.56"` | MediaMTX RTSP server host |
 | `mediamtx_port` | `int` | `8554` | MediaMTX RTSP server port |
 | `minio_host` | `str` | `"10.255.32.82"` | MinIO server host |
@@ -534,7 +534,7 @@ BaseAgent(
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `KAFKA_BOOTSTRAP` | ❌ | `10.255.32.143:9092` | Kafka broker address |
+| `KAFKA_BOOTSTRAP` | ❌ | `10.255.32.107:9092` | Kafka broker address |
 | `MEDIAMTX_HOST` | ❌ | `10.255.32.56` | MediaMTX RTSP server host |
 | `MEDIAMTX_PORT` | ❌ | `8554` | MediaMTX RTSP server port |
 | `MINIO_HOST` | ❌ | `10.255.32.82` | MinIO server host |
@@ -546,6 +546,12 @@ BaseAgent(
 | `MODELS_PATH` | ❌ | `"/app/AI_APP"` | Base path for ML model files |
 | `MAX_FRAMES` | ❌ | `40` | Maximum frames per detection cycle |
 | `MIN_DETECTION_CONFIDENCE` | ❌ | `0.4` | Minimum YOLO confidence threshold |
+
+Deployment reference (April 2026):
+- `GPU_AI_APP` host: `10.255.32.107` (Agent A/B/C, AI Gateway, Kafka)
+- `Streaming Middleware` host: `10.255.32.56` (MediaMTX RTSP)
+- `V_APP` host: `10.255.32.70` (receiver gateway and downstream services)
+- `UI` host: `10.255.32.108`
 
 ---
 
@@ -623,7 +629,7 @@ The main loop in `start()` catches all exceptions per iteration, logs them with 
 
 To run:
 ```bash
-pytest src/shared/tests/base_agent_unit_test.py
+pytest src/AI_APP/shared/tests/base_agent_unit_test.py
 ```
 
 ---
@@ -636,7 +642,9 @@ pytest src/shared/tests/base_agent_unit_test.py
 
 ## Changelog
 
-> N/A
+| Version / Date | Change |
+|----------------|--------|
+| `2026-04-18` | Reviewed AI_APP documentation for consistency, aligned paths/test commands, and validated deployment host mapping (AI_APP `10.255.32.107`, Streaming `10.255.32.56`, UI `10.255.32.108`, V_APP `10.255.32.70`). |
 
 ---
 
@@ -649,6 +657,6 @@ pytest src/shared/tests/base_agent_unit_test.py
 - [`bounding_box_drawer.md`](bounding_box_drawer.md)
 - [`kafka_wrapper.md`](kafka_wrapper.md)
 - [`consensus_algorithm.md`](consensus_algorithm.md)
-- [`agentA.py`](../../src/AI_APP/agentA/src/agentA.py) — Concrete subclass for truck detection
-- [`agentB.py`](../../src/AI_APP/agentB/src/agentB.py) — Concrete subclass for license plate detection
-- [`agentC.py`](../../src/AI_APP/agentC/src/agentC.py) — Concrete subclass for hazard plate detection
+- [`agentA.py`](../../../src/AI_APP/agentA/src/agentA.py) — Concrete subclass for truck detection
+- [`agentB.py`](../../../src/AI_APP/agentB/src/agentB.py) — Concrete subclass for license plate detection
+- [`agentC.py`](../../../src/AI_APP/agentC/src/agentC.py) — Concrete subclass for hazard plate detection

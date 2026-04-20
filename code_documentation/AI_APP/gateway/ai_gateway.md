@@ -1,6 +1,6 @@
 # `ai_gateway.py`
 
-> Bridges the AI application's Kafka broker with external gateways by consuming detection events and forwarding operator decisions.
+> Bridges the AI application's Kafka broker with external gateways by consuming detection events and relaying reset commands to Agent A.
 
 ---
 
@@ -8,7 +8,7 @@
 
 `ai_gateway.py` defines `AIGateway`, a thin concrete implementation of `BaseGateway` that connects the AI subsystem to the rest of the Intelligent Logistics platform. It subscribes to the three Kafka topics produced within the AI application — `truck_detected`, `license_plate_results`, and `hazard_plate_results` — for every configured gate. Consumed messages are passed through `process_message` (currently a no-op log-and-forward) and then HTTP-POSTed to one or more receiver gateways (typically `VGateway` in the V_APP).
 
-In the inbound direction, `AIGateway` also exposes a FastAPI endpoint (`/receive_message`) where external gateways can POST operator `decision_results` messages. These are written onto the local Kafka `agent_decision_<gate_id>` topic. The routing map built by `get_topics_produce` ensures unambiguous topic resolution even in multi-gate deployments by keying on the `X-Source-Topic` HTTP header; a `message_type`-based fallback is also provided, but only registered when exactly one gate is configured.
+In the inbound direction, `AIGateway` also exposes a FastAPI endpoint (`/receive_message`) where external gateways can POST `reset_agent_a` messages. These are written onto the local Kafka `reset-agentA-<gate_id>` topic. The routing map built by `get_topics_produce` ensures unambiguous topic resolution even in multi-gate deployments by keying on the `X-Source-Topic` HTTP header; a `message_type`-based fallback is also provided, but only registered when exactly one gate is configured.
 
 `AIGateway` contains no business logic of its own; it delegates all transport, threading, and HTTP concerns to `BaseGateway`.
 
@@ -16,7 +16,7 @@ In the inbound direction, `AIGateway` also exposes a FastAPI endpoint (`/receive
 
 ## Location
 ```
-src/AI_APP/gateway/ai_gateway.py
+src/AI_APP/gateway/src/ai_gateway.py
 ```
 
 ## Dependencies
@@ -34,7 +34,7 @@ src/AI_APP/gateway/ai_gateway.py
 | `uvicorn` | — | ASGI runner for the FastAPI app (via `BaseGateway`) |
 | `httpx` | — | HTTP client for forwarding messages to receiver gateways (via `BaseGateway`) |
 | `prometheus_fastapi_instrumentator` | — | Exposes Prometheus metrics at `/metrics` (via `BaseGateway`) |
-| `kafka-python` | — | Kafka consumer/producer via `KafkaWrapper` (via `BaseGateway`) |
+| `confluent_kafka` | — | Kafka consumer/producer via `KafkaWrapper` (via `BaseGateway`) |
 | `pydantic-settings` | — | `BaseGatewayConfig` environment loading (via `BaseGateway`) |
 
 ---
@@ -57,7 +57,7 @@ AI_APP Kafka broker
                                AIGateway FastAPI
                                       │
                                       ▼ produce to local Kafka
-                              agent_decision_<gate_id>
+                              reset-agentA-<gate_id>
 ```
 
 ---
@@ -66,7 +66,7 @@ AI_APP Kafka broker
 
 ### `AIGateway`
 
-> Concrete `BaseGateway` that wires AI-side Kafka topics to external receiver gateways and routes inbound operator decisions back onto the local broker.
+> Concrete `BaseGateway` that wires AI-side Kafka topics to external receiver gateways and routes inbound reset commands back onto the local broker.
 
 **Inherits from:** `BaseGateway`
 
@@ -109,8 +109,8 @@ Fully delegated to `BaseGateway.__init__`. `AIGateway` defines no additional con
 ```python
 # config.gate_ids = ["1", "2"]
 topics = gateway.get_topics_consume()
-# → ["truck_detected_1", "license_plate_results_1", "hazard_plate_results_1",
-#    "truck_detected_2", "license_plate_results_2", "hazard_plate_results_2"]
+# → ["truck-detected-1", "lp-results-1", "hz-results-1",
+#    "truck-detected-2", "lp-results-2", "hz-results-2"]
 ```
 
 ---
@@ -141,8 +141,8 @@ topics = gateway.get_topics_consume()
 
 **Returns:** `dict[str, str]` — Keys are source identifiers; values are destination Kafka topics on the local broker.
 
-- For every `gate_id`, adds `KafkaTopicFactory.agent_decision(gate_id) → KafkaTopicFactory.agent_decision(gate_id)` (keyed on the `X-Source-Topic` header value).
-- If exactly one gate is configured, also adds `"decision_results" → KafkaTopicFactory.agent_decision(gate_ids[0])` as a `message_type`-based fallback.
+- For every `gate_id`, adds `KafkaTopicFactory.reset_agent_a(gate_id) → KafkaTopicFactory.reset_agent_a(gate_id)` (keyed on the `X-Source-Topic` header value).
+- If exactly one gate is configured, also adds `"reset_agent_a" → KafkaTopicFactory.reset_agent_a(gate_ids[0])` as a `message_type`-based fallback.
 
 **Raises:**
 
@@ -152,10 +152,10 @@ topics = gateway.get_topics_consume()
 ```python
 # config.gate_ids = ["1"]
 topics = gateway.get_topics_produce()
-# → {"agent_decision_1": "agent_decision_1", "decision_results": "agent_decision_1"}
+# → {"reset-agentA-1": "reset-agentA-1", "reset_agent_a": "reset-agentA-1"}
 ```
 
-> ⚠️ **Note:** The `"decision_results"` fallback entry is only added when there is a single gate. In multi-gate deployments, callers must set the `X-Source-Topic` HTTP header to enable correct routing.
+> ⚠️ **Note:** The `"reset_agent_a"` fallback entry is only added when there is a single gate. In multi-gate deployments, callers must set the `X-Source-Topic` HTTP header to enable correct routing.
 
 ---
 
@@ -216,6 +216,12 @@ assert out is msg  # passthrough
 | `GATEWAY_HOST` | ❌ | `0.0.0.0` | Bind address for the FastAPI server |
 | `RECEIVERS` | ❌ | `[""]` | Comma-separated list of receiver gateway addresses (`ip:port`) |
 
+Deployment reference (April 2026):
+- `GPU_AI_APP` host: `10.255.32.107` (AI Gateway and local Kafka)
+- `V_APP` host: `10.255.32.70` (typical receiver gateway host)
+- `Streaming Middleware` host: `10.255.32.56`
+- `UI` host: `10.255.32.108`
+
 ---
 
 ## Usage Example
@@ -251,12 +257,14 @@ All transport-level error handling is implemented in `BaseGateway`. HTTP forward
 
 ## Changelog
 
-> N/A
+| Version / Date | Change |
+|----------------|--------|
+| `2026-04-18` | Reviewed AI_APP documentation for consistency, aligned paths/test commands, and validated deployment host mapping (AI_APP `10.255.32.107`, Streaming `10.255.32.56`, UI `10.255.32.108`, V_APP `10.255.32.70`). |
 
 ---
 
 ## Related Docs
 
 - [`base_gateway.md`](../../shared/base_gateway.md)
-- [`kafka_wrapper.md`](../../../shared/kafka_wrapper.md)
+- [`kafka_wrapper.md`](../../shared/kafka_wrapper.md)
 - [Architecture Overview](../../../docs/sketch_arquitetura/arquitetura_intelligent_logistics.md)

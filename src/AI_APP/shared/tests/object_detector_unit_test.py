@@ -22,6 +22,25 @@ from unittest.mock import patch, MagicMock
 class TestObjectDetector:
     """Tests for the ObjectDetector class."""
 
+    def test_initialization_raises_file_not_found(self):
+        """Initialization should fail when model path does not exist."""
+        # Arrange & Act & Assert
+        with patch("AI_APP.shared.src.object_detector.os.path.isfile", return_value=False):
+            from AI_APP.shared.src.object_detector import ObjectDetector
+
+            with pytest.raises(FileNotFoundError, match="Model file not found"):
+                ObjectDetector("/missing/model.pt")
+
+    def test_initialization_wraps_yolo_load_error(self):
+        """Initialization should raise RuntimeError when YOLO fails to load."""
+        # Arrange & Act & Assert
+        with patch("AI_APP.shared.src.object_detector.YOLO", side_effect=Exception("load failed")), \
+             patch("AI_APP.shared.src.object_detector.os.path.isfile", return_value=True):
+            from AI_APP.shared.src.object_detector import ObjectDetector
+
+            with pytest.raises(RuntimeError, match="Failed to load YOLO model"):
+                ObjectDetector("/path/to/model.pt")
+
     def test_initialization_loads_model(self):
         """Initialization loads YOLO model with given path."""
         # Arrange & Act
@@ -105,6 +124,21 @@ class TestObjectDetector:
 
             # Assert
             assert result == mock_results
+
+    def test_detect_raises_value_error_for_none_image(self):
+        """detect should reject None image input."""
+        # Arrange
+        with patch("AI_APP.shared.src.object_detector.YOLO") as MockYOLO, \
+             patch("AI_APP.shared.src.object_detector.os.path.isfile", return_value=True):
+            mock_model = MagicMock()
+            MockYOLO.return_value = mock_model
+
+            from AI_APP.shared.src.object_detector import ObjectDetector
+            detector = ObjectDetector("/path/to/model.pt")
+
+            # Act & Assert
+            with pytest.raises(ValueError, match="Cannot run detection on None image"):
+                detector.detect(None)
 
     def test_detect_with_class_filter(self):
         """detect uses class filter when class_id >= 0."""

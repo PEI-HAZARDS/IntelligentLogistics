@@ -386,12 +386,44 @@ class TestCheckFullConsensus:
         algorithm.length_counter = {6: 5, 7: 1}
         algorithm.counter = {i: {'A': 10} for i in range(7)}
         algorithm.decided_chars = {i: 'A' for i in range(6)}
+        algorithm.decided_chars[6] = 'Z'  # out-of-range decided position should be ignored
+
+        # Assert inferred expected length before checking consensus
+        assert algorithm._get_expected_positions() == 6
 
         # Act
         result = algorithm.check_full_consensus()
 
         # Assert
         assert result is True
+        assert algorithm.consensus_reached is True
+
+    def test_returns_false_when_expected_positions_is_zero(self, algorithm):
+        """Consensus should fail when expected position inference returns 0."""
+        # Arrange
+        algorithm.counter = {0: {'A': 10}}
+
+        # Act
+        with patch.object(algorithm, "_get_expected_positions", return_value=0):
+            result = algorithm.check_full_consensus()
+
+        # Assert
+        assert result is False
+        assert algorithm.consensus_reached is False
+
+    def test_resets_stale_consensus_flag_when_current_state_has_no_consensus(self, algorithm):
+        """A previously True consensus flag should be cleared when current check fails."""
+        # Arrange - stale state from an older cycle without calling reset().
+        algorithm.consensus_reached = True
+        algorithm.counter = {i: {'A': 10} for i in range(6)}
+        algorithm.decided_chars = {0: 'A', 1: 'B'}  # not enough for full consensus
+
+        # Act
+        result = algorithm.check_full_consensus()
+
+        # Assert
+        assert result is False
+        assert algorithm.consensus_reached is False
 
 
 # =============================================================================
@@ -432,13 +464,15 @@ class TestBuildFinalText:
         assert result == "XYZ"
 
     def test_uses_expected_length_when_available(self, algorithm):
-        """Build final text uses most common expected length and ignores outlier positions."""
+        """Build final text uses inferred expected length and ignores out-of-range positions."""
         # Arrange
         algorithm.length_counter = {6: 5, 7: 1}
-        algorithm.counter = {i: {'A': 10} for i in range(7)}
         algorithm.decided_chars = {
             0: 'A', 1: 'B', 2: 'C', 3: '1', 4: '2', 5: '3', 6: 'Z'
         }
+
+        # Expected length is driven by length_counter (6), not by extra decided positions.
+        assert algorithm._get_expected_positions() == 6
 
         # Act
         result = algorithm.build_final_text()
@@ -460,6 +494,59 @@ class TestBuildFinalText:
 
         # Assert
         assert result == ""
+
+
+# =============================================================================
+# Tests for compute_consensus_confidence
+# =============================================================================
+
+class TestComputeConsensusConfidence:
+    """Tests for consensus confidence computation."""
+
+    def test_returns_zero_without_required_state(self, algorithm):
+        """Returns 0.0 when there are no decided chars or no counter."""
+        # Arrange
+        algorithm.decided_chars = {}
+        algorithm.counter = {}
+
+        # Act
+        confidence = algorithm.compute_consensus_confidence()
+
+        # Assert
+        assert confidence == 0.0
+
+    def test_uses_zero_avg_when_no_accepted_confidences(self, algorithm):
+        """Agreement exists, but confidence is 0.0 when accepted_confidences is empty."""
+        # Arrange
+        algorithm.counter = {
+            0: {'A': 8, 'B': 2},
+            1: {'B': 7, 'C': 3},
+        }
+        algorithm.decided_chars = {0: 'A', 1: 'B'}
+        algorithm.accepted_confidences = []
+
+        # Act
+        confidence = algorithm.compute_consensus_confidence()
+
+        # Assert
+        assert confidence == 0.0
+
+    def test_computes_agreement_times_avg_ocr_confidence(self, algorithm):
+        """Confidence should be agreement score multiplied by average OCR confidence."""
+        # Arrange
+        algorithm.counter = {
+            0: {'A': 8, 'B': 2},  # dominance = 0.8
+            1: {'B': 6, 'C': 4},  # dominance = 0.6
+        }
+        algorithm.decided_chars = {0: 'A', 1: 'B'}
+        algorithm.accepted_confidences = [0.9, 0.8]  # avg = 0.85
+
+        # expected = mean([0.8, 0.6]) * 0.85 = 0.7 * 0.85 = 0.595
+        # Act
+        confidence = algorithm.compute_consensus_confidence()
+
+        # Assert
+        assert confidence == pytest.approx(0.595, rel=1e-6)
 
 
 # =============================================================================
@@ -493,6 +580,25 @@ class TestSelectBestCrop:
 
         # Assert
         assert np.array_equal(result, crop2)
+
+    def test_no_final_text_updates_best_crop_and_confidence(self, algorithm):
+        """Selecting without final text should still keep internal best state synchronized."""
+        # Arrange
+        crop1 = np.zeros((50, 100, 3), dtype=np.uint8)
+        crop2 = np.ones((50, 100, 3), dtype=np.uint8)
+
+        algorithm.candidate_crops = [
+            {"crop": crop1, "text": "ABC", "confidence": 0.7},
+            {"crop": crop2, "text": "DEF", "confidence": 0.9},
+        ]
+
+        # Act
+        result = algorithm.select_best_crop("")
+
+        # Assert
+        assert np.array_equal(result, crop2)
+        assert np.array_equal(algorithm.best_crop, crop2)
+        assert algorithm.best_confidence == pytest.approx(0.9, rel=1e-6)
 
     @patch("AI_APP.shared.src.consensus_algorithm.levenshtein_distance")
     def test_selects_crop_with_highest_similarity(self, mock_distance, algorithm, sample_crop):
@@ -565,10 +671,34 @@ class TestGetBestPartialResult:
         # Act
         text, conf, crop = algorithm.get_best_partial_result("license plate")
 
-        # Assert - text is "N/A", conf is best_confidence (0.0 since select_best_crop
-        # with empty final_text doesn't set best_confidence)
+        # Assert
         assert text == "N/A"
-        assert conf == 0.0  # best_confidence not updated when no final_text
+        assert conf == pytest.approx(0.85, rel=1e-6)
+        assert crop is not None
+        assert np.array_equal(algorithm.best_crop, crop)
+        assert algorithm.best_confidence == pytest.approx(conf, rel=1e-6)
+
+    @patch("AI_APP.shared.src.consensus_algorithm.levenshtein_distance")
+    def test_falls_back_to_counter_range_when_expected_positions_is_zero(self, mock_distance, algorithm, sample_crop):
+        """Partial result should fallback to max(counter.keys()) + 1 when expected length is unavailable."""
+        # Arrange
+        algorithm.counter = {
+            0: {'A': 5},
+            1: {'B': 3},
+        }
+        algorithm.decided_chars = {0: 'A'}
+        algorithm.candidate_crops = [
+            {"crop": sample_crop, "text": "AB", "confidence": 0.9},
+        ]
+        mock_distance.return_value = 0
+
+        # Act
+        with patch.object(algorithm, "_get_expected_positions", return_value=0):
+            text, conf, crop = algorithm.get_best_partial_result("license plate")
+
+        # Assert
+        assert text == "AB"
+        assert conf == pytest.approx(0.5, rel=1e-6)  # 1 decided out of 2 positions
         assert crop is not None
 
     @patch("AI_APP.shared.src.consensus_algorithm.levenshtein_distance")
@@ -614,6 +744,28 @@ class TestGetBestPartialResult:
         # Assert: only positions 0..5 count -> 4/6, not 6/6.
         assert conf == pytest.approx(4 / 6, rel=1e-6)
 
+    @patch("AI_APP.shared.src.consensus_algorithm.levenshtein_distance")
+    def test_partial_confidence_blends_completeness_with_quality(self, mock_distance, algorithm, sample_crop):
+        """When accepted OCR confidence exists, partial confidence blends completeness and quality."""
+        # Arrange
+        algorithm.counter = {
+            0: {'A': 9, 'B': 1},  # dominance 0.9
+            1: {'C': 8, 'D': 2},  # dominance 0.8
+        }
+        algorithm.decided_chars = {0: 'A'}  # completeness = 1/2 = 0.5
+        algorithm.accepted_confidences = [0.9, 0.8]  # avg = 0.85
+        algorithm.candidate_crops = [
+            {"crop": sample_crop, "text": "AC", "confidence": 0.9},
+        ]
+        mock_distance.return_value = 0
+
+        # Act
+        _, conf, _ = algorithm.get_best_partial_result("license plate")
+
+        # quality = mean(0.9, 0.8) * 0.85 = 0.7225
+        # blended = (0.5 + 0.7225) / 2 = 0.61125
+        assert conf == pytest.approx(0.61125, rel=1e-6)
+
     def test_uses_underscore_for_missing_positions(self, algorithm, sample_crop):
         """Uses underscore for positions with no votes."""
         # Arrange
@@ -631,6 +783,63 @@ class TestGetBestPartialResult:
 
         # Assert
         assert '_' in text
+
+
+# =============================================================================
+# Tests for real-world noisy scenarios
+# =============================================================================
+
+class TestRealWorldConsensusScenarios:
+    """Scenario tests with many noisy readings to simulate production behavior."""
+
+    def test_full_consensus_with_many_readings_and_noise(self, algorithm):
+        """Full consensus should still converge with many readings and realistic OCR noise."""
+        # Arrange: a mix of clean reads, one-char OCR mistakes, low-confidence and short noise.
+        readings = [
+            ("ABC123", 0.96), ("ABC123", 0.96), ("ABC123", 0.96),
+            ("ABC123", 0.96), ("ABC123", 0.96), ("ABC123", 0.96),
+            ("ABC12B", 0.90), ("ABG123", 0.90), ("A8C123", 0.90), ("ABCI23", 0.90),
+            ("ABC123", 0.40), ("ABC123", 0.55),  # ignored by confidence threshold
+            ("AB1", 0.99), ("A2", 0.99),  # ignored by min text length
+        ]
+
+        # Act
+        for text, conf in readings:
+            algorithm.add_to_consensus(text, conf)
+
+        consensus_reached = algorithm.check_full_consensus()
+        final_text = algorithm.build_final_text()
+        confidence = algorithm.compute_consensus_confidence()
+
+        # Assert
+        assert consensus_reached is True
+        assert final_text == "ABC123"
+        assert confidence > 0.8
+
+    def test_partial_result_with_many_readings_and_last_char_noise(self, algorithm, sample_crop):
+        """Partial path should return best-effort text/confidence when one position never reaches threshold."""
+        # Arrange: first 5 positions are stable; last position flips between two options.
+        for _ in range(7):
+            algorithm.add_to_consensus("ABC123", 0.90)
+        for _ in range(6):
+            algorithm.add_to_consensus("ABC128", 0.90)
+
+        algorithm.add_candidate_crop(sample_crop, "ABC123", 0.88, is_fallback=False)
+
+        # Act
+        consensus_reached = algorithm.check_full_consensus()
+        text, conf, crop = algorithm.get_best_partial_result("license plate")
+
+        # Assert: no full consensus (last position is undecided), but partial should be coherent.
+        assert consensus_reached is False
+        assert text == "ABC123"
+        assert crop is not None
+
+        expected_completeness = 5 / 6
+        expected_agreement = (1 + 1 + 1 + 1 + 1 + (7 / 13)) / 6
+        expected_quality = expected_agreement * 0.90
+        expected_confidence = min((expected_completeness + expected_quality) / 2, 0.95)
+        assert conf == pytest.approx(expected_confidence, rel=1e-6)
 
 
 # =============================================================================
@@ -718,4 +927,111 @@ class TestInternalMethods:
 
         # Assert
         assert result is False
+
+    def test_get_most_common_length_returns_zero_when_empty(self, algorithm):
+        """_get_most_common_length returns 0 when no lengths were observed."""
+        # Act
+        result = algorithm._get_most_common_length()
+
+        # Assert
+        assert result == 0
+
+    def test_average_ocr_confidence_returns_zero_when_empty(self, algorithm):
+        """_average_ocr_confidence returns 0.0 when there are no accepted confidences."""
+        # Act
+        result = algorithm._average_ocr_confidence()
+
+        # Assert
+        assert result == 0.0
+
+    def test_average_ocr_confidence_returns_mean(self, algorithm):
+        """_average_ocr_confidence returns arithmetic mean of accepted confidences."""
+        # Arrange
+        algorithm.accepted_confidences = [0.8, 0.9, 1.0]
+
+        # Act
+        result = algorithm._average_ocr_confidence()
+
+        # Assert
+        assert result == pytest.approx(0.9, rel=1e-6)
+
+    def test_compute_agreement_score_uses_decided_chars(self, algorithm):
+        """_compute_agreement_score should use decided character vote when requested."""
+        # Arrange
+        algorithm.counter = {
+            0: {'A': 8, 'B': 2},
+            1: {'C': 7, 'D': 3},
+        }
+        algorithm.decided_chars = {0: 'A', 1: 'C'}
+
+        # Act
+        result = algorithm._compute_agreement_score(positions=[0, 1], use_decided_chars=True)
+
+        # Assert: (0.8 + 0.7) / 2 = 0.75
+        assert result == pytest.approx(0.75, rel=1e-6)
+
+    def test_compute_agreement_score_returns_zero_without_valid_positions(self, algorithm):
+        """_compute_agreement_score returns 0.0 when positions have no valid vote data."""
+        # Arrange
+        algorithm.counter = {0: {}}
+
+        # Act
+        result = algorithm._compute_agreement_score(positions=[0, 1], use_decided_chars=False)
+
+        # Assert
+        assert result == 0.0
+
+    def test_compute_partial_confidence_uses_completeness_without_ocr_quality(self, algorithm):
+        """_compute_partial_confidence falls back to completeness when OCR quality is unavailable."""
+        # Arrange
+        algorithm.counter = {
+            0: {'A': 3},
+            1: {'B': 2},
+            2: {'C': 1},
+        }
+        algorithm.accepted_confidences = []
+
+        # Act
+        result = algorithm._compute_partial_confidence(total_positions=3, decided_count=1)
+
+        # Assert
+        assert result == pytest.approx(1 / 3, rel=1e-6)
+
+    def test_compute_partial_confidence_blends_completeness_and_quality(self, algorithm):
+        """_compute_partial_confidence blends completeness with quality score when available."""
+        # Arrange
+        algorithm.counter = {
+            0: {'A': 9, 'B': 1},  # dominance 0.9
+            1: {'C': 8, 'D': 2},  # dominance 0.8
+        }
+        algorithm.accepted_confidences = [0.9, 0.8]  # avg 0.85
+
+        # Act
+        result = algorithm._compute_partial_confidence(total_positions=2, decided_count=1)
+
+        # Assert: completeness=0.5, quality=(0.85*0.85)=0.7225, blended=0.61125
+        assert result == pytest.approx(0.61125, rel=1e-6)
+
+    def test_compute_partial_confidence_is_capped_at_ninety_five_percent(self, algorithm):
+        """_compute_partial_confidence should cap values to 0.95."""
+        # Arrange
+        algorithm.counter = {
+            0: {'A': 5},
+            1: {'B': 5},
+        }
+        algorithm.accepted_confidences = [1.0]
+
+        # Act
+        result = algorithm._compute_partial_confidence(total_positions=2, decided_count=2)
+
+        # Assert
+        assert result == pytest.approx(0.95, rel=1e-6)
+
+    def test_compute_partial_confidence_returns_zero_for_invalid_total_positions(self, algorithm):
+        """_compute_partial_confidence returns 0.0 when total_positions is not positive."""
+        # Act
+        result = algorithm._compute_partial_confidence(total_positions=0, decided_count=0)
+
+        # Assert
+        assert result == 0.0
 
