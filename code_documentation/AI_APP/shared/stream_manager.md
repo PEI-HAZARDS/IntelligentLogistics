@@ -121,7 +121,7 @@ StreamManager(url: str, max_retries: int = 10, retry_delay: int = 5)
 
 **Example**
 ```python
-from shared.src.stream_manager import StreamManager
+from AI_APP.shared.src.stream_manager import StreamManager
 
 manager = StreamManager("rtsp://10.255.32.56:8554/streams_low/gate1")
 

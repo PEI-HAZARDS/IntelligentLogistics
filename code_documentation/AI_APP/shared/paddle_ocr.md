@@ -337,6 +337,6 @@ pytest src/AI_APP/shared/tests/paddle_ocr_unit_test.py
 
 ## Related Docs
 
-- [`base_agent.md`](.././base_agent.md)
+- [`base_agent.md`](./base_agent.md)
 - [`object_detector.md`](./object_detector.md)
 - [`bounding_box_drawer.md`](./bounding_box_drawer.md)
