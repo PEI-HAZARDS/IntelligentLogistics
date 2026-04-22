@@ -1,218 +1,469 @@
 """
-Unit tests for APIGateway and APIGatewayConfig.
+Unit tests for the V_APP API Gateway.
+
+The gateway owns authentication enforcement, route-to-Data-Module proxy
+translation, Kafka publication for manual reviews, WebSocket fan-out, and
+Kafka-consumer event routing. External systems stay mocked at those borders.
 """
 
+from pathlib import Path
 import sys
-import json
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import httpx
 import pytest
+from fastapi import HTTPException, status
+from fastapi.testclient import TestClient
 
-# ─── Mock heavy external dependencies before importing ──────────
+ROOT = Path(__file__).resolve().parents[4]
+API_GATEWAY_SRC = ROOT / "src" / "V_APP" / "api_gateway" / "src"
+SRC = ROOT / "src"
+for path in (str(API_GATEWAY_SRC), str(SRC)):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
-# Prometheus
-prometheus_mock = MagicMock()
-sys.modules.setdefault("prometheus_client", prometheus_mock)
-sys.modules.setdefault("prometheus_fastapi_instrumentator", MagicMock())
-
-# OpenTelemetry
-for otel_mod in [
-    "opentelemetry",
-    "opentelemetry.trace",
-    "opentelemetry.sdk",
-    "opentelemetry.sdk.trace",
-    "opentelemetry.sdk.trace.export",
-    "opentelemetry.exporter",
-    "opentelemetry.exporter.otlp",
-    "opentelemetry.exporter.otlp.proto",
-    "opentelemetry.exporter.otlp.proto.grpc",
-    "opentelemetry.exporter.otlp.proto.grpc.trace_exporter",
-    "opentelemetry.instrumentation",
-    "opentelemetry.instrumentation.fastapi",
-    "opentelemetry.sdk.resources",
-]:
-    sys.modules.setdefault(otel_mod, MagicMock())
-
-# Mock router modules (they import DB/service dependencies)
-for router_mod in [
-    "routers",
-    "routers.arrivals",
-    "routers.manual_review",
-    "routers.alerts",
-    "routers.drivers",
-    "routers.stream",
-    "routers.realtime",
-    "routers.workers",
-    "routers.statistics",
-]:
-    m = MagicMock()
-    m.router = MagicMock()
-    sys.modules.setdefault(router_mod, m)
-
-# Mock web_socket_manager
-ws_mock_mod = MagicMock()
-sys.modules.setdefault("web_socket_manager", ws_mock_mod)
-
-from V_APP.api_gateway.src.api_gateway import APIGateway, APIGatewayConfig
+from api_gateway import APIGateway, APIGatewayConfig
+from auth.token_validator import TokenPayload
+from clients import internal_api_client
 from shared.src.kafka_protocol import KafkaTopicFactory
 
 
-# ═══════════════════════════════════════════════════════════════════
-# APIGatewayConfig
-# ═══════════════════════════════════════════════════════════════════
+@pytest.fixture
+def config() -> APIGatewayConfig:
+    return APIGatewayConfig(
+        kafka_bootstrap="localhost:9092",
+        gate_ids='["1","2","7"]',
+        decision_gate_ids='["1","2"]',
+        infraction_gate_ids='["7"]',
+        data_module_url="http://data-module.test",
+        stream_base_url="http://media.test:8888/",
+        stream_webrtc_base_url="http://media.test:8889/",
+        env="test",
+    )
+
+
+@pytest.fixture
+def kafka_producer() -> MagicMock:
+    return MagicMock()
+
+
+@pytest.fixture
+def kafka_consumer() -> MagicMock:
+    return MagicMock()
+
+
+@pytest.fixture
+def ws_manager() -> MagicMock:
+    manager = MagicMock()
+    manager.broadcast = AsyncMock()
+    manager.broadcast_to_driver = AsyncMock()
+    return manager
+
+
+@pytest.fixture
+def gateway(config, kafka_producer, kafka_consumer, ws_manager) -> APIGateway:
+    return APIGateway(
+        config=config,
+        kafka_producer=kafka_producer,
+        kafka_consumer=kafka_consumer,
+        ws_manager=ws_manager,
+    )
+
+
+@pytest.fixture
+def client(gateway) -> TestClient:
+    def decode_token(token: str) -> TokenPayload:
+        users = {
+            "operator-token": TokenPayload(sub="OP-1", roles=["operator"]),
+            "manager-token": TokenPayload(sub="MG-1", roles=["manager"]),
+            "driver-token": TokenPayload(sub="dl-123", roles=["driver"]),
+        }
+        if token not in users:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return users[token]
+
+    gateway.app.state.token_validator.decode = MagicMock(side_effect=decode_token)
+    return TestClient(gateway.app)
+
+
+def auth_headers(token: str = "operator-token") -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
 
 class TestAPIGatewayConfig:
     def test_defaults(self):
         cfg = APIGatewayConfig()
         assert cfg.gateway_port == 8000
         assert cfg.gate_id_list == ["1"]
+        assert cfg.decision_gate_id_list == ["1"]
+        assert cfg.infraction_gate_id_list == ["1"]
 
-    def test_custom_gates(self):
-        cfg = APIGatewayConfig(gate_ids='["2","3"]')
+    def test_accepts_numeric_gate_ids_as_strings(self):
+        cfg = APIGatewayConfig(gate_ids="[2, 3]")
         assert cfg.gate_id_list == ["2", "3"]
 
-    def test_decision_gate_ids(self):
-        cfg = APIGatewayConfig(decision_gate_ids='["4"]')
-        assert cfg.decision_gate_id_list == ["4"]
-
-    def test_infraction_gate_ids(self):
-        cfg = APIGatewayConfig(infraction_gate_ids='["5","6"]')
-        assert cfg.infraction_gate_id_list == ["5", "6"]
-
-    def test_invalid_json(self):
-        with pytest.raises(Exception):
-            APIGatewayConfig(gate_ids="invalid")
-
-    def test_empty_array(self):
-        with pytest.raises(Exception):
-            APIGatewayConfig(gate_ids="[]")
+    @pytest.mark.parametrize("value", ["invalid", "[]", "{}"])
+    def test_rejects_invalid_gate_id_config(self, value):
+        with pytest.raises(ValueError):
+            APIGatewayConfig(gate_ids=value)
 
 
-# ═══════════════════════════════════════════════════════════════════
-# APIGateway Init
-# ═══════════════════════════════════════════════════════════════════
+class TestGatewayAppAndAuth:
+    def test_health_is_public_and_reports_environment(self, client):
+        response = client.get("/health")
 
-class TestAPIGatewayInit:
-    @pytest.fixture
-    def config(self):
-        return APIGatewayConfig(
-            kafka_bootstrap="localhost:9092",
-            gate_ids='["1"]',
-            decision_gate_ids='["1"]',
-            infraction_gate_ids='["1"]',
+        assert response.status_code == 200, response.text
+        assert response.json() == {"status": "ok", "env": "test"}
+
+    def test_protected_route_requires_bearer_token(self, client):
+        with patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get:
+            response = client.get("/api/arrivals")
+
+        assert response.status_code == 401
+        assert response.json()["detail"] == "Not authenticated"
+        data_get.assert_not_awaited()
+
+    def test_manager_route_rejects_operator_role(self, client):
+        with patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get:
+            response = client.get("/api/drivers", headers=auth_headers("operator-token"))
+
+        assert response.status_code == 403
+        assert "manager" in response.json()["detail"]
+        data_get.assert_not_awaited()
+
+
+class TestProxyRoutes:
+    def test_arrivals_proxy_translates_query_aliases_and_filters(self, client):
+        expected = {"items": [{"id": 10}], "total": 1}
+        with patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get:
+            data_get.return_value = expected
+            response = client.get(
+                "/api/arrivals",
+                params={
+                    "matricula": "AA-11-BB",
+                    "page": 2,
+                    "limit": 10,
+                    "status": "scheduled",
+                    "scheduled_date": "2026-04-22",
+                    "gate_id": 1,
+                    "search": "ana",
+                    "highway_infraction": "true",
+                },
+                headers=auth_headers(),
+            )
+
+        assert response.status_code == 200, response.text
+        assert response.json() == expected
+        data_get.assert_awaited_once_with(
+            "/arrivals",
+            params={
+                "page": 2,
+                "limit": 10,
+                "license_plate": "AA-11-BB",
+                "status": "scheduled",
+                "scheduled_date": "2026-04-22",
+                "gate_id": 1,
+                "search": "ana",
+                "highway_infraction": True,
+            },
         )
 
-    @pytest.fixture
-    def gateway(self, config):
-        return APIGateway(
-            config=config,
-            kafka_producer=MagicMock(),
-            kafka_consumer=MagicMock(),
-            WSManager=MagicMock(),
-        )
+    def test_gateway_validation_rejects_out_of_range_proxy_query(self, client):
+        with patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get:
+            response = client.get(
+                "/api/arrivals",
+                params={"limit": 101},
+                headers=auth_headers(),
+            )
 
-    def test_running_false(self, gateway):
-        assert gateway.running is False
+        assert response.status_code == 422
+        data_get.assert_not_awaited()
 
-    def test_consume_topics_include_scale(self, gateway):
-        assert KafkaTopicFactory.scale_up() in gateway.consume_topics
-        assert KafkaTopicFactory.scale_down() in gateway.consume_topics
+    def test_static_alert_reference_route_is_not_captured_by_dynamic_alert_id(self, client):
+        with patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get:
+            data_get.return_value = [{"un": "1203", "name": "Gasoline"}]
+            response = client.get("/api/alerts/reference/adr-codes", headers=auth_headers())
 
-    def test_consume_topics_include_infraction_decision(self, gateway):
-        assert KafkaTopicFactory.infraction_decision("1") in gateway.consume_topics
+        assert response.status_code == 200
+        data_get.assert_awaited_once_with("/alerts/reference/adr-codes")
 
-    def test_consume_topics_include_agent_decision(self, gateway):
-        assert KafkaTopicFactory.agent_decision("1") in gateway.consume_topics
+    def test_data_module_error_is_returned_to_caller(self, client):
+        with patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get:
+            data_get.side_effect = HTTPException(status_code=404, detail="Arrival not found")
+            response = client.get("/api/arrivals/detail/999", headers=auth_headers())
 
-    def test_app_created(self, gateway):
-        assert gateway.app is not None
+        assert response.status_code == 404
+        assert response.json() == {"detail": "Arrival not found"}
 
-    def test_stop(self, gateway):
-        gateway.running = True
-        gateway._consumer_thread = MagicMock()
-        gateway._consumer_thread.is_alive.return_value = False
-        gateway.stop()
-        assert gateway.running is False
-        gateway.kafka_consumer.close.assert_called_once()
-        gateway.kafka_producer.flush.assert_called_once()
+    def test_stream_route_builds_gateway_owned_media_urls(self, client):
+        response = client.get("/api/stream/gate-1/high", headers=auth_headers())
 
-
-# ═══════════════════════════════════════════════════════════════════
-# _consumer_loop
-# ═══════════════════════════════════════════════════════════════════
-
-class TestConsumerLoop:
-    @pytest.fixture
-    def config(self):
-        return APIGatewayConfig(
-            kafka_bootstrap="localhost:9092",
-            gate_ids='["1"]',
-            decision_gate_ids='["1"]',
-            infraction_gate_ids='["1"]',
-        )
-
-    @pytest.fixture
-    def gateway(self, config):
-        gw = APIGateway(
-            config=config,
-            kafka_producer=MagicMock(),
-            kafka_consumer=MagicMock(),
-            WSManager=MagicMock(),
-        )
-        return gw
-
-    def test_none_message_continues(self, gateway):
-        call_count = 0
-        def consume_then_stop(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count > 1:
-                gateway.running = False
-            return None
-
-        gateway.kafka_consumer.consume_message.side_effect = consume_then_stop
-        gateway.kafka_consumer.clear_stale_messages = MagicMock()
-        gateway.running = True
-        gateway._consumer_loop()
-        assert call_count >= 1
-
-    def test_skipped_decision_filtered(self, gateway):
-        msg = MagicMock()
-        msg.topic.return_value = "agent-decision-1"
-
-        # Build data that will produce a SKIPPED decision
-        decision_data = {
-            "message_type": "decision_results",
-            "decision": "SKIPPED",
-            "license_plate": "AB12CD",
-            "license_crop_url": "u",
-            "un": "1",
-            "kemler": "2",
-            "hazard_crop_url": "u2",
-            "alerts": [],
-            "route": "A",
-            "decision_reason": "skip",
-            "decision_source": "agent",
+        assert response.status_code == 200, response.text
+        assert response.json() == {
+            "gate_id": "gate-1",
+            "quality": "high",
+            "hls_url": "http://media.test:8888/streams_high/gate-1/index.m3u8",
+            "webrtc_url": "http://media.test:8889/streams_high/gate-1/",
         }
 
-        call_count = 0
-        def consume_then_stop(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                return msg
-            gateway.running = False
-            return None
 
-        gateway.kafka_consumer.consume_message.side_effect = consume_then_stop
-        gateway.kafka_consumer.clear_stale_messages = MagicMock()
-        gateway.kafka_consumer.parse_message.return_value = ("agent-decision-1", decision_data, "t1")
+class TestAuthRoutes:
+    def test_worker_login_returns_tokens_and_profile(self, client, gateway):
+        gateway.app.state.keycloak_client.exchange_credentials = AsyncMock(
+            return_value={
+                "access_token": "access",
+                "refresh_token": "refresh",
+                "expires_in": 300,
+                "token_type": "Bearer",
+            }
+        )
+        with patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get:
+            data_get.return_value = {"email": "manager@example.com", "name": "Manager"}
+            response = client.post(
+                "/api/auth/workers/login",
+                json={"email": "manager@example.com", "password": "secret"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["user_info"] == {"email": "manager@example.com", "name": "Manager"}
+        gateway.app.state.keycloak_client.exchange_credentials.assert_awaited_once_with(
+            "manager@example.com",
+            "secret",
+        )
+        data_get.assert_awaited_once_with("/workers/by-email/manager@example.com")
+
+    def test_driver_login_falls_back_when_profile_lookup_fails(self, client, gateway):
+        gateway.app.state.keycloak_client.exchange_credentials = AsyncMock(
+            return_value={"access_token": "access", "refresh_token": "refresh"}
+        )
+        with patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get:
+            data_get.side_effect = HTTPException(status_code=404, detail="missing profile")
+            response = client.post(
+                "/api/auth/drivers/login",
+                json={"drivers_license": "dl-123", "password": "secret"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["user_info"] == {"drivers_license": "dl-123"}
+
+
+class TestManualReviewAndWebSockets:
+    def test_manual_review_publishes_to_gate_topic_and_broadcasts(self, client, kafka_producer, ws_manager):
+        response = client.post(
+            "/api/manual-review/",
+            params={
+                "gate_id": "2",
+                "license_plate": "AA-11-BB",
+                "license_crop_url": "license.jpg",
+                "un": "1203",
+                "kemler": "33",
+                "hazard_crop_url": "hazard.jpg",
+                "route": "A1",
+                "decision": "ACCEPTED",
+                "decision_reason": "documents match",
+                "alerts": ["adr_ok"],
+                "decision_source": "operator",
+                "truck_id": "truck-7",
+            },
+            headers=auth_headers(),
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json() == {
+            "status": "ACCEPTED",
+            "message": "Decision 'ACCEPTED' propagated",
+        }
+        kafka_producer.produce.assert_called_once()
+        _, kwargs = kafka_producer.produce.call_args
+        assert kwargs["topic"] == KafkaTopicFactory.operator_decision("2")
+        assert kwargs["headers"] == {"truckId": "truck-7"}
+        assert kwargs["data"]["license_plate"] == "AA-11-BB"
+        assert kwargs["data"]["decision"] == "ACCEPTED"
+        assert kwargs["data"]["alerts"] == ["adr_ok"]
+        ws_manager.broadcast.assert_awaited_once()
+        assert ws_manager.broadcast.await_args.args[0] == "2"
+        assert ws_manager.broadcast.await_args.args[1]["truck_id"] == "truck-7"
+        assert ws_manager.broadcast.await_args.args[1]["alerts"] == ["adr_ok"]
+
+    def test_manual_review_preserves_frontend_style_alerts_array(self, client, kafka_producer, ws_manager):
+        response = client.post(
+            "/api/manual-review/",
+            params={
+                "gate_id": "2",
+                "license_plate": "AA-11-BB",
+                "decision": "REJECTED",
+                "decision_reason": "operator rejected",
+                # Axios serializes query arrays as alerts[]=a&alerts[]=b by default.
+                "alerts[]": ["adr_mismatch", "expired_documents"],
+            },
+            headers=auth_headers(),
+        )
+
+        assert response.status_code == 200, response.text
+        kafka_producer.produce.assert_called_once()
+        _, kwargs = kafka_producer.produce.call_args
+        assert kwargs["topic"] == KafkaTopicFactory.operator_decision("2")
+        assert kwargs["data"]["alerts"] == ["adr_mismatch", "expired_documents"]
+        ws_manager.broadcast.assert_awaited_once()
+        assert ws_manager.broadcast.await_args.args[1]["alerts"] == ["adr_mismatch", "expired_documents"]
+
+    def test_manual_review_validation_failure_does_not_publish(self, client, kafka_producer, ws_manager):
+        response = client.post(
+            "/api/manual-review/",
+            params={"gate_id": "2", "license_plate": "AA-11-BB"},
+            headers=auth_headers(),
+        )
+
+        assert response.status_code == 422
+        kafka_producer.produce.assert_not_called()
+        ws_manager.broadcast.assert_not_awaited()
+
+    def test_status_update_broadcast_failures_do_not_break_proxy_response(self, client, ws_manager):
+        ws_manager.broadcast.side_effect = RuntimeError("ws down")
+        result = {"id": 55, "gate_in_id": 1, "driver_license": "DL-123", "status": "completed"}
+
+        with patch("clients.internal_api_client.patch", new_callable=AsyncMock) as data_patch:
+            data_patch.return_value = result
+            response = client.patch(
+                "/api/arrivals/55/status",
+                json={"status": "completed", "notes": "left gate"},
+                headers=auth_headers(),
+            )
+
+        assert response.status_code == 200
+        assert response.json() == result
+        data_patch.assert_awaited_once_with(
+            "/arrivals/55/status",
+            json={"status": "completed", "notes": "left gate"},
+        )
+        ws_manager.broadcast.assert_awaited_once()
+        ws_manager.broadcast_to_driver.assert_awaited_once_with(
+            "DL-123",
+            {"message_type": "status_changed", "appointment_id": 55, "new_status": "completed"},
+        )
+
+
+class TestInternalDataModuleClient:
+    @pytest.mark.anyio
+    async def test_request_error_becomes_bad_gateway(self):
+        with patch("clients.internal_api_client.httpx.AsyncClient") as async_client:
+            async_client.return_value.__aenter__.return_value.request = AsyncMock(
+                side_effect=httpx.ConnectError("connection refused")
+            )
+
+            with pytest.raises(HTTPException) as exc_info:
+                await internal_api_client.get("/arrivals")
+
+        assert exc_info.value.status_code == 502
+        assert "Data Module" in exc_info.value.detail
+
+    @pytest.mark.anyio
+    async def test_non_json_success_response_returns_text(self):
+        response = MagicMock(status_code=200)
+        response.json.side_effect = ValueError("not json")
+        response.text = "plain ok"
+
+        with patch("clients.internal_api_client.httpx.AsyncClient") as async_client:
+            async_client.return_value.__aenter__.return_value.request = AsyncMock(return_value=response)
+            result = await internal_api_client.get("health")
+
+        assert result == "plain ok"
+        async_client.return_value.__aenter__.return_value.request.assert_awaited_once_with(
+            method="GET",
+            url="http://data-module:8000/api/v1/health",
+            params=None,
+            json=None,
+            headers=None,
+        )
+
+
+class TestConsumerEventRouting:
+    def test_initializes_consumer_topics_for_scale_decision_and_infraction(self, gateway):
+        assert KafkaTopicFactory.scale_up() in gateway.consume_topics
+        assert KafkaTopicFactory.scale_down() in gateway.consume_topics
+        assert KafkaTopicFactory.agent_decision("1") in gateway.consume_topics
+        assert KafkaTopicFactory.agent_decision("2") in gateway.consume_topics
+        assert KafkaTopicFactory.infraction_decision("7") in gateway.consume_topics
+
+    def test_resolves_gate_from_payload_before_topic_suffix(self, gateway):
+        assert gateway._resolve_target_gate({"gate_id": "payload-gate"}, "agent-decision-topic-gate") == "payload-gate"
+
+    def test_resolves_gate_from_topic_suffix_when_payload_has_no_gate(self, gateway):
+        assert gateway._resolve_target_gate({}, "agent-decision-12") == "12"
+
+    def test_infraction_fanout_targets_source_gate_other_operator_gates_and_driver(self, gateway):
+        gateway._broadcast_async = MagicMock()
+        gateway._notify_driver_of_infraction = MagicMock()
+
+        gateway._handle_infraction(
+            {"message_type": "infraction_decision", "license_plate": "AA-11-BB", "infraction": True},
+            "1",
+        )
+
+        assert gateway._broadcast_async.call_args_list[0].args == (
+            {"message_type": "infraction_decision", "license_plate": "AA-11-BB", "infraction": True},
+            "1",
+        )
+        assert gateway._broadcast_async.call_args_list[1].args == (
+            {"message_type": "status_changed", "reason": "infraction_decision"},
+            "2",
+        )
+        gateway._notify_driver_of_infraction.assert_called_once_with("AA-11-BB", "1")
+
+    def test_accepted_decision_broadcasts_gate_and_notifies_driver(self, gateway):
+        gateway._broadcast_async = MagicMock()
+        gateway._notify_driver_of_acceptance = MagicMock()
+        payload = {
+            "message_type": "decision_results",
+            "decision": "ACCEPTED",
+            "license_plate": "AA-11-BB",
+        }
+
+        gateway._handle_decision(payload, "2")
+
+        gateway._broadcast_async.assert_called_once_with(payload, "2")
+        gateway._notify_driver_of_acceptance.assert_called_once_with("AA-11-BB")
+
+    def test_consumer_loop_skips_invalid_and_skipped_messages(self, gateway, kafka_consumer):
+        invalid_message = object()
+        skipped_message = object()
+        calls = iter([invalid_message, skipped_message, None])
+
+        def consume_once_then_stop(timeout):
+            message = next(calls)
+            if message is None:
+                gateway.running = False
+            return message
+
+        kafka_consumer.consume_message.side_effect = consume_once_then_stop
+        kafka_consumer.parse_message.side_effect = [
+            ("agent-decision-1", {"message_type": "unknown"}, None),
+            (
+                "agent-decision-1",
+                {
+                    "message_type": "decision_results",
+                    "license_plate": "AA-11-BB",
+                    "license_crop_url": "license.jpg",
+                    "un": "1203",
+                    "kemler": "33",
+                    "hazard_crop_url": "hazard.jpg",
+                    "alerts": [],
+                    "route": "A1",
+                    "decision": "SKIPPED",
+                    "decision_reason": "not enough confidence",
+                    "decision_source": "agent",
+                },
+                "truck-1",
+            ),
+        ]
+        gateway._handle_decision = MagicMock()
         gateway.running = True
 
-        # Mock deserialize to return a message that to_dict gives SKIPPED
-        mock_typed_msg = MagicMock()
-        mock_typed_msg.to_dict.return_value = decision_data
-        with patch("V_APP.api_gateway.src.api_gateway.deserialize_message", return_value=mock_typed_msg):
-            gateway._consumer_loop()
+        gateway._consumer_loop()
 
-        # broadcast should NOT have been called for SKIPPED
-        gateway.ws_manager.broadcast_to_gate.assert_not_called()
+        kafka_consumer.clear_stale_messages.assert_called_once()
+        gateway._handle_decision.assert_not_called()
