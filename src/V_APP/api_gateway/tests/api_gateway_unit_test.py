@@ -311,6 +311,17 @@ class TestManualReviewAndWebSockets:
         ws_manager.broadcast.assert_awaited_once()
         assert ws_manager.broadcast.await_args.args[1]["alerts"] == ["adr_mismatch", "expired_documents"]
 
+    def test_manual_review_openapi_keeps_alerts_as_query_params_only(self, gateway):
+        operation = gateway.app.openapi()["paths"]["/api/manual-review/"]["post"]
+        parameter_names = {
+            (parameter["in"], parameter["name"])
+            for parameter in operation["parameters"]
+        }
+
+        assert ("query", "alerts") in parameter_names
+        assert ("query", "alerts[]") in parameter_names
+        assert "requestBody" not in operation
+
     def test_manual_review_validation_failure_does_not_publish(self, client, kafka_producer, ws_manager):
         response = client.post(
             "/api/manual-review/",

@@ -22,7 +22,6 @@ class ManualReviewParams(BaseModel):
     route: str = ""
     decision: str
     decision_reason: str
-    alerts: Optional[List[str]] = None
     decision_source: str = "operator"
     truck_id: Optional[str] = None
 
@@ -51,7 +50,7 @@ async def produce_manual_review(
         un=params.un,
         kemler=params.kemler,
         hazard_crop_url=params.hazard_crop_url,
-        alerts=request_alerts or params.alerts or [],
+        alerts=request_alerts or [],
         route=params.route,
         decision=params.decision,
         decision_reason=params.decision_reason,
