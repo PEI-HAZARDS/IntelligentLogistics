@@ -81,6 +81,10 @@ class WebSocketManager:
                 logger.error(f"Failed to send to driver '{key}': {e}")
                 self.disconnect_driver(key, ws)
 
+    async def broadcast_to_gate(self, gate_id: str, message: dict) -> None:
+        """Sends a JSON message to one gate."""
+        await self.broadcast(gate_id, message)
+
     async def broadcast(self, gate_ids: str | list[str], message: dict) -> None:
         """
         Sends a JSON message to one or multiple gates.
