@@ -1,8 +1,11 @@
 from datetime import date, time, datetime
 from decimal import Decimal
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel
+from typing import Annotated, Optional, List, Dict, Any
+from pydantic import BaseModel, PlainSerializer
 from enum import Enum
+
+# Decimal serialised as float in JSON (Pydantic V2 replacement for json_encoders)
+DecimalAsFloat = Annotated[Decimal, PlainSerializer(float, return_type=float, when_used="json")]
 
 
 # ==========================
@@ -56,9 +59,9 @@ class DirectionEnum(str, Enum):
 
 
 class ShiftTypeEnum(str, Enum):
-    MORNING = "06:00-14:00"
-    AFTERNOON = "14:00-22:00"
-    NIGHT = "22:00-06:00"
+    MORNING = "MORNING"
+    AFTERNOON = "AFTERNOON"
+    NIGHT = "NIGHT"
 
 
 # ==========================
@@ -67,11 +70,9 @@ class ShiftTypeEnum(str, Enum):
 
 class TerminalBase(BaseModel):
     name: Optional[str] = None
-    latitude: Optional[Decimal] = None
-    longitude: Optional[Decimal] = None
+    latitude: Optional[DecimalAsFloat] = None
+    longitude: Optional[DecimalAsFloat] = None
     hazmat_approved: bool = False
-
-    model_config = {"json_encoders": {Decimal: float}}
 
 
 class TerminalCreate(TerminalBase):
@@ -81,7 +82,7 @@ class TerminalCreate(TerminalBase):
 class Terminal(TerminalBase):
     id: int
 
-    model_config = {"from_attributes": True, "json_encoders": {Decimal: float}}
+    model_config = {"from_attributes": True}
 
 
 # ==========================
@@ -91,11 +92,9 @@ class Terminal(TerminalBase):
 class DockBase(BaseModel):
     terminal_id: int
     bay_number: str
-    latitude: Optional[Decimal] = None
-    longitude: Optional[Decimal] = None
+    latitude: Optional[DecimalAsFloat] = None
+    longitude: Optional[DecimalAsFloat] = None
     current_usage: OperationalStatusEnum = OperationalStatusEnum.operational
-
-    model_config = {"json_encoders": {Decimal: float}}
 
 
 class DockCreate(DockBase):
@@ -105,7 +104,7 @@ class DockCreate(DockBase):
 class Dock(DockBase):
     terminal: Optional[Terminal] = None
 
-    model_config = {"from_attributes": True, "json_encoders": {Decimal: float}}
+    model_config = {"from_attributes": True}
 
 
 # ==========================
@@ -114,10 +113,8 @@ class Dock(DockBase):
 
 class GateBase(BaseModel):
     label: str
-    latitude: Optional[Decimal] = None
-    longitude: Optional[Decimal] = None
-
-    model_config = {"json_encoders": {Decimal: float}}
+    latitude: Optional[DecimalAsFloat] = None
+    longitude: Optional[DecimalAsFloat] = None
 
 
 class GateCreate(GateBase):
@@ -127,7 +124,7 @@ class GateCreate(GateBase):
 class Gate(GateBase):
     id: int
 
-    model_config = {"from_attributes": True, "json_encoders": {Decimal: float}}
+    model_config = {"from_attributes": True}
 
 
 # ==========================
@@ -294,12 +291,12 @@ class BookingCreate(BookingBase):
 class CargoInBooking(BaseModel):
     """Cargo model without booking back-reference (used inside Booking.cargos to avoid cyclic serialization)."""
     booking_reference: str
-    quantity: Decimal
+    quantity: DecimalAsFloat
     state: PhysicalStateEnum
     description: Optional[str] = None
     id: int
 
-    model_config = {"from_attributes": True, "json_encoders": {Decimal: float}}
+    model_config = {"from_attributes": True}
 
 
 class Booking(BookingBase):
@@ -316,11 +313,9 @@ class Booking(BookingBase):
 
 class CargoBase(BaseModel):
     booking_reference: str
-    quantity: Decimal
+    quantity: DecimalAsFloat
     state: PhysicalStateEnum
     description: Optional[str] = None
-
-    model_config = {"json_encoders": {Decimal: float}}
 
 
 class CargoCreate(CargoBase):
@@ -331,7 +326,7 @@ class Cargo(CargoBase):
     id: int
     booking: Optional[Booking] = None
 
-    model_config = {"from_attributes": True, "json_encoders": {Decimal: float}}
+    model_config = {"from_attributes": True}
 
 
 # ==========================

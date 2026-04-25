@@ -10,8 +10,6 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import func as sa_func
 
-from infrastructure.persistence.redis import get_all_active_counters
-
 logger = logging.getLogger(__name__)
 
 

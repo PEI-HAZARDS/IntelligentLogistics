@@ -64,10 +64,20 @@ def get_driver_by_license(drivers_license: str) -> Optional[Dict[str, Any]]:
 
 
 def get_driver_active_appointment(drivers_license: str) -> Optional[Dict[str, Any]]:
+    from infrastructure.persistence.redis import (
+        get_cached_driver_active_appointment,
+        cache_driver_active_appointment,
+    )
     from infrastructure.persistence.postgres import SessionLocal
     from infrastructure.persistence.sql_models import Appointment as AppointmentORM
     from application.schemas import Appointment as AppointmentSchema
 
+    # 1. Redis hot cache (BR-29 three-tier read)
+    cached = get_cached_driver_active_appointment(drivers_license)
+    if cached is not None:
+        return cached
+
+    # 2. PostgreSQL source of truth
     db = SessionLocal()
     try:
         row = (
@@ -81,7 +91,9 @@ def get_driver_active_appointment(drivers_license: str) -> Optional[Dict[str, An
         )
         if row is None:
             return None
-        return AppointmentSchema.model_validate(row).model_dump(mode="json")
+        result = AppointmentSchema.model_validate(row).model_dump(mode="json")
+        cache_driver_active_appointment(drivers_license, result)
+        return result
     finally:
         db.close()
 

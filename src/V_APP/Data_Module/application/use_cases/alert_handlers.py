@@ -8,9 +8,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
-from uuid import uuid4
-
-from domain.events import EventEnvelope
+from domain.events import EventEnvelope, new_event_id
 from domain.interfaces import IUnitOfWork
 
 logger = logging.getLogger(__name__)
@@ -58,8 +56,8 @@ def _append_outbox(uow: IUnitOfWork, alert_dict: dict[str, Any], event_type: str
         payload["timestamp"] = ts.isoformat()
 
     envelope = EventEnvelope(
-        event_id=str(uuid4()),
-        correlation_id=str(uuid4()),
+        event_id=new_event_id(),
+        correlation_id=new_event_id(),
         causation_id=None,
         aggregate_type="alert",
         aggregate_id=str(alert_dict["id"]),
@@ -120,6 +118,9 @@ def create_hazmat_alert(
     alert_type = "safety"
 
     with uow_factory() as uow:
+        if uow.appointment_state.get_for_update(appointment_id) is None:
+            return None
+
         visit_id = uow.alerts.get_appointment_visit_id(appointment_id)
         alert = uow.alerts.add(
             visit_id=visit_id,

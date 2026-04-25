@@ -55,18 +55,52 @@ def get_alerts(
 
 
 def get_alert_by_id(alert_id: int) -> Optional[Dict[str, Any]]:
+    from infrastructure.persistence.redis import redis_client, alert_detail_key, TTL_ALERT_DETAIL
+    import json as _json
+
+    # 1. Redis hot cache (BR-38)
+    try:
+        raw = redis_client.get(alert_detail_key(alert_id))
+        if raw:
+            return _json.loads(raw)
+    except Exception:
+        pass
+
+    # 2. PostgreSQL source of truth
     from infrastructure.persistence.postgres import SessionLocal
     from infrastructure.persistence.sql_models import Alert
 
     db = SessionLocal()
     try:
         row = db.query(Alert).filter(Alert.id == alert_id).first()
-        return _alert_to_dict(row) if row else None
+        if row is None:
+            return None
+        result = _alert_to_dict(row)
+        try:
+            redis_client.setex(alert_detail_key(alert_id), TTL_ALERT_DETAIL, _json.dumps(result))
+        except Exception:
+            pass
+        return result
     finally:
         db.close()
 
 
 def get_active_alerts(limit: int = 50) -> List[Dict[str, Any]]:
+    from infrastructure.persistence.redis import (
+        redis_client, active_alerts_list_key, TTL_ACTIVE_ALERTS_LIST,
+    )
+    import json as _json
+
+    # 1. Redis short-TTL cache (BR-38) — only for the default batch size
+    if limit == 50:
+        try:
+            raw = redis_client.get(active_alerts_list_key())
+            if raw:
+                return _json.loads(raw)
+        except Exception:
+            pass
+
+    # 2. PostgreSQL source of truth
     from infrastructure.persistence.postgres import SessionLocal
     from infrastructure.persistence.sql_models import Alert
 
@@ -80,7 +114,13 @@ def get_active_alerts(limit: int = 50) -> List[Dict[str, Any]]:
             .limit(limit)
             .all()
         )
-        return [_alert_to_dict(r) for r in rows]
+        result = [_alert_to_dict(r) for r in rows]
+        if limit == 50:
+            try:
+                redis_client.setex(active_alerts_list_key(), TTL_ACTIVE_ALERTS_LIST, _json.dumps(result))
+            except Exception:
+                pass
+        return result
     finally:
         db.close()
 

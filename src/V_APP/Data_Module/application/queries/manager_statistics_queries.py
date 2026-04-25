@@ -2,12 +2,15 @@
 Manager statistics queries for the Logistics Manager frontend.
 
 Provides the 4 endpoints consumed by statistics.ts:
-  /statistics/summary        → DashboardSummary
-  /statistics/by-company     → TransportStats[]
-  /statistics/volume          → VolumeDataPoint[]
-  /statistics/alerts          → AlertsBreakdown[]
+  /statistics/summary        → DashboardSummary      (PostgreSQL — real-time state)
+  /statistics/by-company     → TransportStats[]       (MongoDB company_metrics, PG fallback)
+  /statistics/volume          → VolumeDataPoint[]     (MongoDB statistics_hourly/daily, PG fallback)
+  /statistics/alerts          → AlertsBreakdown[]     (PostgreSQL — small, real-time)
 
-All queries hit PostgreSQL (source of truth).
+Complex aggregations (volume time-series, per-company metrics) are served from
+pre-computed MongoDB collections written by the statistics_aggregator script.
+When the aggregator has not run yet (e.g. fresh deploy) both endpoints fall
+back transparently to live PostgreSQL queries.
 """
 
 from __future__ import annotations
@@ -261,11 +264,39 @@ def get_transport_stats(
     Returns per-company transport statistics:
         [{ companyName, companyNif, avgUnloadingTime, avgWaitingTime,
            operationsCount, slaAttendedRate }]
+
+    Reads from MongoDB company_metrics_collection (pre-computed by the
+    statistics aggregator).  Falls back to a live PostgreSQL query when
+    the collection is empty.
     """
+    # ── 1) MongoDB pre-computed snapshot ────────────────────────────────────
+    try:
+        from infrastructure.persistence.mongo import company_metrics_collection
+        raw_docs = list(company_metrics_collection.find({}, {"_id": 0}).sort("computed_at", -1))
+        if raw_docs:
+            seen: set = set()
+            result = []
+            for doc in raw_docs:
+                nif = doc.get("company_nif")
+                if nif and nif not in seen:
+                    seen.add(nif)
+                    result.append({
+                        "companyName": doc.get("company_name", ""),
+                        "companyNif": nif,
+                        "avgUnloadingTime": doc.get("avg_unloading_time", 0),
+                        "avgWaitingTime": doc.get("avg_waiting_time", 0),
+                        "operationsCount": doc.get("operations_count", 0),
+                        "slaAttendedRate": doc.get("sla_attended_rate", 0.0),
+                    })
+            if result:
+                return result
+    except Exception as e:
+        logger.warning("company_metrics_collection unavailable: %s — falling back to PG", e)
+
+    # ── 2) PostgreSQL fallback ───────────────────────────────────────────────
     start, end = _date_range(from_date, to_date)
     db: Session = SessionLocal()
     try:
-        # Subquery: appointments with their visits in the date range
         rows = (
             db.query(
                 Company.name.label("company_name"),
@@ -321,6 +352,72 @@ def get_transport_stats(
         db.close()
 
 
+def compute_company_metrics_snapshot(db_session: Session, period_days: int = 30) -> int:
+    """
+    Aggregate per-company transport metrics from PostgreSQL and upsert to
+    company_metrics_collection in MongoDB.  Called by the statistics aggregator.
+    Returns the number of company documents written.
+    """
+    from infrastructure.persistence.mongo import company_metrics_collection
+    end = datetime.now(timezone.utc)
+    start = end - timedelta(days=period_days)
+    try:
+        rows = (
+            db_session.query(
+                Company.name.label("company_name"),
+                Company.nif.label("company_nif"),
+                func.count(Appointment.id).label("ops_count"),
+                func.avg(
+                    extract("epoch", Visit.out_time - Visit.entry_time) / 60
+                ).label("avg_unloading"),
+                func.avg(
+                    extract(
+                        "epoch",
+                        Visit.entry_time - Appointment.scheduled_start_time,
+                    )
+                    / 60
+                ).label("avg_waiting"),
+                func.sum(
+                    case((Appointment.status == "completed", 1), else_=0)
+                ).label("completed_count"),
+            )
+            .join(Truck, Appointment.truck_license_plate == Truck.license_plate)
+            .join(Company, Truck.company_nif == Company.nif)
+            .outerjoin(Visit, Visit.appointment_id == Appointment.id)
+            .filter(Appointment.scheduled_start_time.between(start, end))
+            .group_by(Company.nif, Company.name)
+            .all()
+        )
+        computed_at = datetime.now(timezone.utc)
+        count = 0
+        for r in rows:
+            ops = r.ops_count or 0
+            completed = r.completed_count or 0
+            sla_rate = round(completed / ops * 100, 1) if ops > 0 else 0.0
+            doc = {
+                "company_nif": r.company_nif,
+                "company_name": r.company_name,
+                "operations_count": ops,
+                "avg_unloading_time": round(float(r.avg_unloading), 0) if r.avg_unloading else 0,
+                "avg_waiting_time": round(float(r.avg_waiting), 0) if r.avg_waiting else 0,
+                "sla_attended_rate": sla_rate,
+                "computed_at": computed_at,
+                "period_days": period_days,
+                "period_from": start,
+                "period_to": end,
+            }
+            company_metrics_collection.update_one(
+                {"company_nif": r.company_nif},
+                {"$set": doc},
+                upsert=True,
+            )
+            count += 1
+        return count
+    except Exception as e:
+        logger.error("compute_company_metrics_snapshot failed: %s", e)
+        return 0
+
+
 # ---------------------------------------------------------------------------
 # 3. GET /statistics/volume
 # ---------------------------------------------------------------------------
@@ -333,8 +430,20 @@ def get_volume_data(
     """
     Returns time-series volume data:
         [{ timestamp, entries, exits }]
+
+    Reads from MongoDB statistics_hourly (interval='hour') or
+    statistics_daily (interval='day'|'week') pre-computed by the aggregator.
+    Falls back to a live PostgreSQL query when the collections are empty.
     """
     start, end = _date_range(from_date, to_date)
+
+    # ── 1) MongoDB pre-computed collections ─────────────────────────────────
+    from application.queries.statistics_queries import read_volume_from_mongo
+    mongo_result = read_volume_from_mongo(start, end, interval)
+    if mongo_result is not None:
+        return mongo_result
+
+    # ── 2) PostgreSQL fallback ───────────────────────────────────────────────
     db: Session = SessionLocal()
     try:
         if interval == "day":
@@ -347,52 +456,28 @@ def get_volume_data(
             trunc_fn = func.date_trunc("hour", Visit.entry_time)
             trunc_fn_out = func.date_trunc("hour", Visit.out_time)
 
-        # Entries per bucket
         entries_q = (
-            db.query(
-                trunc_fn.label("bucket"),
-                func.count().label("entries"),
-            )
+            db.query(trunc_fn.label("bucket"), func.count().label("entries"))
             .filter(Visit.entry_time.between(start, end))
             .group_by("bucket")
             .subquery()
         )
-
-        # Exits per bucket
         exits_q = (
-            db.query(
-                trunc_fn_out.label("bucket"),
-                func.count().label("exits"),
-            )
+            db.query(trunc_fn_out.label("bucket"), func.count().label("exits"))
             .filter(Visit.out_time.between(start, end))
             .group_by("bucket")
             .subquery()
         )
-
-        # Full outer join via union of buckets
-        from sqlalchemy import literal_column, union_all, select
-
-        all_buckets = union_all(
-            select(entries_q.c.bucket), select(exits_q.c.bucket)
-        ).subquery()
-
-        distinct_buckets = (
-            db.query(func.distinct(all_buckets.c.bucket).label("bucket"))
-            .subquery()
-        )
-
         rows = (
             db.query(
-                distinct_buckets.c.bucket,
+                func.coalesce(entries_q.c.bucket, exits_q.c.bucket).label("bucket"),
                 func.coalesce(entries_q.c.entries, 0).label("entries"),
                 func.coalesce(exits_q.c.exits, 0).label("exits"),
             )
-            .outerjoin(entries_q, entries_q.c.bucket == distinct_buckets.c.bucket)
-            .outerjoin(exits_q, exits_q.c.bucket == distinct_buckets.c.bucket)
-            .order_by(distinct_buckets.c.bucket)
+            .outerjoin(exits_q, exits_q.c.bucket == entries_q.c.bucket, full=True)
+            .order_by(func.coalesce(entries_q.c.bucket, exits_q.c.bucket))
             .all()
         )
-
         return [
             {
                 "timestamp": r.bucket.isoformat() if r.bucket else None,

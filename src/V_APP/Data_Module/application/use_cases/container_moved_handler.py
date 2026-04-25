@@ -16,9 +16,7 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timezone
 from typing import Any
-from uuid import uuid4
-
-from domain.events import ConsumeContext, EventEnvelope
+from domain.events import ConsumeContext, EventEnvelope, new_event_id
 from domain.interfaces import IUnitOfWork
 
 logger = logging.getLogger(__name__)
@@ -91,7 +89,7 @@ class ContainerMovedHandler:
 
             # Persist derived domain event in Outbox (Guardrail 3)
             derived_event = EventEnvelope(
-                event_id=str(uuid4()),
+                event_id=new_event_id(),
                 correlation_id=event.correlation_id,
                 causation_id=event.event_id,
                 aggregate_type=event.aggregate_type,
@@ -115,6 +113,12 @@ class ContainerMovedHandler:
                 key=event.partition_key,
             )
 
+            # Notifications for accepted trucks — durable outbox events (Guardrail 3)
+            if new_state == "in_process" and aggregate["status"] != "in_process":
+                self._append_accept_notification_events(
+                    uow, appointment_id, event.payload, aggregate
+                )
+
             # Mark inbox PROCESSED (Guardrail 4)
             uow.inbox.mark_processed(event.event_id)
 
@@ -135,17 +139,6 @@ class ContainerMovedHandler:
             _invalidate_stats_cache(aggregate.get("gate_in_id"))
         except Exception:
             pass
-
-        # ── Post-commit: create notifications (best-effort, outside UoW) ──
-        try:
-            self._create_accept_notifications(
-                appointment_id, event.payload, aggregate, new_state
-            )
-        except Exception as e:
-            logger.error(
-                "Failed to create notifications for appointment=%s: %s",
-                appointment_id, e,
-            )
 
     # ------------------------------------------------------------------
     # Auto-create visit on accept
@@ -177,9 +170,9 @@ class ContainerMovedHandler:
             logger.warning("Invalid gate_id=%s for visit auto-creation", gate_id)
             return False
 
-        # Determine current shift type from time of day
-        now = datetime.now()
-        hour = now.hour
+        # Determine current shift type from UTC time of day
+        now_utc = datetime.now(timezone.utc)
+        hour = now_utc.hour
         if 6 <= hour < 14:
             shift_type = "MORNING"
         elif 14 <= hour < 22:
@@ -187,11 +180,14 @@ class ContainerMovedHandler:
         else:
             shift_type = "NIGHT"
 
+        # Store as naive UTC to match TIMESTAMP (without time zone) columns
+        now = now_utc.replace(tzinfo=None)
+
         visit = uow.visits.create(
             appointment_id=appointment_id,
             shift_gate_id=gate_id_int,
             shift_type=shift_type,
-            shift_date=date.today(),
+            shift_date=now_utc.date(),
             entry_time=now,
         )
         if visit:
@@ -203,22 +199,17 @@ class ContainerMovedHandler:
         return False
 
     # ------------------------------------------------------------------
-    # Post-commit notifications (best-effort MongoDB writes)
+    # In-transaction notification outbox events (Guardrail 3)
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _create_accept_notifications(
+    def _append_accept_notification_events(
+        uow: IUnitOfWork,
         appointment_id: int,
         payload: dict[str, Any],
         aggregate: dict[str, Any],
-        new_state: str,
     ) -> None:
-        """Create gate and driver notifications after successful accept."""
-        if new_state != "in_process":
-            return
-
-        from application.queries.notification_queries import create_notification
-
+        """Append NotificationCreated outbox events inside the UoW transaction."""
         license_plate = payload.get("license_plate", "Unknown")
         gate_id = (
             payload.get("gate_id")
@@ -227,35 +218,49 @@ class ContainerMovedHandler:
         )
         if not gate_id:
             return
-
         try:
             gate_id_int = int(gate_id)
         except (TypeError, ValueError):
             return
 
-        # Gate notification (operator sees truck accepted)
-        create_notification(
-            gate_id=gate_id_int,
-            title="Truck Accepted",
-            message=f"Truck {license_plate} has been accepted. Gate opening.",
-            notification_type="success",
-            appointment_id=appointment_id,
-            license_plate=license_plate,
-        )
-
-        # Driver notification (driver sees gate opening)
-        create_notification(
-            gate_id=gate_id_int,
-            title="Entry Approved",
-            message=(
-                "Your entry has been approved. Gate is opening. "
-                "Please proceed to the designated dock area."
-            ),
-            notification_type="success",
-            appointment_id=appointment_id,
-            license_plate=license_plate,
-            extra={"target": "driver"},
-        )
+        notifications = [
+            {
+                "title": "Truck Accepted",
+                "message": f"Truck {license_plate} has been accepted. Gate opening.",
+                "type": "success",
+                "target": "operator",
+            },
+            {
+                "title": "Entry Approved",
+                "message": (
+                    "Your entry has been approved. Gate is opening. "
+                    "Please proceed to the designated dock area."
+                ),
+                "type": "success",
+                "target": "driver",
+            },
+        ]
+        for notif in notifications:
+            notif_event = EventEnvelope(
+                event_id=new_event_id(),
+                correlation_id=str(appointment_id),
+                causation_id=None,
+                aggregate_type="notification",
+                aggregate_id=str(gate_id_int),
+                event_type="NotificationCreated",
+                event_version=1,
+                occurred_at=datetime.now(timezone.utc),
+                producer="data-module",
+                partition_key=str(gate_id_int),
+                payload={
+                    "gate_id": gate_id_int,
+                    "appointment_id": appointment_id,
+                    "license_plate": license_plate,
+                    "read": False,
+                    **notif,
+                },
+            )
+            uow.outbox.append(notif_event, topic="notifications", key=str(gate_id_int))
 
     # ------------------------------------------------------------------
     # Domain helpers (pure logic, no I/O)

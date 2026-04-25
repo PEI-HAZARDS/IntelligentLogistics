@@ -15,9 +15,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
-from uuid import uuid4
-
-from domain.events import EventEnvelope
+from domain.events import EventEnvelope, new_event_id
 from domain.interfaces import IUnitOfWork
 from infrastructure.persistence.redis import redis_client
 
@@ -46,8 +44,8 @@ def _outbox_event(
 ) -> EventEnvelope:
     """Build an outbox EventEnvelope for appointment commands."""
     return EventEnvelope(
-        event_id=str(uuid4()),
-        correlation_id=correlation_id or str(uuid4()),
+        event_id=new_event_id(),
+        correlation_id=correlation_id or new_event_id(),
         causation_id=None,
         aggregate_type="appointment",
         aggregate_id=str(aggregate_id),
