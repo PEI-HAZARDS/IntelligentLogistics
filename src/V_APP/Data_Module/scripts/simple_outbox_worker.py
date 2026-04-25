@@ -30,6 +30,7 @@ Guardrails enforced:
       after MAX_RETRIES with full error metadata.
 """
 
+import json
 import sys
 import os
 import signal
@@ -45,17 +46,37 @@ sys.path.insert(0, _data_module_dir)
 
 # ── Imports from Data Module ────────────────────────────────────
 from infrastructure.persistence.postgres import SessionLocal
-from infrastructure.persistence.mongo import decision_events_collection
+from infrastructure.persistence.mongo import (
+    decision_events_collection,
+    notifications_collection,
+    agent_detections_collection,
+)
 from infrastructure.persistence.redis import (
     redis_client,
     cache_appointment,
     invalidate_appointment_cache,
     increment_counter,
+    pending_review_key,
+    alert_detail_key,
+    active_alerts_list_key,
+    cache_driver_active_appointment,
+    invalidate_driver_active_appointment,
+    TTL_ALERT_DETAIL,
 )
 from infrastructure.persistence.inbox_outbox_models import OutboxEvent
 from infrastructure.persistence.sql_models import Appointment as AppointmentORM
 from application.schemas import Appointment as AppointmentSchema
+from config import settings
 from sqlalchemy import or_, and_
+
+# ── Best-effort DLQ producer ─────────────────────────────────────
+try:
+    from confluent_kafka import Producer as _KafkaProducer
+    _dlq_producer = _KafkaProducer({"bootstrap.servers": settings.kafka_bootstrap})
+    _DLQ_TOPIC = "data.dlq"
+except Exception:
+    _dlq_producer = None
+    _DLQ_TOPIC = "data.dlq"
 
 # ── Configuration ───────────────────────────────────────────────
 BATCH_SIZE = 50
@@ -111,11 +132,14 @@ def compute_next_retry_at(retry_count: int) -> datetime:
 
 def project_to_mongo(event_row: OutboxEvent) -> None:
     """
-    Insert (or upsert) the event into MongoDB decision_events for audit trail.
+    Project the event to the appropriate MongoDB collection.
 
-    Uses ``event_id`` as the idempotency key so re-processing the same
-    outbox row produces identical state (Guardrail 7).
+    - DetectionEventReceived → agent_detections_collection
+    - All other types → decision_events_collection (audit trail)
+
+    Uses ``event_id`` as the idempotency key (Guardrail 7).
     """
+    payload = event_row.payload or {}
     doc = {
         "event_id": event_row.event_id,
         "event_type": event_row.event_type,
@@ -124,16 +148,37 @@ def project_to_mongo(event_row: OutboxEvent) -> None:
         "aggregate_id": event_row.aggregate_id,
         "partition_key": event_row.partition_key,
         "topic": event_row.topic,
-        "payload": event_row.payload,
+        "payload": payload,
         "created_at": event_row.created_at or datetime.now(timezone.utc),
         "projected_at": datetime.now(timezone.utc),
     }
 
-    decision_events_collection.update_one(
-        {"event_id": event_row.event_id},
-        {"$set": doc},
-        upsert=True,
-    )
+    if event_row.event_type == "DetectionEventReceived":
+        detection_doc = {
+            "detection_id": event_row.event_id,
+            "event_id": event_row.event_id,
+            "agent_type": payload.get("agent", "Unknown"),
+            "gate_id": payload.get("gate_id"),
+            "timestamp": datetime.now(timezone.utc),
+            "detection_data": {
+                "license_plate": payload.get("license_plate"),
+                "confidence": payload.get("confidence"),
+                "type": payload.get("type"),
+                "raw_data": payload.get("raw_data"),
+            },
+            "projected_at": datetime.now(timezone.utc),
+        }
+        agent_detections_collection.update_one(
+            {"event_id": event_row.event_id},
+            {"$setOnInsert": detection_doc},
+            upsert=True,
+        )
+    else:
+        decision_events_collection.update_one(
+            {"event_id": event_row.event_id},
+            {"$set": doc},
+            upsert=True,
+        )
 
     logger.debug(
         "MongoDB projection OK: event_id=%s  type=%s",
@@ -170,7 +215,7 @@ def project_to_redis(event_row: OutboxEvent, session) -> None:
             # 1) Invalidate stale entry
             invalidate_appointment_cache(int(appointment_id))
 
-            # 2) Full appointment snapshot → Redis hot cache
+            # 2) Full appointment snapshot → Redis hot cache + driver active cache
             appt = (
                 session.query(AppointmentORM)
                 .filter(AppointmentORM.id == int(appointment_id))
@@ -181,6 +226,14 @@ def project_to_redis(event_row: OutboxEvent, session) -> None:
                     mode="json"
                 )
                 cache_appointment(int(appointment_id), snapshot)
+
+                # keep driver's active-appointment cache in sync
+                driver_license = getattr(appt, "driver_license", None)
+                if driver_license:
+                    if appt.status in {"in_process", "unloading"}:
+                        cache_driver_active_appointment(driver_license, snapshot)
+                    else:
+                        invalidate_driver_active_appointment(driver_license)
             else:
                 logger.warning(
                     "Appointment %s not found during projection",
@@ -193,17 +246,97 @@ def project_to_redis(event_row: OutboxEvent, session) -> None:
                 new_state = payload.get("new_state", "unknown")
                 increment_counter(int(gate_id), f"transitions:{new_state}")
 
-    # Alert events: just invalidate related appointment cache
+    # Alert events: invalidate appointment cache + project alert to Redis (BR-38)
     if event_type in {"AlertCreated", "HazmatAlertCreated"}:
         appointment_id = payload.get("appointment_id")
         if appointment_id is not None:
             invalidate_appointment_cache(int(appointment_id))
+
+        # Cache individual alert for fast single-alert reads
+        alert_id = payload.get("id")
+        if alert_id is not None:
+            try:
+                redis_client.setex(
+                    alert_detail_key(int(alert_id)),
+                    TTL_ALERT_DETAIL,
+                    json.dumps(payload, default=str),
+                )
+            except Exception as _ae:
+                logger.warning("Failed to cache alert %s: %s", alert_id, _ae)
+
+        # Invalidate the active-alerts list so next GET /alerts/active re-fetches
+        redis_client.delete(active_alerts_list_key())
+
+    # Pending review events
+    if event_type == "PendingReviewCreated":
+        pr_event_id = payload.get("event_id")
+        if pr_event_id:
+            ttl = int(payload.get("ttl", 1800))
+            redis_client.setex(
+                pending_review_key(pr_event_id),
+                ttl,
+                json.dumps(payload, default=str),
+            )
+            logger.debug("Cached pending review: event_id=%s TTL=%s", pr_event_id, ttl)
+
+    if event_type == "PendingReviewResolved":
+        pr_event_id = payload.get("event_id")
+        if pr_event_id:
+            redis_client.delete(pending_review_key(pr_event_id))
+            logger.debug("Evicted resolved pending review: event_id=%s", pr_event_id)
+
+    # Notification events (DW-01): project to MongoDB notifications collection
+    if event_type == "NotificationCreated":
+        doc = {k: v for k, v in payload.items()}
+        doc["event_id"] = event_row.event_id
+        doc.setdefault("read", False)
+        doc.setdefault("created_at", datetime.now(timezone.utc))
+        # Use event_id as idempotency key — re-projection produces same state (Guardrail 7)
+        notifications_collection.update_one(
+            {"event_id": event_row.event_id},
+            {"$setOnInsert": doc},
+            upsert=True,
+        )
+        logger.debug("Notification projected to Mongo: event_id=%s gate_id=%s", event_row.event_id, payload.get("gate_id"))
 
     logger.debug(
         "Redis projection OK: event_id=%s  type=%s",
         event_row.event_id,
         event_type,
     )
+
+
+# ═══════════════════════════════════════════════════════════════
+# DLQ forwarding
+# ═══════════════════════════════════════════════════════════════
+
+
+def _forward_to_dlq(row: OutboxEvent) -> None:
+    """Publish a DEAD_LETTER outbox row to the Kafka DLQ topic (best-effort)."""
+    if _dlq_producer is None:
+        logger.warning("DLQ producer unavailable; skipping Kafka publish for outbox_id=%s", row.id)
+        return
+    try:
+        msg = json.dumps({
+            "outbox_id": row.id,
+            "event_id": row.event_id,
+            "event_type": row.event_type,
+            "aggregate_type": row.aggregate_type,
+            "aggregate_id": row.aggregate_id,
+            "retry_count": row.retry_count,
+            "last_error": row.last_error,
+            "payload": row.payload,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }, default=str)
+        _dlq_producer.produce(
+            _DLQ_TOPIC,
+            key=str(row.event_id),
+            value=msg.encode(),
+        )
+        _dlq_producer.poll(0)
+        logger.info("Forwarded DEAD_LETTER outbox_id=%s to %s", row.id, _DLQ_TOPIC)
+    except Exception as exc:
+        logger.warning("Failed to forward DEAD_LETTER outbox_id=%s to DLQ: %s", row.id, exc)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -298,6 +431,7 @@ def process_batch(session) -> int:
                     row.retry_count,
                     exc,
                 )
+                _forward_to_dlq(row)
             else:
                 row.status = "FAILED"
                 row.next_retry_at = compute_next_retry_at(row.retry_count)
