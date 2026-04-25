@@ -48,9 +48,11 @@ class SqlAlchemyInboxRepository(IInboxRepository):
         )
         self._session.add(row)
         try:
-            self._session.flush()
+            # Use a SAVEPOINT so IntegrityError only rolls back this insert,
+            # leaving the outer transaction (and any prior flushes) intact.
+            with self._session.begin_nested():
+                self._session.flush()
         except IntegrityError:
-            self._session.rollback()
             return False
         return True
 

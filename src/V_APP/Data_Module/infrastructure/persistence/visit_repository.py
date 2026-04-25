@@ -7,9 +7,10 @@ Provides visit creation and state updates within UoW transactions.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from domain.interfaces import IVisitRepository
@@ -60,7 +61,7 @@ class SqlAlchemyVisitRepository(IVisitRepository):
             shift_gate_id=shift_gate_id,
             shift_type=shift_type,
             shift_date=shift_date,
-            entry_time=entry_time or datetime.now(),
+            entry_time=entry_time or datetime.now(timezone.utc).replace(tzinfo=None),
             state="unloading",
         )
         self._session.add(visit)
@@ -72,31 +73,24 @@ class SqlAlchemyVisitRepository(IVisitRepository):
     ) -> None:
         """Auto-create a Shift row if one does not exist for this gate/type/date.
 
-        This prevents FK violation when auto-creating visits during acceptance
-        of trucks at gates that have no operator-assigned shift yet.
-        The created shift has no assigned operator or manager (nullable cols).
+        Uses INSERT … ON CONFLICT DO NOTHING to close the race between two
+        concurrent workers both finding no shift and both trying to insert.
+        The composite PK (gate_id, shift_type, date) is the conflict target.
         """
-        existing = (
-            self._session.query(Shift)
-            .filter(
-                Shift.gate_id == gate_id,
-                Shift.shift_type == shift_type,
-                Shift.date == shift_date,
-            )
-            .one_or_none()
+        shift_type_val = shift_type.value if hasattr(shift_type, "value") else str(shift_type)
+        self._session.execute(
+            text(
+                "INSERT INTO shift (gate_id, shift_type, date) "
+                "VALUES (:gate_id, :shift_type, :shift_date) "
+                "ON CONFLICT (gate_id, shift_type, date) DO NOTHING"
+            ),
+            {"gate_id": gate_id, "shift_type": shift_type_val, "shift_date": shift_date},
         )
-        if existing is None:
-            new_shift = Shift(
-                gate_id=gate_id,
-                shift_type=shift_type,
-                date=shift_date,
-            )
-            self._session.add(new_shift)
-            self._session.flush()
-            logger.info(
-                "Auto-created missing Shift gate=%s type=%s date=%s",
-                gate_id, shift_type, shift_date,
-            )
+        self._session.flush()
+        logger.debug(
+            "Ensured Shift exists: gate=%s type=%s date=%s",
+            gate_id, shift_type, shift_date,
+        )
 
     def update_state(
         self,
@@ -115,7 +109,7 @@ class SqlAlchemyVisitRepository(IVisitRepository):
         if out_time:
             visit.out_time = out_time
         elif new_state == "completed":
-            visit.out_time = datetime.now()
+            visit.out_time = datetime.now(timezone.utc).replace(tzinfo=None)
         self._session.flush()
         return self._to_dict(visit)
 

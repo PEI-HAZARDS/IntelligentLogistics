@@ -37,6 +37,10 @@ TTL_LICENSE_PLATE_LOOKUP = 600     # 10 minutes - license plate → appointment 
 TTL_COUNTER_REALTIME = 7200        # 2 hours - real-time counters
 TTL_RATE_LIMIT = 60                # 1 minute - rate limiting window
 TTL_OPERATOR_SESSION = 3600        # 1 hour - operator session state
+TTL_DRIVER_ACTIVE = 300            # 5 minutes - driver's active appointment (BR-29)
+TTL_ALERT_DETAIL = 600             # 10 minutes - individual alert (BR-38)
+TTL_ACTIVE_ALERTS_LIST = 60        # 1 minute - active alerts list (BR-38)
+TTL_STATS_PIPELINE = 300           # 5 minutes - pipeline performance aggregation
 
 
 # ==================== KEY PATTERNS ==================== (NameSpaces for Redis keys)
@@ -79,6 +83,63 @@ def operator_session_key(operator_id: str) -> str:
     return f"operator:{operator_id}:session"
 
 
+def pending_review_key(event_id: str) -> str:
+    """Cache key for a pending operator review (keyed by event_id, not truck_id)."""
+    return f"pending_review:{event_id}"
+
+
+def driver_active_appointment_key(drivers_license: str) -> str:
+    """Hot-cache key for a driver's current active appointment (BR-29)."""
+    return f"driver:{drivers_license}:active_appointment"
+
+
+def alert_detail_key(alert_id: int) -> str:
+    """Hot-cache key for a single alert document (BR-38)."""
+    return f"alert:{alert_id}:detail"
+
+
+def active_alerts_list_key() -> str:
+    """Short-TTL cache key for the active-alerts list (BR-38)."""
+    return "alerts:active:list"
+
+
+def stats_pipeline_key(gate_id: int, hours_ago: int) -> str:
+    """Cache key for a decision-pipeline performance aggregation result."""
+    return f"stats:pipeline:gate:{gate_id}:h{hours_ago}"
+
+
+# ==================== DRIVER ACTIVE APPOINTMENT CACHE ====================
+
+def cache_driver_active_appointment(drivers_license: str, data: Dict[str, Any]) -> None:
+    """Cache the driver's active appointment snapshot (TTL: 5 min)."""
+    key = driver_active_appointment_key(drivers_license)
+    try:
+        redis_client.setex(key, TTL_DRIVER_ACTIVE, json.dumps(data))
+    except Exception as e:
+        logger.error("Failed to cache driver active appointment %s: %s", drivers_license, e)
+
+
+def get_cached_driver_active_appointment(drivers_license: str) -> Optional[Dict[str, Any]]:
+    """Return cached driver active appointment, or None on miss/error."""
+    key = driver_active_appointment_key(drivers_license)
+    try:
+        value = redis_client.get(key)
+        if value:
+            return json.loads(value)
+    except Exception as e:
+        logger.error("Failed to get cached driver active appointment %s: %s", drivers_license, e)
+    return None
+
+
+def invalidate_driver_active_appointment(drivers_license: str) -> None:
+    """Evict the driver active appointment cache entry."""
+    key = driver_active_appointment_key(drivers_license)
+    try:
+        redis_client.delete(key)
+    except Exception as e:
+        logger.error("Failed to invalidate driver active appointment cache %s: %s", drivers_license, e)
+
+
 # ==================== DEDUPLICATION ====================
 
 def is_duplicate_event(event_id: str) -> bool:
@@ -95,21 +156,6 @@ def is_duplicate_event(event_id: str) -> bool:
         logger.error(f"Event dedup check failed for {event_id}: {e}")
         return False  # Assume not duplicate on error
 
-
-def is_duplicate_and_mark(license_plate: str, gate_id: int, time_bucket: int) -> bool:
-    """
-    Legacy time-window dedup using SET NX.
-    Returns True if already existed (duplicate), False if marked (not duplicate).
-
-    .. deprecated:: Use ``is_duplicate_event`` with an explicit event_id instead.
-    """
-    key = dedup_key(license_plate, gate_id, time_bucket)
-    try:
-        set_ok = redis_client.set(key, "1", nx=True, ex=TTL_DEDUP)
-        return not set_ok  # True if already existed
-    except Exception as e:
-        logger.error(f"Deduplication check failed: {e}")
-        return False  # Assume not duplicate on error
 
 
 # ==================== DECISION CACHE ====================
@@ -374,7 +420,46 @@ def get_rate_limit_remaining(endpoint: str, client_id: str, limit: int = 60) -> 
         return limit
 
 
-# ==================== OPERATOR SESSION ====================
+# ==================== USER SESSIONS (driver / worker / operator) ====================
+
+def _session_key(role: str, identity: str) -> str:
+    """Generic session key pattern: session:{role}:{identity}."""
+    return f"session:{role}:{identity}"
+
+
+def set_session(role: str, identity: str, data: Dict[str, Any]) -> None:
+    """Store a user session in Redis (TTL = TTL_OPERATOR_SESSION)."""
+    key = _session_key(role, identity)
+    try:
+        redis_client.setex(key, TTL_OPERATOR_SESSION, json.dumps(data))
+        logger.debug("Set session for %s %s", role, identity)
+    except Exception as e:
+        logger.error("Failed to set session for %s %s: %s", role, identity, e)
+
+
+def get_session(role: str, identity: str) -> Optional[Dict[str, Any]]:
+    """Retrieve a user session from Redis; returns None if absent or expired."""
+    key = _session_key(role, identity)
+    try:
+        value = redis_client.get(key)
+        if value:
+            return json.loads(value)
+    except Exception as e:
+        logger.error("Failed to get session for %s %s: %s", role, identity, e)
+    return None
+
+
+def delete_session(role: str, identity: str) -> None:
+    """Remove a user session (logout / revocation)."""
+    key = _session_key(role, identity)
+    try:
+        redis_client.delete(key)
+        logger.debug("Deleted session for %s %s", role, identity)
+    except Exception as e:
+        logger.error("Failed to delete session for %s %s: %s", role, identity, e)
+
+
+# ==================== OPERATOR SESSION (legacy — kept for outbox-worker compat) ====================
 
 def set_operator_session(operator_id: str, session_data: Dict[str, Any]):
     """

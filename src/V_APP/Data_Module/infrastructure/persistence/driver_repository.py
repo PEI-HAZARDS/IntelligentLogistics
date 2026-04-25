@@ -11,6 +11,7 @@ from infrastructure.persistence.sql_models import (
     Appointment,
     Booking,
     Cargo,
+    Dock,
     Driver,
     Terminal,
 )
@@ -45,7 +46,7 @@ class SqlAlchemyDriverRepository(IDriverRepository):
             self._s.query(Appointment)
             .options(
                 joinedload(Appointment.booking).joinedload(Booking.cargos),
-                joinedload(Appointment.terminal),
+                joinedload(Appointment.terminal).joinedload(Terminal.docks),
                 joinedload(Appointment.gate_in),
                 joinedload(Appointment.truck),
             )
@@ -66,6 +67,16 @@ class SqlAlchemyDriverRepository(IDriverRepository):
                 f"&destination={appt.terminal.latitude},{appt.terminal.longitude}"
             )
 
+        # Resolve dock assignment from terminal's first operational dock
+        dock_bay_number: str | None = None
+        dock_location: str | None = None
+        if appt.terminal and appt.terminal.docks:
+            operational = [d for d in appt.terminal.docks if getattr(d, "estado", "Ativo") == "Ativo"]
+            dock = operational[0] if operational else appt.terminal.docks[0]
+            dock_bay_number = dock.bay_number
+            if dock.latitude is not None and dock.longitude is not None:
+                dock_location = f"{dock.latitude},{dock.longitude}"
+
         return {
             "id": appt.id,
             "arrival_id": appt.arrival_id,
@@ -74,6 +85,8 @@ class SqlAlchemyDriverRepository(IDriverRepository):
             "status": appt.status,
             "cargo_description": cargo_description,
             "navigation_url": nav_url,
+            "dock_bay_number": dock_bay_number,
+            "dock_location": dock_location,
         }
 
     def get_next_active_appointment_id(self, drivers_license: str) -> Optional[int]:
