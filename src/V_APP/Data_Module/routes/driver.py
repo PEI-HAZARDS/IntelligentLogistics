@@ -35,7 +35,7 @@ from application.queries.driver_queries import (
 )
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from infrastructure.persistence.postgres import SessionLocal
-from infrastructure.persistence.redis import set_session, delete_session
+from infrastructure.persistence.redis import set_session
 from config import settings
 from utils.auth_token import generate_internal_jwt, require_role
 
