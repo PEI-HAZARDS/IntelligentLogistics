@@ -19,12 +19,20 @@ import pytest
 # appointment_commands imports redis_client at module level; patch before import
 # so the test runs without a Redis connection (same pattern as
 # kafka_decision_consumer_unit_test.py).
+# Restore sys.modules after the import so integration tests in the same session
+# get the real redis module (not this MagicMock).
 _mock_redis = MagicMock()
 _mock_redis_module = MagicMock()
 _mock_redis_module.redis_client = _mock_redis
-sys.modules.setdefault("infrastructure.persistence.redis", _mock_redis_module)
-
-from application.use_cases.appointment_commands import cmd_process_decision
+_saved_redis = sys.modules.get("infrastructure.persistence.redis")
+sys.modules["infrastructure.persistence.redis"] = _mock_redis_module
+try:
+    from application.use_cases.appointment_commands import cmd_process_decision
+finally:
+    if _saved_redis is not None:
+        sys.modules["infrastructure.persistence.redis"] = _saved_redis
+    else:
+        sys.modules.pop("infrastructure.persistence.redis", None)
 
 
 # ---------------------------------------------------------------------------

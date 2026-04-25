@@ -1,13 +1,11 @@
 """
 Tests for MongoDB unique index coverage (BR-37, BR-38 partial).
 
-BR-37 — MongoDB decision_events.truck_id should be UNIQUE.
-
-Audit finding: truck_id is NOT unique in the current index definition.
-The unique constraint that exists is on decision_id (with a partial
-filter for string type), not truck_id.  This file documents:
-  - What IS correctly unique (decision_id, detection_id, gate+hour).
-  - What is MISSING (truck_id unique) — flagged as xfail gap.
+BR-37 (Hypothesis A) — decision_events.appointment_id must be UNIQUE
+(partial filter: integer type only, so documents without appointment_id
+are not constrained). This enforces the business rule "one final decision
+per appointment" without preventing multiple decisions across different
+appointments for the same truck over time.
 
 Structural tests run without MongoDB.
 Integration tests require running MongoDB (docker-compose up -d).
@@ -100,18 +98,19 @@ def test_statistics_hourly_gate_hour_declared_unique_in_source():
     )
 
 
-def test_truck_id_not_declared_unique_gap():
+def test_appointment_id_declared_unique_in_source():
     """
-    GAP — BR-37 requires decision_events.truck_id to be UNIQUE but the
-    current source only has a non-unique compound index (truck_id + created_at).
-    This test documents the missing constraint so it is tracked in the
-    test suite rather than silently absent.
+    BR-37 (Hypothesis A): mongo.py must declare a unique partial index on
+    decision_events.appointment_id — one final decision per appointment.
     """
     src = _MONGO_SRC.read_text()
-    block = _find_index_block(src, "idx_truck_created")
-    assert "unique=True" not in block, (
-        "Expected gap confirmed: truck_id index is NOT unique in decision_events. "
-        "BR-37 requires adding a unique index on truck_id — see KNOWN_DEVIATIONS.md"
+    block = _find_index_block(src, "idx_appointment")
+    assert "unique=True" in block, (
+        "decision_events.appointment_id index must have unique=True (BR-37 Hypothesis A)"
+    )
+    assert "partialFilterExpression" in block, (
+        "idx_appointment must use partialFilterExpression so NULL appointment_id "
+        "documents (detections without a matched appointment) are not constrained"
     )
 
 
@@ -143,34 +142,65 @@ def test_decision_id_unique_enforced(mongo_test_db):
 
 
 @pytest.mark.integration
-@pytest.mark.xfail(
-    reason=(
-        "BR-37 gap: truck_id is not unique in decision_events. "
-        "Two documents with the same truck_id can be inserted without error. "
-        "Fix: add unique=True to idx_truck_created or add a dedicated "
-        "unique index on truck_id in infrastructure/persistence/mongo.py."
-    ),
-    strict=True,
-)
-def test_truck_id_unique_enforced(mongo_test_db):
+def test_appointment_id_unique_enforced(mongo_test_db):
     """
-    BR-37 — decision_events.truck_id should be UNIQUE.
-    Currently fails (no unique constraint) — marked xfail to document the gap.
-    When the index is added, remove the xfail marker.
+    BR-37 (Hypothesis A): two decision_events with the same appointment_id
+    (integer) must raise DuplicateKeyError — one decision per appointment.
+    Documents without appointment_id are not constrained (partial index).
     """
     from pymongo import ASCENDING
     from pymongo.errors import DuplicateKeyError
 
-    col = mongo_test_db["decision_events_truck_unique_test"]
+    col = mongo_test_db["decision_events_br37_test"]
     col.drop()
-    # Only a non-unique compound index exists today
-    col.create_index([("truck_id", ASCENDING), ("created_at", ASCENDING)])
+    col.create_index(
+        [("appointment_id", ASCENDING)],
+        unique=True,
+        partialFilterExpression={"appointment_id": {"$type": "int"}},
+    )
 
-    col.insert_one({"truck_id": "truck-X", "created_at": "2026-01-01"})
+    col.insert_one({"appointment_id": 9001, "truck_id": "truck-A", "decision": "ALLOW"})
 
-    # This should raise but does NOT — proving the gap
     with pytest.raises(DuplicateKeyError):
-        col.insert_one({"truck_id": "truck-X", "created_at": "2026-01-02"})
+        col.insert_one({"appointment_id": 9001, "truck_id": "truck-A", "decision": "DENY"})
+
+
+@pytest.mark.integration
+def test_different_appointments_same_truck_allowed(mongo_test_db):
+    """
+    BR-37 (Hypothesis A): two decision_events for the SAME truck but different
+    appointments must be allowed — a truck visits the port multiple times.
+    """
+    from pymongo import ASCENDING
+    col = mongo_test_db["decision_events_br37_test"]
+    col.drop()
+    col.create_index(
+        [("appointment_id", ASCENDING)],
+        unique=True,
+        partialFilterExpression={"appointment_id": {"$type": "int"}},
+    )
+
+    col.insert_one({"appointment_id": 9002, "truck_id": "truck-B", "decision": "ALLOW"})
+    col.insert_one({"appointment_id": 9003, "truck_id": "truck-B", "decision": "ALLOW"})
+
+
+@pytest.mark.integration
+def test_no_appointment_id_documents_not_constrained(mongo_test_db):
+    """
+    BR-37 (Hypothesis A): documents without appointment_id (detections not yet
+    matched to an appointment) must not conflict with each other.
+    """
+    from pymongo import ASCENDING
+    col = mongo_test_db["decision_events_br37_test"]
+    col.drop()
+    col.create_index(
+        [("appointment_id", ASCENDING)],
+        unique=True,
+        partialFilterExpression={"appointment_id": {"$type": "int"}},
+    )
+
+    col.insert_one({"truck_id": "truck-C", "decision": "PENDING"})
+    col.insert_one({"truck_id": "truck-C", "decision": "PENDING"})
 
 
 @pytest.mark.integration

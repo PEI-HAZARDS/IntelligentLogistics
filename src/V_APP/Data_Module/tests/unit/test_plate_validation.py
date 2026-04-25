@@ -4,18 +4,11 @@ Unit tests for Portuguese truck license-plate format validation (BR-49).
 BR-49 — License plates must match the format AA-00-BB
         (two uppercase letters, two digits, two uppercase letters).
 
-Audit finding: NO plate validator exists in this codebase.
-`license_plate` is declared as a plain `str` in `application/schemas.py`
-with no regex constraint, so invalid plates are accepted silently.
-
-This file:
-  - Documents the expected validator contract (accept/reject cases).
-  - Marks the existence test as xfail to signal the missing implementation.
-  - Provides the canonical test suite that must pass once a validator is added.
-
-The expected validator location is `utils/plate_validation.py`, exporting:
-    def validate_plate(plate: str) -> str:
-        '''Return the plate uppercased if valid, raise ValueError otherwise.'''
+utils/plate_validation.py implements:
+    is_valid_plate(plate) -> bool       — strict format check
+    validate_plate(plate) -> str        — raises ValueError on invalid, returns uppercase
+    is_valid_plate_relaxed(plate) -> bool — OCR-tolerant (strips hyphens/spaces)
+    normalise_plate(plate) -> str       — canonical DB form
 
 Run:
     PYTHONPATH=. pytest tests/unit/test_plate_validation.py -v
@@ -24,48 +17,23 @@ Run:
 import pytest
 
 # ---------------------------------------------------------------------------
-# Validator import (will fail until the module is created — expected)
+# Validator import
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
 def validate_plate():
-    """
-    Import validate_plate from utils.plate_validation.
-    If the module does not exist this fixture raises ImportError,
-    which causes all tests that depend on it to be skipped with
-    an explanatory message rather than failing with a confusing traceback.
-    """
-    try:
-        from utils.plate_validation import validate_plate as _fn
-        return _fn
-    except ImportError:
-        pytest.skip(
-            "utils/plate_validation.py does not exist — BR-49 validator not implemented. "
-            "Create the module with validate_plate(plate: str) -> str before enabling these tests."
-        )
+    """Import validate_plate from utils.plate_validation."""
+    from utils.plate_validation import validate_plate as _fn
+    return _fn
 
 
 # ---------------------------------------------------------------------------
-# 1. Gap documentation — no validator module exists today
+# 1. Module existence
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    reason=(
-        "BR-49 gap: no plate validator exists. "
-        "utils/plate_validation.py and validate_plate() are absent. "
-        "schemas.py accepts any string for license_plate with no format check. "
-        "Fix: add utils/plate_validation.py with a regex for AA-00-BB format "
-        "and wire it into TruckCreate/Truck Pydantic schemas as a field_validator."
-    ),
-    strict=True,
-)
 def test_plate_validator_module_exists():
-    """
-    The plate validator module must exist in utils/plate_validation.py.
-    This xfail test tracks the missing implementation.
-    When the module is added, remove this xfail marker.
-    """
-    from utils import plate_validation  # noqa: F401  — import existence check
+    """utils/plate_validation.py must expose a validate_plate() function (BR-49)."""
+    from utils import plate_validation  # noqa: F401
     assert hasattr(plate_validation, "validate_plate"), (
         "utils/plate_validation must expose a validate_plate() function"
     )

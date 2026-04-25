@@ -19,18 +19,8 @@ Run:
 """
 
 import sys
-from unittest.mock import MagicMock
+import pathlib
 import pytest
-
-# ---------------------------------------------------------------------------
-# Patch Mongo + Redis before importing mongo.py (module-level connections)
-# ---------------------------------------------------------------------------
-
-sys.modules.setdefault("pymongo", MagicMock())
-sys.modules.setdefault("infrastructure.persistence.mongo", MagicMock())
-
-# Import validators directly by reading the file, avoiding the mongo client
-import importlib.util, pathlib
 
 _MONGO_PATH = (
     pathlib.Path(__file__).parent.parent.parent
@@ -126,51 +116,56 @@ def test_valid_agent_types_accepted(validators, valid_agent):
 
 
 # ---------------------------------------------------------------------------
-# 2. Gaps — confidence threshold and origin validation not implemented
+# 2. Quality gates — confidence threshold and origin validation (BR-18)
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    reason=(
-        "BR-18 gap: validate_agent_detection_schema does not check a minimum "
-        "confidence threshold. A detection with confidence=0.0 passes validation. "
-        "Fix: add a check such as "
-        "'if detection_data.get(\"confidence\", 0) < MIN_CONFIDENCE: return False' "
-        "where MIN_CONFIDENCE is a configurable constant (e.g. 0.70)."
-    ),
-    strict=True,
-)
 def test_low_confidence_detection_fails(validators):
-    """
-    BR-18: a detection with near-zero confidence must fail validation —
-    consensus should not insert low-quality detections.
-    Currently this test will xfail because no threshold check exists.
-    """
+    """BR-18: detection with confidence < 0.5 must fail validation."""
     validate_agent, _ = validators
     doc = _valid_detection_doc()
     doc["detection_data"]["confidence"] = 0.01
     assert validate_agent(doc) is False, (
-        "Confidence 0.01 is below any reasonable threshold — must be rejected (BR-18)"
+        "Confidence 0.01 is below minimum threshold — must be rejected (BR-18)"
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BR-18 gap: validate_agent_detection_schema does not validate the "
-        "origin field (IA vs Manual). The origin column is also absent from the "
-        "PG detection table (which itself doesn't exist — see BR-17 gap). "
-        "Fix: add origin validation once the PG detection table is created "
-        "and wired into the consensus path."
-    ),
-    strict=True,
-)
+def test_high_confidence_detection_passes(validators):
+    """BR-18: detection with confidence ≥ 0.5 must pass validation."""
+    validate_agent, _ = validators
+    doc = _valid_detection_doc()
+    doc["detection_data"]["confidence"] = 0.5
+    assert validate_agent(doc) is True
+
+
 def test_invalid_origin_detection_fails(validators):
-    """
-    BR-18: a detection with an invalid origin value must fail validation.
-    Currently xfail — origin field is not checked.
-    """
+    """BR-18: detection with origin ∉ {IA, Manual} must fail validation."""
     validate_agent, _ = validators
     doc = _valid_detection_doc()
     doc["origin"] = "UNKNOWN_ORIGIN"
     assert validate_agent(doc) is False, (
-        "origin='UNKNOWN_ORIGIN' must be rejected by validation (BR-18)"
+        "origin='UNKNOWN_ORIGIN' must be rejected (BR-18)"
     )
+
+
+def test_valid_origin_ia_passes(validators):
+    """BR-18: detection with origin='IA' must pass validation."""
+    validate_agent, _ = validators
+    doc = _valid_detection_doc()
+    doc["origin"] = "IA"
+    assert validate_agent(doc) is True
+
+
+def test_valid_origin_manual_passes(validators):
+    """BR-18: detection with origin='Manual' must pass validation."""
+    validate_agent, _ = validators
+    doc = _valid_detection_doc()
+    doc["origin"] = "Manual"
+    assert validate_agent(doc) is True
+
+
+def test_absent_origin_passes(validators):
+    """BR-18: detection without origin field must pass (origin is optional)."""
+    validate_agent, _ = validators
+    doc = _valid_detection_doc()
+    doc.pop("origin", None)
+    assert validate_agent(doc) is True

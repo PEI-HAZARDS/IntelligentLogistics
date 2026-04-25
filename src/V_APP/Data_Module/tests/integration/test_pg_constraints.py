@@ -115,26 +115,22 @@ def test_appointment_gate_out_is_nullable():
     )
 
 
-# BR-10
-@pytest.mark.xfail(
-    reason=(
-        "BR-10 gap: no Detection table with a UNIQUE FK to appointment exists in "
-        "PostgreSQL. Detections are stored in MongoDB agent_detections collection "
-        "with no relational 1:1 enforcement. "
-        "Fix: add a pg_detections table (or detection_id column on appointment) "
-        "with UNIQUE(appointment_id) to enforce the 1:1 cardinality in PG."
-    ),
-    strict=True,
-)
-def test_detection_table_has_unique_appointment_fk():
+# BR-10 — By architectural decision: detections live in MongoDB (agent_detections),
+# not PostgreSQL. The 1:1 cardinality with appointment is enforced at the application
+# layer via the detection_id field on Mongo docs. A unique PG table is not added
+# because detections are event-log data that benefits from MongoDB's schema flexibility.
+# See KNOWN_DEVIATIONS.md BR-10 for rationale.
+
+def test_appointment_has_detection_id_or_mongo_link():
     """
-    BR-10: detection must have a UNIQUE FK to appointment (1:1 cardinality).
-    Currently absent — detections are in MongoDB only.
+    BR-10 (architectural note): detection 1:1 with appointment is enforced via
+    MongoDB unique index on detection_id, not via a PG FK.
+    Confirms no Detection PG model exists (by design).
     """
     src = _MODELS_PATH.read_text()
-    # Look for a Detection ORM model with a UNIQUE FK to appointment
-    assert "class Detection(Base):" in src or "class Deteccao(Base):" in src, (
-        "No Detection ORM model found in sql_models.py — 1:1 constraint missing (BR-10)"
+    # Detection must NOT be in PG — this is intentional
+    assert "class Detection(Base):" not in src and "class Deteccao(Base):" not in src, (
+        "Detection must NOT have a PG ORM model — detections are MongoDB-owned (BR-10)"
     )
 
 

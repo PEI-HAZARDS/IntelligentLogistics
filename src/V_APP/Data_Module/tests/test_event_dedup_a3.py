@@ -52,19 +52,10 @@ class TestRedisDedupEventId:
             "is_duplicate_event must use SET NX for atomic check-and-set"
         )
 
-    def test_legacy_is_duplicate_and_mark_still_exists(self):
+    def test_legacy_is_duplicate_and_mark_removed(self):
         source = _read(REDIS_PATH)
-        assert "def is_duplicate_and_mark(" in source, (
-            "Legacy time-window dedup must be preserved for backward compat"
-        )
-
-    def test_legacy_marked_deprecated(self):
-        source = _read(REDIS_PATH)
-        func_start = source.index("def is_duplicate_and_mark(")
-        next_func = source.index("\ndef ", func_start + 1)
-        func_body = source[func_start:next_func]
-        assert "deprecated" in func_body.lower(), (
-            "Legacy is_duplicate_and_mark should be marked as deprecated"
+        assert "def is_duplicate_and_mark(" not in source, (
+            "Legacy time-window dedup was removed in Phase 10 — all callers use event_id"
         )
 
 
@@ -85,18 +76,16 @@ class TestDecisionQueriesDedupEventId:
             "is_duplicate_and_mark must accept event_id parameter"
         )
 
-    def test_prefers_event_id_over_time_window(self):
+    def test_uses_event_id_exclusively(self):
         source = _read(DECISION_QUERIES_PATH)
         func_start = source.index("def is_duplicate_and_mark(")
         next_func = source.index("\ndef ", func_start + 1)
         func_body = source[func_start:next_func]
-        # event_id check must come before time_bucket fallback
-        event_id_pos = func_body.index("event_id")
-        assert "time_bucket" in func_body, "Must still have time_bucket fallback"
-        time_bucket_pos = func_body.index("time_bucket")
-        assert event_id_pos < time_bucket_pos, (
-            "event_id check must come before time_bucket fallback"
+        # Legacy time-window fallback removed in Phase 10
+        assert "redis_is_duplicate_legacy" not in func_body, (
+            "Legacy time-window fallback must be removed (Phase 10)"
         )
+        assert "event_id" in func_body, "Must still use event_id for dedup"
 
     def test_imports_event_id_dedup_from_redis(self):
         source = _read(DECISION_QUERIES_PATH)
@@ -104,14 +93,13 @@ class TestDecisionQueriesDedupEventId:
             "decision_queries must import is_duplicate_event from redis"
         )
 
-    def test_logs_warning_on_legacy_fallback(self):
+    def test_no_legacy_warning_needed(self):
         source = _read(DECISION_QUERIES_PATH)
         func_start = source.index("def is_duplicate_and_mark(")
         next_func = source.index("\ndef ", func_start + 1)
         func_body = source[func_start:next_func]
-        assert "warning" in func_body.lower() or "logger.warn" in func_body, (
-            "Must log warning when falling back to legacy time-window dedup"
-        )
+        # Legacy fallback and its warning removed in Phase 10
+        assert "time-window" not in func_body
 
 
 # =================================================================

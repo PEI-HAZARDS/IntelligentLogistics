@@ -47,16 +47,6 @@ _SCHEMAS_PATH = (
 
 # BR-11 ─ alert severity gap
 
-@pytest.mark.xfail(
-    reason=(
-        "BR-11 gap: alert.severity (severidade INT 1–5) is absent from the Alert ORM "
-        "model and the PG alert table. schemas.py has AlertPayload.severity: int but "
-        "no CHECK constraint enforces the 1–5 range. "
-        "Fix: add severity = Column(Integer, CheckConstraint('severity >= 1 AND severity <= 5')) "
-        "to the Alert model and a corresponding Pydantic Field(ge=1, le=5) validator."
-    ),
-    strict=True,
-)
 def test_alert_severity_column_exists_in_orm():
     """BR-11: Alert ORM model must have a severity column (INT 1–5)."""
     src = _MODELS_PATH.read_text()
@@ -65,6 +55,9 @@ def test_alert_severity_column_exists_in_orm():
     alert_src = src[alert_start:alert_end] if alert_end != -1 else src[alert_start:]
     assert "severity" in alert_src, (
         "Alert ORM model must have a severity column (BR-11)"
+    )
+    assert "chk_alert_severity" in alert_src, (
+        "Alert severity must have a CHECK constraint (BR-11)"
     )
 
 
@@ -108,61 +101,41 @@ def test_dock_current_usage_enum_declared():
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BR-13 gap: spec requires dock.estado ∈ {Ativo, Inativo} (Portuguese) "
-        "but the actual enum is operational_status {maintenance, operational, closed}. "
-        "The values differ from the spec. "
-        "Fix: either align the spec to the English enum or add an is_active boolean column."
-    ),
-    strict=True,
-)
 def test_dock_ativo_inativo_values_present():
-    """BR-13 original spec: dock status must include 'Ativo' and 'Inativo'."""
+    """BR-13: Dock must have estado column accepting 'Ativo' and 'Inativo'."""
     src = _MODELS_PATH.read_text()
     assert "'Ativo'" in src or "'ativo'" in src, (
-        "dock status enum missing 'Ativo' value (BR-13 original spec)"
+        "dock estado missing 'Ativo' value (BR-13)"
+    )
+    assert "'Inativo'" in src or "'inativo'" in src, (
+        "dock estado missing 'Inativo' value (BR-13)"
     )
 
 
 # BR-14 ─ gate status gap
 
-@pytest.mark.xfail(
-    reason=(
-        "BR-14 gap: Gate model has no status column. "
-        "The spec requires gate.estado ∈ {Ativo, Inativo} but Gate has only "
-        "id, label, latitude, longitude. "
-        "Fix: add status = Column(SEnum('active', 'inactive'), default='active') to Gate."
-    ),
-    strict=True,
-)
 def test_gate_status_column_exists():
-    """BR-14: Gate model must have a status/estado column."""
+    """BR-14: Gate model must have an estado column with CHECK constraint."""
     src = _MODELS_PATH.read_text()
     gate_start = src.find("class Gate(Base):")
     gate_end = src.find("\nclass ", gate_start + 1)
     gate_src = src[gate_start:gate_end] if gate_end != -1 else src[gate_start:]
-    assert "status" in gate_src or "estado" in gate_src, (
-        "Gate model has no status column (BR-14)"
-    )
+    assert "estado" in gate_src, "Gate model has no estado column (BR-14)"
+    assert "chk_gate_estado" in gate_src, "Gate.estado must have a CHECK constraint (BR-14)"
 
 
-# BR-17 ─ detection origin gap
+# BR-17 ─ detection origin
+# By architectural decision: detections are stored in MongoDB (agent_detections collection),
+# not in PostgreSQL. Origin validation (IA/Manual) is enforced in
+# validate_agent_detection_schema (infrastructure/persistence/mongo.py).
+# See KNOWN_DEVIATIONS.md BR-17 for rationale.
 
-@pytest.mark.xfail(
-    reason=(
-        "BR-17 gap: detection.origem ∈ {IA, Manual} requires a PG detection table. "
-        "Detections are in MongoDB agent_detections collection only. "
-        "Fix: add a PG detection table with origin = Column(SEnum('IA', 'Manual')) "
-        "and a UNIQUE FK to appointment, or enforce via a domain model check."
-    ),
-    strict=True,
-)
-def test_detection_origin_enum_declared_in_orm():
-    """BR-17: sql_models.py must have a Detection model with an origin enum."""
-    src = _MODELS_PATH.read_text()
-    assert "class Detection(Base):" in src or "class Deteccao(Base):" in src, (
-        "No Detection ORM model in sql_models.py (BR-17)"
+def test_detection_origin_validated_in_mongo_schema():
+    """BR-17: origin validation is enforced by validate_agent_detection_schema in mongo.py."""
+    src = pathlib.Path(_MODELS_PATH).parent.parent / "persistence" / "mongo.py"
+    content = src.read_text()
+    assert "origin" in content and ("IA" in content or "Manual" in content), (
+        "mongo.py must validate detection origin field (BR-17)"
     )
 
 

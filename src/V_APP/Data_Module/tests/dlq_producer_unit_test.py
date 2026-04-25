@@ -1,12 +1,21 @@
 """Unit tests for DLQProducer."""
 
-from unittest.mock import patch
+import sys
+from unittest.mock import MagicMock, patch
 
-from infrastructure.messaging.dlq_producer import DLQProducer
+# Stub the shared kafka wrappers before importing dlq_producer (not installed in test venv)
+sys.modules.setdefault("shared", MagicMock())
+sys.modules.setdefault("shared.src", MagicMock())
+sys.modules.setdefault("shared.src.kafka_wrapper", MagicMock())
+sys.modules.setdefault("shared.src.kafka_protocol", MagicMock())
+
+from infrastructure.messaging.dlq_producer import DLQProducer  # noqa: E402
 
 
+@patch("infrastructure.messaging.dlq_producer.KafkaTopicFactory")
 @patch("infrastructure.messaging.dlq_producer.KafkaProducerWrapper")
-def test_send_to_dlq_builds_expected_envelope(mock_wrapper_cls):
+def test_send_to_dlq_builds_expected_envelope(mock_wrapper_cls, mock_topic_factory):
+    mock_topic_factory.dlq.side_effect = lambda topic: f"{topic}.DLQ"
     mock_wrapper = mock_wrapper_cls.return_value
     producer = DLQProducer("kafka:29092")
 

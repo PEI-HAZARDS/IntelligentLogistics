@@ -67,20 +67,25 @@ def test_duplicate_event_id_returns_false(pg_session):
     try_insert_received returns False on a duplicate event_id without raising.
     The first insert succeeds (True); the second is silently rejected (False).
     """
-    eid = "test-inbox-dedup-repo-001"
+    import uuid
+    eid = f"test-inbox-dedup-{uuid.uuid4()}"
     repo = SqlAlchemyInboxRepository(pg_session)
     event = _make_event(eid)
     ctx = _make_ctx()
 
-    result_first = repo.try_insert_received(event, ctx)
-    pg_session.commit()
+    try:
+        result_first = repo.try_insert_received(event, ctx)
+        pg_session.commit()
 
-    result_second = repo.try_insert_received(event, ctx)
+        result_second = repo.try_insert_received(event, ctx)
 
-    assert result_first is True
-    assert result_second is False
-
-    _delete_inbox_row(pg_session, eid)
+        assert result_first is True
+        assert result_second is False
+    finally:
+        # begin_nested() + SAVEPOINT rollback on duplicate leaves the outer
+        # session in DEACTIVE state in SQLAlchemy 2.x + psycopg2; reset before cleanup.
+        pg_session.rollback()
+        _delete_inbox_row(pg_session, eid)
 
 
 @pytest.mark.integration

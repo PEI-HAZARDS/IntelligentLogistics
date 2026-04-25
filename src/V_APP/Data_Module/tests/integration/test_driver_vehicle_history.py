@@ -34,18 +34,6 @@ _MODELS_PATH = (
 # 1. Gap documentation
 # ---------------------------------------------------------------------------
 
-@pytest.mark.xfail(
-    reason=(
-        "BR-52 gap: no DriverVehicle (Condutor_Veiculo) ORM model or PG table exists. "
-        "Driver-vehicle history is not tracked; assignments are only visible "
-        "implicitly via the appointment.driver_license + appointment.truck_license_plate "
-        "columns. "
-        "Fix: add a driver_vehicle table with (driver_license, truck_license_plate, "
-        "start_date, end_date) and an ORM model DriverVehicle with a UNIQUE "
-        "constraint on (driver_license, truck_license_plate, start_date)."
-    ),
-    strict=True,
-)
 def test_driver_vehicle_model_exists():
     """BR-52: sql_models.py must have a DriverVehicle model with temporal columns."""
     src = _MODELS_PATH.read_text()
@@ -54,17 +42,9 @@ def test_driver_vehicle_model_exists():
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "BR-52 gap: no start_date / end_date temporal columns exist because "
-        "the DriverVehicle table itself is absent."
-    ),
-    strict=True,
-)
 def test_driver_vehicle_has_temporal_columns():
     """
-    BR-52: the DriverVehicle model must have data_inicio (start_date) and
-    data_fim (end_date) columns to record assignment history.
+    BR-52: the DriverVehicle model must have start_date and end_date columns.
     """
     src = _MODELS_PATH.read_text()
     start = src.find("class DriverVehicle(Base):")
@@ -129,22 +109,12 @@ def driver_vehicle_model():
 
 
 @pytest.mark.integration
-def test_driver_vehicle_allows_multiple_assignments(driver_vehicle_model, pg_session):
-    """
-    Contract placeholder: a driver can be assigned to multiple trucks over time —
-    different start_date values prevent UNIQUE constraint violation.
-    Expand this test body when DriverVehicle model is implemented (BR-52).
-    """
-    pytest.skip("BR-52 placeholder — implement when DriverVehicle model is added")
-
-
-@pytest.mark.integration
 def test_driver_vehicle_end_date_is_nullable(driver_vehicle_model, pg_session):
     """
     end_date must be nullable — a NULL end_date means the assignment is current.
     """
-    import sqlalchemy
-    col = driver_vehicle_model.__table__.c.get("end_date") or \
-          driver_vehicle_model.__table__.c.get("data_fim")
+    col = driver_vehicle_model.__table__.c.get("end_date")
+    if col is None:
+        col = driver_vehicle_model.__table__.c.get("data_fim")
     assert col is not None, "end_date / data_fim column not found"
     assert col.nullable, "end_date must be nullable (current assignment has no end date)"
