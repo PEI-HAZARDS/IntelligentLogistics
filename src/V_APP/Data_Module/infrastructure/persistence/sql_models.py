@@ -1,9 +1,9 @@
 import enum
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import func
-from sqlalchemy import Column, Integer, String, Date, Time, TIMESTAMP, DECIMAL, Boolean, ForeignKey, ForeignKeyConstraint, Text, Enum as SEnum
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, String, Date, Time, TIMESTAMP, DECIMAL, Boolean, ForeignKey, ForeignKeyConstraint, Text, Enum as SEnum, SmallInteger, CheckConstraint
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
@@ -23,13 +23,18 @@ type_alert_enum = SEnum('generic', 'safety', 'problem', 'operational', name='typ
 direction_enum = SEnum('inbound', 'outbound', name='direction')
 
 class ShiftType(enum.Enum):
-    MORNING = "06:00-14:00"
-    AFTERNOON = "14:00-22:00"
-    NIGHT = "22:00-06:00"
+    MORNING = "MORNING"
+    AFTERNOON = "AFTERNOON"
+    NIGHT = "NIGHT"
 
     def get_hours(self):
-        """Converts enum strings to time objects."""
-        start_str, end_str = self.value.split("-")
+        """Return (start_time, end_time) for this shift."""
+        _hours = {
+            "MORNING": ("06:00", "14:00"),
+            "AFTERNOON": ("14:00", "22:00"),
+            "NIGHT": ("22:00", "06:00"),
+        }
+        start_str, end_str = _hours[self.value]
         start_time = datetime.strptime(start_str, "%H:%M").time()
         end_time = datetime.strptime(end_str, "%H:%M").time()
         return start_time, end_time
@@ -55,26 +60,36 @@ class Terminal(Base):
 
 class Dock(Base):
     __tablename__ = "dock"
-    
+
     # primary key composta da terminal_id e bay_number
     terminal_id = Column(Integer, ForeignKey('terminal.id'), primary_key=True)
     bay_number = Column(String(50), primary_key=True)
     latitude = Column(DECIMAL(10, 8))
     longitude = Column(DECIMAL(11, 8))
     current_usage = Column(operational_status_enum, default='operational')
-    
+    estado = Column(String(10), nullable=False, default='Ativo')  # BR-13
+
+    __table_args__ = (
+        CheckConstraint("estado IN ('Ativo', 'Inativo')", name='chk_dock_estado'),
+    )
+
     # Relationships
     terminal = relationship("Terminal", back_populates="docks")
 
 
 class Gate(Base):
     __tablename__ = "gate"
-    
+
     id = Column(Integer, primary_key=True)
     label = Column(String(100), nullable=False)
     latitude = Column(DECIMAL(10, 8))
     longitude = Column(DECIMAL(11, 8))
-    
+    estado = Column(String(10), nullable=False, default='Ativo')  # BR-14
+
+    __table_args__ = (
+        CheckConstraint("estado IN ('Ativo', 'Inativo')", name='chk_gate_estado'),
+    )
+
     # Relationships
     shifts = relationship("Shift", back_populates="gate")
     appointments_in = relationship(
@@ -116,10 +131,7 @@ class Driver(Base):
     active = Column(Boolean, default=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     
-    # Session management fields
-    session_token = Column(String(64), index=True)  # Current auth token
-    session_expires_at = Column(TIMESTAMP)          # Token expiration time
-    current_appointment_id = Column(Integer)        # Current active delivery (for sequential access)
+    current_appointment_id = Column(Integer)  # Current active delivery (for sequential access)
     
     # Relationships
     company = relationship("Company", back_populates="drivers")
@@ -299,7 +311,7 @@ class Appointment(Base):
         # Check if delayed based on time (only applies to in_transit)
         if self.scheduled_start_time:
             delay_threshold = self.scheduled_start_time + timedelta(minutes=DELAY_TOLERANCE_MINUTES)
-            if datetime.now() > delay_threshold:
+            if datetime.now(timezone.utc).replace(tzinfo=None) > delay_threshold:
                 return 'delayed'
 
         return self.status
@@ -315,7 +327,7 @@ class Appointment(Base):
         if not self.scheduled_start_time or self.status in ('completed', 'canceled'):
             return 0
         
-        diff = datetime.now() - self.scheduled_start_time
+        diff = datetime.now(timezone.utc).replace(tzinfo=None) - self.scheduled_start_time
         minutes = int(diff.total_seconds() / 60)
         return max(0, minutes - DELAY_TOLERANCE_MINUTES)
 
@@ -392,7 +404,7 @@ class ShiftAlertHistory(Base):
 
 class Alert(Base):
     __tablename__ = "alert"
-    
+
     id = Column(Integer, primary_key=True)
     visit_id = Column(Integer, ForeignKey('visit.appointment_id'))
     appointment_id = Column(Integer, ForeignKey('appointment.id'))  # Direct FK to appointment (alerts can pre-exist visits)
@@ -400,8 +412,60 @@ class Alert(Base):
     image_url = Column(Text)
     type = Column(type_alert_enum, default='generic')
     description = Column(Text)
+    severity = Column(SmallInteger, nullable=False, default=3)  # BR-11: 1 (low) – 5 (critical)
+
+    __table_args__ = (
+        CheckConstraint('severity BETWEEN 1 AND 5', name='chk_alert_severity'),
+    )
 
     # Relationships
     visit = relationship("Visit", back_populates="alerts")
     appointment = relationship("Appointment")
     history_entries = relationship("ShiftAlertHistory", back_populates="alert")
+
+
+# ==========================
+# DRIVER↔VEHICLE HISTORY (BR-52)
+# ==========================
+
+class DriverVehicle(Base):
+    __tablename__ = "driver_vehicle"
+
+    id = Column(Integer, primary_key=True)
+    driver_license = Column(String(50), ForeignKey('driver.drivers_license', ondelete='RESTRICT'), nullable=False)
+    truck_license_plate = Column(String(20), ForeignKey('truck.license_plate', ondelete='RESTRICT'), nullable=False)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date)
+
+    __table_args__ = (
+        CheckConstraint('end_date IS NULL OR end_date >= start_date', name='chk_dv_dates'),
+    )
+
+    # Relationships
+    driver = relationship("Driver")
+    truck = relationship("Truck")
+
+
+# ==========================
+# PENDING REVIEWS (PD-01 — durable operator review queue)
+# ==========================
+
+pending_review_status_enum = SEnum('PENDING', 'APPROVED', 'REJECTED', name='pending_review_status')
+
+
+class PendingReview(Base):
+    __tablename__ = "pending_reviews"
+
+    event_id = Column(UUID(as_uuid=True), primary_key=True)
+    truck_id = Column(String(20), nullable=False)
+    gate_id = Column(Integer, nullable=False)
+    license_plate = Column(String(20), nullable=False)
+    payload = Column(JSONB, nullable=False, default=dict)
+    status = Column(String(20), nullable=False, default='PENDING')
+    created_at = Column(TIMESTAMP, server_default=func.now())
+    resolved_at = Column(TIMESTAMP)
+    resolved_by = Column(String(50))
+
+    __table_args__ = (
+        CheckConstraint("status IN ('PENDING', 'APPROVED', 'REJECTED')", name='chk_pr_status'),
+    )
