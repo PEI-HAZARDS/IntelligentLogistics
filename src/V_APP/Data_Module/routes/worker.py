@@ -36,7 +36,8 @@ from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from infrastructure.persistence.postgres import get_db, SessionLocal
 from sqlalchemy import func as sa_func
 from infrastructure.persistence.sql_models import Shift as ShiftORM, Visit as VisitORM
-from utils.auth_token import generate_internal_jwt
+from utils.auth_token import generate_internal_jwt, require_role
+from infrastructure.persistence.redis import set_session
 from utils.shift_utils import current_shift_type
 
 router = APIRouter(prefix="/workers", tags=["Workers"])
@@ -120,6 +121,12 @@ def login(credentials: WorkerLoginRequest):
     role = worker.get("role", "operator")
     token = generate_internal_jwt(sub=worker["num_worker"], role=role)
 
+    set_session(role, worker["num_worker"], {
+        "sub": worker["num_worker"],
+        "role": role,
+        "name": worker["name"],
+    })
+
     return WorkerLoginResponse(
         token=token,
         num_worker=worker["num_worker"],
@@ -168,7 +175,6 @@ def list_shifts(
 
     PostgreSQL — shift data not yet projected to MongoDB (Guardrail 5).
     """
-    logger.info("PROJECTION MISS shifts-list — PostgreSQL fallback (Guardrail 5)")
     target = target_date or date.today()
     query = db.query(ShiftORM).filter(ShiftORM.date == target)
     if gate_id is not None:
@@ -298,7 +304,6 @@ def get_operator_shift(
 
     PostgreSQL fallback — shift data not yet projected to MongoDB (Guardrail 5).
     """
-    logger.info("PROJECTION MISS current-shift — PostgreSQL fallback (Guardrail 5)")
     today = date.today()
     shift_type = current_shift_type()
     shift = (
@@ -328,7 +333,6 @@ def list_operator_shifts(
 
     PostgreSQL fallback — shift data not yet projected to MongoDB (Guardrail 5).
     """
-    logger.info("PROJECTION MISS operator-shifts — PostgreSQL fallback (Guardrail 5)")
     query = db.query(ShiftORM).filter(ShiftORM.operator_num_worker == num_worker)
     if gate_id is not None:
         query = query.filter(ShiftORM.gate_id == gate_id)
@@ -406,7 +410,6 @@ def list_manager_shifts(
 
     PostgreSQL fallback — shift data not yet projected to MongoDB (Guardrail 5).
     """
-    logger.info("PROJECTION MISS manager-shifts — PostgreSQL fallback (Guardrail 5)")
     shifts = (
         db.query(ShiftORM)
         .filter(ShiftORM.manager_num_worker == num_worker)
@@ -464,15 +467,18 @@ def get_worker(
 
 # ==================== ACCOUNT MANAGEMENT ====================
 
+_worker_claims = require_role("operator", "manager")
+
+
 @router.post("/password", status_code=status.HTTP_200_OK)
 def change_password(
     request: UpdatePasswordRequest,
-    num_worker: Annotated[str, Query(description="Worker num_worker (from JWT)")],
+    claims: Annotated[dict, Depends(_worker_claims)],
 ):
-    """Updates worker's password."""
+    """Updates the authenticated worker's password."""
     success, error = update_worker_password(
         _uow_factory,
-        num_worker=num_worker,
+        num_worker=claims["sub"],
         current_password=request.current_password,
         new_password=request.new_password,
     )
@@ -486,12 +492,12 @@ def change_password(
 @router.post("/email", status_code=status.HTTP_200_OK, responses={400: {"description": "Email already in use or worker not found"}})
 def change_email(
     request: UpdateEmailRequest,
-    num_worker: Annotated[str, Query(description="Worker num_worker (from JWT)")],
+    claims: Annotated[dict, Depends(_worker_claims)],
 ):
-    """Updates worker's email."""
+    """Updates the authenticated worker's email."""
     success, error = update_worker_email(
         _uow_factory,
-        num_worker=num_worker,
+        num_worker=claims["sub"],
         new_email=request.new_email,
     )
     if not success:

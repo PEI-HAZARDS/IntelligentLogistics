@@ -15,7 +15,7 @@ CQRS: GET endpoints read from MongoDB. POST (auth/claim) use UoW.
 """
 
 from typing import Annotated, List, Optional
-from fastapi import APIRouter, HTTPException, Query, Path
+from fastapi import APIRouter, Depends, HTTPException, Query, Path
 
 from application.schemas import (
     Driver, Appointment,
@@ -35,8 +35,9 @@ from application.queries.driver_queries import (
 )
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from infrastructure.persistence.postgres import SessionLocal
+from infrastructure.persistence.redis import set_session, delete_session
 from config import settings
-from utils.auth_token import generate_internal_jwt
+from utils.auth_token import generate_internal_jwt, require_role
 
 router = APIRouter(prefix="/drivers", tags=["Drivers"])
 
@@ -68,6 +69,13 @@ def login(credentials: DriverLoginRequest):
     # KEYCLOAK: this token will be issued by Keycloak once integrated.
     # For now, return a signed internal JWT so the flow is functional end-to-end.
     token = generate_internal_jwt(sub=driver["drivers_license"], role="driver")
+
+    # Store session in Redis (TTL 3600s) so the token can be revoked server-side.
+    set_session("driver", driver["drivers_license"], {
+        "sub": driver["drivers_license"],
+        "role": "driver",
+        "name": driver["name"],
+    })
 
     return DriverLoginResponse(
         token=token,
@@ -110,49 +118,40 @@ def claim_arrival(
 
     return ClaimAppointmentResponse(
         appointment_id=appointment["id"],
-        dock_bay_number=None,
-        dock_location=None,
+        dock_bay_number=appointment.get("dock_bay_number"),
+        dock_location=appointment.get("dock_location"),
         license_plate=appointment.get("truck_license_plate"),
         cargo_description=appointment.get("cargo_description"),
         navigation_url=appointment.get("navigation_url"),
     )
 
 
+_driver_claims = require_role("driver")
+
+
 @router.get("/me/active", response_model=Optional[Appointment])
 def get_my_active_arrival(
-    drivers_license: Annotated[str, Query(description="Driver's license")],
+    claims: Annotated[dict, Depends(_driver_claims)],
 ):
-    """
-    Gets driver's active appointment (first in queue).
-
-    Future: Will use Bearer token when OAuth 2.0 is implemented.
-    """
-    return get_driver_active_appointment(drivers_license)
+    """Gets driver's active appointment. Requires driver JWT."""
+    return get_driver_active_appointment(claims["sub"])
 
 
 @router.get("/me/today", response_model=List[Appointment])
 def get_my_today_arrivals(
-    drivers_license: Annotated[str, Query(description="Driver's license")],
+    claims: Annotated[dict, Depends(_driver_claims)],
 ):
-    """
-    Gets today's appointments for the driver.
-
-    Future: Will use Bearer token when OAuth 2.0 is implemented.
-    """
-    return get_driver_today_appointments(drivers_license)
+    """Gets today's appointments for the authenticated driver."""
+    return get_driver_today_appointments(claims["sub"])
 
 
 @router.get("/me/history", response_model=List[Appointment])
 def get_my_history(
-    drivers_license: Annotated[str, Query(description="Driver's license")],
+    claims: Annotated[dict, Depends(_driver_claims)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
-    """
-    Gets driver's delivery history.
-
-    Future: Will use Bearer token when OAuth 2.0 is implemented.
-    """
-    return get_driver_appointments(drivers_license, limit=limit)
+    """Gets driver's delivery history."""
+    return get_driver_appointments(claims["sub"], limit=limit)
 
 
 # ==================== QUERY ENDPOINTS (Backoffice) ====================

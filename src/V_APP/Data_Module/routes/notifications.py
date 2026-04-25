@@ -6,14 +6,17 @@ Replaces localStorage-based notification state in the frontend.
 from typing import Annotated, Optional, List
 from datetime import datetime as dt
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
-from bson import ObjectId
 
+from application.use_cases.notification_handlers import (
+    cmd_mark_notification_read,
+    cmd_mark_all_notifications_read,
+)
 from infrastructure.persistence.mongo import notifications_collection
-from application.queries.notification_queries import create_notification  # re-export for convenience
+from utils.auth_token import get_current_claims
 
-__all__ = ["router", "create_notification"]
+__all__ = ["router"]
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
@@ -50,6 +53,7 @@ class NotificationOut(BaseModel):
 @router.get("", response_model=List[NotificationOut])
 def list_notifications(
     gate_id: Annotated[int, Query(description="Gate to fetch notifications for")],
+    claims: Annotated[dict, Depends(get_current_claims)],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     unread_only: Annotated[bool, Query(description="Return only unread notifications")] = False,
 ):
@@ -74,18 +78,16 @@ def list_notifications(
 # ---------------------------------------------------------------------------
 
 @router.patch("/{notification_id}/read", response_model=NotificationOut, responses={400: {"description": "Invalid notification id"}, 404: {"description": "Notification not found"}})
-def mark_notification_read(notification_id: str):
+def mark_notification_read(
+    notification_id: str,
+    claims: Annotated[dict, Depends(get_current_claims)],
+):
     """Marks a single notification as read."""
     try:
-        oid = ObjectId(notification_id)
-    except Exception:
+        result = cmd_mark_notification_read(notification_id)
+    except ValueError:
         raise HTTPException(status_code=400, detail="Invalid notification id")
 
-    result = notifications_collection.find_one_and_update(
-        {"_id": oid},
-        {"$set": {"read": True}},
-        return_document=True,
-    )
     if result is None:
         raise HTTPException(status_code=404, detail="Notification not found")
     return _serialize(result)
@@ -98,10 +100,8 @@ def mark_notification_read(notification_id: str):
 @router.patch("/read-all")
 def mark_all_notifications_read(
     gate_id: Annotated[int, Query(description="Gate whose notifications to clear")],
+    claims: Annotated[dict, Depends(get_current_claims)],
 ):
     """Marks all unread notifications for a gate as read."""
-    result = notifications_collection.update_many(
-        {"gate_id": gate_id, "read": False},
-        {"$set": {"read": True}},
-    )
-    return {"updated": result.modified_count}
+    updated = cmd_mark_all_notifications_read(gate_id)
+    return {"updated": updated}

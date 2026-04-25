@@ -167,6 +167,8 @@ async def lifespan(app: FastAPI):
         if consumer:
             await consumer.stop()
         logger.info("Kafka decision consumer stopped.")
+    except asyncio.CancelledError:
+        logger.info("Kafka decision consumer cancelled during shutdown.")
     except Exception:
         logger.exception("Error stopping Kafka decision consumer.")
     
@@ -177,7 +179,6 @@ async def lifespan(app: FastAPI):
             await _scheduler_task
         except asyncio.CancelledError:
             logger.info("Background scheduler stopped.")
-            raise
 
     # Close clients
     try:
@@ -201,10 +202,9 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS para frontend (ajustar origins em produção)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
