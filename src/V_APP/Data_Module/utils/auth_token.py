@@ -75,14 +75,19 @@ def get_current_claims(
         try:
             session = get_session(role, sub)
         except Exception:
-            session = None  # redis unavailable → fall back to JWT-only validation
-        else:
-            if session is None:
+            if not settings.redis_auth_fail_open:
                 raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Session revoked or expired",
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Auth service temporarily unavailable",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
+            session = True  # fail-open: proceed with JWT-only validation
+        if session is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session revoked or expired",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
     return claims
 
 

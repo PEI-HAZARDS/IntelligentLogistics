@@ -370,14 +370,18 @@ def manual_review(
 
 class ResolvePendingReviewRequest(BaseModel):
     resolution: str  # "APPROVED" or "REJECTED"
-    resolved_by: str
     notes: Optional[str] = None
+
+
+from utils.auth_token import require_role as _require_role
+_operator_or_manager = _require_role("operator", "manager")
 
 
 @router.post("/{event_id}/resolve")
 def resolve_pending_review(
     event_id: Annotated[str, Path(description="pending_review event_id (UUID)")],
     body: ResolvePendingReviewRequest,
+    claims: Annotated[dict, Depends(_operator_or_manager)],
 ):
     """
     Operator resolves a pending manual-review request.
@@ -394,12 +398,13 @@ def resolve_pending_review(
     def _uow_factory():
         return SqlAlchemyUnitOfWork(SessionLocal)
 
+    resolved_by = claims.get("sub", "unknown")
     try:
         row = cmd_resolve_pending_review(
             _uow_factory,
             event_id=event_id,
             resolution=body.resolution,
-            resolved_by=body.resolved_by,
+            resolved_by=resolved_by,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))

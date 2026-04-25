@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     jwt_secret: str = _DEFAULT_JWT_SECRET
     debug_mode: bool = False
     token_expiry_hours: int = 24
+    # When True, auth continues via JWT-only if Redis is unavailable (fail-open).
+    # Set REDIS_AUTH_FAIL_OPEN=false in production to fail closed (return 503).
+    redis_auth_fail_open: bool = True
 
     # CORS — set CORS_ORIGINS env var as JSON array or comma-separated string
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]

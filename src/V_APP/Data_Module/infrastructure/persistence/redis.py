@@ -427,11 +427,11 @@ def _session_key(role: str, identity: str) -> str:
     return f"session:{role}:{identity}"
 
 
-def set_session(role: str, identity: str, data: Dict[str, Any]) -> None:
-    """Store a user session in Redis (TTL = TTL_OPERATOR_SESSION)."""
+def set_session(role: str, identity: str, data: Dict[str, Any], ttl: int = TTL_OPERATOR_SESSION) -> None:
+    """Store a user session in Redis with the given TTL (seconds)."""
     key = _session_key(role, identity)
     try:
-        redis_client.setex(key, TTL_OPERATOR_SESSION, json.dumps(data))
+        redis_client.setex(key, ttl, json.dumps(data))
         logger.debug("Set session for %s %s", role, identity)
     except Exception as e:
         logger.error("Failed to set session for %s %s: %s", role, identity, e)

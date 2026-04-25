@@ -121,11 +121,12 @@ def login(credentials: WorkerLoginRequest):
     role = worker.get("role", "operator")
     token = generate_internal_jwt(sub=worker["num_worker"], role=role)
 
+    session_ttl = int(settings.token_expiry_hours * 3600)
     set_session(role, worker["num_worker"], {
         "sub": worker["num_worker"],
         "role": role,
         "name": worker["name"],
-    })
+    }, ttl=session_ttl)
 
     return WorkerLoginResponse(
         token=token,
