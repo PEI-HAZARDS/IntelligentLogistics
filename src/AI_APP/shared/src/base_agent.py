@@ -20,7 +20,7 @@ import uuid
 
 class BaseAgentConfig(BaseSettings):
     # Kafka
-    kafka_bootstrap: str = Field(default="10.255.32.143:9092")
+    kafka_bootstrap: str = Field(default="10.255.32.107:9092")
 
     # MediaMTX RTSP (low-latency UDP stream consumption)
     mediamtx_host: str = Field(default="10.255.32.56")

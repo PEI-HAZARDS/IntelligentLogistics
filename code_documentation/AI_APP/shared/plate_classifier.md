@@ -14,7 +14,7 @@ The module is consumed downstream by the AI agents after object detection has ex
 
 ## Location
 ```
-src/shared/src/plate_classifier.py
+src/AI_APP/shared/src/plate_classifier.py
 ```
 
 ## Dependencies
@@ -227,12 +227,12 @@ Logging uses the `"PlateClassifier"` logger name.
 | Test file | Type | What it covers |
 |-----------|------|----------------|
 | `plate_classifier_unit_test.py` | Unit | Classification logic, color analysis, edge cases |
-| `plate_classifier_integration_test.py` | Integration | End-to-end classification with real or representative images |
+| `integration_models/plate_classifier_integration_test.py` | Integration | End-to-end classification with real or representative images |
 
 To run:
 ```bash
-pytest src/shared/tests/plate_classifier_unit_test.py
-pytest src/shared/tests/plate_classifier_integration_test.py
+pytest src/AI_APP/shared/tests/plate_classifier_unit_test.py
+pytest src/AI_APP/tests/integration_models/plate_classifier_integration_test.py
 ```
 
 ---
@@ -245,7 +245,9 @@ pytest src/shared/tests/plate_classifier_integration_test.py
 
 ## Changelog
 
-> N/A
+| Version / Date | Change |
+|----------------|--------|
+| `2026-04-18` | Reviewed AI_APP documentation for consistency, aligned paths/test commands, and validated deployment host mapping (AI_APP `10.255.32.107`, Streaming `10.255.32.56`, UI `10.255.32.108`, V_APP `10.255.32.70`). |
 
 ---
 
