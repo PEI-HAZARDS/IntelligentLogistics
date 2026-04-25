@@ -66,7 +66,7 @@ BEGIN
         WHERE table_name = 'gate' AND column_name = 'estado'
     ) THEN
         ALTER TABLE gate
-            ADD COLUMN estado VARCHAR(10) NOT NULL DEFAULT 'Ativo'
+            ADD COLUMN estado VARCHAR(10) NOT NULL DEFAULT 'Ativo' -- NOSONAR
                 CONSTRAINT chk_gate_estado CHECK (estado IN ('Ativo', 'Inativo'));
         RAISE NOTICE 'Added gate.estado column (BR-14)';
     ELSE
@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS pending_reviews (
     gate_id         INTEGER         NOT NULL,
     license_plate   VARCHAR(20)     NOT NULL,
     payload         JSONB           NOT NULL DEFAULT '{}',
-    status          VARCHAR(20)     NOT NULL DEFAULT 'PENDING'
+    status          VARCHAR(20)     NOT NULL DEFAULT 'PENDING' -- NOSONAR
                         CONSTRAINT chk_pr_status CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
     created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
     resolved_at     TIMESTAMPTZ,

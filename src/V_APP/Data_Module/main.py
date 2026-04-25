@@ -108,13 +108,8 @@ async def update_delayed_appointments():
         await asyncio.sleep(300)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan: startup and shutdown events."""
-    global _scheduler_task
-    
-    # ===== STARTUP =====
-    # 1) Postgres: create tables
+async def _startup_services(app: FastAPI) -> asyncio.Task | None:
+    """Initialise all infrastructure services and return the scheduler task."""
     try:
         Base.metadata.create_all(bind=engine)
         _ready["postgres"] = True
@@ -123,7 +118,6 @@ async def lifespan(app: FastAPI):
         _ready["postgres"] = False
         logger.exception("Postgres: failed to verify/create schemas: %s", e)
 
-    # 2) MongoDB: ping
     try:
         mongo_client.admin.command("ping")
         _ready["mongo"] = True
@@ -132,7 +126,6 @@ async def lifespan(app: FastAPI):
         _ready["mongo"] = False
         logger.exception("MongoDB: ping failed: %s", e)
 
-    # 3) Redis: ping
     try:
         pong = redis_client.ping()
         if pong:
@@ -145,12 +138,11 @@ async def lifespan(app: FastAPI):
         _ready["redis"] = False
         logger.exception("Redis: ping failed: %s", e)
 
-    # 4) Start background scheduler for delayed appointments
+    scheduler: asyncio.Task | None = None
     if _ready["postgres"]:
-        _scheduler_task = asyncio.create_task(update_delayed_appointments())
+        scheduler = asyncio.create_task(update_delayed_appointments())
         logger.info("Background scheduler started for delayed appointments.")
-    
-    # 5) Start Kafka decision consumer
+
     try:
         app.state.decision_consumer = KafkaDecisionConsumer()
         await app.state.decision_consumer.start()
@@ -158,10 +150,11 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.exception("Failed to start Kafka decision consumer: %s", e)
 
-    yield  # Application runs
+    return scheduler
 
-    # ===== SHUTDOWN =====
-    # Stop Kafka consumer
+
+async def _shutdown_services(app: FastAPI, scheduler_task: asyncio.Task | None) -> None:
+    """Stop Kafka consumer, background scheduler, and close clients."""
     try:
         consumer = getattr(app.state, "decision_consumer", None)
         if consumer:
@@ -169,23 +162,32 @@ async def lifespan(app: FastAPI):
         logger.info("Kafka decision consumer stopped.")
     except asyncio.CancelledError:
         logger.info("Kafka decision consumer cancelled during shutdown.")
+        raise
     except Exception:
         logger.exception("Error stopping Kafka decision consumer.")
-    
-    # Stop scheduler
-    if _scheduler_task:
-        _scheduler_task.cancel()
+
+    if scheduler_task:
+        scheduler_task.cancel()
         try:
-            await _scheduler_task
+            await scheduler_task
         except asyncio.CancelledError:
             logger.info("Background scheduler stopped.")
+            raise
 
-    # Close clients
     try:
         mongo_client.close()
         logger.info("MongoDB client closed.")
     except Exception:
         logger.exception("Error closing MongoDB client.")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan: startup and shutdown events."""
+    global _scheduler_task
+    _scheduler_task = await _startup_services(app)
+    yield
+    await _shutdown_services(app, _scheduler_task)
 
     try:
         if hasattr(redis_client, "close"):

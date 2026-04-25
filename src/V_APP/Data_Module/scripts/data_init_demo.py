@@ -100,21 +100,27 @@ DRIVERS = [
 
 # Extra historical trucks (supplement the demo plates)
 # (plate, brand, company_idx)
+_BRAND_SCANIA = "Scania R500"
+_BRAND_MAN = "MAN TGX"
+_BRAND_MERCEDES = "Mercedes Actros"
+_BRAND_DAF = "DAF XF"
+_BRAND_VOLVO = "Volvo FH16"
+
 EXTRA_TRUCKS = [
-    ("AA00AA", "Scania R500", 0),
-    ("BB11BB", "MAN TGX", 1),
-    ("CC22CC", "Mercedes Actros", 2),
-    ("DD33DD", "DAF XF", 3),
-    ("12AB34", "Volvo FH16", 0),
-    ("56CD78", "Scania R500", 1),
-    ("90EF12", "MAN TGX", 2),
-    ("34GH56", "Mercedes Actros", 0),
-    ("78IJ90", "DAF XF", 1),
-    ("23LM45", "Volvo FH16", 0),
-    ("67NP89", "Scania R500", 1),
-    ("45ST67", "Volvo FH16", 0),
-    ("89UV01", "Scania R500", 1),
-    ("23WX45", "MAN TGX", 2),
+    ("AA00AA", _BRAND_SCANIA, 0),
+    ("BB11BB", _BRAND_MAN, 1),
+    ("CC22CC", _BRAND_MERCEDES, 2),
+    ("DD33DD", _BRAND_DAF, 3),
+    ("12AB34", _BRAND_VOLVO, 0),
+    ("56CD78", _BRAND_SCANIA, 1),
+    ("90EF12", _BRAND_MAN, 2),
+    ("34GH56", _BRAND_MERCEDES, 0),
+    ("78IJ90", _BRAND_DAF, 1),
+    ("23LM45", _BRAND_VOLVO, 0),
+    ("67NP89", _BRAND_SCANIA, 1),
+    ("45ST67", _BRAND_VOLVO, 0),
+    ("89UV01", _BRAND_SCANIA, 1),
+    ("23WX45", _BRAND_MAN, 2),
 ]
 
 # (desc, state, weight_kg, is_hazmat, un_code, kemler)
@@ -464,7 +470,7 @@ def init_demo_data(db: Session):
 
         for i, plate in enumerate(VIDEO1_PLATES):
             cargo_def = CARGO_TYPES[i % len(CARGO_TYPES)]
-            desc, state, weight, is_hazmat, un_code, kemler = cargo_def
+            desc, _, _, is_hazmat, un_code, kemler = cargo_def
             bk = _make_booking(db, _next_ref())
             _make_cargo(db, bk.reference, cargo_def)
 
@@ -484,7 +490,7 @@ def init_demo_data(db: Session):
         print(f"  Creating {len(VIDEO2_PLATES)} Video2 appointments (Gate 2 / highway)...")
         for i, plate in enumerate(VIDEO2_PLATES):
             cargo_def = CARGO_TYPES[i % len(CARGO_TYPES)]
-            desc, state, weight, is_hazmat, un_code, kemler = cargo_def
+            desc, _, _, is_hazmat, un_code, kemler = cargo_def
             bk = _make_booking(db, _next_ref("HWY"))
             _make_cargo(db, bk.reference, cargo_def)
 
@@ -520,7 +526,7 @@ def init_demo_data(db: Session):
         for bidx, (tidx, cidx, status, dur, mins_ago, alert_t) in enumerate(bonus_configs):
             truck = hist_trucks[tidx % len(hist_trucks)]
             cargo_def = CARGO_TYPES[cidx % len(CARGO_TYPES)]
-            desc, state, weight, is_hazmat, un_code, kemler = cargo_def
+            desc, _, _, is_hazmat, un_code, kemler = cargo_def
 
             bk = _make_booking(db, _next_ref("BON"), "inbound" if bidx % 3 != 0 else "outbound")
             _make_cargo(db, bk.reference, cargo_def)

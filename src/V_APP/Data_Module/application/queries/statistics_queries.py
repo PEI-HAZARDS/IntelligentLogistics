@@ -24,6 +24,15 @@ from infrastructure.persistence.redis import (
 
 logger = logging.getLogger("statistics_service")
 
+# ---------------------------------------------------------------------------
+# Repeated Mongo field-path constants (avoids SonarQube S1192)
+# ---------------------------------------------------------------------------
+_F_DECISION = _F_DECISION
+_F_TOTAL_REVIEWS = _F_TOTAL_REVIEWS
+_F_ENTRIES = _F_ENTRIES
+_F_EXITS = _F_EXITS
+_F_DAY_BUCKET = _F_DAY_BUCKET
+
 # Cache MongoDB server version at import time to detect $percentile support.
 # $percentile requires MongoDB 7.0+; on older versions aggregation silently
 # returns an error which was previously swallowed.
@@ -128,7 +137,7 @@ def get_decision_pipeline_performance(gate_id: int, hours_ago: int = 24) -> Dict
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
         pipeline = [
             {"$match": {"gate_id": gate_id, "created_at": {"$gte": cutoff}}},
-            {"$group": {"_id": "$gate_id", "total_decisions": {"$sum": 1}, "accepted": {"$sum": {"$cond": [{"$eq": ["$final_decision", "ACCEPTED"]}, 1, 0]}}, "rejected": {"$sum": {"$cond": [{"$eq": ["$final_decision", "REJECTED"]}, 1, 0]}}, "manual_review": {"$sum": {"$cond": [{"$eq": ["$decision_engine.decision", "MANUAL_REVIEW"]}, 1, 0]}}, "avg_pipeline_time": {"$avg": "$timing.total_pipeline_ms"}, "p50_pipeline_time": {"$percentile": {"input": "$timing.total_pipeline_ms", "p": [0.50], "method": "approximate"}}, "p95_pipeline_time": {"$percentile": {"input": "$timing.total_pipeline_ms", "p": [0.95], "method": "approximate"}}, "p99_pipeline_time": {"$percentile": {"input": "$timing.total_pipeline_ms", "p": [0.99], "method": "approximate"}}, "avg_detection_to_decision": {"$avg": "$timing.detection_to_decision_ms"}}},
+            {"$group": {"_id": "$gate_id", "total_decisions": {"$sum": 1}, "accepted": {"$sum": {"$cond": [{"$eq": ["$final_decision", "ACCEPTED"]}, 1, 0]}}, "rejected": {"$sum": {"$cond": [{"$eq": ["$final_decision", "REJECTED"]}, 1, 0]}}, "manual_review": {"$sum": {"$cond": [{"$eq": [_F_DECISION, "MANUAL_REVIEW"]}, 1, 0]}}, "avg_pipeline_time": {"$avg": "$timing.total_pipeline_ms"}, "p50_pipeline_time": {"$percentile": {"input": "$timing.total_pipeline_ms", "p": [0.50], "method": "approximate"}}, "p95_pipeline_time": {"$percentile": {"input": "$timing.total_pipeline_ms", "p": [0.95], "method": "approximate"}}, "p99_pipeline_time": {"$percentile": {"input": "$timing.total_pipeline_ms", "p": [0.99], "method": "approximate"}}, "avg_detection_to_decision": {"$avg": "$timing.detection_to_decision_ms"}}},
             {"$project": {"_id": 0, "gate_id": "$_id", "total_decisions": 1, "decisions_by_type": {"accepted": "$accepted", "rejected": "$rejected", "manual_review": "$manual_review"}, "acceptance_rate": {"$cond": [{"$eq": ["$total_decisions", 0]}, 0, {"$divide": ["$accepted", "$total_decisions"]}]}, "manual_review_rate": {"$cond": [{"$eq": ["$total_decisions", 0]}, 0, {"$divide": ["$manual_review", "$total_decisions"]}]}, "performance": {"avg_pipeline_ms": {"$round": ["$avg_pipeline_time", 0]}, "p50_pipeline_ms": {"$round": [{"$arrayElemAt": ["$p50_pipeline_time", 0]}, 0]}, "p95_pipeline_ms": {"$round": [{"$arrayElemAt": ["$p95_pipeline_time", 0]}, 0]}, "p99_pipeline_ms": {"$round": [{"$arrayElemAt": ["$p99_pipeline_time", 0]}, 0]}, "avg_detection_to_decision_ms": {"$round": ["$avg_detection_to_decision", 0]}}}},
         ]
         result = list(decision_events_collection.aggregate(pipeline))
@@ -204,8 +213,8 @@ def get_operator_performance(hours_ago: int = 24) -> List[Dict[str, Any]]:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
         pipeline = [
             {"$match": {"operator_decision": {"$exists": True}, "created_at": {"$gte": cutoff}}},
-            {"$group": {"_id": "$operator_decision.operator_id", "total_reviews": {"$sum": 1}, "avg_review_time_ms": {"$avg": "$timing.manual_review_duration_ms"}, "override_count": {"$sum": {"$cond": [{"$ne": ["$decision_engine.decision", "$operator_decision.decision"]}, 1, 0]}}}},
-            {"$project": {"_id": 0, "operator_id": "$_id", "total_reviews": 1, "avg_review_time_seconds": {"$round": [{"$divide": ["$avg_review_time_ms", 1000]}, 1]}, "override_rate": {"$cond": [{"$eq": ["$total_reviews", 0]}, 0, {"$divide": ["$override_count", "$total_reviews"]}]}}},
+            {"$group": {"_id": "$operator_decision.operator_id", "total_reviews": {"$sum": 1}, "avg_review_time_ms": {"$avg": "$timing.manual_review_duration_ms"}, "override_count": {"$sum": {"$cond": [{"$ne": [_F_DECISION, "$operator_decision.decision"]}, 1, 0]}}}},
+            {"$project": {"_id": 0, "operator_id": "$_id", "total_reviews": 1, "avg_review_time_seconds": {"$round": [{"$divide": ["$avg_review_time_ms", 1000]}, 1]}, "override_rate": {"$cond": [{"$eq": [_F_TOTAL_REVIEWS, 0]}, 0, {"$divide": ["$override_count", _F_TOTAL_REVIEWS]}]}}},
             {"$sort": {"total_reviews": -1}},
         ]
         return list(decision_events_collection.aggregate(pipeline))
@@ -359,8 +368,8 @@ def read_volume_from_mongo(from_dt: datetime, to_dt: datetime, interval: str) ->
                 {"$match": {"hour_bucket": {"$gte": from_dt, "$lte": to_dt}}},
                 {"$group": {
                     "_id": "$hour_bucket",
-                    "entries": {"$sum": "$entries"},
-                    "exits": {"$sum": "$exits"},
+                    "entries": {"$sum": _F_ENTRIES},
+                    "exits": {"$sum": _F_EXITS},
                 }},
                 {"$sort": {"_id": 1}},
             ]
@@ -371,13 +380,13 @@ def read_volume_from_mongo(from_dt: datetime, to_dt: datetime, interval: str) ->
                 {"$group": {
                     "_id": {
                         "$dateFromParts": {
-                            "isoWeekYear": {"$isoWeekYear": "$day_bucket"},
-                            "isoWeek": {"$isoWeek": "$day_bucket"},
+                            "isoWeekYear": {"$isoWeekYear": _F_DAY_BUCKET},
+                            "isoWeek": {"$isoWeek": _F_DAY_BUCKET},
                             "isoDayOfWeek": 1,
                         }
                     },
-                    "entries": {"$sum": "$entries"},
-                    "exits": {"$sum": "$exits"},
+                    "entries": {"$sum": _F_ENTRIES},
+                    "exits": {"$sum": _F_EXITS},
                 }},
                 {"$sort": {"_id": 1}},
             ]
@@ -386,9 +395,9 @@ def read_volume_from_mongo(from_dt: datetime, to_dt: datetime, interval: str) ->
             pipeline = [
                 {"$match": {"day_bucket": {"$gte": from_dt, "$lte": to_dt}}},
                 {"$group": {
-                    "_id": "$day_bucket",
-                    "entries": {"$sum": "$entries"},
-                    "exits": {"$sum": "$exits"},
+                    "_id": _F_DAY_BUCKET,
+                    "entries": {"$sum": _F_ENTRIES},
+                    "exits": {"$sum": _F_EXITS},
                 }},
                 {"$sort": {"_id": 1}},
             ]
@@ -426,7 +435,7 @@ def compute_operator_performance_snapshot(period_hours: int = 24) -> int:
                 "total_reviews": {"$sum": 1},
                 "avg_review_time_ms": {"$avg": "$timing.manual_review_duration_ms"},
                 "override_count": {"$sum": {"$cond": [
-                    {"$ne": ["$decision_engine.decision", "$operator_decision.decision"]}, 1, 0
+                    {"$ne": [_F_DECISION, "$operator_decision.decision"]}, 1, 0
                 ]}},
             }},
             {"$project": {
@@ -435,8 +444,8 @@ def compute_operator_performance_snapshot(period_hours: int = 24) -> int:
                 "total_reviews": 1,
                 "avg_review_time_seconds": {"$round": [{"$divide": ["$avg_review_time_ms", 1000]}, 1]},
                 "override_rate": {"$cond": [
-                    {"$eq": ["$total_reviews", 0]}, 0.0,
-                    {"$divide": ["$override_count", "$total_reviews"]},
+                    {"$eq": [_F_TOTAL_REVIEWS, 0]}, 0.0,
+                    {"$divide": ["$override_count", _F_TOTAL_REVIEWS]},
                 ]},
             }},
         ]

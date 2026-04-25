@@ -42,9 +42,9 @@ def new_event_id() -> UUIDv7Str:
     rand_b = rand & 0x3FFFFFFFFFFFFFFF    # 62 random bits (bits 61-0)
     value = (
         (ts_ms << 80)
-        | (0x7 << 76)          # version = 7
+        | (0x7 << 76)
         | (rand_a << 64)
-        | (0b10 << 62)         # variant = 10
+        | (0b10 << 62)
         | rand_b
     )
     h = f"{value:032x}"

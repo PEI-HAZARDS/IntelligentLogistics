@@ -15,6 +15,8 @@ from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger("mongo")
 
+_FIELD_DECISION = _FIELD_DECISION
+
 # Initialize MongoDB client
 mongo_client = MongoClient(
     settings.mongo_url,
@@ -176,11 +178,11 @@ def create_indexes():
         partialFilterExpression={"appointment_id": {"$type": "int"}},
     )
     decision_events_collection.create_index(
-        [("gate_id", ASCENDING), ("decision_engine.decision", ASCENDING), ("created_at", DESCENDING)],
+        [("gate_id", ASCENDING), (_FIELD_DECISION, ASCENDING), ("created_at", DESCENDING)],
         name="idx_gate_decision_created",
     )
     decision_events_collection.create_index(
-        [("decision_engine.decision", ASCENDING), ("operator_decision.timestamp", ASCENDING)],
+        [(_FIELD_DECISION, ASCENDING), ("operator_decision.timestamp", ASCENDING)],
         name="idx_manual_review",
         sparse=True,
     )
@@ -363,7 +365,7 @@ def get_pending_manual_reviews(gate_id: int = None, limit: int = 50):
         List of decision events pending manual review
     """
     query = {
-        "decision_engine.decision": "MANUAL_REVIEW",
+        _FIELD_DECISION: "MANUAL_REVIEW",
         "operator_decision": {"$exists": False}
     }
     if gate_id:

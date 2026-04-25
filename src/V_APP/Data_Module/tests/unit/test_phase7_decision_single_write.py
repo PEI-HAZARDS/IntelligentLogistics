@@ -135,7 +135,7 @@ class TestKafkaConsumerDW03:
 
     def test_persist_decision_method_is_noop(self):
         src = _KAFKA_CONSUMER_SRC.read_text()
-        fn_start = src.index("async def _persist_decision(")
+        fn_start = src.index("def _persist_decision(")
         try:
             fn_end = src.index("\n    async def ", fn_start + 1)
         except ValueError:

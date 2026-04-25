@@ -109,11 +109,11 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
             try:
                 self._session.commit()
                 return
-            except OperationalError as exc:
+            except OperationalError:
                 if attempt == _COMMIT_MAX_RETRIES:
                     raise
                 self._session.rollback()
-                time.sleep(_COMMIT_BACKOFF_BASE * (2 ** (attempt - 1)))
+                time.sleep(_COMMIT_BACKOFF_BASE * 2 ** (attempt - 1))
 
     def rollback(self) -> None:
         if self._session is not None:

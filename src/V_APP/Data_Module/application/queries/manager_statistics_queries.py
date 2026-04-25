@@ -257,44 +257,7 @@ def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
 # 2. GET /statistics/by-company
 # ---------------------------------------------------------------------------
 
-def get_transport_stats(
-    from_date: Optional[str] = None, to_date: Optional[str] = None
-) -> List[Dict[str, Any]]:
-    """
-    Returns per-company transport statistics:
-        [{ companyName, companyNif, avgUnloadingTime, avgWaitingTime,
-           operationsCount, slaAttendedRate }]
-
-    Reads from MongoDB company_metrics_collection (pre-computed by the
-    statistics aggregator).  Falls back to a live PostgreSQL query when
-    the collection is empty.
-    """
-    # ── 1) MongoDB pre-computed snapshot ────────────────────────────────────
-    try:
-        from infrastructure.persistence.mongo import company_metrics_collection
-        raw_docs = list(company_metrics_collection.find({}, {"_id": 0}).sort("computed_at", -1))
-        if raw_docs:
-            seen: set = set()
-            result = []
-            for doc in raw_docs:
-                nif = doc.get("company_nif")
-                if nif and nif not in seen:
-                    seen.add(nif)
-                    result.append({
-                        "companyName": doc.get("company_name", ""),
-                        "companyNif": nif,
-                        "avgUnloadingTime": doc.get("avg_unloading_time", 0),
-                        "avgWaitingTime": doc.get("avg_waiting_time", 0),
-                        "operationsCount": doc.get("operations_count", 0),
-                        "slaAttendedRate": doc.get("sla_attended_rate", 0.0),
-                    })
-            if result:
-                return result
-    except Exception as e:
-        logger.warning("company_metrics_collection unavailable: %s — falling back to PG", e)
-
-    # ── 2) PostgreSQL fallback ───────────────────────────────────────────────
-    start, end = _date_range(from_date, to_date)
+def _transport_stats_from_pg(start, end) -> List[Dict[str, Any]]:
     db: Session = SessionLocal()
     try:
         rows = (
@@ -322,34 +285,65 @@ def get_transport_stats(
             .join(Truck, Appointment.truck_license_plate == Truck.license_plate)
             .join(Company, Truck.company_nif == Company.nif)
             .outerjoin(Visit, Visit.appointment_id == Appointment.id)
-            .filter(
-                Appointment.scheduled_start_time.between(start, end),
-            )
+            .filter(Appointment.scheduled_start_time.between(start, end))
             .group_by(Company.nif, Company.name)
             .all()
         )
-
         result = []
         for r in rows:
             ops = r.ops_count or 0
             completed = r.completed_count or 0
             sla_rate = round(completed / ops * 100, 1) if ops > 0 else 0.0
-            result.append(
-                {
-                    "companyName": r.company_name,
-                    "companyNif": r.company_nif,
-                    "avgUnloadingTime": round(float(r.avg_unloading), 0) if r.avg_unloading else 0,
-                    "avgWaitingTime": round(float(r.avg_waiting), 0) if r.avg_waiting else 0,
-                    "operationsCount": ops,
-                    "slaAttendedRate": sla_rate,
-                }
-            )
+            result.append({
+                "companyName": r.company_name,
+                "companyNif": r.company_nif,
+                "avgUnloadingTime": round(float(r.avg_unloading), 0) if r.avg_unloading else 0,
+                "avgWaitingTime": round(float(r.avg_waiting), 0) if r.avg_waiting else 0,
+                "operationsCount": ops,
+                "slaAttendedRate": sla_rate,
+            })
         return result
     except Exception as e:
         logger.error("get_transport_stats failed: %s", e)
         return []
     finally:
         db.close()
+
+
+def get_transport_stats(
+    from_date: Optional[str] = None, to_date: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Returns per-company transport statistics.
+    Reads from MongoDB company_metrics_collection (pre-computed by the
+    statistics aggregator).  Falls back to a live PostgreSQL query when
+    the collection is empty.
+    """
+    try:
+        from infrastructure.persistence.mongo import company_metrics_collection
+        raw_docs = list(company_metrics_collection.find({}, {"_id": 0}).sort("computed_at", -1))
+        if raw_docs:
+            seen: set = set()
+            result = []
+            for doc in raw_docs:
+                nif = doc.get("company_nif")
+                if nif and nif not in seen:
+                    seen.add(nif)
+                    result.append({
+                        "companyName": doc.get("company_name", ""),
+                        "companyNif": nif,
+                        "avgUnloadingTime": doc.get("avg_unloading_time", 0),
+                        "avgWaitingTime": doc.get("avg_waiting_time", 0),
+                        "operationsCount": doc.get("operations_count", 0),
+                        "slaAttendedRate": doc.get("sla_attended_rate", 0.0),
+                    })
+            if result:
+                return result
+    except Exception as e:
+        logger.warning("company_metrics_collection unavailable: %s — falling back to PG", e)
+
+    start, end = _date_range(from_date, to_date)
+    return _transport_stats_from_pg(start, end)
 
 
 def compute_company_metrics_snapshot(db_session: Session, period_days: int = 30) -> int:

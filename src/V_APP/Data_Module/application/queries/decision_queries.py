@@ -56,9 +56,9 @@ def decision_cache_key(license_plate: Optional[str], gate_id: Optional[int], ts:
 
 
 def is_duplicate_and_mark(
-    license_plate: Optional[str],
-    gate_id: Optional[int],
-    ts: float,
+    _license_plate: Optional[str],
+    _gate_id: Optional[int],
+    _ts: float,
     *,
     event_id: Optional[str] = None,
 ) -> bool:

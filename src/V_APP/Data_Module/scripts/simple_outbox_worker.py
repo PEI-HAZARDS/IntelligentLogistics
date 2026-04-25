@@ -187,96 +187,73 @@ def project_to_mongo(event_row: OutboxEvent) -> None:
     )
 
 
-def project_to_redis(event_row: OutboxEvent, session) -> None:
-    """
-    Update Redis hot caches so dashboards reflect the latest state.
+_APPOINTMENT_EVENT_TYPES = {
+    "AppointmentStateChanged",
+    "AppointmentStatusUpdated",
+    "AppointmentHighwayInfractionFlagged",
+    "DecisionProcessed",
+    "VisitCreated",
+    "VisitStateUpdated",
+}
 
-    For appointment-related events:
-      1. Invalidate the stale appointment cache entry.
-      2. Query the full Appointment from PostgreSQL and write a JSON
-         snapshot into Redis — GET /arrivals/{id} reads this key (O(1)).
-      3. Bump the real-time counter for the gate.
-    """
+
+def _project_appointment_event(payload: dict, event_type: str, session) -> None:
+    if event_type not in _APPOINTMENT_EVENT_TYPES:
+        return
+    appointment_id = payload.get("appointment_id")
+    if appointment_id is None:
+        return
+    invalidate_appointment_cache(int(appointment_id))
+    appt = session.query(AppointmentORM).filter(AppointmentORM.id == int(appointment_id)).first()
+    if appt:
+        snapshot = AppointmentSchema.model_validate(appt).model_dump(mode="json")
+        cache_appointment(int(appointment_id), snapshot)
+        driver_license = getattr(appt, "driver_license", None)
+        if driver_license:
+            if appt.status in {"in_process", "unloading"}:
+                cache_driver_active_appointment(driver_license, snapshot)
+            else:
+                invalidate_driver_active_appointment(driver_license)
+    else:
+        logger.warning("Appointment %s not found during projection", appointment_id)
+    gate_id = payload.get("gate_in_id") or payload.get("gate_out_id")
+    if gate_id is not None:
+        new_state = payload.get("new_state", "unknown")
+        increment_counter(int(gate_id), f"transitions:{new_state}")
+
+
+def _project_alert_event(event_row: OutboxEvent, payload: dict) -> None:
+    if event_row.event_type not in {"AlertCreated", "HazmatAlertCreated"}:
+        return
+    appointment_id = payload.get("appointment_id")
+    if appointment_id is not None:
+        invalidate_appointment_cache(int(appointment_id))
+    alert_id = payload.get("id")
+    if alert_id is not None:
+        try:
+            redis_client.setex(
+                alert_detail_key(int(alert_id)),
+                TTL_ALERT_DETAIL,
+                json.dumps(payload, default=str),
+            )
+        except Exception as _ae:
+            logger.warning("Failed to cache alert %s: %s", alert_id, _ae)
+    redis_client.delete(active_alerts_list_key())
+
+
+def project_to_redis(event_row: OutboxEvent, session) -> None:
+    """Update Redis hot caches so dashboards reflect the latest state."""
     payload = event_row.payload or {}
     event_type = event_row.event_type
 
-    _APPOINTMENT_EVENT_TYPES = {
-        "AppointmentStateChanged",
-        "AppointmentStatusUpdated",
-        "AppointmentHighwayInfractionFlagged",
-        "DecisionProcessed",
-        "VisitCreated",
-        "VisitStateUpdated",
-    }
+    _project_appointment_event(payload, event_type, session)
+    _project_alert_event(event_row, payload)
 
-    if event_type in _APPOINTMENT_EVENT_TYPES:
-        appointment_id = payload.get("appointment_id")
-        if appointment_id is not None:
-            # 1) Invalidate stale entry
-            invalidate_appointment_cache(int(appointment_id))
-
-            # 2) Full appointment snapshot → Redis hot cache + driver active cache
-            appt = (
-                session.query(AppointmentORM)
-                .filter(AppointmentORM.id == int(appointment_id))
-                .first()
-            )
-            if appt:
-                snapshot = AppointmentSchema.model_validate(appt).model_dump(
-                    mode="json"
-                )
-                cache_appointment(int(appointment_id), snapshot)
-
-                # keep driver's active-appointment cache in sync
-                driver_license = getattr(appt, "driver_license", None)
-                if driver_license:
-                    if appt.status in {"in_process", "unloading"}:
-                        cache_driver_active_appointment(driver_license, snapshot)
-                    else:
-                        invalidate_driver_active_appointment(driver_license)
-            else:
-                logger.warning(
-                    "Appointment %s not found during projection",
-                    appointment_id,
-                )
-
-            # 3) Real-time counters
-            gate_id = payload.get("gate_in_id") or payload.get("gate_out_id")
-            if gate_id is not None:
-                new_state = payload.get("new_state", "unknown")
-                increment_counter(int(gate_id), f"transitions:{new_state}")
-
-    # Alert events: invalidate appointment cache + project alert to Redis (BR-38)
-    if event_type in {"AlertCreated", "HazmatAlertCreated"}:
-        appointment_id = payload.get("appointment_id")
-        if appointment_id is not None:
-            invalidate_appointment_cache(int(appointment_id))
-
-        # Cache individual alert for fast single-alert reads
-        alert_id = payload.get("id")
-        if alert_id is not None:
-            try:
-                redis_client.setex(
-                    alert_detail_key(int(alert_id)),
-                    TTL_ALERT_DETAIL,
-                    json.dumps(payload, default=str),
-                )
-            except Exception as _ae:
-                logger.warning("Failed to cache alert %s: %s", alert_id, _ae)
-
-        # Invalidate the active-alerts list so next GET /alerts/active re-fetches
-        redis_client.delete(active_alerts_list_key())
-
-    # Pending review events
     if event_type == "PendingReviewCreated":
         pr_event_id = payload.get("event_id")
         if pr_event_id:
             ttl = int(payload.get("ttl", 1800))
-            redis_client.setex(
-                pending_review_key(pr_event_id),
-                ttl,
-                json.dumps(payload, default=str),
-            )
+            redis_client.setex(pending_review_key(pr_event_id), ttl, json.dumps(payload, default=str))
             logger.debug("Cached pending review: event_id=%s TTL=%s", pr_event_id, ttl)
 
     if event_type == "PendingReviewResolved":
@@ -285,13 +262,11 @@ def project_to_redis(event_row: OutboxEvent, session) -> None:
             redis_client.delete(pending_review_key(pr_event_id))
             logger.debug("Evicted resolved pending review: event_id=%s", pr_event_id)
 
-    # Notification events (DW-01): project to MongoDB notifications collection
     if event_type == "NotificationCreated":
-        doc = {k: v for k, v in payload.items()}
+        doc = dict(payload)
         doc["event_id"] = event_row.event_id
         doc.setdefault("read", False)
         doc.setdefault("created_at", datetime.now(timezone.utc))
-        # Use event_id as idempotency key — re-projection produces same state (Guardrail 7)
         notifications_collection.update_one(
             {"event_id": event_row.event_id},
             {"$setOnInsert": doc},

@@ -76,9 +76,37 @@ def _load_gate_ids() -> list[int]:
                 ids = [int(g) for g in parsed if str(g).strip()]
                 if ids:
                     return ids
-        except (json.JSONDecodeError, ValueError):
+        except ValueError:
             logger.warning("Invalid AGGREGATOR_GATE_IDS format — falling back to GATE_ID")
     return [int(settings.gate_id)]
+
+
+def _run_hourly(gate_ids: list[int], hour_timestamp: datetime | None, db, results: dict) -> None:
+    for gate_id in gate_ids:
+        try:
+            doc = compute_hourly_statistics(gate_id, hour_timestamp, pg_session=db)
+            if doc:
+                bucket = doc["hour_bucket"].isoformat() if hasattr(doc.get("hour_bucket"), "isoformat") else str(doc.get("hour_bucket"))
+                logger.info("Hourly stats: gate=%s hour=%s entries=%s exits=%s",
+                            gate_id, bucket, doc.get("entries", 0), doc.get("exits", 0))
+                results["ok"].append(gate_id)
+            else:
+                logger.warning("compute_hourly_statistics returned None for gate=%s", gate_id)
+                results["failed"].append(gate_id)
+        except Exception as exc:
+            logger.error("Hourly stats failed for gate=%s: %s", gate_id, exc, exc_info=True)
+            results["failed"].append(gate_id)
+
+
+def _run_daily(gate_ids: list[int], prev_day: datetime, db) -> None:
+    for gate_id in gate_ids:
+        try:
+            doc = compute_daily_statistics(gate_id, prev_day, pg_session=db)
+            if doc:
+                logger.info("Daily stats: gate=%s day=%s entries=%s exits=%s",
+                            gate_id, prev_day.date(), doc.get("entries", 0), doc.get("exits", 0))
+        except Exception as exc:
+            logger.error("Daily stats failed for gate=%s: %s", gate_id, exc, exc_info=True)
 
 
 def run_cycle(gate_ids: list[int], hour_timestamp: datetime | None = None) -> dict:
@@ -86,47 +114,22 @@ def run_cycle(gate_ids: list[int], hour_timestamp: datetime | None = None) -> di
     results: dict = {"ok": [], "failed": []}
     db = SessionLocal()
     try:
-        # ── 1. Hourly stats per gate ─────────────────────────────────────────
-        for gate_id in gate_ids:
-            try:
-                doc = compute_hourly_statistics(gate_id, hour_timestamp, pg_session=db)
-                if doc:
-                    bucket = doc["hour_bucket"].isoformat() if hasattr(doc.get("hour_bucket"), "isoformat") else str(doc.get("hour_bucket"))
-                    logger.info("Hourly stats: gate=%s hour=%s entries=%s exits=%s",
-                                gate_id, bucket, doc.get("entries", 0), doc.get("exits", 0))
-                    results["ok"].append(gate_id)
-                else:
-                    logger.warning("compute_hourly_statistics returned None for gate=%s", gate_id)
-                    results["failed"].append(gate_id)
-            except Exception as exc:
-                logger.error("Hourly stats failed for gate=%s: %s", gate_id, exc, exc_info=True)
-                results["failed"].append(gate_id)
+        _run_hourly(gate_ids, hour_timestamp, db, results)
 
-        # ── 2. Daily roll-up per gate ────────────────────────────────────────
         prev_day = (hour_timestamp or datetime.now(timezone.utc)) - timedelta(days=1)
-        for gate_id in gate_ids:
-            try:
-                doc = compute_daily_statistics(gate_id, prev_day, pg_session=db)
-                if doc:
-                    logger.info("Daily stats: gate=%s day=%s entries=%s exits=%s",
-                                gate_id, prev_day.date(), doc.get("entries", 0), doc.get("exits", 0))
-            except Exception as exc:
-                logger.error("Daily stats failed for gate=%s: %s", gate_id, exc, exc_info=True)
+        _run_daily(gate_ids, prev_day, db)
 
-        # ── 3. Operator performance snapshot ────────────────────────────────
         try:
             n = compute_operator_performance_snapshot()
             logger.info("Operator performance snapshot: %d operator(s) written", n)
         except Exception as exc:
             logger.error("Operator performance snapshot failed: %s", exc, exc_info=True)
 
-        # ── 4. Company metrics snapshot ──────────────────────────────────────
         try:
             n = compute_company_metrics_snapshot(db)
             logger.info("Company metrics snapshot: %d company(ies) written", n)
         except Exception as exc:
             logger.error("Company metrics snapshot failed: %s", exc, exc_info=True)
-
     finally:
         db.close()
 

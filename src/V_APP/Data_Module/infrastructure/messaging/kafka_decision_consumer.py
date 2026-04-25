@@ -266,7 +266,7 @@ class KafkaDecisionConsumer:
                     inferred_gate_id = self._extract_gate_id_from_topic(topic)
                     if inferred_gate_id and not final_decision.get("gate_id"):
                         final_decision = {**final_decision, "gate_id": inferred_gate_id}
-                    await self._persist_decision(truck_id, final_decision)
+                    self._persist_decision(truck_id)
 
             except Exception as e:
                 logger.error(f"Error in consume loop: {e}", exc_info=True)
@@ -405,7 +405,7 @@ class KafkaDecisionConsumer:
             logger.error("Failed to resolve appointment_id for plate=%s: %s", license_plate, e)
             return None
 
-    async def _persist_decision(self, truck_id: str, decision_data: dict):
+    def _persist_decision(self, truck_id: str):
         """No-op — Mongo projection is handled by the outbox worker (DW-03)."""
         logger.debug("_persist_decision: outbox worker handles Mongo projection for truck_id=%s", truck_id)
 
@@ -479,12 +479,6 @@ class KafkaDecisionConsumer:
             except (TypeError, ValueError):
                 gate_id = int(settings.gate_id)
 
-            event_payload = {
-                **decision_data,
-                "gate_id": gate_id,
-                "truck_id": truck_id,
-            }
-
             # Mongo projection handled by the outbox worker (DW-03)
 
             # Determine if infraction flag needs to be updated on appointment
@@ -498,100 +492,7 @@ class KafkaDecisionConsumer:
                         f"Infraction detected for truck_id={truck_id} but license_plate is missing"
                     )
                 else:
-                    # Update appointment highway_infraction flag in PostgreSQL via UoW + Outbox
-                    result = await asyncio.get_event_loop().run_in_executor(
-                        None,
-                        update_appointment_after_infraction,
-                        license_plate,
-                        True,
-                    )
-
-                    if not result:
-                        logger.warning(
-                            f"Infraction detected for truck_id={truck_id} plate={license_plate}, "
-                            "but no active appointment was updated"
-                        )
-                    else:
-                        appointment_id = result.get("appointment_id")
-                        logger.info(
-                            f"Appointment {appointment_id} infraction flag updated for truck_id={truck_id}: "
-                            f"{result['old_highway_infraction']} -> {result['new_highway_infraction']}"
-                        )
-
-                        # Route warnings to the appointment gate (gate_in_id) when available.
-                        notification_gate_id = await self._get_driver_gate_id(appointment_id, gate_id)
-                        if notification_gate_id != gate_id:
-                            logger.info(
-                                "Infraction notification gate remapped from source gate=%s to "
-                                "appointment gate=%s for truck_id=%s",
-                                gate_id, notification_gate_id, truck_id,
-                            )
-
-                        # Create PG alert record via UoW + Outbox (Guardrails 2, 3, 6)
-                        infraction_type = decision_data.get("infraction_type", "highway_route")
-                        alert_description = (
-                            f"Highway infraction detected: truck {license_plate} "
-                            f"flagged for {infraction_type}. Driver must return to highway or face a fine."
-                        )
-                        try:
-                            def _create_infraction_alert():
-                                from application.use_cases.alert_handlers import create_alerts_for_appointment
-                                def _uow_factory():
-                                    return SqlAlchemyUnitOfWork(SessionLocal)
-                                create_alerts_for_appointment(
-                                    _uow_factory,
-                                    appointment_id=appointment_id,
-                                    alerts_payload=[{
-                                        "type": "operational",
-                                        "description": alert_description,
-                                    }],
-                                )
-
-                            await asyncio.get_event_loop().run_in_executor(None, _create_infraction_alert)
-                            logger.info(f"PG alert created for infraction on appointment={appointment_id}")
-                        except Exception as alert_err:
-                            logger.error(f"Failed to create PG alert for infraction: {alert_err}")
-
-                        # Gate + driver notifications via outbox (DW-01)
-                        def _uow_factory():
-                            return SqlAlchemyUnitOfWork(SessionLocal)
-
-                        try:
-                            await asyncio.get_event_loop().run_in_executor(
-                                None,
-                                lambda: cmd_create_notification(
-                                    _uow_factory,
-                                    gate_id=notification_gate_id,
-                                    title="Highway Infraction",
-                                    message=f"Truck {license_plate} flagged with highway infraction.",
-                                    notification_type="danger",
-                                    appointment_id=appointment_id,
-                                    license_plate=license_plate,
-                                ),
-                            )
-                        except Exception as notif_err:
-                            logger.error(f"Failed to emit gate notification for infraction: {notif_err}")
-
-                        try:
-                            await asyncio.get_event_loop().run_in_executor(
-                                None,
-                                lambda: cmd_create_notification(
-                                    _uow_factory,
-                                    gate_id=notification_gate_id,
-                                    title="Highway Infraction Warning",
-                                    message=(
-                                        f"Your truck ({license_plate}) has been flagged for a highway route infraction. "
-                                        "Please return to the designated highway route or you may be fined."
-                                    ),
-                                    notification_type="warning",
-                                    appointment_id=appointment_id,
-                                    license_plate=license_plate,
-                                    extra={"target": "driver"},
-                                ),
-                            )
-                            logger.info(f"Driver notification emitted for infraction on appointment={appointment_id}")
-                        except Exception as notif_err:
-                            logger.error(f"Failed to emit driver notification for infraction: {notif_err}")
+                    await self._handle_infraction_update(truck_id, gate_id, license_plate, decision_data)
 
             # ── Mark inbox event processed ────────────────────────
             def _mark_processed():
@@ -613,6 +514,100 @@ class KafkaDecisionConsumer:
                 await asyncio.get_event_loop().run_in_executor(None, _mark_failed)
             except Exception as mark_err:
                 logger.error("Failed to mark infraction inbox event as failed: %s", mark_err)
+
+    async def _handle_infraction_update(
+        self, truck_id: str, gate_id: int, license_plate: str, decision_data: dict
+    ) -> None:
+        """Update appointment flag, create alert, and notify for an infraction."""
+        result = await asyncio.get_event_loop().run_in_executor(
+            None, update_appointment_after_infraction, license_plate, True
+        )
+        if not result:
+            logger.warning(
+                "Infraction detected for truck_id=%s plate=%s, but no active appointment was updated",
+                truck_id, license_plate,
+            )
+            return
+
+        appointment_id = result.get("appointment_id")
+        logger.info(
+            "Appointment %s infraction flag updated for truck_id=%s: %s -> %s",
+            appointment_id, truck_id,
+            result["old_highway_infraction"], result["new_highway_infraction"],
+        )
+
+        notification_gate_id = await self._get_driver_gate_id(appointment_id, gate_id)
+        if notification_gate_id != gate_id:
+            logger.info(
+                "Infraction notification gate remapped from source gate=%s to "
+                "appointment gate=%s for truck_id=%s",
+                gate_id, notification_gate_id, truck_id,
+            )
+
+        infraction_type = decision_data.get("infraction_type", "highway_route")
+        alert_description = (
+            f"Highway infraction detected: truck {license_plate} "
+            f"flagged for {infraction_type}. Driver must return to highway or face a fine."
+        )
+        try:
+            def _create_alert():
+                from application.use_cases.alert_handlers import create_alerts_for_appointment
+                def _uow():
+                    return SqlAlchemyUnitOfWork(SessionLocal)
+                create_alerts_for_appointment(
+                    _uow, appointment_id=appointment_id,
+                    alerts_payload=[{"type": "operational", "description": alert_description}],
+                )
+            await asyncio.get_event_loop().run_in_executor(None, _create_alert)
+            logger.info("PG alert created for infraction on appointment=%s", appointment_id)
+        except Exception as alert_err:
+            logger.error("Failed to create PG alert for infraction: %s", alert_err)
+
+        await self._emit_infraction_notifications(appointment_id, license_plate, notification_gate_id)
+
+    async def _emit_infraction_notifications(
+        self, appointment_id: int, license_plate: str, notification_gate_id: int
+    ) -> None:
+        """Send gate and driver notifications for a highway infraction."""
+        def _uow_factory():
+            return SqlAlchemyUnitOfWork(SessionLocal)
+
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: cmd_create_notification(
+                    _uow_factory,
+                    gate_id=notification_gate_id,
+                    title="Highway Infraction",
+                    message=f"Truck {license_plate} flagged with highway infraction.",
+                    notification_type="danger",
+                    appointment_id=appointment_id,
+                    license_plate=license_plate,
+                ),
+            )
+        except Exception as notif_err:
+            logger.error("Failed to emit gate notification for infraction: %s", notif_err)
+
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: cmd_create_notification(
+                    _uow_factory,
+                    gate_id=notification_gate_id,
+                    title="Highway Infraction Warning",
+                    message=(
+                        f"Your truck ({license_plate}) has been flagged for a highway route infraction. "
+                        "Please return to the designated highway route or you may be fined."
+                    ),
+                    notification_type="warning",
+                    appointment_id=appointment_id,
+                    license_plate=license_plate,
+                    extra={"target": "driver"},
+                ),
+            )
+            logger.info("Driver notification emitted for infraction on appointment=%s", appointment_id)
+        except Exception as notif_err:
+            logger.error("Failed to emit driver notification for infraction: %s", notif_err)
 
     async def _get_driver_gate_id(self, appointment_id: int, fallback_gate_id: int) -> int:
         """Get the gate_in_id for the appointment, or fallback."""
