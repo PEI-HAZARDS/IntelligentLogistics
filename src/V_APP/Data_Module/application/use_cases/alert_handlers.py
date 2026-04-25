@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
-from domain.events import EventEnvelope, new_event_id
+from domain.events import ConsumeContext, EventEnvelope, new_event_id
 from domain.interfaces import IUnitOfWork
 
 logger = logging.getLogger(__name__)
@@ -95,6 +95,10 @@ def create_alert(
     return alert
 
 
+class DuplicateHazmatAlert(Exception):
+    """Raised when an idempotency key collides with a previous successful call."""
+
+
 def create_hazmat_alert(
     uow_factory,
     *,
@@ -102,8 +106,15 @@ def create_hazmat_alert(
     un_code: Optional[str] = None,
     kemler_code: Optional[str] = None,
     detected_hazmat: Optional[str] = None,
+    event_id: Optional[str] = None,
 ) -> Optional[dict[str, Any]]:
-    """Creates a hazmat/ADR alert linked to an appointment."""
+    """Creates a hazmat/ADR alert linked to an appointment.
+
+    When *event_id* is provided, an inbox row is inserted in the **same**
+    UoW transaction as the alert; if alert creation rolls back, the inbox
+    row is rolled back too, so retries are not silently dropped.
+    Raises ``DuplicateHazmatAlert`` if the *event_id* was already consumed.
+    """
     description_parts = ["Hazardous cargo detected"]
     if un_code and un_code in ADR_CODES:
         info = ADR_CODES[un_code]
@@ -118,6 +129,34 @@ def create_hazmat_alert(
     alert_type = "safety"
 
     with uow_factory() as uow:
+        if event_id:
+            dedup_envelope = EventEnvelope(
+                event_id=event_id,
+                correlation_id=event_id,
+                causation_id=None,
+                aggregate_type="alert",
+                aggregate_id=str(appointment_id),
+                event_type="HazmatAlertCreated",
+                event_version=1,
+                occurred_at=datetime.now(timezone.utc),
+                producer="decision-engine",
+                partition_key=str(appointment_id),
+                payload={"appointment_id": appointment_id},
+            )
+            dedup_ctx = ConsumeContext(
+                topic="http://alerts/hazmat",
+                partition=0,
+                offset=0,
+                key=str(appointment_id),
+                headers={},
+            )
+            try:
+                inserted = uow.inbox.try_insert_received(dedup_envelope, dedup_ctx)
+            except Exception:
+                inserted = True  # inbox unavailable — proceed without dedup
+            if not inserted:
+                raise DuplicateHazmatAlert(event_id)
+
         if uow.appointment_state.get_for_update(appointment_id) is None:
             return None
 

@@ -60,8 +60,30 @@ def verify_jwt(token: str) -> dict:
 def get_current_claims(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(_bearer)],
 ) -> dict:
-    """FastAPI dependency: validate Bearer token and return JWT claims."""
-    return verify_jwt(credentials.credentials)
+    """FastAPI dependency: validate Bearer token and return JWT claims.
+
+    Also verifies that a server-side Redis session still exists for the
+    ``(role, sub)`` pair, so deleting the session at logout (or letting it
+    expire) effectively revokes the JWT even before its ``exp``.
+    """
+    claims = verify_jwt(credentials.credentials)
+    role = claims.get("role")
+    sub = claims.get("sub")
+    if role and sub:
+        # Local import to avoid pulling redis at module import time (test isolation).
+        from infrastructure.persistence.redis import get_session
+        try:
+            session = get_session(role, sub)
+        except Exception:
+            session = None  # redis unavailable → fall back to JWT-only validation
+        else:
+            if session is None:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Session revoked or expired",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+    return claims
 
 
 def require_role(*allowed_roles: str):

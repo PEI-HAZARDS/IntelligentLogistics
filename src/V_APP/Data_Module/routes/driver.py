@@ -70,7 +70,9 @@ def login(credentials: DriverLoginRequest):
     # For now, return a signed internal JWT so the flow is functional end-to-end.
     token = generate_internal_jwt(sub=driver["drivers_license"], role="driver")
 
-    # Store session in Redis (TTL 3600s) so the token can be revoked server-side.
+    # Store session in Redis (TTL 3600s). get_current_claims() verifies this
+    # session is still present, so deleting it (or letting the TTL lapse)
+    # revokes the JWT before its embedded ``exp`` claim.
     set_session("driver", driver["drivers_license"], {
         "sub": driver["drivers_license"],
         "role": "driver",

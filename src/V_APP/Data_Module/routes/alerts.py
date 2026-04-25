@@ -153,53 +153,24 @@ def create_hazmat_adr_alert(request: CreateHazmatAlertRequest):
     - un_code: UN code (e.g., "1203" for gasoline)
     - kemler_code: Kemler code (e.g., "33" for flammable)
     - detected_hazmat: Detection description (from Agent C)
-    - event_id: Optional UUIDv7 idempotency key; duplicate calls return 200
+    - event_id: Optional UUIDv7 idempotency key; duplicate calls return 409
     """
-    from domain.events import EventEnvelope, ConsumeContext, new_event_id
-    from datetime import datetime, timezone
+    from application.use_cases.alert_handlers import DuplicateHazmatAlert
 
-    # Inbox dedup: if caller supplies event_id, reject replays (Phase 8)
-    if request.event_id:
-        try:
-            with _uow_factory() as uow:
-                dedup_envelope = EventEnvelope(
-                    event_id=request.event_id,
-                    correlation_id=request.event_id,
-                    causation_id=None,
-                    aggregate_type="alert",
-                    aggregate_id=str(request.appointment_id),
-                    event_type="HazmatAlertCreated",
-                    event_version=1,
-                    occurred_at=datetime.now(timezone.utc),
-                    producer="decision-engine",
-                    partition_key=str(request.appointment_id),
-                    payload={"appointment_id": request.appointment_id},
-                )
-                dedup_ctx = ConsumeContext(
-                    topic="http://alerts/hazmat",
-                    partition=0,
-                    offset=0,
-                    key=str(request.appointment_id),
-                    headers={},
-                )
-                if not uow.inbox.try_insert_received(dedup_envelope, dedup_ctx):
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail=f"Duplicate hazmat alert request: event_id={request.event_id}",
-                    )
-                uow.commit()
-        except HTTPException:
-            raise
-        except Exception:
-            pass  # inbox unavailable — proceed without dedup rather than block
-
-    alert = create_hazmat_alert(
-        _uow_factory,
-        appointment_id=request.appointment_id,
-        un_code=request.un_code,
-        kemler_code=request.kemler_code,
-        detected_hazmat=request.detected_hazmat,
-    )
+    try:
+        alert = create_hazmat_alert(
+            _uow_factory,
+            appointment_id=request.appointment_id,
+            un_code=request.un_code,
+            kemler_code=request.kemler_code,
+            detected_hazmat=request.detected_hazmat,
+            event_id=request.event_id,
+        )
+    except DuplicateHazmatAlert:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Duplicate hazmat alert request: event_id={request.event_id}",
+        )
 
     if alert is None:
         raise HTTPException(

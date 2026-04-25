@@ -56,17 +56,25 @@ def validate_consensus(detection: dict, threshold: float = 0.7) -> bool:
     """Return True if *detection* passes consensus validation.
 
     Rejects if:
-    - ``confidence`` is present and below *threshold*
-    - ``origem`` (source identifier) is absent or empty
+    - ``confidence`` is present and below *threshold* (or non-numeric)
+    - source identifier (``origem`` or ``origin``) is absent or empty
     """
     confidence = detection.get("confidence")
-    if confidence is not None and float(confidence) < threshold:
-        _logger.warning(
-            "validate_consensus: confidence %.3f below threshold %.2f — rejected",
-            confidence, threshold,
-        )
-        return False
-    if not detection.get("origem"):
-        _logger.warning("validate_consensus: missing 'origem' field — rejected")
+    if confidence is not None:
+        try:
+            conf_value = float(confidence)
+        except (TypeError, ValueError):
+            _logger.warning(
+                "validate_consensus: non-numeric confidence %r — rejected", confidence,
+            )
+            return False
+        if conf_value < threshold:
+            _logger.warning(
+                "validate_consensus: confidence %.3f below threshold %.2f — rejected",
+                conf_value, threshold,
+            )
+            return False
+    if not (detection.get("origem") or detection.get("origin")):
+        _logger.warning("validate_consensus: missing 'origem'/'origin' field — rejected")
         return False
     return True

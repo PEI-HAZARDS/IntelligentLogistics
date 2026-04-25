@@ -119,17 +119,21 @@ class TestHandlersUseNewEventId:
 # ---------------------------------------------------------------------------
 
 class TestHazmatAlertInboxDedup:
-    _SRC = _src("routes/alerts.py")
+    _ROUTE_SRC = _src("routes/alerts.py")
+    _HANDLER_SRC = _src("application/use_cases/alert_handlers.py")
 
     def test_event_id_field_on_request_model(self):
-        assert "event_id" in self._SRC
+        assert "event_id" in self._ROUTE_SRC
 
     def test_inbox_try_insert_received_called(self):
-        assert "try_insert_received" in self._SRC
+        # Dedup happens inside the use-case handler so it shares the UoW
+        # with the alert insert (race condition fix).
+        assert "try_insert_received" in self._HANDLER_SRC
 
     def test_duplicate_returns_409(self):
-        assert "HTTP_409_CONFLICT" in self._SRC
+        assert "HTTP_409_CONFLICT" in self._ROUTE_SRC
+        assert "DuplicateHazmatAlert" in self._HANDLER_SRC
 
     def test_dedup_only_when_event_id_provided(self):
-        # Guard must be conditional — "if request.event_id"
-        assert "if request.event_id" in self._SRC
+        # Guard must be conditional — handler does dedup only when event_id is set
+        assert "if event_id" in self._HANDLER_SRC
