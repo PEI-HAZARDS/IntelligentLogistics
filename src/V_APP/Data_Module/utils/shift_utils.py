@@ -23,7 +23,7 @@ def parse_shift_type(value: str) -> ShiftType:
             return shift_type
 
     raise ValueError(
-        "Invalid shift_type. Must be MORNING, AFTERNOON, NIGHT or 06:00-14:00, 14:00-22:00, 22:00-06:00"
+        "Invalid shift_type. Must be MORNING, AFTERNOON, or NIGHT"
     )
 
 
