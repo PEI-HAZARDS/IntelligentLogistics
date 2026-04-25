@@ -77,16 +77,38 @@ services:
     networks:
       - intelligent-logistics
 
+  # One-shot schema migration — runs migrationDBv3.sql and exits.
+  # data-module and outbox-worker wait for this to complete successfully.
+  db-migrate:
+    image: postgres:15
+    container_name: dm_db_migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./Data_Module/scripts:/migrations:ro
+    command: >
+      psql
+        -h ${POSTGRES_HOST}
+        -U ${POSTGRES_USER}
+        -d ${POSTGRES_DB}
+        -f /migrations/migrationDBv3.sql
+    networks:
+      - intelligent-logistics
+
   # Data Module API
   data-module:
-    build: 
+    build:
       context: ..
       dockerfile: V_APP/Data_Module/Dockerfile
     container_name: dm_data_module
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
       mongo:
         condition: service_healthy
       redis:
@@ -139,6 +161,8 @@ services:
     restart: unless-stopped
     entrypoint: ["python", "scripts/simple_outbox_worker.py"]
     depends_on:
+      db-migrate:
+        condition: service_completed_successfully
       data-module:
         condition: service_healthy
     environment:
@@ -162,6 +186,37 @@ services:
       timeout: 10s
       start_period: 10s
       retries: 3
+    networks:
+      - intelligent-logistics
+
+  # Statistics Aggregator — computes hourly/daily Mongo rollups for dashboard queries
+  statistics-aggregator:
+    build:
+      context: ..
+      dockerfile: V_APP/Data_Module/Dockerfile
+    container_name: dm_statistics_aggregator
+    restart: unless-stopped
+    entrypoint: ["python", "scripts/statistics_aggregator.py"]
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+      data-module:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - MONGO_URL=${MONGO_URL}
+      - MONGO_HOST=${MONGO_HOST}
+      - MONGO_PORT=${MONGO_PORT}
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - GATE_IDS=${GATE_IDS:-["1"]}
+      - AGGREGATOR_INTERVAL_SECONDS=${AGGREGATOR_INTERVAL_SECONDS:-3600}
+      - PYTHONUNBUFFERED=1
     networks:
       - intelligent-logistics
 
