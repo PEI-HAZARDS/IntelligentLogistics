@@ -15,7 +15,7 @@ from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger("mongo")
 
-_FIELD_DECISION = _FIELD_DECISION
+_FIELD_DECISION = "final_decision"
 
 # Initialize MongoDB client
 mongo_client = MongoClient(

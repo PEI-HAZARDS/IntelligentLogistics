@@ -27,11 +27,11 @@ logger = logging.getLogger("statistics_service")
 # ---------------------------------------------------------------------------
 # Repeated Mongo field-path constants (avoids SonarQube S1192)
 # ---------------------------------------------------------------------------
-_F_DECISION = _F_DECISION
-_F_TOTAL_REVIEWS = _F_TOTAL_REVIEWS
-_F_ENTRIES = _F_ENTRIES
-_F_EXITS = _F_EXITS
-_F_DAY_BUCKET = _F_DAY_BUCKET
+_F_DECISION = "$final_decision"
+_F_TOTAL_REVIEWS = "$total_reviews"
+_F_ENTRIES = "$entries"
+_F_EXITS = "$exits"
+_F_DAY_BUCKET = "$day_bucket"
 
 # Cache MongoDB server version at import time to detect $percentile support.
 # $percentile requires MongoDB 7.0+; on older versions aggregation silently

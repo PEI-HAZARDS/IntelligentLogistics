@@ -107,8 +107,8 @@ services:
     container_name: dm_data_module
     restart: unless-stopped
     depends_on:
-      db-migrate:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
       mongo:
         condition: service_healthy
       redis:
@@ -161,8 +161,6 @@ services:
     restart: unless-stopped
     entrypoint: ["python", "scripts/simple_outbox_worker.py"]
     depends_on:
-      db-migrate:
-        condition: service_completed_successfully
       data-module:
         condition: service_healthy
     environment:
@@ -198,8 +196,6 @@ services:
     restart: unless-stopped
     entrypoint: ["python", "scripts/statistics_aggregator.py"]
     depends_on:
-      db-migrate:
-        condition: service_completed_successfully
       data-module:
         condition: service_healthy
     environment:

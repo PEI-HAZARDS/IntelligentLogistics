@@ -423,7 +423,7 @@ def init_demo_data(db: Session):
         # ── Gates ─────────────────────────────────────────────────────────────
         print("  Creating gates...")
         gate_entry = Gate(
-            label="Portaria 1 — Entrada Principal (Gate 1 / Video1)",
+            label="Portaria 1 — Entrada Principal",
             latitude=Decimal("40.6460"), longitude=Decimal("-8.7470"),
         )
         gate_out = Gate(
@@ -431,7 +431,7 @@ def init_demo_data(db: Session):
             latitude=Decimal("40.6430"), longitude=Decimal("-8.7440"),
         )
         gate_highway = Gate(
-            label="Gate 2 — Abordagem A25 (Video2 / Infração)",
+            label="Gate 2 — Abordagem A25",
             latitude=Decimal("40.6500"), longitude=Decimal("-8.7500"),
         )
         db.add_all([gate_entry, gate_out, gate_highway])
@@ -457,94 +457,152 @@ def init_demo_data(db: Session):
                 shift_map[(gid, stype, sdate)] = s
         db.flush()
 
-        morning_shift = shift_map[(gate_entry.id, ShiftType.MORNING, today)]
+        morning_shift   = shift_map[(gate_entry.id, ShiftType.MORNING,   today)]
         afternoon_shift = shift_map[(gate_entry.id, ShiftType.AFTERNOON, today)]
+        night_shift     = shift_map[(gate_entry.id, ShiftType.NIGHT,     today)]
 
-        # ── Today appointments — Video1 (Gate 1) ──────────────────────────────
-        print(f"\n  Creating {len(VIDEO1_PLATES)} Video1 appointments (Gate 1)...")
         ref_counter = [0]
 
         def _next_ref(prefix="AVR"):
             ref_counter[0] += 1
             return f"{prefix}-{today.strftime('%Y%m%d')}-{ref_counter[0]:04d}"
 
+        def _shift_for(dt: datetime):
+            h = dt.hour
+            if 6 <= h < 14:
+                return morning_shift
+            if 14 <= h < 22:
+                return afternoon_shift
+            return night_shift
+
+        def _auto_status(sched_dt: datetime, dur_min) -> str:
+            """Compute realistic appointment status relative to now."""
+            elapsed = (now - sched_dt).total_seconds() / 60
+            if elapsed < -5:
+                return "scheduled"
+            if dur_min is None or elapsed < dur_min:
+                return "in_process"
+            return "completed"
+
+        def _sched(h: int, m: int = 0) -> datetime:
+            """Absolute time today; if in the future keep as-is (scheduled)."""
+            return datetime.combine(today, time(h, m))
+
+        # ── Video1 appointments — Gate 1, spread across all 3 shifts ─────────
+        # Times chosen so each shift has ≥1 demo plate regardless of script time.
+        print(f"\n  Creating {len(VIDEO1_PLATES)} Video1 appointments (Gate 1)...")
+        _VIDEO1_TIMES = [
+            time(7, 30),   # morning
+            time(9, 0),    # morning
+            time(11, 30),  # morning
+            time(14, 30),  # afternoon
+            time(16, 0),   # afternoon
+            time(22, 15),  # night
+        ]
+        # Plates at index 1 and 4 get highway infraction at Gate 1
+        _VIDEO1_INFRACTION_INDICES = {1, 4}
         for i, plate in enumerate(VIDEO1_PLATES):
             cargo_def = CARGO_TYPES[i % len(CARGO_TYPES)]
             desc, _, _, is_hazmat, un_code, kemler = cargo_def
             bk = _make_booking(db, _next_ref())
             _make_cargo(db, bk.reference, cargo_def)
-
-            sched_time = now + timedelta(minutes=-5 + (10 * i))
+            slot_time = _VIDEO1_TIMES[i % len(_VIDEO1_TIMES)]
+            sched_time = datetime.combine(today, slot_time)
+            status = _auto_status(sched_time, 45)
+            has_infraction = i in _VIDEO1_INFRACTION_INDICES
             notes = (
                 f"HAZMAT: {desc} [UN:{un_code}, Kemler:{kemler}]"
                 if is_hazmat else f"Cargo: {desc}"
             )
+            if has_infraction:
+                notes += " — INFRAÇÃO DETECTADA A25"
             appt = _make_appointment(
                 db, bk.reference, main_driver, trucks_by_plate[plate],
                 terminal_liquidos if is_hazmat else terminal_norte,
-                gate_entry, gate_out, sched_time, "scheduled", notes,
-                highway_infraction=False,
+                gate_entry, gate_out, sched_time, status, notes,
+                highway_infraction=has_infraction,
             )
+            if status in ("completed", "in_process"):
+                entry = sched_time + timedelta(minutes=random.randint(2, 8))
+                dur = 45 if status == "completed" else None
+                v = _make_visit(db, appt, _shift_for(entry), entry, dur)
 
-        # ── Today appointments — Video2 (Gate highway) ────────────────────────
+        # ── Video2 appointments — Gate highway, spread across all 3 shifts ────
         print(f"  Creating {len(VIDEO2_PLATES)} Video2 appointments (Gate 2 / highway)...")
+        _VIDEO2_TIMES = [
+            time(8, 0),    # morning
+            time(15, 30),  # afternoon
+            time(18, 0),   # afternoon
+            time(22, 45),  # night
+        ]
         for i, plate in enumerate(VIDEO2_PLATES):
             cargo_def = CARGO_TYPES[i % len(CARGO_TYPES)]
             desc, _, _, is_hazmat, un_code, kemler = cargo_def
             bk = _make_booking(db, _next_ref("HWY"))
             _make_cargo(db, bk.reference, cargo_def)
-
-            sched_time = now + timedelta(minutes=30 * i)
+            slot_time = _VIDEO2_TIMES[i % len(_VIDEO2_TIMES)]
+            sched_time = datetime.combine(today, slot_time)
+            status = _auto_status(sched_time, 40)
             notes = f"Highway — {'HAZMAT: ' + desc if is_hazmat else 'Cargo: ' + desc}"
-            _make_appointment(
+            appt = _make_appointment(
                 db, bk.reference, drivers[i % len(drivers)], trucks_by_plate[plate],
                 terminal_liquidos if is_hazmat else terminal_solidos,
-                gate_highway, gate_out, sched_time, "scheduled", notes,
+                gate_highway, gate_out, sched_time, status, notes,
                 highway_infraction=is_hazmat,
             )
+            if status in ("completed", "in_process"):
+                entry = sched_time + timedelta(minutes=random.randint(2, 8))
+                dur = 40 if status == "completed" else None
+                v = _make_visit(db, appt, _shift_for(entry), entry, dur)
 
-        # ── Today — bonus completed / in_process appointments for live metrics ─
-        print("  Creating bonus today appointments (completed + in_process)...")
+        # ── Bonus appointments distributed across all 3 shifts ────────────────
+        # Each entry: (truck_idx, cargo_idx, hour, min, dur_min|None, alert_type)
+        # Status is computed dynamically so the demo is always realistic.
+        print("  Creating bonus today appointments distributed across shifts...")
         bonus_configs = [
-            # (truck_idx, cargo_idx, status, dur_min, mins_ago, alert_type)
-            (0, 1, "completed",  35, 240, None),
-            (1, 6, "completed",  28, 200, None),
-            (2, 7, "completed",  42, 160, "operational"),
-            (3, 8, "completed",  31, 130, None),
-            (4, 9, "in_process", None, 25, None),
-            (5, 5, "completed",  22, 350, None),
-            (6, 10, "completed",  55, 320, "problem"),
-            (7, 11, "completed",  38, 280, None),
-            (8, 12, "completed",  70, 250, "safety"),
-            (9, 13, "completed",  45, 220, None),
-            (10, 14, "completed", 30, 190, "generic"),
-            (11, 15, "completed", 85, 150, None),
-            (12, 16, "in_process", None, 20, "operational"),
-            (13, 17, "completed", 48, 90, None),
+            # Morning shift (6–14h)
+            (0,  1,   6, 45,  35,   "operational"),
+            (1,  6,   7, 30,  28,   None),
+            (2,  7,   8, 10,  42,   None),
+            (3,  8,   8, 50,  31,   "safety"),
+            (4,  9,  10, 30,  None, None),        # in_process if still before 12:00
+            (5,  5,  11,  0,  55,   "problem"),
+            (6, 10,  12, 15,  38,   None),
+            (7, 11,  13,  0,  60,   None),
+            # Afternoon shift (14–22h)
+            (8, 12,  14, 30,  70,   None),
+            (9, 13,  15, 45,  45,   "generic"),
+            (10, 14, 16,  0,  30,   None),
+            (11, 15, 17, 30, None,  "operational"),  # in_process if still afternoon
+            (12, 16, 18,  0,  85,   None),
+            (13, 17, 19, 30,  48,   None),
+            # Night shift (22–6h)
+            (0,  18, 22, 30,  40,   None),
+            (1,  19, 23,  0,  35,   None),
         ]
 
-        for bidx, (tidx, cidx, status, dur, mins_ago, alert_t) in enumerate(bonus_configs):
+        for bidx, (tidx, cidx, bh, bm, dur, alert_t) in enumerate(bonus_configs):
             truck = hist_trucks[tidx % len(hist_trucks)]
             cargo_def = CARGO_TYPES[cidx % len(CARGO_TYPES)]
-            desc, _, _, is_hazmat, un_code, kemler = cargo_def
+            desc, _, _, is_hazmat, _, _ = cargo_def
 
             bk = _make_booking(db, _next_ref("BON"), "inbound" if bidx % 3 != 0 else "outbound")
             _make_cargo(db, bk.reference, cargo_def)
 
-            sched_time = now - timedelta(minutes=mins_ago)
+            sched_time = _sched(bh, bm)
+            status = _auto_status(sched_time, dur)
             appt_terminal = terminal_liquidos if is_hazmat else terminal_norte
             appt = _make_appointment(
                 db, bk.reference, drivers[bidx % len(drivers)], truck,
                 appt_terminal, gate_entry, gate_out, sched_time, status,
                 f"Cargo: {desc}",
             )
-
             if status in ("completed", "in_process"):
                 entry = sched_time + timedelta(minutes=random.randint(2, 10))
-                shift = morning_shift if entry.hour < 14 else afternoon_shift
-                v = _make_visit(db, appt, shift, entry, dur)
+                visit_dur = dur if status == "completed" else None
+                v = _make_visit(db, appt, _shift_for(entry), entry, visit_dur)
                 if alert_t:
-                    _make_alert(db, v, appt, shift,
+                    _make_alert(db, v, appt, _shift_for(entry),
                                 entry + timedelta(minutes=random.randint(3, 12)), alert_t)
 
         # ── Peak hour cluster (9–10 AM) for congestion simulation ─────────────
@@ -557,20 +615,20 @@ def init_demo_data(db: Session):
             cargo_def = CARGO_TYPES[ref_counter[0] % len(CARGO_TYPES)]
             bk = _make_booking(db, _next_ref("PEAK"))
             _make_cargo(db, bk.reference, cargo_def)
-            sched = datetime.combine(today, time(ph, pm))
-            if sched > now:
-                sched = now - timedelta(minutes=dur + 10)
+            sched = _sched(ph, pm)
+            status = _auto_status(sched, dur)
             appt = _make_appointment(
                 db, bk.reference, drivers[ref_counter[0] % len(drivers)], truck,
-                terminal_norte, gate_entry, gate_out, sched, "completed",
+                terminal_norte, gate_entry, gate_out, sched, status,
                 f"Peak-hour — {cargo_def[0]}",
             )
-            entry = sched + timedelta(minutes=random.randint(2, 8))
-            shift = morning_shift if entry.hour < 14 else afternoon_shift
-            v = _make_visit(db, appt, shift, entry, dur)
-            if random.random() < 0.3:
-                at = random.choice(["operational", "generic"])
-                _make_alert(db, v, appt, shift, entry + timedelta(minutes=5), at)
+            if status in ("completed", "in_process"):
+                entry = sched + timedelta(minutes=random.randint(2, 8))
+                visit_dur = dur if status == "completed" else None
+                v = _make_visit(db, appt, _shift_for(entry), entry, visit_dur)
+                if random.random() < 0.3:
+                    at = random.choice(["operational", "generic"])
+                    _make_alert(db, v, appt, _shift_for(entry), entry + timedelta(minutes=5), at)
 
         # ── Historical data (5 previous days) ─────────────────────────────────
         print("  Creating 5 days of historical data...")
@@ -623,16 +681,18 @@ def init_demo_data(db: Session):
 
         print(f"""
 ┌─────────────────────────────────────────────────────────────────────┐
-│  VIDEO1 → Gate 1 (Decision Engine):  {len(VIDEO1_PLATES)} plates             │
-│  VIDEO2 → Gate 2 (Infraction Engine): {len(VIDEO2_PLATES)} plates             │
-│  Bonus appointments (today, completed/in_process): {len(bonus_configs) + len(peak_configs)}          │
+│  VIDEO1 → Gate 1:  {len(VIDEO1_PLATES)} plates  (07:30 · 09:00 · 11:30 · 14:30 · 16:00 · 22:15) │
+│  VIDEO2 → Gate 2:  {len(VIDEO2_PLATES)} plates  (08:00 · 15:30 · 18:00 · 22:45)              │
+│  Bonus: {len(bonus_configs)} appts across Morning/Afternoon/Night + {len(peak_configs)} peak-hour │
 │  Historical appointments (5 days):  {total_hist}                       │
 │  Companies: {len(COMPANIES)} │ Drivers: {len(DRIVERS)} │ Trucks: {len(all_trucks_list)} (demo+hist)              │
 ├─────────────────────────────────────────────────────────────────────┤
+│  Status computed dynamically — always valid for any run date/time    │
+├─────────────────────────────────────────────────────────────────────┤
 │  TERMINALS (Porto de Aveiro real coordinates):                       │
-│    Terminal Norte         (40.6520N, 8.7430W) — general cargo       │
+│    Terminal Norte           (40.6520N, 8.7430W) — general cargo     │
 │    Terminal Granéis Sólidos (40.6446N, 8.7490W) — bulk solids      │
-│    Terminal Granéis Líquidos (40.6360N, 8.7520W) — HAZMAT liquid  │
+│    Terminal Granéis Líquidos (40.6360N, 8.7520W) — HAZMAT liquid   │
 └─────────────────────────────────────────────────────────────────────┘
 """)
 
