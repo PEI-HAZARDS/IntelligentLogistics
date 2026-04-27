@@ -137,7 +137,7 @@ VGateway(config).get_topics_produce()
 **Example**
 ```python
 VGateway(config).get_receivers()
-# → ["http://ia-gateway:8001/forward"]
+# → ["http://AI_Gateway:8001/forward"]
 ```
 
 ---
