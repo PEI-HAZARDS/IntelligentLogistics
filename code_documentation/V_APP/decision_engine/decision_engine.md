@@ -1,5 +1,3 @@
-Now I have everything I need to write the documentation.
-
 # `decision_engine.py`
 
 > Implements the access-control decision logic that correlates LP and HZ Kafka events per truck and gate, then publishes a structured decision to V_Brain.
