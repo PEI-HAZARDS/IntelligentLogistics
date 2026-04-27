@@ -6,7 +6,7 @@
 
 ## Overview
 
-`TokenValidator` acts as the security guard for the API Gateway's REST endpoints and WebSockets. It fetches and caches the Keycloak JWKS public keys on startup and uses them to cryptographically verify incoming Bearer JWTs. It decodes the token claims to extract the user's identity (e.g. `preferred_username` or `sub`) and their embedded realm/client roles into a typed `TokenPayload`.
+`TokenValidator` acts as the security guard for the API Gateway's REST endpoints and WebSockets. It uses `PyJWKClient` to lazily fetch and cache the Keycloak JWKS public keys — keys are retrieved from Keycloak on the first `decode()` call and then cached for subsequent requests. It uses these keys to cryptographically verify incoming Bearer JWTs, decoding the token claims to extract the user's identity (e.g. `preferred_username` or `sub`) and their embedded realm/client roles into a typed `TokenPayload`.
 
 The module exposes robust FastAPI dependencies (`get_current_user`, `require_role`) that can be plugged into router endpoints to effortlessly enforce Role-Based Access Control (RBAC).
 
