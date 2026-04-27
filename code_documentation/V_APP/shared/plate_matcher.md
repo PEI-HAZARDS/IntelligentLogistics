@@ -100,13 +100,13 @@ PlateMatcher(mode: PlateMatcherMode = PlateMatcherMode.HYBRID, max_distance: int
 
 ##### `_generate_plate_candidates(ocr_text, max_substitutions)`
 
-> Generates plate variants by substituting visually similar characters up to `max_substitutions`.
+> Generates plate variants by substituting visually similar characters up to `max_substitutions` (`0` means no limit, effectively up to the OCR text length).
 
 **Parameters**
 | Name | Type | Default | Description |
 |------|------|---------|-------------|
 | `ocr_text` | `str` | required | Normalised OCR text |
-| `max_substitutions` | `int` | `0` | Max character changes allowed |
+| `max_substitutions` | `int` | `0` | Maximum character changes allowed; `0` means no limit (effectively up to `len(ocr_text)`) |
 
 **Returns:** `list[str]` — Possible structural variants.
 
