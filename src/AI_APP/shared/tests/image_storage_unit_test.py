@@ -151,6 +151,8 @@ class TestUploadMemoryImage:
     def test_successful_upload(self, mock_cv2, storage_config, sample_image):
         """Successfully upload image and return presigned URL."""
         # Arrange
+        from datetime import timedelta
+
         with patch("AI_APP.shared.src.image_storage.Minio") as MockMinio:
             mock_client = MagicMock()
             MockMinio.return_value = mock_client
@@ -168,6 +170,20 @@ class TestUploadMemoryImage:
             # Assert
             assert result == "http://example.com/image.jpg"
             mock_client.put_object.assert_called_once()
+
+            put_args = mock_client.put_object.call_args[0]
+            put_kwargs = mock_client.put_object.call_args[1]
+            assert put_args[0] == "test-bucket"
+            assert put_args[1] == "other/test.jpg"
+            assert put_args[3] == 3
+            assert put_kwargs["content_type"] == "image/jpeg"
+
+            mock_client.get_presigned_url.assert_called_once_with(
+                "GET",
+                "test-bucket",
+                "other/test.jpg",
+                expires=timedelta(days=7),
+            )
 
     @patch("AI_APP.shared.src.image_storage.cv2")
     def test_upload_with_none_image_returns_none(self, mock_cv2, storage_config):

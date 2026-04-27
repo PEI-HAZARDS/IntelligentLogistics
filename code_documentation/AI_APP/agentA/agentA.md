@@ -1,12 +1,12 @@
 # `agentA.py`
 
-> Continuously monitors a low-quality RTMP stream, detects trucks using YOLO, and publishes detection events to a gate-specific Kafka topic.
+> Continuously monitors a low-quality RTSP stream, detects trucks using YOLO, and publishes detection events to a gate-specific Kafka topic.
 
 ---
 
 ## Overview
 
-`agentA.py` implements the first stage of the intelligent logistics pipeline. It connects to a low-bitrate RTMP stream (sourced from NGINX) for a specific gate, runs per-frame truck detection using a YOLO model via `ObjectDetector`, and emits a Kafka event whenever a truck is confirmed present and the configurable debounce interval has elapsed.
+`agentA.py` implements the first stage of the intelligent logistics pipeline. It connects to a low-bitrate RTSP stream (sourced from MediaMTX) for a specific gate, runs per-frame truck detection using a YOLO model via `ObjectDetector`, and emits a Kafka event whenever a truck is confirmed present.
 
 The module pairs `StreamManager` (frame acquisition), `ObjectDetector` (YOLO inference), `BoundingBoxDrawer` (annotation), `ImageStorage` (MinIO upload of annotated frames), and `KafkaProducerWrapper` (event publishing). Configuration is handled entirely through `AgentAConfig`, a Pydantic `BaseSettings` subclass that reads values from environment variables. Prometheus metrics are registered at module level and exposed on the container's metrics port.
 
@@ -24,10 +24,10 @@ src/AI_APP/agentA/src/agentA.py
 ### Internal
 | Module | Why it's used |
 |--------|---------------|
-| `shared/src/stream_manager.py` | Acquires video frames from the RTMP stream |
-| `shared/src/object_detector.py` | Runs YOLO inference to detect trucks |
-| `shared/src/bounding_box_drawer.py` | Draws annotated bounding boxes on detected frames |
-| `shared/src/image_storage.py` | Uploads annotated frames to MinIO |
+| `AI_APP/shared/src/stream_manager.py` | Acquires video frames from the RTSP stream |
+| `AI_APP/shared/src/object_detector.py` | Runs YOLO inference to detect trucks |
+| `AI_APP/shared/src/bounding_box_drawer.py` | Draws annotated bounding boxes on detected frames |
+| `AI_APP/shared/src/image_storage.py` | Uploads annotated frames to MinIO |
 | `shared/src/kafka_wrapper.py` | Publishes detection events to Kafka |
 | `shared/src/kafka_protocol.py` | Constructs typed Kafka messages and resolves topic names |
 
@@ -48,7 +48,7 @@ src/AI_APP/agentA/src/agentA.py
 ## Architecture & Flow
 
 ```
-[NGINX RTMP stream]
+[MediaMTX RTSP stream]
         │
         ▼
   StreamManager.read()
@@ -59,16 +59,19 @@ src/AI_APP/agentA/src/agentA.py
         ▼
   object_found()?
    ├─ No  → discard frame
-   └─ Yes → debounce check
-                │ elapsed >= message_interval
-                ▼
-         BoundingBoxDrawer.draw_box()
-                │  annotated frame
-                ▼
-         ImageStorage.upload_memory_image()  →  [MinIO]
-                │
-                ▼
-         KafkaProducerWrapper.produce()      →  [truck-detected-<GATE_ID>]
+   └─ Yes → publish detection
+              │
+              ▼
+        BoundingBoxDrawer.draw_box()
+              │  annotated frame
+              ▼
+        ImageStorage.upload_memory_image()  →  [MinIO]
+              │
+              ▼
+        KafkaProducerWrapper.produce()      →  [truck-detected-<GATE_ID>]
+              │
+              ▼
+        Wait for reset-agentA or `decision_timeout`
 ```
 
 ---
@@ -91,9 +94,9 @@ No explicit constructor parameters — all fields are populated from environment
 **Attributes**
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `kafka_bootstrap` | `str` | Kafka broker address. Default: `"10.255.32.143:9092"` |
-| `nginx_host` | `str` | NGINX RTMP server hostname. Default: `"10.255.32.56"` |
-| `nginx_port` | `int` | NGINX RTMP server port. Default: `1935` |
+| `kafka_bootstrap` | `str` | Kafka broker address. Default: `"10.255.32.107:9092"` |
+| `mediamtx_host` | `str` | MediaMTX RTSP server hostname. Default: `"10.255.32.56"` |
+| `mediamtx_port` | `int` | MediaMTX RTSP server port. Default: `8554` |
 | `minio_host` | `str` | MinIO server hostname. Default: `"10.255.32.82"` |
 | `minio_port` | `int` | MinIO server port. Default: `9000` |
 | `minio_user` | `str` | MinIO access key (required) |
@@ -101,7 +104,7 @@ No explicit constructor parameters — all fields are populated from environment
 | `minio_secure` | `bool` | Whether MinIO connection uses TLS. Default: `False` |
 | `gate_id` | `str` | Gate identifier used for topic naming and bucket naming. Default: `"1"` |
 | `models_path` | `str` | Filesystem path to the directory containing model files. Default: `"/app/AI_APP/agentA/data"` |
-| `message_interval` | `float` | Minimum seconds between consecutive Kafka publish events (debounce). Default: `35.0` |
+| `decision_timeout` | `int` | Maximum seconds to wait for `reset-agentA` before resuming detection. Default: `60` |
 
 ---
 
@@ -109,13 +112,13 @@ No explicit constructor parameters — all fields are populated from environment
 
 ##### `stream_low` *(property)*
 
-> Returns the RTMP stream URL for the low-quality feed of the configured gate.
+> Returns the RTSP stream URL for the low-quality feed of the configured gate.
 
 **Parameters**
 
 > N/A
 
-**Returns:** `str` — URL in the form `rtmp://<nginx_host>:<nginx_port>/streams_low/gate<gate_id>`.
+**Returns:** `str` — URL in the form `rtsp://<mediamtx_host>:<mediamtx_port>/streams_low/gate<gate_id>`.
 
 **Raises:**
 
@@ -125,7 +128,7 @@ No explicit constructor parameters — all fields are populated from environment
 ```python
 config = AgentAConfig()
 print(config.stream_low)
-# → "rtmp://10.255.32.56:1935/streams_low/gate1"
+# → "rtsp://10.255.32.56:8554/streams_low/gate1"
 ```
 
 ---
@@ -206,7 +209,7 @@ print(config.kafka_topic_produce)
 
 > N/A
 
-**Returns:** `List[str]` — Single-element list produced by `KafkaTopicFactory.agent_decision(gate_id)`.
+**Returns:** `List[str]` — Single-element list produced by `KafkaTopicFactory.reset_agent_a(gate_id)`.
 
 **Raises:**
 
@@ -216,7 +219,7 @@ print(config.kafka_topic_produce)
 ```python
 config = AgentAConfig()
 print(config.kafka_topic_consume)
-# → ["agent-decision-1"]
+# → ["reset-agentA-1"]
 ```
 
 ---
@@ -255,7 +258,7 @@ AgentA(
 | `yolo` | `ObjectDetector` | YOLO inference wrapper |
 | `drawer` | `BoundingBoxDrawer` | Annotates frames with bounding boxes |
 | `image_storage` | `ImageStorage` | Uploads annotated frames to MinIO |
-| `stream_manager` | `StreamManager` | Reads frames from the RTMP stream |
+| `stream_manager` | `StreamManager` | Reads frames from the RTSP stream |
 | `kafka_producer` | `KafkaProducerWrapper` | Publishes events to Kafka |
 | `running` | `bool` | Loop control flag; `True` on init |
 | `last_message_time` | `float` | Unix timestamp of the last published Kafka event; `0` on init |
@@ -334,14 +337,14 @@ agent._cleanup()
 
 ---
 
-##### `_process_detection(frame)`
+##### `_process_detection()`
 
-> Runs YOLO inference on a single frame; if a truck is detected and the debounce interval has elapsed, uploads an annotated image and publishes a Kafka event.
+> Runs the internal detection loop; on truck detection, uploads an annotated image and publishes a Kafka event.
 
 **Parameters**
 | Name | Type | Default | Description |
 |------|------|---------|-------------|
-| `frame` | `unknown` (numpy array expected) | required | Raw video frame from `StreamManager.read()` |
+> N/A
 
 **Returns:** `None`
 
@@ -350,9 +353,7 @@ agent._cleanup()
 
 **Example**
 ```python
-import numpy as np
-frame = np.zeros((480, 640, 3), dtype=np.uint8)
-agent._process_detection(frame)
+agent._process_detection()
 ```
 
 > ⚠️ **Note:** If `ObjectDetector.detect()` returns `None`, the method logs a warning and returns early without publishing. Drawing/upload failures are isolated — a Kafka event is still attempted even if image annotation fails.
@@ -371,9 +372,9 @@ All variables are read by `AgentAConfig` via Pydantic `BaseSettings` (env var na
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `KAFKA_BOOTSTRAP` | ❌ | `10.255.32.143:9092` | Kafka broker address |
-| `NGINX_HOST` | ❌ | `10.255.32.56` | NGINX RTMP server hostname |
-| `NGINX_PORT` | ❌ | `1935` | NGINX RTMP server port |
+| `KAFKA_BOOTSTRAP` | ❌ | `10.255.32.107:9092` | Kafka broker address |
+| `MEDIAMTX_HOST` | ❌ | `10.255.32.56` | MediaMTX RTSP server hostname |
+| `MEDIAMTX_PORT` | ❌ | `8554` | MediaMTX RTSP server port |
 | `MINIO_HOST` | ❌ | `10.255.32.82` | MinIO server hostname |
 | `MINIO_PORT` | ❌ | `9000` | MinIO server port |
 | `MINIO_USER` | ✅ | — | MinIO access key |
@@ -381,7 +382,13 @@ All variables are read by `AgentAConfig` via Pydantic `BaseSettings` (env var na
 | `MINIO_SECURE` | ❌ | `False` | Enable TLS for MinIO connection |
 | `GATE_ID` | ❌ | `1` | Gate identifier; scopes Kafka topics and MinIO bucket |
 | `MODELS_PATH` | ❌ | `/app/AI_APP/agentA/data` | Directory containing `truck_model.pt` |
-| `MESSAGE_INTERVAL` | ❌ | `35.0` | Minimum seconds between Kafka publish events (debounce) |
+| `DECISION_TIMEOUT` | ❌ | `60` | Maximum seconds waiting for `reset-agentA` before resuming detection |
+
+Deployment reference (April 2026):
+- `GPU_AI_APP` host: `10.255.32.107` (Agent A/B/C, AI Gateway, Kafka)
+- `Streaming Middleware` host: `10.255.32.56` (MediaMTX)
+- `V_APP` host: `10.255.32.70` (receiver gateway and downstream services)
+- `UI` host: `10.255.32.108`
 
 ---
 
@@ -438,7 +445,7 @@ pytest src/AI_APP/agentA/tests/
 
 ## Known Issues / TODOs
 
-> Consume agent/operator messages instead of hardcoded 35 seconds intervals
+> N/A
 
 ---
 
@@ -446,16 +453,17 @@ pytest src/AI_APP/agentA/tests/
 
 | Version / Date | Change |
 |----------------|--------|
+| `2026-04-18` | Reviewed AI_APP documentation for consistency, aligned paths/test commands, and validated deployment host mapping (AI_APP `10.255.32.107`, Streaming `10.255.32.56`, UI `10.255.32.108`, V_APP `10.255.32.70`). |
 | `2026-02-21` | Constructor refactored to accept `AgentAConfig` as a required first parameter instead of reading env vars inline. Kafka topic names now resolved via `KafkaTopicFactory` (`kafka_topic_produce`, `kafka_topic_consume` properties). |
 
 ---
 
 ## Related Docs
 
-- [`stream_manager.md`](./stream_manager.md)
-- [`object_detector.md`](./object_detector.md)
-- [`bounding_box_drawer.md`](./bounding_box_drawer.md)
-- [`image_storage.md`](./image_storage.md)
-- [`kafka_wrapper.md`](./kafka_wrapper.md)
-- [`kafka_protocol.md`](./kafka_protocol.md)
-- [Architecture Overview](../docs/sketch_arquitetura/arquitetura_intelligent_logistics.md)
+- [`stream_manager.md`](../shared/stream_manager.md)
+- [`object_detector.md`](../shared/object_detector.md)
+- [`bounding_box_drawer.md`](../shared/bounding_box_drawer.md)
+- [`image_storage.md`](../shared/image_storage.md)
+- [`kafka_wrapper.md`](../../shared/kafka_wrapper.md)
+- [`kafka_protocol.md`](../../shared/kafka_protocol.md)
+- [Architecture Overview](../../../docs/sketch_arquitetura/arquitetura_intelligent_logistics.md)

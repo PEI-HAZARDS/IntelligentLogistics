@@ -22,7 +22,6 @@ class ManualReviewParams(BaseModel):
     route: str = ""
     decision: str
     decision_reason: str
-    alerts: Optional[List[str]] = None
     decision_source: str = "operator"
     truck_id: Optional[str] = None
 
@@ -35,19 +34,23 @@ async def produce_manual_review(
     kafka_producer: Annotated[KafkaProducerWrapper, Depends(get_kafka_producer)],
     ws_manager: Annotated[WebSocketManager, Depends(get_ws_manager)],
     gate_id: Annotated[str, Query(description="Gate ID the operator is working on")],
-    params: Annotated[ManualReviewParams, Query()],
+    params: Annotated[ManualReviewParams, Depends()],
+    alerts: Annotated[Optional[List[str]], Query(description="Manual review alerts")] = None,
+    frontend_alerts: Annotated[Optional[List[str]], Query(alias="alerts[]", description="Axios-style alerts array")] = None,
 ):
     """
     Propagate a manual decision to kafka, which will be consumed by the Data Module and stored in the database.
     The gate_id is provided by the frontend and used to route the message to the correct operator-decision topic.
     """
+    request_alerts = alerts if alerts is not None else frontend_alerts
+
     msg = DecisionResultsMessage(
         license_plate=params.license_plate,
         license_crop_url=params.license_crop_url,
         un=params.un,
         kemler=params.kemler,
         hazard_crop_url=params.hazard_crop_url,
-        alerts=params.alerts or [],
+        alerts=request_alerts or [],
         route=params.route,
         decision=params.decision,
         decision_reason=params.decision_reason,

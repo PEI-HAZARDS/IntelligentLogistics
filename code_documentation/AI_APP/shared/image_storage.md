@@ -16,7 +16,7 @@ The module does **not** perform any image processing itself — it receives read
 
 ## Location
 ```
-src/shared/src/image_storage.py
+src/AI_APP/shared/src/image_storage.py
 ```
 
 ## Dependencies
@@ -120,7 +120,7 @@ ImageStorage(configs: dict[str, Any], bucket_name: str)
 
 **Example**
 ```python
-from shared.src.image_storage import ImageStorage
+from AI_APP.shared.src.image_storage import ImageStorage
 
 config = {
     "endpoint": "10.255.32.82:9000",
@@ -209,6 +209,12 @@ url = storage.upload_memory_image(frame, "TRK1234_1700000000.jpg", image_type="a
 
 > `ImageStorage` itself does not read environment variables. The MinIO connection configuration and bucket name are passed in by the caller. Consuming modules resolve environment variables (`MINIO_HOST`, `MINIO_PORT`, `ACCESS_KEY`, `SECRET_KEY`, `GATE_ID`) to construct the config dict before instantiation.
 
+Deployment reference (April 2026):
+- `GPU_AI_APP` host: `10.255.32.107`
+- `V_APP` host: `10.255.32.70` (hosts MinIO in current compose deployment)
+- `Streaming Middleware` host: `10.255.32.56`
+- `UI` host: `10.255.32.108`
+
 ---
 
 ## Usage Example
@@ -221,8 +227,8 @@ from shared.src.image_storage import ImageStorage
 # MinIO configuration from environment
 MINIO_CONFIG = {
     "endpoint": f"{os.getenv('MINIO_HOST', '10.255.32.82')}:{os.getenv('MINIO_PORT', '9000')}",
-    "access_key": os.getenv("ACCESS_KEY"),
-    "secret_key": os.getenv("SECRET_KEY"),
+    "access_key": os.getenv("MINIO_USER"),
+    "secret_key": os.getenv("MINIO_PASSWORD"),
     "secure": False
 }
 BUCKET_NAME = f"agenta-{os.getenv('GATE_ID', '1')}"
@@ -268,7 +274,7 @@ Logging uses a named logger (`ImageStorage`) at `INFO`, `WARNING`, and `ERROR` l
 
 To run:
 ```bash
-pytest src/shared/tests/image_storage_unit_test.py
+pytest src/AI_APP/shared/tests/image_storage_unit_test.py
 ```
 
 ---
@@ -281,7 +287,9 @@ pytest src/shared/tests/image_storage_unit_test.py
 
 ## Changelog
 
-> N/A
+| Version / Date | Change |
+|----------------|--------|
+| `2026-04-18` | Reviewed AI_APP documentation for consistency, aligned paths/test commands, and validated deployment host mapping (AI_APP `10.255.32.107`, Streaming `10.255.32.56`, UI `10.255.32.108`, V_APP `10.255.32.70`). |
 
 ---
 
@@ -289,4 +297,4 @@ pytest src/shared/tests/image_storage_unit_test.py
 
 - [`stream_manager.md`](./stream_manager.md) — Another shared module used by the same agents
 - [`base_agent.md`](./base_agent.md) — Base class that instantiates `ImageStorage` for agents
-- [`template.md`](../template.md) — Documentation template
+- [`template.md`](../../template.md) — Documentation template

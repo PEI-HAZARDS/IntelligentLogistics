@@ -44,8 +44,8 @@ src/AI_APP/agentC/src/agentC.py
        AgentC.start()
           │  consumes Kafka message
           ▼
-   BaseAgent._process_message()
-          │  captures RTMP frames
+      BaseAgent._process_message()
+         │  captures RTSP frames
           ├─► BaseAgent._run_yolo_inference()   (hazard_plate_model.pt)
           │         │  bbox crops
           │         ▼
@@ -284,7 +284,7 @@ All keyword arguments are forwarded to `BaseAgent.__init__`.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `KAFKA_BOOTSTRAP` | ✅ | — | Kafka broker address (`BaseAgentConfig.kafka_bootstrap`) |
+| `KAFKA_BOOTSTRAP` | ❌ | `10.255.32.107:9092` | Kafka broker address (`BaseAgentConfig.kafka_bootstrap`) |
 | `MINIO_USER` | ✅ | — | MinIO access key |
 | `MINIO_PASSWORD` | ✅ | — | MinIO secret key |
 | `GATE_ID` | ❌ | `"1"` | Gate identifier; used to namespace Kafka topics and MinIO bucket |
@@ -296,6 +296,12 @@ All keyword arguments are forwarded to `BaseAgent.__init__`.
 | `MINIO_SECURE` | ❌ | `False` | Whether to use TLS for MinIO |
 | `MAX_FRAMES` | ❌ | `40` | Maximum frames to process per detection cycle |
 | `MIN_DETECTION_CONFIDENCE` | ❌ | `0.4` | Minimum YOLO confidence threshold |
+
+Deployment reference (April 2026):
+- `GPU_AI_APP` host: `10.255.32.107` (Agent A/B/C, AI Gateway, Kafka)
+- `Streaming Middleware` host: `10.255.32.56` (MediaMTX)
+- `V_APP` host: `10.255.32.70` (receiver gateway and downstream services)
+- `UI` host: `10.255.32.108`
 
 ---
 
@@ -338,13 +344,15 @@ pytest src/AI_APP/agentC/tests/
 
 ## Changelog
 
-> N/A
+| Version / Date | Change |
+|----------------|--------|
+| `2026-04-18` | Reviewed AI_APP documentation for consistency, aligned paths/test commands, and validated deployment host mapping (AI_APP `10.255.32.107`, Streaming `10.255.32.56`, UI `10.255.32.108`, V_APP `10.255.32.70`). |
 
 ---
 
 ## Related Docs
 
-- [`base_agent.md`](../../shared/base_agent.md)
-- [`image_storage.md`](../../shared/image_storage.md)
-- [`kafka_wrapper.md`](../../../shared/kafka_wrapper.md)
+- [`base_agent.md`](../shared/base_agent.md)
+- [`image_storage.md`](../shared/image_storage.md)
+- [`kafka_wrapper.md`](../../shared/kafka_wrapper.md)
 - [Architecture Overview](../../../docs/sketch_arquitetura/arquitetura_intelligent_logistics.md)

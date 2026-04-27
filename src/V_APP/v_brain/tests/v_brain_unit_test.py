@@ -7,6 +7,7 @@ import threading
 import time
 from unittest.mock import MagicMock, patch, PropertyMock
 import pytest
+import requests
 
 from V_APP.v_brain.config import VBrainConfig
 from V_APP.v_brain.src.scale_correlator import ScaleCorrelator
@@ -356,3 +357,184 @@ class TestGetScaleStatus:
         assert brain._get_scale_status() is False
         brain.scale_status = True
         assert brain._get_scale_status() is True
+
+
+# ═══════════════════════════════════════════════════════════════════
+# _call_scaling_api
+# ═══════════════════════════════════════════════════════════════════
+
+class TestCallScalingApi:
+    def test_posts_payload_to_configured_endpoint(self, brain, _stub_scaling_http):
+        brain._call_scaling_api("SCALE_UP", "1")
+        _stub_scaling_http.assert_called_once()
+        url = _stub_scaling_http.call_args.args[0]
+        payload = _stub_scaling_http.call_args.kwargs["json"]
+        assert url == f"{brain.config.scaling_api_url}/napp/v1/scaling-operation/slice"
+        assert payload["action"] == "SCALE_UP"
+        assert payload["sliceId"] == brain.config.scaling_slice_id
+        assert payload["requestId"] == brain.config.scaling_request_id
+        assert payload["notificationDestination"] == brain.config.scaling_notification_destination
+
+    def test_accepts_202_as_success(self, brain, _stub_scaling_http):
+        _stub_scaling_http.return_value.status_code = 202
+        brain._call_scaling_api("SCALE_DOWN", "1")  # Should not raise
+
+    def test_logs_error_on_non_2xx_status(self, brain, _stub_scaling_http, caplog):
+        _stub_scaling_http.return_value.status_code = 500
+        _stub_scaling_http.return_value.text = "boom"
+        with caplog.at_level("ERROR", logger="VBrain"):
+            brain._call_scaling_api("SCALE_UP", "1")  # Should not raise
+        assert any("Scaling API SCALE_UP failed" in record.message for record in caplog.records)
+
+    def test_swallows_request_exception(self, brain, _stub_scaling_http, caplog):
+        _stub_scaling_http.side_effect = requests.ConnectionError("connection refused")
+        with caplog.at_level("ERROR", logger="VBrain"):
+            brain._call_scaling_api("SCALE_UP", "1")  # Should not raise
+        assert any("request failed" in record.message for record in caplog.records)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# start() — main consumer loop
+# ═══════════════════════════════════════════════════════════════════
+
+class TestStart:
+    """The `start()` loop is the only place that touches the Prometheus HTTP
+    server, the timeout thread, and the Kafka deserialization pipeline. We
+    drive a single iteration end-to-end with mocked Kafka wrappers."""
+
+    def _build_kafka_msg(self, topic: str, value: bytes, headers=None):
+        msg = MagicMock()
+        msg.topic.return_value = topic
+        msg.value.return_value = value
+        msg.headers.return_value = headers or []
+        return msg
+
+    def test_routes_a_truck_detected_message(self, brain):
+        topic = KafkaTopicFactory.truck_detected("1")
+        kafka_msg = self._build_kafka_msg(
+            topic,
+            json.dumps({"message_type": "truck_detected", "confidence": 0.9, "num_detections": 1}).encode(),
+        )
+
+        # consume_message returns one valid message, then None to end the loop.
+        calls = iter([kafka_msg, None])
+
+        def consume(timeout):
+            value = next(calls)
+            if value is None:
+                brain.running = False
+            return value
+
+        brain.kafka_consumer.consume_message.side_effect = consume
+        brain.kafka_consumer.extract_truck_id_from_headers.return_value = "t1"
+
+        with patch("V_APP.v_brain.src.v_brain.start_http_server"):
+            with patch.object(brain, "_handle_message") as handle:
+                with patch.object(brain, "_timeout_loop"):  # keep the worker thread cheap
+                    brain.start()
+
+        handle.assert_called_once()
+        assert handle.call_args.args[0] == topic
+        assert handle.call_args.args[2] == "t1"
+        brain.kafka_consumer.clear_stale_messages.assert_called_once()
+        brain.kafka_consumer.close.assert_called_once()
+        brain.kafka_producer.close.assert_called_once()
+        assert brain.running is False
+
+    def test_skips_when_consumer_returns_none(self, brain):
+        calls = iter([None, None])
+
+        def consume(timeout):
+            value = next(calls, None)
+            brain.running = False
+            return value
+
+        brain.kafka_consumer.consume_message.side_effect = consume
+
+        with patch("V_APP.v_brain.src.v_brain.start_http_server"):
+            with patch.object(brain, "_handle_message") as handle:
+                with patch.object(brain, "_timeout_loop"):
+                    brain.start()
+
+        handle.assert_not_called()
+
+    def test_skips_invalid_json_payloads(self, brain):
+        kafka_msg = self._build_kafka_msg(
+            KafkaTopicFactory.truck_detected("1"), b"not-json"
+        )
+        calls = iter([kafka_msg, None])
+
+        def consume(timeout):
+            value = next(calls)
+            if value is None:
+                brain.running = False
+            return value
+
+        brain.kafka_consumer.consume_message.side_effect = consume
+        brain.kafka_consumer.extract_truck_id_from_headers.return_value = "t1"
+
+        with patch("V_APP.v_brain.src.v_brain.start_http_server"):
+            with patch.object(brain, "_handle_message") as handle:
+                with patch.object(brain, "_timeout_loop"):
+                    brain.start()
+
+        handle.assert_not_called()
+
+    def test_skips_unknown_message_type(self, brain):
+        kafka_msg = self._build_kafka_msg(
+            KafkaTopicFactory.truck_detected("1"),
+            json.dumps({"message_type": "bogus"}).encode(),
+        )
+        calls = iter([kafka_msg, None])
+
+        def consume(timeout):
+            value = next(calls)
+            if value is None:
+                brain.running = False
+            return value
+
+        brain.kafka_consumer.consume_message.side_effect = consume
+        brain.kafka_consumer.extract_truck_id_from_headers.return_value = "t1"
+
+        with patch("V_APP.v_brain.src.v_brain.start_http_server"):
+            with patch.object(brain, "_handle_message") as handle:
+                with patch.object(brain, "_timeout_loop"):
+                    brain.start()
+
+        handle.assert_not_called()
+
+    def test_handles_keyboard_interrupt(self, brain):
+        brain.kafka_consumer.consume_message.side_effect = KeyboardInterrupt()
+
+        with patch("V_APP.v_brain.src.v_brain.start_http_server"):
+            with patch.object(brain, "_timeout_loop"):
+                brain.start()  # Should not propagate
+
+        assert brain.running is False
+        brain.kafka_consumer.close.assert_called_once()
+
+    def test_unhandled_exception_is_caught_and_resources_closed(self, brain):
+        brain.kafka_consumer.consume_message.side_effect = RuntimeError("kafka down")
+
+        with patch("V_APP.v_brain.src.v_brain.start_http_server"):
+            with patch.object(brain, "_timeout_loop"):
+                brain.start()  # Should not propagate
+
+        brain.kafka_consumer.close.assert_called_once()
+        brain.kafka_producer.close.assert_called_once()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# __main__ entrypoint
+# ═══════════════════════════════════════════════════════════════════
+
+class TestMainEntrypoint:
+    def test_main_builds_brain_and_starts(self):
+        from V_APP.v_brain import __main__ as main_module
+
+        with patch.object(main_module, "VBrain") as VBrainCls:
+            instance = VBrainCls.return_value
+            main_module.main()
+
+        VBrainCls.assert_called_once()
+        instance.start.assert_called_once()

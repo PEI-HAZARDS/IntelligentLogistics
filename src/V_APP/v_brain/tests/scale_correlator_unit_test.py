@@ -171,3 +171,23 @@ class TestActiveTrucks:
         assert correlator.active_trucks == 3
         correlator.remove("t2")
         assert correlator.active_trucks == 2
+
+
+# ═══════════════════════════════════════════════════════════════════
+# _is_results_complete
+# ═══════════════════════════════════════════════════════════════════
+
+class TestIsResultsComplete:
+    def test_returns_false_for_unknown_truck(self, correlator):
+        assert correlator._is_results_complete("unknown") is False
+
+    def test_returns_false_when_only_lp_received(self, correlator):
+        correlator.truck_detected("t1", "1")
+        correlator.lp_received("t1")
+        assert correlator._is_results_complete("t1") is False
+
+    def test_returns_true_when_lp_and_hz_received(self, correlator):
+        correlator.truck_detected("t1", "1")
+        correlator.lp_received("t1")
+        correlator.hz_received("t1")
+        assert correlator._is_results_complete("t1") is True

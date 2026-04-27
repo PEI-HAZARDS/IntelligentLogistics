@@ -8,7 +8,7 @@
 
 `StreamManager` provides a thread-safe, resilient abstraction over OpenCV's `VideoCapture` for consuming live video streams. It runs a background daemon thread that continuously reads frames and exposes them to consumers via a lock-protected `read()` method.
 
-The module is designed for the IntelligentLogistics pipeline, where AI agents (e.g. `AgentA`) need a steady supply of video frames from RTMP/RTSP sources served by an Nginx-RTMP server. `StreamManager` decouples frame acquisition from frame processing: agents simply call `read()` and receive the latest frame (or `None` while reconnecting), while the manager handles all connection lifecycle concerns — initial connection, retry-with-backoff, reconnection after stream loss, and graceful shutdown.
+The module is designed for the IntelligentLogistics pipeline, where AI agents (e.g. `AgentA`) need a steady supply of video frames from MediaMTX RTSP streams. `StreamManager` decouples frame acquisition from frame processing: agents simply call `read()` and receive the latest frame (or `None` while reconnecting), while the manager handles all connection lifecycle concerns — initial connection, retry-with-backoff, reconnection after stream loss, and graceful shutdown.
 
 It does **not** perform any frame processing, detection, or publishing. Those responsibilities belong to the consuming agents and their supporting modules (`object_detector`, `kafka_wrapper`, etc.).
 
@@ -16,7 +16,7 @@ It does **not** perform any frame processing, detection, or publishing. Those re
 
 ## Location
 ```
-src/shared/src/stream_manager.py
+src/AI_APP/shared/src/stream_manager.py
 ```
 
 ## Dependencies
@@ -83,7 +83,7 @@ StreamManager(url: str, max_retries: int = 10, retry_delay: int = 5)
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `url` | `str` | required | Stream URL (e.g. `rtmp://host:port/app/stream`) |
+| `url` | `str` | required | Stream URL (e.g. `rtsp://host:port/streams_low/gate1`) |
 | `max_retries` | `int` | `10` | Maximum connection attempts before giving up |
 | `retry_delay` | `int` | `5` | Seconds to wait between retry attempts |
 
@@ -121,9 +121,9 @@ StreamManager(url: str, max_retries: int = 10, retry_delay: int = 5)
 
 **Example**
 ```python
-from shared.src.stream_manager import StreamManager
+from AI_APP.shared.src.stream_manager import StreamManager
 
-manager = StreamManager("rtmp://10.255.32.56:1935/streams_low/gate1")
+manager = StreamManager("rtsp://10.255.32.56:8554/streams_low/gate1")
 
 frame = manager.read()
 if frame is not None:
@@ -151,7 +151,7 @@ if frame is not None:
 
 **Example**
 ```python
-manager = StreamManager("rtmp://host:1935/streams_low/gate1")
+manager = StreamManager("rtsp://host:8554/streams_low/gate1")
 # ... use manager ...
 manager.release()
 ```
@@ -277,7 +277,7 @@ manager.release()
 
 > N/A
 
-> `StreamManager` itself does not read environment variables. The stream URL and connection parameters are passed in by the caller. Consuming modules like `agentA.py` resolve environment variables (`NGINX_RTMP_HOST`, `NGINX_RTMP_PORT`, `GATE_ID`) to construct the URL before instantiating `StreamManager`.
+> `StreamManager` itself does not read environment variables. The stream URL and connection parameters are passed in by the caller. Consuming modules like `agentA.py` resolve environment variables (`MEDIAMTX_HOST`, `MEDIAMTX_PORT`, `GATE_ID`) to construct the URL before instantiating `StreamManager`.
 
 ---
 
@@ -286,13 +286,13 @@ manager.release()
 End-to-end usage as seen in `AgentA`:
 ```python
 import os
-from shared.src.stream_manager import StreamManager
+from AI_APP.shared.src.stream_manager import StreamManager
 
 # Build the stream URL from environment
-NGINX_RTMP_HOST = os.getenv("NGINX_RTMP_HOST", "10.255.32.56")
-NGINX_RTMP_PORT = os.getenv("NGINX_RTMP_PORT", "1935")
+MEDIAMTX_HOST = os.getenv("MEDIAMTX_HOST", "10.255.32.56")
+MEDIAMTX_PORT = os.getenv("MEDIAMTX_PORT", "8554")
 GATE_ID = os.getenv("GATE_ID", "1")
-STREAM_URL = f"rtmp://{NGINX_RTMP_HOST}:{NGINX_RTMP_PORT}/streams_low/gate{GATE_ID}"
+STREAM_URL = f"rtsp://{MEDIAMTX_HOST}:{MEDIAMTX_PORT}/streams_low/gate{GATE_ID}"
 
 # Create the manager (background thread starts immediately)
 manager = StreamManager(STREAM_URL, max_retries=10, retry_delay=5)
@@ -307,6 +307,12 @@ try:
 finally:
     manager.release()
 ```
+
+Deployment reference (April 2026):
+- `GPU_AI_APP` host: `10.255.32.107`
+- `Streaming Middleware` host: `10.255.32.56` (MediaMTX)
+- `V_APP` host: `10.255.32.70`
+- `UI` host: `10.255.32.108`
 
 ---
 
@@ -331,7 +337,7 @@ Logging uses a named logger (`StreamManager`) at `INFO`, `WARNING`, `DEBUG`, and
 
 To run:
 ```bash
-pytest src/shared/tests/stream_manager_unit_test.py
+pytest src/AI_APP/shared/tests/stream_manager_unit_test.py
 ```
 
 ---
@@ -344,11 +350,13 @@ pytest src/shared/tests/stream_manager_unit_test.py
 
 ## Changelog
 
-> N/A
+| Version / Date | Change |
+|----------------|--------|
+| `2026-04-18` | Reviewed AI_APP documentation for consistency, aligned paths/test commands, and validated deployment host mapping (AI_APP `10.255.32.107`, Streaming `10.255.32.56`, UI `10.255.32.108`, V_APP `10.255.32.70`). |
 
 ---
 
 ## Related Docs
 
-- [`agentA.md`](../AI_APP/agentA/agentA.md) — Primary consumer of `StreamManager`
-- [`template.md`](./template.md) — Documentation template
+- [`agentA.md`](../agentA/agentA.md) — Primary consumer of `StreamManager`
+- [`template.md`](../../template.md) — Documentation template
