@@ -3,8 +3,10 @@ import logging
 import os
 
 # Files to download (name, Google Drive ID, destination folder)
-FILE_NAME = "hazard_plate_model.pt"
-FILE_ID = "1Vl5nbXwWBz_J3ydKxaaWb48Dut4rHZHg"
+FILES_TO_DOWNLOAD = [
+    ("hazard_plate_model.pt", "1Vl5nbXwWBz_J3ydKxaaWb48Dut4rHZHg"),
+    ("truck_model.pt", "1LL0zMJrppkqd51zQDLixzlOIJvwlMDXe")
+]
 NEW_DIR = "data"
 
 logger = logging.getLogger("setup-AgentC")
@@ -18,13 +20,14 @@ def setup():
     dest_dir = os.path.join(base_dir, NEW_DIR)
     os.makedirs(dest_dir, exist_ok=True)
 
-    dest_path = os.path.join(dest_dir, FILE_NAME)
-    if os.path.exists(dest_path):
-        logger.info(f"[setup] {FILE_NAME} already exists in {NEW_DIR} — skipping.")
-    else:
-        url = f"https://drive.google.com/uc?id={FILE_ID}"
-        logger.info(f"[setup] Downloading {FILE_NAME} to {NEW_DIR}...")
-        gdown.download(url, dest_path, quiet=False)
+    for file_name, file_id in FILES_TO_DOWNLOAD:
+        dest_path = os.path.join(dest_dir, file_name)
+        if os.path.exists(dest_path):
+            logger.info(f"[setup] {file_name} already exists in {NEW_DIR} — skipping.")
+        else:
+            url = f"https://drive.google.com/uc?id={file_id}"
+            logger.info(f"[setup] Downloading {file_name} to {NEW_DIR}...")
+            gdown.download(url, dest_path, quiet=False)
 
     logger.info("[setup] All files ready!")
 

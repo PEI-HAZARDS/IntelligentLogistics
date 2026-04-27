@@ -9,6 +9,8 @@ import logging
 import cv2 # type: ignore
 import numpy as np # type: ignore
 import io
+from AI_APP.shared.src.object_detector import ObjectDetector
+
 
 logger = logging.getLogger("ImageStorage")
 
@@ -27,10 +29,21 @@ class ImageStorage:
         'other': 7,
     }
 
-    def __init__(self, configs: dict[str, Any], bucket_name: str):
+    def __init__(self, configs: dict[str, Any], bucket_name: str, models_path: str, privacy_mode : bool = True, object_detector: Optional[ObjectDetector] = None):
         logger.info("Initializing MinIO client...")
         self.client = Minio(**configs)
         self.bucket_name = bucket_name
+        self.privacy_mode = privacy_mode
+        
+        try:
+            self.yolo_person = object_detector or ObjectDetector(models_path + "/truck_model.pt", 0)
+            self.yolo_truck = object_detector or ObjectDetector(models_path + "/truck_model.pt", 7)
+        except FileNotFoundError as e:
+            logger.critical(f"Model file not found — cannot start MinIO client: {e}")
+            raise SystemExit(1) from e
+        except RuntimeError as e:
+            logger.critical(f"Failed to load YOLO model — cannot MinIO client: {e}")
+            raise SystemExit(1) from e
     
     def upload_memory_image(self, img_array: Optional[np.ndarray], object_name: str, image_type: str = "other") -> Optional[str]:
         """
@@ -62,7 +75,21 @@ class ImageStorage:
                 logger.error("Cannot upload: image array is empty")
                 return None
             
-            # 0. Ensure bucket exists (retry if initial creation failed)
+            # 0. Apply privacy filters if enabled
+            if self.privacy_mode:
+                blurred_img = self._people_blur(img_array)
+                if blurred_img is not None:
+                    img_array = blurred_img
+                else:
+                    logger.warning("People blur skipped due to error, continuing with original image")
+                
+                blurred_img = self._cabine_blur(img_array)
+                if blurred_img is not None:
+                    img_array = blurred_img
+                else:
+                    logger.warning("Cabin blur skipped due to error, continuing with current image")
+            
+            # 1. Ensure bucket exists (retry if initial creation failed)
             if not self._ensure_bucket():
                 logger.error("Cannot upload: bucket unavailable")
                 return None
@@ -70,17 +97,17 @@ class ImageStorage:
             # Add prefix based on image type
             prefixed_name = f"{image_type}/{object_name}"
 
-            # 1. Encode image to memory buffer (no file system usage)
+            # 2. Encode image to memory buffer (no file system usage)
             success, encoded_img = cv2.imencode('.jpg', img_array)
             if not success:
                 logger.error("Failed to encode image to memory.")
                 return None
 
-            # 2. Convert to BytesIO stream
+            # 3. Convert to BytesIO stream
             data_stream = io.BytesIO(encoded_img.tobytes())
             stream_size = data_stream.getbuffer().nbytes
 
-            # 3. Upload
+            # 4. Upload
             self.client.put_object(
                 self.bucket_name,
                 prefixed_name,
@@ -90,7 +117,7 @@ class ImageStorage:
             )
             logger.info(f"Uploaded '{prefixed_name}' to bucket '{self.bucket_name}'")
 
-            # 4. Generate Link
+            # 5. Generate Link
             expires = self._IMAGE_TYPE_TTL_DAYS.get(image_type, 7)
             return self._generate_presigned_url(prefixed_name, expires_days=expires)
 
@@ -106,6 +133,47 @@ class ImageStorage:
             logger.exception(f"Unexpected error during upload: {e}")
             return None
 
+    def _people_blur(self, img_array: np.ndarray) -> np.ndarray:
+        """Detects and blurs people in the image using YOLO."""
+        try:
+            detections = self.yolo_person.detect(img_array)
+            boxes = self.yolo_person.get_boxes(detections)
+            for box in boxes:
+                x1, y1, x2, y2 = map(int, box[:4])
+                # Extract body region
+                body_region = img_array[y1:y2, x1:x2]
+                # Apply Gaussian blur to the body region
+                blurred_body = cv2.GaussianBlur(body_region, (99, 99), 30)
+                # Replace original body with blurred version
+                img_array[y1:y2, x1:x2] = blurred_body
+            return img_array
+        
+        except Exception as e:
+            logger.warning(f"Body blurring failed: {e}.")
+            return None
+    
+    def _cabine_blur(self, img_array: np.ndarray) -> np.ndarray:
+        """Detects and blurs the truck cabin area using YOLO."""
+        try:
+            detections = self.yolo_truck.detect(img_array)
+            boxes = self.yolo_truck.get_boxes(detections)
+            if boxes:
+                logger.info(f"{len(boxes)} cabin(s) detected. Blurring...")
+            for box in boxes:
+                x1, y1, x2, y2 = map(int, box[:4])
+                # Extract cabin region
+                cab_bottom = y1 + int((y2 - y1) * 0.35)
+                cabin_region = img_array[y1:cab_bottom, x1:x2]
+                # Apply Gaussian blur to the cabin region
+                blurred_cabin = cv2.GaussianBlur(cabin_region, (99, 99), 30)
+                # Replace original cabin with blurred version
+                img_array[y1:y2, x1:x2] = blurred_cabin
+            return img_array
+        
+        except Exception as e:
+            logger.warning(f"Cabin blurring failed: {e}.")
+            return None
+    
     def _ensure_bucket(self) -> bool:
         """Checks if bucket exists, creates it if not. Returns True if bucket is ready."""
         try:

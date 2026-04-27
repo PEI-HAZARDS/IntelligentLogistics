@@ -25,7 +25,7 @@ class AgentB(BaseAgent):
         # Call parent constructor first so self.config is available
         super().__init__(**kwargs)
         # Separate storage bucket for rejected crops (requires self.config)
-        self.crop_fails = ImageStorage(self.config.minio_config, "failed-crops")
+        self.crop_fails = ImageStorage(self.config.minio_config, "failed-crops", self.config.models_path, privacy_mode=True)
 
     # ========================================================================
     # Required abstract method implementations

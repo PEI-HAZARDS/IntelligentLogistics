@@ -119,7 +119,7 @@ class BaseAgent(ABC):
         self.ocr = ocr or self.initialize_ocr()
         self.classifier = classifier or PlateClassifier()
         self.drawer = drawer or BoundingBoxDrawer(color=self.get_bbox_color(), thickness=2, label=self.get_bbox_label())
-        self.image_storage = annotated_frames_storage or ImageStorage(self.config.minio_config, self.get_bucket())
+        self.image_storage = annotated_frames_storage or ImageStorage(self.config.minio_config, self.get_bucket(), self.config.models_path, privacy_mode=True)
         self.crop_storage = crop_storage or self.image_storage
         self.stream_manager = stream_manager or StreamManager(self.config.stream_url)
         self.kafka_producer = kafka_producer or KafkaProducerWrapper(self.config.kafka_bootstrap)

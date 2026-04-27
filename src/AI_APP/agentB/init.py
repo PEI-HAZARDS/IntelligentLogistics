@@ -25,8 +25,10 @@ from prometheus_client import start_http_server, Counter, Histogram, Gauge # typ
 from agentB.src.agentB import AgentB
 
 # Files to download (name, Google Drive ID, destination folder)
-FILE_NAME = "license_plate_model.pt"
-FILE_ID = "1h3AXDLcFj17kXo7L20jQeId-upQovGQu"
+FILES_TO_DOWNLOAD = [
+    ("license_plate_model.pt", "1h3AXDLcFj17kXo7L20jQeId-upQovGQu"),
+    ("truck_model.pt", "1LL0zMJrppkqd51zQDLixzlOIJvwlMDXe")
+]
 NEW_DIR = "data"
 
 logger = logging.getLogger("init-AgentB")
@@ -46,13 +48,14 @@ def setup():
     dest_dir = os.path.join(base_dir, NEW_DIR)
     os.makedirs(dest_dir, exist_ok=True)
 
-    dest_path = os.path.join(dest_dir, FILE_NAME)
-    if os.path.exists(dest_path):
-        logger.info(f"{FILE_NAME} already exists in {NEW_DIR} — skipping.")
-    else:
-        url = f"https://drive.google.com/uc?id={FILE_ID}"
-        logger.info(f"Downloading {FILE_NAME} to {NEW_DIR}...")
-        gdown.download(url, dest_path, quiet=False)
+    for file_name, file_id in FILES_TO_DOWNLOAD:
+        dest_path = os.path.join(dest_dir, file_name)
+        if os.path.exists(dest_path):
+            logger.info(f"{file_name} already exists in {NEW_DIR} — skipping.")
+        else:
+            url = f"https://drive.google.com/uc?id={file_id}"
+            logger.info(f"Downloading {file_name} to {NEW_DIR}...")
+            gdown.download(url, dest_path, quiet=False)
 
     logger.info("All files ready!")
 

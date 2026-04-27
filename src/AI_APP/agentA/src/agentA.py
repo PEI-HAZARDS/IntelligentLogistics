@@ -101,7 +101,7 @@ class AgentA:
             raise SystemExit(1) from e
         
         self.drawer = drawer or BoundingBoxDrawer(color="green", thickness=2, label="truck")
-        self.image_storage = image_storage or ImageStorage(config.minio_config, config.minio_bucket_name)
+        self.image_storage = image_storage or ImageStorage(config.minio_config, config.minio_bucket_name, config.models_path, privacy_mode=True)
         self.stream_manager = stream_manager or StreamManager(config.stream_low)
         self.kafka_producer = kafka_producer or KafkaProducerWrapper(config.kafka_bootstrap)
         self.kafka_consumer = kafka_consumer or KafkaConsumerWrapper(self.config.kafka_bootstrap, f"agenta-{self.config.gate_id}-group", self.config.kafka_topic_consume)
