@@ -1,5 +1,3 @@
-Now I have all the information needed to fill the template accurately.
-
 # `infraction_engine.py`
 
 > Stateful infraction-detection service that correlates license-plate and hazard-plate events across highway/approach gates to determine hazardous-goods violations.
