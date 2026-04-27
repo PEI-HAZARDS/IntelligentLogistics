@@ -378,8 +378,9 @@ gateway.start()  # Blocks on uvicorn; consumer thread runs in background
 
 | Test file | Type | What it covers |
 |-----------|------|----------------|
-| _(unit)_ | Unit | _(if applicable)_ |
-| _(integration)_ | Integration | _(if applicable)_ |
+| `api_gateway_unit_test.py` | Unit | Configuration loading, topic resolution, HTTP client interactions, message dispatching/broadcasting, and initialization errors |
+| `test_gateway.py` | Unit | Core routing functionality and component isolation tests |
+| `web_socket_manager_unit_test.py` | Unit | WebSocket connections, disconnections, subscription to gates, role-based driver routing, and broadcast error handling |
 
 To run:
 ```bash
