@@ -48,6 +48,7 @@ class CreateHazmatAlertRequest(BaseModel):
     un_code: Optional[str] = None
     kemler_code: Optional[str] = None
     detected_hazmat: Optional[str] = None
+    event_id: Optional[str] = None  # caller-supplied idempotency key (UUIDv7)
 
 
 # ==================== QUERY ENDPOINTS ====================
@@ -152,19 +153,29 @@ def create_hazmat_adr_alert(request: CreateHazmatAlertRequest):
     - un_code: UN code (e.g., "1203" for gasoline)
     - kemler_code: Kemler code (e.g., "33" for flammable)
     - detected_hazmat: Detection description (from Agent C)
+    - event_id: Optional UUIDv7 idempotency key; duplicate calls return 409
     """
-    alert = create_hazmat_alert(
-        _uow_factory,
-        appointment_id=request.appointment_id,
-        un_code=request.un_code,
-        kemler_code=request.kemler_code,
-        detected_hazmat=request.detected_hazmat,
-    )
+    from application.use_cases.alert_handlers import DuplicateHazmatAlert
 
-    if not alert:
+    try:
+        alert = create_hazmat_alert(
+            _uow_factory,
+            appointment_id=request.appointment_id,
+            un_code=request.un_code,
+            kemler_code=request.kemler_code,
+            detected_hazmat=request.detected_hazmat,
+            event_id=request.event_id,
+        )
+    except DuplicateHazmatAlert:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error creating hazmat alert",
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Duplicate hazmat alert request: event_id={request.event_id}",
+        )
+
+    if alert is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Appointment {request.appointment_id} not found",
         )
 
     return alert

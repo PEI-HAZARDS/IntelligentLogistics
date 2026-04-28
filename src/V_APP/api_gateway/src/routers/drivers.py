@@ -1,4 +1,8 @@
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
+import os
+
+import jwt as _jwt
 from fastapi import APIRouter, Query, Path, Depends
 from pydantic import BaseModel
 
@@ -6,6 +10,28 @@ from clients import internal_api_client as internal_client
 from auth.token_validator import require_role, get_current_user, TokenPayload
 
 router = APIRouter(tags=["drivers"])
+
+# DM uses HS256 internal JWT for /me/* routes.  The secret and expiry are
+# read from the same env vars the Data Module uses, so they always agree.
+_DM_JWT_SECRET: str = os.getenv("DM_JWT_SECRET", "pei-internal-secret-replace-with-keycloak")
+_DM_TOKEN_EXPIRY_HOURS: int = int(os.getenv("TOKEN_EXPIRY_HOURS", "24"))
+
+
+def _dm_driver_jwt(drivers_license: str) -> str:
+    """Generate a short-lived DM internal JWT for a driver identity."""
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": drivers_license,
+        "role": "driver",
+        "iat": now,
+        "exp": now + timedelta(hours=_DM_TOKEN_EXPIRY_HOURS),
+    }
+    return _jwt.encode(payload, _DM_JWT_SECRET, algorithm="HS256")
+
+
+def _dm_auth(drivers_license: str) -> dict[str, str]:
+    """Return an Authorization header dict for DM /me/* calls."""
+    return {"Authorization": f"Bearer {_dm_driver_jwt(drivers_license)}"}
 
 
 # ---------------------------------
@@ -62,8 +88,8 @@ async def get_my_active_arrival(
     Get driver's active appointment.
     Driver identity extracted from JWT token.
     """
-    params = {"drivers_license": current_user.sub.upper()}
-    return await internal_client.get("/drivers/me/active", params=params)
+    drv_license = current_user.sub.upper()
+    return await internal_client.get("/drivers/me/active", headers=_dm_auth(drv_license))
 
 
 @router.get("/drivers/me/today")
@@ -74,8 +100,8 @@ async def get_my_today_arrivals(
     Get driver's today appointments.
     Driver identity extracted from JWT token.
     """
-    params = {"drivers_license": current_user.sub.upper()}
-    return await internal_client.get("/drivers/me/today", params=params)
+    drv_license = current_user.sub.upper()
+    return await internal_client.get("/drivers/me/today", headers=_dm_auth(drv_license))
 
 
 @router.get("/drivers/me/history")
@@ -87,8 +113,8 @@ async def get_my_history(
     Get driver's delivery history.
     Driver identity extracted from JWT token.
     """
-    params = {"drivers_license": current_user.sub.upper(), "limit": limit}
-    return await internal_client.get("/drivers/me/history", params=params)
+    drv_license = current_user.sub.upper()
+    return await internal_client.get("/drivers/me/history", params={"limit": limit}, headers=_dm_auth(drv_license))
 
 
 # ---------------------------------

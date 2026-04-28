@@ -9,9 +9,14 @@ abstraction.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
+
+_COMMIT_MAX_RETRIES = 3
+_COMMIT_BACKOFF_BASE = 0.1  # seconds; doubles each attempt (0.1, 0.2, 0.4)
 
 from domain.interfaces import (
     IAlertRepository,
@@ -20,6 +25,7 @@ from domain.interfaces import (
     IDriverRepository,
     IInboxRepository,
     IOutboxRepository,
+    IPendingReviewRepository,
     IUnitOfWork,
     IVisitRepository,
     IWorkerRepository,
@@ -30,6 +36,7 @@ from infrastructure.persistence.appointment_state_repository import SqlAlchemyAp
 from infrastructure.persistence.driver_repository import SqlAlchemyDriverRepository
 from infrastructure.persistence.inbox_repository import SqlAlchemyInboxRepository
 from infrastructure.persistence.outbox_repository import SqlAlchemyOutboxRepository
+from infrastructure.persistence.pending_review_repository import SqlAlchemyPendingReviewRepository
 from infrastructure.persistence.visit_repository import SqlAlchemyVisitRepository
 from infrastructure.persistence.worker_repository import SqlAlchemyWorkerRepository
 
@@ -57,6 +64,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
     visits: IVisitRepository
     inbox: IInboxRepository
     outbox: IOutboxRepository
+    pending_reviews: IPendingReviewRepository
 
     def __init__(self, session_factory: sessionmaker) -> None:  # type: ignore[type-arg]
         self._session_factory = session_factory
@@ -76,6 +84,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
         self.visits = SqlAlchemyVisitRepository(self._session)
         self.inbox = SqlAlchemyInboxRepository(self._session)
         self.outbox = SqlAlchemyOutboxRepository(self._session)
+        self.pending_reviews = SqlAlchemyPendingReviewRepository(self._session)
         return self
 
     def __exit__(
@@ -96,7 +105,15 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
 
     def commit(self) -> None:
         assert self._session is not None, "UnitOfWork not entered"
-        self._session.commit()
+        for attempt in range(1, _COMMIT_MAX_RETRIES + 1):
+            try:
+                self._session.commit()
+                return
+            except OperationalError:
+                if attempt == _COMMIT_MAX_RETRIES:
+                    raise
+                self._session.rollback()
+                time.sleep(_COMMIT_BACKOFF_BASE * 2 ** (attempt - 1))
 
     def rollback(self) -> None:
         if self._session is not None:

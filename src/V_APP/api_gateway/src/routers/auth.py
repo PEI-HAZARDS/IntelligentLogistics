@@ -93,6 +93,16 @@ async def driver_login(credentials: DriverLoginRequest, request: Request):
     except HTTPException:
         user_info = {"drivers_license": credentials.drivers_license}
 
+    # Create a DM internal session so /me/* endpoints work via the gateway.
+    # Non-fatal: Keycloak auth is authoritative; DM session is a warm-up detail.
+    try:
+        await internal_client.post("/drivers/login", json={
+            "drivers_license": credentials.drivers_license,
+            "password": credentials.password,
+        })
+    except HTTPException:
+        pass
+
     return {
         "access_token": token_data["access_token"],
         "refresh_token": token_data["refresh_token"],

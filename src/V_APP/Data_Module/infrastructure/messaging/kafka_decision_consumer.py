@@ -21,14 +21,13 @@ from shared.src.kafka_wrapper import KafkaConsumerWrapper
 from shared.src.kafka_protocol import KafkaTopicFactory
 from infrastructure.messaging.dlq_producer import DLQProducer
 from application.queries.decision_queries import (
-    persist_infraction_event_from_kafka,
-    persist_decision_event,
     update_appointment_after_infraction,
 )
-from application.queries.notification_queries import create_notification
 from config import settings
 from domain.events import EventEnvelope, ConsumeContext
 from application.use_cases.container_moved_handler import ContainerMovedHandler
+from application.use_cases.notification_handlers import cmd_create_notification
+from application.use_cases.pending_review_handlers import cmd_store_pending_review
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from infrastructure.persistence.postgres import SessionLocal
 
@@ -63,12 +62,25 @@ class DecisionCorrelator:
             return self._build_final_decision(decision_data, source="agent")
         
         elif decision_status == "MANUAL_REVIEW":
-            logger.info(f"Agent MANUAL_REVIEW for truck_id={truck_id}, storing in Redis.")
+            logger.info(f"Agent MANUAL_REVIEW for truck_id={truck_id}, storing in PG + Outbox.")
             try:
-                key = f"{self.PENDING_KEY_PREFIX}{truck_id}"
-                self.redis.setex(key, self.PENDING_TTL, json.dumps(decision_data, default=str))
+                event_id = decision_data.get("event_id") or str(__import__("uuid").uuid4())
+                gate_id = int(decision_data.get("gate_id") or 0)
+                license_plate = decision_data.get("license_plate", "UNKNOWN")
+
+                def _uow_factory():
+                    return SqlAlchemyUnitOfWork(SessionLocal)
+
+                cmd_store_pending_review(
+                    _uow_factory,
+                    event_id=event_id,
+                    truck_id=truck_id,
+                    gate_id=gate_id,
+                    license_plate=license_plate,
+                    payload=decision_data,
+                )
             except Exception as e:
-                logger.error(f"Failed to store pending review in Redis for truck_id={truck_id}: {e}")
+                logger.error(f"Failed to store pending review for truck_id={truck_id}: {e}")
             return None
         
         else:
@@ -137,8 +149,6 @@ class KafkaDecisionConsumer:
     """
     Background consumer for agent and operator decisions.
     """
-
-    MAX_TRANSIENT_RETRIES = 3
 
     def __init__(self, consumer: KafkaConsumerWrapper | None = None):
         self.running = False
@@ -243,7 +253,7 @@ class KafkaDecisionConsumer:
                     inferred_gate_id = self._extract_gate_id_from_topic(topic)
                     if inferred_gate_id and not data.get("gate_id"):
                         data = {**data, "gate_id": inferred_gate_id}
-                    await self._store_infraction_decision(truck_id, data)
+                    await self._store_infraction_decision(truck_id, data, msg)
                     # Commit offset ONLY after successful infraction processing (Guardrail 4).
                     # Without this, consumer restart replays the same event repeatedly.
                     await asyncio.get_event_loop().run_in_executor(
@@ -256,7 +266,7 @@ class KafkaDecisionConsumer:
                     inferred_gate_id = self._extract_gate_id_from_topic(topic)
                     if inferred_gate_id and not final_decision.get("gate_id"):
                         final_decision = {**final_decision, "gate_id": inferred_gate_id}
-                    await self._persist_decision(truck_id, final_decision)
+                    self._persist_decision(truck_id)
 
             except Exception as e:
                 logger.error(f"Error in consume loop: {e}", exc_info=True)
@@ -395,42 +405,72 @@ class KafkaDecisionConsumer:
             logger.error("Failed to resolve appointment_id for plate=%s: %s", license_plate, e)
             return None
 
-    async def _persist_decision(self, truck_id: str, decision_data: dict):
-        """Persist final decision event to MongoDB (audit trail).
+    def _persist_decision(self, truck_id: str):
+        """No-op — Mongo projection is handled by the outbox worker (DW-03)."""
+        logger.debug("_persist_decision: outbox worker handles Mongo projection for truck_id=%s", truck_id)
 
-        Runs in executor to avoid blocking the async loop.
-        Called after ContainerMovedHandler has already committed PG state.
+    async def _store_infraction_decision(self, truck_id: str, decision_data: dict, msg) -> None:
+        """Persist infraction event, flag appointment, create alert, and notify gate + driver.
+
+        DW-06: inbox dedup prevents double-processing on consumer restart.
+        DW-01: notifications emitted via outbox instead of direct Mongo writes.
         """
-        try:
-            license_plate = decision_data.get("license_plate", "UNKNOWN")
-            try:
-                gate_id = int(decision_data.get("gate_id", settings.gate_id))
-            except (TypeError, ValueError):
-                gate_id = int(settings.gate_id)
-            appointment_id = decision_data.get("appointment_id")
-            decision = decision_data.get("decision", "UNKNOWN")
+        import uuid as _uuid
 
-            event_id = await asyncio.get_event_loop().run_in_executor(
-                None,
-                persist_decision_event,
-                license_plate,
-                gate_id,
-                appointment_id,
-                decision,
-                decision_data,
-            )
+        # ── Derive stable inbox dedup key ─────────────────────────
+        raw_event_id = decision_data.get("event_id")
+        if raw_event_id:
+            dedup_event_id = str(raw_event_id)
+        else:
+            dedup_event_id = str(_uuid.uuid5(
+                _uuid.NAMESPACE_URL,
+                f"{msg.topic()}:{msg.partition()}:{msg.offset()}",
+            ))
+
+        headers_raw = msg.headers() or []
+        headers_dict = {
+            k: (v.decode("utf-8") if isinstance(v, bytes) else v)
+            for k, v in headers_raw
+        }
+
+        inbox_envelope = EventEnvelope(
+            event_id=dedup_event_id,
+            correlation_id=truck_id,
+            causation_id=None,
+            aggregate_type="infraction",
+            aggregate_id=truck_id,
+            event_type="InfractionDecisionReceived",
+            event_version=1,
+            occurred_at=datetime.now(timezone.utc),
+            producer=msg.topic(),
+            partition_key=truck_id,
+            payload=decision_data,
+        )
+        inbox_ctx = ConsumeContext(
+            topic=msg.topic(),
+            partition=msg.partition(),
+            offset=msg.offset(),
+            key=truck_id,
+            headers=headers_dict,
+        )
+
+        # ── Inbox dedup gate (DW-06) ──────────────────────────────
+        def _inbox_check() -> bool:
+            with SqlAlchemyUnitOfWork(SessionLocal) as uow:
+                if not uow.inbox.try_insert_received(inbox_envelope, inbox_ctx):
+                    return False
+                uow.inbox.mark_processing(dedup_event_id)
+                uow.commit()
+                return True
+
+        is_new = await asyncio.get_event_loop().run_in_executor(None, _inbox_check)
+        if not is_new:
             logger.info(
-                "Decision event persisted to MongoDB for truck_id=%s event_id=%s",
-                truck_id, event_id,
+                "Duplicate infraction event skipped: event_id=%s truck_id=%s",
+                dedup_event_id, truck_id,
             )
-        except Exception as e:
-            logger.error(
-                "Failed to persist decision event for truck_id=%s: %s",
-                truck_id, e, exc_info=True,
-            )
+            return
 
-    async def _store_infraction_decision(self, truck_id: str, decision_data: dict):
-        """Persist infraction event, flag appointment, create alert, and notify gate + driver."""
         try:
             logger.info(f"Storing infraction decision for truck_id={truck_id}")
 
@@ -439,103 +479,120 @@ class KafkaDecisionConsumer:
             except (TypeError, ValueError):
                 gate_id = int(settings.gate_id)
 
-            event_payload = {
-                **decision_data,
-                "gate_id": gate_id,
-                "truck_id": truck_id,
-            }
-
-            # Store infraction event in MongoDB (audit trail) — runs in executor
-            event_id = await asyncio.get_event_loop().run_in_executor(
-                None,
-                persist_infraction_event_from_kafka,
-                truck_id,
-                event_payload,
-            )
-            logger.info(f"Infraction event persisted for truck_id={truck_id} with id={event_id}")
+            # Mongo projection handled by the outbox worker (DW-03)
 
             # Determine if infraction flag needs to be updated on appointment
             infraction_detected = bool(decision_data.get("infraction", False))
             if not infraction_detected:
                 logger.info(f"No infraction for truck_id={truck_id}; skipping appointment flag update")
-                return
-
-            license_plate = decision_data.get("license_plate")
-            if not license_plate or license_plate == "N/A":
-                logger.warning(f"Infraction detected for truck_id={truck_id} but license_plate is missing")
-                return
-
-            # Update appointment highway_infraction flag in PostgreSQL via UoW + Outbox
-            result = await asyncio.get_event_loop().run_in_executor(
-                None,
-                update_appointment_after_infraction,
-                license_plate,
-                True,
-            )
-
-            if not result:
-                logger.warning(
-                    f"Infraction detected for truck_id={truck_id} plate={license_plate}, "
-                    "but no active appointment was updated"
-                )
-                return
-
-            appointment_id = result.get("appointment_id")
-            logger.info(
-                f"Appointment {appointment_id} infraction flag updated for truck_id={truck_id}: "
-                f"{result['old_highway_infraction']} -> {result['new_highway_infraction']}"
-            )
-
-            # Route warnings to the appointment's gate (gate_in_id) when available.
-            # This avoids mixing camera source gate with operational destination gate.
-            notification_gate_id = await self._get_driver_gate_id(appointment_id, gate_id)
-            if notification_gate_id != gate_id:
-                logger.info(
-                    "Infraction notification gate remapped from source gate=%s to appointment gate=%s "
-                    "for truck_id=%s",
-                    gate_id,
-                    notification_gate_id,
-                    truck_id,
-                )
-
-            # Create PG alert record via UoW + Outbox (Guardrails 2, 3, 6)
-            infraction_type = decision_data.get("infraction_type", "highway_route")
-            alert_description = (
-                f"Highway infraction detected: truck {license_plate} "
-                f"flagged for {infraction_type}. Driver must return to highway or face a fine."
-            )
-            try:
-                def _create_infraction_alert():
-                    from application.use_cases.alert_handlers import create_alerts_for_appointment
-                    def _uow_factory():
-                        return SqlAlchemyUnitOfWork(SessionLocal)
-                    create_alerts_for_appointment(
-                        _uow_factory,
-                        appointment_id=appointment_id,
-                        alerts_payload=[{
-                            "type": "operational",
-                            "description": alert_description,
-                        }],
+            else:
+                license_plate = decision_data.get("license_plate")
+                if not license_plate or license_plate == "N/A":
+                    logger.warning(
+                        f"Infraction detected for truck_id={truck_id} but license_plate is missing"
                     )
+                else:
+                    await self._handle_infraction_update(truck_id, gate_id, license_plate, decision_data)
 
-                await asyncio.get_event_loop().run_in_executor(None, _create_infraction_alert)
-                logger.info(f"PG alert created for infraction on appointment={appointment_id}")
-            except Exception as alert_err:
-                logger.error(f"Failed to create PG alert for infraction: {alert_err}")
+            # ── Mark inbox event processed ────────────────────────
+            def _mark_processed():
+                with SqlAlchemyUnitOfWork(SessionLocal) as uow:
+                    uow.inbox.mark_processed(dedup_event_id)
+                    uow.commit()
 
-            # Gate notification (for operator UI)
-            create_notification(
-                gate_id=notification_gate_id,
-                title="Highway Infraction",
-                message=f"Truck {license_plate} flagged with highway infraction.",
-                notification_type="danger",
-                appointment_id=appointment_id,
-                license_plate=license_plate,
+            await asyncio.get_event_loop().run_in_executor(None, _mark_processed)
+
+        except Exception as e:
+            logger.error(f"Error storing infraction decision for truck_id={truck_id}: {e}", exc_info=True)
+
+            def _mark_failed():
+                with SqlAlchemyUnitOfWork(SessionLocal) as uow:
+                    uow.inbox.mark_failed(dedup_event_id, str(e)[:500], retryable=True)
+                    uow.commit()
+
+            try:
+                await asyncio.get_event_loop().run_in_executor(None, _mark_failed)
+            except Exception as mark_err:
+                logger.error("Failed to mark infraction inbox event as failed: %s", mark_err)
+
+    async def _handle_infraction_update(
+        self, truck_id: str, gate_id: int, license_plate: str, decision_data: dict
+    ) -> None:
+        """Update appointment flag, create alert, and notify for an infraction."""
+        result = await asyncio.get_event_loop().run_in_executor(
+            None, update_appointment_after_infraction, license_plate, True
+        )
+        if not result:
+            logger.warning(
+                "Infraction detected for truck_id=%s plate=%s, but no active appointment was updated",
+                truck_id, license_plate,
+            )
+            return
+
+        appointment_id = result.get("appointment_id")
+        logger.info(
+            "Appointment %s infraction flag updated for truck_id=%s: %s -> %s",
+            appointment_id, truck_id,
+            result["old_highway_infraction"], result["new_highway_infraction"],
+        )
+
+        notification_gate_id = await self._get_driver_gate_id(appointment_id, gate_id)
+        if notification_gate_id != gate_id:
+            logger.info(
+                "Infraction notification gate remapped from source gate=%s to "
+                "appointment gate=%s for truck_id=%s",
+                gate_id, notification_gate_id, truck_id,
             )
 
-            # Driver notification (for driver app)
-            try:
-                create_notification(
+        infraction_type = decision_data.get("infraction_type", "highway_route")
+        alert_description = (
+            f"Highway infraction detected: truck {license_plate} "
+            f"flagged for {infraction_type}. Driver must return to highway or face a fine."
+        )
+        try:
+            def _create_alert():
+                from application.use_cases.alert_handlers import create_alerts_for_appointment
+                def _uow():
+                    return SqlAlchemyUnitOfWork(SessionLocal)
+                create_alerts_for_appointment(
+                    _uow, appointment_id=appointment_id,
+                    alerts_payload=[{"type": "operational", "description": alert_description}],
+                )
+            await asyncio.get_event_loop().run_in_executor(None, _create_alert)
+            logger.info("PG alert created for infraction on appointment=%s", appointment_id)
+        except Exception as alert_err:
+            logger.error("Failed to create PG alert for infraction: %s", alert_err)
+
+        await self._emit_infraction_notifications(appointment_id, license_plate, notification_gate_id)
+
+    async def _emit_infraction_notifications(
+        self, appointment_id: int, license_plate: str, notification_gate_id: int
+    ) -> None:
+        """Send gate and driver notifications for a highway infraction."""
+        def _uow_factory():
+            return SqlAlchemyUnitOfWork(SessionLocal)
+
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: cmd_create_notification(
+                    _uow_factory,
+                    gate_id=notification_gate_id,
+                    title="Highway Infraction",
+                    message=f"Truck {license_plate} flagged with highway infraction.",
+                    notification_type="danger",
+                    appointment_id=appointment_id,
+                    license_plate=license_plate,
+                ),
+            )
+        except Exception as notif_err:
+            logger.error("Failed to emit gate notification for infraction: %s", notif_err)
+
+        try:
+            await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: cmd_create_notification(
+                    _uow_factory,
                     gate_id=notification_gate_id,
                     title="Highway Infraction Warning",
                     message=(
@@ -546,13 +603,11 @@ class KafkaDecisionConsumer:
                     appointment_id=appointment_id,
                     license_plate=license_plate,
                     extra={"target": "driver"},
-                )
-                logger.info(f"Driver notification created for infraction on appointment={appointment_id}")
-            except Exception as notif_err:
-                logger.error(f"Failed to create driver notification: {notif_err}")
-
-        except Exception as e:
-            logger.error(f"Error storing infraction decision for truck_id={truck_id}: {e}", exc_info=True)
+                ),
+            )
+            logger.info("Driver notification emitted for infraction on appointment=%s", appointment_id)
+        except Exception as notif_err:
+            logger.error("Failed to emit driver notification for infraction: %s", notif_err)
 
     async def _get_driver_gate_id(self, appointment_id: int, fallback_gate_id: int) -> int:
         """Get the gate_in_id for the appointment, or fallback."""

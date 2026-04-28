@@ -1,11 +1,12 @@
 """
-Event queries — reads directly from MongoDB events collection.
-Moved from services/event_service.py.
+DEPRECATED — reads from the legacy events collection (7-day TTL per Phase 9 policy).
+New code should query decision_events_collection or PostgreSQL directly.
 """
-
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
+import logging as _logging
+_logger = _logging.getLogger(__name__)
 
 from bson import ObjectId
 

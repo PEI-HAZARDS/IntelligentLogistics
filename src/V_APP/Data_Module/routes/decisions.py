@@ -5,13 +5,14 @@ Consumed by: Decision Engine (microservice), Operator frontend.
 
 from typing import Annotated, List, Optional, Dict, Any
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, status, Body, Query, Path, Depends
+from fastapi import APIRouter, Header, HTTPException, status, Body, Query, Path, Depends
 from sqlalchemy.orm import Session
 from bson.objectid import ObjectId
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 from loguru import logger
 
+from config import settings
 from infrastructure.persistence.mongo import events_collection
 from infrastructure.persistence.postgres import get_db
 from application.queries.decision_queries import (
@@ -19,7 +20,6 @@ from application.queries.decision_queries import (
     query_appointments_for_decision,
     get_detection_events,
     get_decision_events,
-    persist_detection_event,
 )
 
 router = APIRouter(prefix="/decisions", tags=["Decisions"])
@@ -34,6 +34,14 @@ class DecisionIncomingRequest(BaseModel):
     """Request from Decision Engine to process a decision."""
     event_id: Optional[str] = None  # Caller-provided idempotency key (Guardrail 1)
     license_plate: str
+
+    @field_validator("license_plate")
+    @classmethod
+    def validate_license_plate(cls, v: str) -> str:
+        from utils.plate_validation import is_valid_plate_relaxed
+        if not is_valid_plate_relaxed(v):
+            raise ValueError(f"Invalid license plate format: {v!r}")
+        return v
     gate_id: int
     appointment_id: Optional[int] = None   # None when no matching appointment exists
     decision: str  # "approved", "rejected", "manual_review"
@@ -81,7 +89,17 @@ class EventResponse(BaseModel):
 
 # ==================== DECISION ENGINE ENDPOINTS ====================
 
-@router.post("/process")
+def _verify_service_key(x_service_key: Annotated[Optional[str], Header()] = None) -> None:
+    """Reject calls that don't carry the shared service key (when configured)."""
+    expected = settings.decision_engine_key
+    if expected and x_service_key != expected:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid X-Service-Key",
+        )
+
+
+@router.post("/process", dependencies=[Depends(_verify_service_key)])
 def process_decision(request: DecisionIncomingRequest):
     """
     Main endpoint for Decision Engine to send decisions.
@@ -128,31 +146,45 @@ def query_appointments(request: QueryAppointmentsRequest):
 @router.post("/detection-event")
 def register_detection_event(request: DetectionEventRequest):
     """
-    Registers detection event from Agents (A/B/C).
-    Used for persistence and future statistics.
-    
-    Expected payload:
-    {
-        "type": "license_plate_detection",
-        "license_plate": "XX-XX-XX",
-        "gate_id": 1,
-        "confidence": 0.95,
-        "agent": "AgentB",
-        "raw_data": {...}
-    }
+    Registers detection event from Agents (A/B/C) via transactional outbox.
+    The outbox worker projects DetectionEventReceived to agent_detections collection.
     """
-    event_data = {
+    from infrastructure.persistence.postgres import SessionLocal
+    from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+    from domain.events import EventEnvelope, new_event_id
+
+    def _uow_factory():
+        return SqlAlchemyUnitOfWork(SessionLocal)
+
+    event_id = new_event_id()
+    payload = {
         "type": request.type,
         "license_plate": request.license_plate,
         "gate_id": request.gate_id,
         "confidence": request.confidence,
         "agent": request.agent,
         "raw_data": request.raw_data,
-        "timestamp": datetime.now(timezone.utc).isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
-    
-    event_id = persist_detection_event(event_data)
-    
+
+    envelope = EventEnvelope(
+        event_id=event_id,
+        correlation_id=str(request.gate_id),
+        causation_id=None,
+        aggregate_type="detection",
+        aggregate_id=str(request.gate_id),
+        event_type="DetectionEventReceived",
+        event_version=1,
+        occurred_at=datetime.now(timezone.utc),
+        producer="data-module",
+        partition_key=str(request.gate_id),
+        payload=payload,
+    )
+
+    with _uow_factory() as uow:
+        uow.outbox.append(envelope, topic="agent-detections", key=str(request.gate_id))
+        uow.commit()
+
     return {"status": "ok", "event_id": event_id}
 
 
@@ -301,7 +333,11 @@ def manual_review(
             extra_data={"manual_review": True, "_skip_pg_write": True}
         )
     except Exception as e:
-        logger.warning(f"MongoDB audit persistence failed for manual review: {e}")
+        logger.error(
+            "MongoDB audit persistence failed for manual_review appointment=%s: %s",
+            appointment_id, e,
+        )
+        result["audit_warning"] = "Decision recorded in PostgreSQL but audit log write failed"
 
     # If approved and gate_id provided, create Visit via UoW + Outbox
     if decision == "approved" and gate_id:
@@ -329,3 +365,59 @@ def manual_review(
 
     return result
 
+
+# ==================== RESOLVE PENDING REVIEW ====================
+
+class ResolvePendingReviewRequest(BaseModel):
+    resolution: str  # "APPROVED" or "REJECTED"
+    notes: Optional[str] = None
+
+
+from utils.auth_token import require_role as _require_role
+_operator_or_manager = _require_role("operator", "manager")
+
+
+@router.post("/{event_id}/resolve")
+def resolve_pending_review(
+    event_id: Annotated[str, Path(description="pending_review event_id (UUID)")],
+    body: ResolvePendingReviewRequest,
+    claims: Annotated[dict, Depends(_operator_or_manager)],
+):
+    """
+    Operator resolves a pending manual-review request.
+
+    Acquires a row-level lock (SELECT … FOR UPDATE), flips status to
+    APPROVED or REJECTED, and appends a PendingReviewResolved outbox
+    event — all in one PG transaction.  The outbox worker then evicts
+    the Redis cache key.
+    """
+    from application.use_cases.pending_review_handlers import cmd_resolve_pending_review
+    from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
+    from infrastructure.persistence.postgres import SessionLocal
+
+    def _uow_factory():
+        return SqlAlchemyUnitOfWork(SessionLocal)
+
+    resolved_by = claims.get("sub", "unknown")
+    try:
+        row = cmd_resolve_pending_review(
+            _uow_factory,
+            event_id=event_id,
+            resolution=body.resolution,
+            resolved_by=resolved_by,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Pending review {event_id} not found",
+        )
+
+    return {
+        "status": "ok",
+        "event_id": event_id,
+        "resolution": row["status"],
+        "resolved_by": row["resolved_by"],
+    }

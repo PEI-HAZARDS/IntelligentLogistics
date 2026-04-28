@@ -53,8 +53,12 @@ class SqlAlchemyAppointmentStateRepository(IAppointmentStateRepository):
             .filter(Appointment.id == appointment_id)
             .one()
         )
+        if row.version is None:
+            raise ValueError(
+                f"Appointment {appointment_id} has NULL version — data integrity violation"
+            )
         row.status = new_state
-        row.version = (row.version or 1) + 1
+        row.version = row.version + 1
         if "gate_in_id" in metadata:
             row.gate_in_id = metadata["gate_in_id"]
         if "gate_out_id" in metadata:

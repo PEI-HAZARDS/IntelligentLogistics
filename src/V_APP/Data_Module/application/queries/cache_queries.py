@@ -3,8 +3,11 @@ Cache helpers — relocated from services/cache_service.py.
 """
 
 import json
+import logging
 from typing import Optional, Any, Callable
 from infrastructure.persistence.redis import redis_client
+
+logger = logging.getLogger(__name__)
 
 
 def get_or_cache(key: str, ttl: int, fallback: Callable) -> Optional[Any]:
@@ -13,18 +16,12 @@ def get_or_cache(key: str, ttl: int, fallback: Callable) -> Optional[Any]:
     if cached:
         try:
             return json.loads(cached)
-        except Exception:
-            pass
+        except json.JSONDecodeError:
+            logger.error("Corrupt cache entry for key %r — evicting and using fallback", key)
+            redis_client.delete(key)
     data = fallback()
     if data:
         redis_client.set(key, json.dumps(data), ex=ttl)
     return data
 
 
-def cache_detection(detection_id: str, data: dict, ttl: int = 300):
-    redis_client.set(f"detection:{detection_id}", json.dumps(data), ex=ttl)
-
-
-def get_cached_detection(detection_id: str) -> Optional[dict]:
-    v = redis_client.get(f"detection:{detection_id}")
-    return json.loads(v) if v else None

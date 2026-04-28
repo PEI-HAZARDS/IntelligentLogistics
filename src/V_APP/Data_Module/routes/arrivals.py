@@ -25,7 +25,9 @@ from application.queries.arrival_queries import (
     get_appointments_count_by_status,
     get_next_appointments,
     get_avg_permanence_minutes,
-    get_transport_stats_by_company,
+)
+from application.queries.manager_statistics_queries import (
+    get_transport_stats as _get_transport_stats_canonical,
 )
 from application.use_cases.appointment_commands import (
     cmd_update_status,
@@ -151,14 +153,14 @@ def get_avg_permanence(
 
 @router.get("/transport-stats", response_model=List[Dict[str, Any]])
 def get_transport_stats(
-    days: Annotated[int, Query(ge=1, le=365, description="Lookback period in days")] = 30,
-    db: Annotated[Session, Depends(get_db)] = None,
+    from_date: Annotated[Optional[str], Query(description="Start date (YYYY-MM-DD)")] = None,
+    to_date: Annotated[Optional[str], Query(description="End date (YYYY-MM-DD)")] = None,
 ):
     """
     Per-company transport statistics.
     Called by API Gateway to serve /statistics/by-company.
     """
-    return get_transport_stats_by_company(db, days=days)
+    return _get_transport_stats_canonical(from_date=from_date, to_date=to_date)
 
 
 @router.get("/next/{gate_id}", response_model=List[Appointment])
@@ -200,23 +202,30 @@ def get_arrival(
 ):
     """
     Gets details of a specific appointment.
-    Reads from Redis hot cache first, PostgreSQL fallback on miss.
+    Read order: Redis → PostgreSQL.
+
+    Scale-up note (BR-29): for high-volume deployments a MongoDB
+    appointments_read middle tier can be inserted between Redis and PG to
+    reduce primary-DB read pressure.  The collection and its indexes are
+    already declared in mongo.py; the outbox worker can be extended to
+    project AppointmentStateChanged events into it.  At current port volume
+    (hundreds of appointments/day) the two-tier path is sufficient.
     """
-    # ── 1) Redis hot cache (written by outbox worker) ─────────
+    # ── 1) Redis hot cache (written by outbox worker on every state change) ──
     cached = get_cached_appointment(appointment_id)
     if cached:
         logger.debug("CACHE HIT  appointment_id=%s", appointment_id)
         return cached
 
-    # ── 2) Cache miss → PostgreSQL ────────────────────────────
-    logger.debug("CACHE MISS appointment_id=%s — querying PostgreSQL", appointment_id)
+    # ── 2) PostgreSQL (source of truth) ──────────────────────────────────────
+    logger.debug("PG READ  appointment_id=%s", appointment_id)
     appointment = get_appointment_by_id(db, appointment_id)
     if not appointment:
         raise HTTPException(status_code=404, detail="Appointment not found")
 
-    # ── 3) Warm cache for subsequent reads ────────────────────
     result = Appointment.model_validate(appointment)
-    cache_appointment(appointment_id, result.model_dump(mode="json"))
+    snapshot = result.model_dump(mode="json")
+    cache_appointment(appointment_id, snapshot)
 
     return result
 
@@ -246,6 +255,10 @@ def query_arrivals_by_license_plate(
     db: Annotated[Session, Depends(get_db)] = None,
 ):
     """Query appointments by license plate (Decision Engine)."""
+    from utils.plate_validation import is_valid_plate_relaxed
+    if not is_valid_plate_relaxed(license_plate):
+        raise HTTPException(status_code=400, detail=f"Invalid license plate format: {license_plate!r}")
+
     parsed_shift_type = None
     if shift_type:
         try:

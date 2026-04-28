@@ -288,21 +288,24 @@ class TestNoPartialCacheWrite:
             "the full projection from the outbox worker."
         )
 
-    def test_uses_invalidate_appointment_cache(self):
+    def test_no_invalidate_appointment_cache_in_process_decision(self):
         source = _read(DECISION_QUERIES_PATH)
-        assert "invalidate_appointment_cache" in source, (
-            "decision_queries.py must use invalidate_appointment_cache "
-            "to clear stale cache entries instead of writing partial data."
+        func_start = source.index("def process_incoming_decision(")
+        next_func = source.index("\ndef ", func_start + 1)
+        func_body = source[func_start:next_func]
+        assert "invalidate_appointment_cache(" not in func_body, (
+            "process_incoming_decision must not call invalidate_appointment_cache "
+            "directly — outbox worker handles cache maintenance (DW-04)."
         )
 
 
 # =================================================================
-# 10. Legacy ORM functions carry deprecation warnings
+# 10. Legacy ORM functions removed (DW-08)
 # =================================================================
 
 @pytest.mark.unit
-class TestLegacyFunctionsDeprecated:
-    """Legacy direct-ORM functions must have DEPRECATED docstrings."""
+class TestLegacyFunctionsRemoved:
+    """Legacy direct-ORM functions were deleted in Phase 7 (DW-08)."""
 
     @pytest.mark.parametrize("fn_name", [
         "update_appointment_status",
@@ -311,16 +314,9 @@ class TestLegacyFunctionsDeprecated:
         "update_appointment_from_decision",
         "flag_appointment_highway_infraction",
     ])
-    def test_legacy_function_has_deprecation_warning(self, fn_name):
+    def test_legacy_function_is_gone(self, fn_name):
         source = _read(ARRIVAL_QUERIES_PATH)
-        func_start = source.index(f"def {fn_name}(")
-        # Find the next top-level function or end of file
-        try:
-            next_func = source.index("\ndef ", func_start + 1)
-        except ValueError:
-            next_func = len(source)
-        func_body = source[func_start:next_func]
-        assert "DEPRECATED" in func_body, (
-            f"{fn_name} must carry a DEPRECATED docstring — "
-            "it bypasses UoW + Outbox and changes will not sync."
+        assert f"def {fn_name}(" not in source, (
+            f"{fn_name} must be removed from arrival_queries.py (DW-08) — "
+            "use appointment_commands.py command handlers instead."
         )

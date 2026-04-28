@@ -223,6 +223,37 @@ class IVisitRepository(ABC):
         ...
 
 
+class IPendingReviewRepository(ABC):
+    """Repository for the durable operator review queue (PD-01)."""
+
+    @abstractmethod
+    def create(
+        self,
+        *,
+        event_id: str,
+        truck_id: str,
+        gate_id: int,
+        license_plate: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        ...
+
+    @abstractmethod
+    def get_for_update(self, event_id: str) -> Optional[dict[str, Any]]:
+        """Return row with SELECT … FOR UPDATE, or None."""
+        ...
+
+    @abstractmethod
+    def update_status(
+        self,
+        event_id: str,
+        status: str,
+        resolved_by: Optional[str] = None,
+    ) -> bool:
+        """Set status + resolved_at + resolved_by. Returns False if not found."""
+        ...
+
+
 class IUnitOfWork(ABC):
     """
     Transactional boundary that groups Inbox + Outbox + domain
@@ -239,6 +270,7 @@ class IUnitOfWork(ABC):
     visits: IVisitRepository
     inbox: IInboxRepository
     outbox: IOutboxRepository
+    pending_reviews: IPendingReviewRepository
 
     @abstractmethod
     def __enter__(self) -> IUnitOfWork:

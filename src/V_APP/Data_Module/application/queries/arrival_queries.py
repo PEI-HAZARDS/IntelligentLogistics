@@ -353,146 +353,6 @@ def get_appointments_count_by_status(
     return counts
 
 
-def update_appointment_status(db: Session, appointment_id: int, new_status: str, notes: Optional[str] = None) -> Optional[Appointment]:
-    """DEPRECATED — bypasses UoW + Outbox.  Changes made here will
-    NOT propagate to MongoDB or Redis.  Use
-    ``appointment_commands.cmd_update_status`` instead.
-    """
-    import warnings
-    warnings.warn(
-        "update_appointment_status bypasses UoW + Outbox — use cmd_update_status",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
-    if not appointment:
-        return None
-    appointment.status = new_status
-    if notes:
-        appointment.notes = notes
-    db.commit()
-    db.refresh(appointment)
-    if appointment.arrival_id is None:
-        ensure_arrival_id(db, appointment)
-    return appointment
-
-
-def create_visit_for_appointment(
-    db: Session,
-    appointment_id: int,
-    shift_gate_id: int,
-    shift_type: ShiftType,
-    shift_date: date,
-    entry_time: Optional[datetime] = None
-) -> Optional[Visit]:
-    """DEPRECATED — bypasses UoW + Outbox.  Changes made here will
-    NOT propagate to MongoDB or Redis.  Use
-    ``appointment_commands.cmd_create_visit`` instead.
-    """
-    import warnings
-    warnings.warn(
-        "create_visit_for_appointment bypasses UoW + Outbox — use cmd_create_visit",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
-    if not appointment:
-        return None
-    existing_visit = db.query(Visit).filter(Visit.appointment_id == appointment_id).first()
-    if existing_visit:
-        return existing_visit
-    visit = Visit(
-        appointment_id=appointment_id,
-        shift_gate_id=shift_gate_id,
-        shift_type=shift_type,
-        shift_date=shift_date,
-        entry_time=entry_time or datetime.now(),
-        state='unloading'
-    )
-    db.add(visit)
-    db.commit()
-    db.refresh(visit)
-    return visit
-
-
-def update_visit_status(db: Session, appointment_id: int, new_state: str, out_time: Optional[datetime] = None) -> Optional[Visit]:
-    """DEPRECATED — bypasses UoW + Outbox.  Changes made here will
-    NOT propagate to MongoDB or Redis.  Use
-    ``appointment_commands.cmd_update_visit_state`` instead.
-    """
-    import warnings
-    warnings.warn(
-        "update_visit_status bypasses UoW + Outbox — use cmd_update_visit_state",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    visit = db.query(Visit).filter(Visit.appointment_id == appointment_id).first()
-    if not visit:
-        return None
-    visit.state = new_state
-    if out_time:
-        visit.out_time = out_time
-    elif new_state == 'completed':
-        visit.out_time = datetime.now()
-    db.commit()
-    db.refresh(visit)
-    return visit
-
-
-def update_appointment_from_decision(db: Session, appointment_id: int, decision_payload: Dict[str, Any]) -> Optional[Appointment]:
-    """DEPRECATED — bypasses UoW + Outbox.  Changes made here will
-    NOT propagate to MongoDB or Redis.  Use
-    ``appointment_commands.cmd_process_decision`` instead.
-    """
-    import warnings
-    warnings.warn(
-        "update_appointment_from_decision bypasses UoW + Outbox — use cmd_process_decision",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
-    if not appointment:
-        return None
-    if "status" in decision_payload:
-        appointment.status = decision_payload["status"]
-    if "notes" in decision_payload:
-        appointment.notes = decision_payload["notes"]
-    db.commit()
-    db.refresh(appointment)
-    if appointment.arrival_id is None:
-        ensure_arrival_id(db, appointment)
-    # Create alerts if present — delegate to alert handler
-    if "alerts" in decision_payload and decision_payload["alerts"]:
-        from application.use_cases.alert_handlers import create_alerts_for_appointment
-        from infrastructure.persistence.postgres import SessionLocal
-        create_alerts_for_appointment(
-            lambda: __import__('infrastructure.persistence.unit_of_work', fromlist=['SqlAlchemyUnitOfWork']).SqlAlchemyUnitOfWork(SessionLocal),
-            appointment_id=appointment.id,
-            alerts_payload=decision_payload["alerts"],
-        )
-    return appointment
-
-
-def flag_appointment_highway_infraction(db: Session, appointment_id: int) -> Optional[Appointment]:
-    """DEPRECATED — bypasses UoW + Outbox.  Changes made here will
-    NOT propagate to MongoDB or Redis.  Use
-    ``appointment_commands.cmd_flag_highway_infraction`` instead.
-    """
-    import warnings
-    warnings.warn(
-        "flag_appointment_highway_infraction bypasses UoW + Outbox — use cmd_flag_highway_infraction",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
-    if not appointment:
-        return None
-    appointment.highway_infraction = True
-    db.commit()
-    db.refresh(appointment)
-    if appointment.arrival_id is None:
-        ensure_arrival_id(db, appointment)
-    return appointment
 
 
 def get_next_appointments(db: Session, gate_id: int, limit: int = 5, status: Optional[str] = None) -> List[Appointment]:
@@ -517,6 +377,13 @@ def get_next_appointments(db: Session, gate_id: int, limit: int = 5, status: Opt
 
 
 def get_transport_stats_by_company(db: Session, target_date: Optional[date] = None, days: int = 30) -> List[Dict[str, Any]]:
+    """DEPRECATED — use manager_statistics_queries.get_transport_stats instead."""
+    import warnings
+    warnings.warn(
+        "get_transport_stats_by_company is deprecated — use manager_statistics_queries.get_transport_stats",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     end_date = target_date or date.today()
     start_date = end_date - timedelta(days=days)
     rows = (

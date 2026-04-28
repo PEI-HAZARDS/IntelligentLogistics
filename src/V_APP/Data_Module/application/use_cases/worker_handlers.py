@@ -9,9 +9,7 @@ import logging
 import secrets
 from datetime import datetime, timezone
 from typing import Any, Optional
-from uuid import uuid4
-
-from domain.events import EventEnvelope
+from domain.events import EventEnvelope, new_event_id
 from domain.interfaces import IUnitOfWork
 from utils.hashing_pass import hash_password, verify_password
 
@@ -22,8 +20,8 @@ logger = logging.getLogger(__name__)
 def _append_outbox(uow: IUnitOfWork, worker_dict: dict[str, Any], event_type: str) -> None:
     payload = {k: v for k, v in worker_dict.items() if k != "password_hash"}
     envelope = EventEnvelope(
-        event_id=str(uuid4()),
-        correlation_id=str(uuid4()),
+        event_id=new_event_id(),
+        correlation_id=new_event_id(),
         causation_id=None,
         aggregate_type="worker",
         aggregate_id=worker_dict["num_worker"],

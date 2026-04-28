@@ -67,3 +67,22 @@ def worker_credentials():
 def pytest_configure(config):
     config.addinivalue_line("markers", "integration: integration tests")
     config.addinivalue_line("markers", "unit: unit tests")
+
+
+# ============================================================================
+# INTEGRATION FIXTURES
+# ============================================================================
+
+@pytest.fixture(scope="function")
+def pg_session():
+    """
+    Real PostgreSQL session for integration tests.
+    Rolls back any uncommitted state on teardown.
+    Tests that need a committed row must commit explicitly and clean up.
+    Requires running PostgreSQL (docker-compose up -d).
+    """
+    from infrastructure.persistence.postgres import SessionLocal
+    session = SessionLocal()
+    yield session
+    session.rollback()
+    session.close()

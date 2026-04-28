@@ -26,7 +26,8 @@ async def list_all_arrivals(
     license_plate: Annotated[Optional[str], Query(alias="matricula")] = None,
     page: Annotated[int, Query(ge=1)] = 1,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
-    status: Annotated[Optional[str], Query(description="Filter by status")] = None,
+    status: Annotated[Optional[str], Query(description="Filter by single status")] = None,
+    statuses: Annotated[Optional[str], Query(description="Filter by multiple statuses (comma-separated)")] = None,
     scheduled_date: Annotated[Optional[date], Query(description="Filter by scheduled date")] = None,
     gate_id: Annotated[Optional[int], Query(description="Filter by entry gate")] = None,
     search: Annotated[Optional[str], Query(description="Search by license plate or driver name")] = None,
@@ -42,6 +43,7 @@ async def list_all_arrivals(
         **{k: v for k, v in {
             "license_plate": license_plate,
             "status": status,
+            "statuses": statuses,
             "scheduled_date": scheduled_date.isoformat() if scheduled_date else None,
             "gate_id": gate_id,
             "search": search,
