@@ -21,6 +21,7 @@ source = ["src"]
 omit = [
     "*/tests/*",
     "*/__pycache__/*",
+    "conftest.py",
 ]
 
 [tool.coverage.report]
