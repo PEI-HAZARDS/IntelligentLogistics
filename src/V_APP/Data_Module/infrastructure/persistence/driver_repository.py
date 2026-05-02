@@ -89,6 +89,22 @@ class SqlAlchemyDriverRepository(IDriverRepository):
             "dock_location": dock_location,
         }
 
+    def anonymise(self, drivers_license: str) -> None:
+        """
+        RGPD Art. 17 — anonymise the driver row in place.
+        The row is kept (not deleted) to preserve FK integrity with Appointment.
+        """
+        driver = (
+            self._s.query(Driver)
+            .filter(Driver.drivers_license == drivers_license)
+            .first()
+        )
+        if driver:
+            driver.name = "ERASED"
+            driver.mobile_device_token = None
+            driver.active = False
+            self._s.flush()
+
     def get_next_active_appointment_id(self, drivers_license: str) -> Optional[int]:
         appt = (
             self._s.query(Appointment.id)

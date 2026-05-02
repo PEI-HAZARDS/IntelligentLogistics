@@ -76,6 +76,16 @@ class Settings(BaseSettings):
             return [o.strip() for o in v.split(",") if o.strip()]
         return v
 
+    # MinIO (object storage — used by erasure handler to delete alert images)
+    minio_host: str = "minio"
+    minio_port: int = 9000
+    minio_root_user: str = "minioadmin"
+    minio_root_password: str = ""
+
+    # RGPD field encryption (AES-256-GCM)
+    # Generate: python -c "import secrets,base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+    encryption_key: str = ""
+
     # API
     api_prefix: str = "/api/v1"
 

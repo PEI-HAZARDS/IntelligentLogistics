@@ -5,6 +5,8 @@ from sqlalchemy import Column, Integer, String, Date, Time, TIMESTAMP, DECIMAL, 
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import declarative_base, relationship
 
+from utils.crypto_utils import EncryptedString, SearchableEncryptedString
+
 Base = declarative_base()
 
 # Delay tolerance in minutes (appointment is delayed after this time past scheduled)
@@ -122,12 +124,12 @@ class Company(Base):
 
 class Driver(Base):
     __tablename__ = "driver"
-    
+
     drivers_license = Column(String(50), primary_key=True)
     company_nif = Column(String(20), ForeignKey('company.nif'))
     name = Column(String(100), nullable=False)
     password_hash = Column(Text)
-    mobile_device_token = Column(Text)
+    mobile_device_token = Column(EncryptedString)  # RGPD: AES-256-GCM encrypted at rest
     active = Column(Boolean, default=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
     
@@ -156,11 +158,11 @@ class Truck(Base):
 
 class Worker(Base):
     __tablename__ = "worker"
-    
+
     num_worker = Column(String(20), primary_key=True)
     name = Column(String(200), nullable=False)
-    phone = Column(String(50))
-    email = Column(String(200), unique=True)
+    phone = Column(EncryptedString)                          # RGPD: random-nonce AES-256-GCM (non-searchable)
+    email = Column(SearchableEncryptedString, unique=True)  # RGPD: deterministic-nonce AES-256-GCM (searchable, login key)
     password_hash = Column(Text)
     active = Column(Boolean, default=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
