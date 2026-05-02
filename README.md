@@ -114,7 +114,7 @@ NGINX RTMP server that ingests camera streams and redistributes to consumers:
 
 | Category | Technologies |
 |----------|--------------|
-| **ML/CV** | YOLOv8 (Ultralytics), PaddleOCR, PyTorch |
+| **ML/CV** | YOLOv11 (Ultralytics), PaddleOCR, PyTorch |
 | **Backend** | Python, FastAPI, Pydantic |
 | **Messaging** | Apache Kafka (KRaft mode) |
 | **Databases** | PostgreSQL, MongoDB, Redis |
@@ -150,7 +150,6 @@ NGINX RTMP server that ingests camera streams and redistributes to consumers:
 - **Availability**: The system must maintain a minimum availability of 99% in the production environment.
 - **Observability**: Full metrics, logging, and tracing pipeline
 
-
 ---
 
 ## Project Structure
@@ -178,23 +177,34 @@ src/
 │   └── jenkins/               # CI/CD pipelines
 └── shared/                    # Cross-application utilities
 ```
-
----
-
-## Future Evolutions (Phase II)  
-- **Active learning**: allow the system to learn to identify new cargo types and symbols as they arise.  
-- **Energy efficiency**: optimize the use of AI resources in datacenters, balancing performance and energy consumption.  
-
 ---
 
 ## Demonstration  
 Integration with **real datacenters** and practical tests in port environments (such as the Port of Aveiro).  
+- **Energy efficiency**: optimize the use of AI resources in datacenters and 6G-network, balancing performance and energy consumption.  
 
 ---
 
 ✨ This project combines **AI, computer vision, logistics, and energy efficiency**, being a proposal aligned with the challenges of Industry 4.0.  
 
+---
+
+## License
+
+This repository's source code is licensed under the MIT License ([LICENSE](LICENSE)).
+
+This project depends on third-party software with separate licenses, including:
+
+- Ultralytics YOLOv11 (`ultralytics`) - AGPL-3.0 License
+
+Use of this project together with AGPL-licensed dependencies may trigger additional
+obligations under the AGPL-3.0, especially when distributing the software or making
+it available as a network service.
+
+Users are responsible for complying with the licenses of all dependencies.
+
+---
 
 ## Future Work
-
-- (...)
+- MLOps pipeline: allow the system to learn to identify new cargo types and symbols as they arise.  
+- Secure intra-port routing
