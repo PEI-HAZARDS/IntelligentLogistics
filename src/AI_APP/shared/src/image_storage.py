@@ -1,3 +1,4 @@
+import time
 from typing import Any, Optional
 from minio import Minio # type: ignore
 from minio.error import S3Error # type: ignore
@@ -77,6 +78,7 @@ class ImageStorage:
             
             # 0. Apply privacy filters if enabled
             if self.privacy_mode:
+                start = time.time()
                 blurred_img = self._people_blur(img_array)
                 if blurred_img is not None:
                     img_array = blurred_img
@@ -88,6 +90,9 @@ class ImageStorage:
                     img_array = blurred_img
                 else:
                     logger.warning("Cabin blur skipped due to error, continuing with current image")
+                
+                elapsed = time.time() - start
+                logger.info(f"Privacy filters applied in {elapsed:.2f} seconds")
             
             # 1. Ensure bucket exists (retry if initial creation failed)
             if not self._ensure_bucket():
