@@ -28,6 +28,10 @@ opentelemetry-instrumentation-fastapi
 bcrypt==4.0.1
 PyJWT>=2.8.0
 python-dotenv
+cryptography>=42.0.0
+
+# --- Object Storage ---
+minio>=7.2.0
 
 # --- Logging ---
 loguru

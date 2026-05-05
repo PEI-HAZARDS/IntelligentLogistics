@@ -26,6 +26,7 @@ from application.use_cases.driver_handlers import (
     authenticate_driver,
     claim_appointment_by_pin,
 )
+from application.use_cases.erasure_handler import erase_driver
 from application.queries.driver_queries import (
     get_drivers,
     get_driver_by_license,
@@ -187,3 +188,39 @@ def get_arrivals_for_driver(
 ):
     """Gets appointment history for driver (backoffice)."""
     return get_driver_appointments(drivers_license, limit=limit)
+
+
+# ==================== RGPD ART. 17 — RIGHT TO ERASURE ====================
+
+_manager_claims = require_role("manager")
+
+
+@router.delete(
+    "/{drivers_license}/erase",
+    status_code=200,
+    responses={
+        404: {"description": "Driver not found"},
+        403: {"description": "Manager role required"},
+    },
+    summary="RGPD Art. 17 — Erase driver personal data across all stores",
+)
+def erase_driver_data(
+    drivers_license: Annotated[str, Path()],
+    claims: Annotated[dict, Depends(_manager_claims)],
+):
+    """
+    Permanently anonymises driver PII across PostgreSQL, Redis, MongoDB and MinIO.
+
+    The driver row is kept as a FK shell (name='ERASED', token=null, active=false).
+    An Outbox event 'DriverErased' is emitted for downstream consumers.
+    Requires manager role.
+    """
+    try:
+        summary = erase_driver(
+            _uow_factory,
+            drivers_license=drivers_license,
+            requested_by=claims.get("sub", "unknown"),
+        )
+        return summary
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))

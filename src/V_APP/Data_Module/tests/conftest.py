@@ -11,6 +11,13 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Provide a stable test encryption key so tests that touch encrypted columns
+# (Worker.email, Worker.phone, Driver.mobile_device_token) don't raise RuntimeError.
+# This is a fixed test-only key — never use in production.
+if not os.environ.get("ENCRYPTION_KEY"):
+    # 32 bytes of 0x41 ('A'), base64url-encoded — deterministic across test runs.
+    os.environ["ENCRYPTION_KEY"] = "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE="
+
 
 # ============================================================================
 # FIXTURES

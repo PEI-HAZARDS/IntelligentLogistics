@@ -142,6 +142,11 @@ class IDriverRepository(ABC):
         """Return the id of the next active appointment in the sequential queue."""
         ...
 
+    @abstractmethod
+    def anonymise(self, drivers_license: str) -> None:
+        """RGPD Art. 17 — overwrite PII fields in place; keep FK shell."""
+        ...
+
 
 class IWorkerRepository(ABC):
     """Repository for worker reads/writes within UoW."""
