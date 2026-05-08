@@ -547,7 +547,7 @@ class KafkaDecisionConsumer:
         infraction_type = decision_data.get("infraction_type", "highway_route")
         alert_description = (
             f"Highway infraction detected: truck {license_plate} "
-            f"flagged for {infraction_type}. Driver must return to highway or face a fine."
+            f"flagged for {infraction_type}."
         )
         try:
             def _create_alert():

@@ -109,8 +109,11 @@ def get_appointment_detail(db: Session, appointment_id: int) -> Optional[Dict[st
     if appointment.arrival_id is None:
         ensure_arrival_id(db, appointment)
 
+    # Privacy by Design: infraction is associated with the truck, not the driver.
+    # Suppress all driver identity fields when highway_infraction is set so
+    # the logistics manager cannot correlate an infraction with a specific driver.
     driver_info = None
-    if appointment.driver:
+    if appointment.driver and not appointment.highway_infraction:
         driver_info = {
             "license": appointment.driver.drivers_license,
             "name": appointment.driver.name,

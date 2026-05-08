@@ -60,6 +60,15 @@ def _uow_factory():
 router = APIRouter(prefix="/arrivals", tags=["Arrivals"])
 
 
+def _mask_driver_if_infraction(appt: Appointment) -> Appointment:
+    """Privacy by Design — infraction is associated with the truck, not the driver.
+    Nullifies driver identity fields so the logistics manager cannot correlate an
+    infraction with a specific driver through the port-facing API."""
+    if appt.highway_infraction:
+        return appt.model_copy(update={"driver_license": None, "driver": None})
+    return appt
+
+
 # ==================== LOCAL MODELS ====================
 
 class CreateVisitRequest(BaseModel):
@@ -115,7 +124,7 @@ def list_arrivals(
     appointments = get_all_appointments(db, skip=skip, limit=limit, **filter_kwargs)
 
     return PaginatedResponse(
-        items=[Appointment.model_validate(a) for a in appointments],
+        items=[_mask_driver_if_infraction(Appointment.model_validate(a)) for a in appointments],
         total=total, page=page, limit=limit,
         pages=max(1, -(-total // limit)),
     )
@@ -172,7 +181,7 @@ def get_upcoming_arrivals(
 ):
     """Next scheduled arrivals for a gate (operator sidebar)."""
     appointments = get_next_appointments(db, gate_id=gate_id, limit=limit, status=status)
-    return [Appointment.model_validate(a) for a in appointments]
+    return [_mask_driver_if_infraction(Appointment.model_validate(a)) for a in appointments]
 
 
 @router.get("/{appointment_id}/detail", response_model=Dict[str, Any], responses={404: {"description": "Appointment not found"}})

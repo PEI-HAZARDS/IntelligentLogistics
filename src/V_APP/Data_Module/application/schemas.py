@@ -335,7 +335,7 @@ class Cargo(CargoBase):
 
 class AppointmentBase(BaseModel):
     booking_reference: str
-    driver_license: str
+    driver_license: Optional[str] = None
     truck_license_plate: str
     terminal_id: int
     gate_in_id: Optional[int] = None

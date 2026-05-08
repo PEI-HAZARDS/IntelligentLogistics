@@ -32,6 +32,9 @@ async def list_all_arrivals(
     gate_id: Annotated[Optional[int], Query(description="Filter by entry gate")] = None,
     search: Annotated[Optional[str], Query(description="Search by license plate or driver name")] = None,
     highway_infraction: Annotated[Optional[bool], Query(description="Filter by highway infraction flag")] = None,
+    shift_gate_id: Annotated[Optional[int], Query(description="Filter by shift gate")] = None,
+    shift_type: Annotated[Optional[str], Query(description="Filter by shift type")] = None,
+    shift_date: Annotated[Optional[date], Query(description="Filter by shift date")] = None,
 ):
     """
     Proxy to GET /api/v1/arrivals in Data Module.
@@ -48,6 +51,9 @@ async def list_all_arrivals(
             "gate_id": gate_id,
             "search": search,
             "highway_infraction": highway_infraction,
+            "shift_gate_id": shift_gate_id,
+            "shift_type": shift_type,
+            "shift_date": shift_date.isoformat() if shift_date else None,
         }.items() if v is not None}
     }
 
@@ -83,12 +89,15 @@ async def get_arrivals_stats(
 async def get_upcoming_arrivals(
     gate_id: Annotated[int, Path(description="Gate ID")],
     limit: Annotated[int, Query(ge=1, le=20)] = 5,
+    status: Annotated[Optional[str], Query(description="Filter by status")] = None,
 ):
     """
     Next scheduled arrivals for a gate.
     Proxy to GET /api/v1/arrivals/next/{gate_id}
     """
-    params = {"limit": limit}
+    params: dict = {"limit": limit}
+    if status is not None:
+        params["status"] = status
     return await internal_client.get(f"/arrivals/next/{gate_id}", params=params)
 
 

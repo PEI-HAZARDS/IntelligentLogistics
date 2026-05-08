@@ -263,3 +263,40 @@ class TestOutboxWorkerNotificationProjectionStructural:
         src = self._SRC.read_text()
         # Must use $setOnInsert so re-projection doesn't overwrite existing doc
         assert "$setOnInsert" in src
+
+
+# ---------------------------------------------------------------------------
+# DW-08: cmd_record_manual_review_audit outbox path (structural)
+# ---------------------------------------------------------------------------
+
+class TestManualReviewAuditOutboxStructural:
+    _SRC = pathlib.Path(__file__).parents[2] / "application" / "use_cases" / "decision_audit_handlers.py"
+    _ROUTE_SRC = pathlib.Path(__file__).parents[2] / "routes" / "decisions.py"
+
+    def test_decision_audit_handlers_module_exists(self):
+        assert self._SRC.exists(), "decision_audit_handlers.py not found"
+
+    def test_cmd_record_manual_review_audit_defined(self):
+        src = self._SRC.read_text()
+        assert "def cmd_record_manual_review_audit(" in src
+
+    def test_emits_operator_review_completed_event(self):
+        src = self._SRC.read_text()
+        assert '"OperatorReviewCompleted"' in src
+
+    def test_uses_outbox_append_not_direct_mongo(self):
+        src = self._SRC.read_text()
+        assert "uow.outbox.append" in src
+        # Must not write directly to MongoDB collections
+        assert "decision_events_collection" not in src
+        assert "find_one_and_update" not in src
+
+    def test_route_imports_cmd_record_manual_review_audit(self):
+        src = self._ROUTE_SRC.read_text()
+        assert "cmd_record_manual_review_audit" in src
+
+    def test_route_no_longer_calls_process_incoming_decision_for_manual_review(self):
+        src = self._ROUTE_SRC.read_text()
+        # The manual_review route must use cmd_record_manual_review_audit, not
+        # the old process_incoming_decision(_skip_pg_write=True) direct Mongo path.
+        assert "_skip_pg_write" not in src
