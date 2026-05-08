@@ -141,6 +141,7 @@ services:
       - GATE_ID=${GATE_ID}
       - DECISION_GATE_IDS=${DECISION_GATE_IDS}
       - INFRACTION_GATE_IDS=${INFRACTION_GATE_IDS}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
     ports:
       - "8080:8000"
     healthcheck:
@@ -177,6 +178,7 @@ services:
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - PYTHONUNBUFFERED=1
     healthcheck:
       test: ["CMD", "pgrep", "-f", "simple_outbox_worker.py"]
