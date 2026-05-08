@@ -250,13 +250,24 @@ def health():
 # OpenTelemetry Tracing Setup
 # =============================================================================
 OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://tempo:4317")
+_otel_enabled = os.getenv("OTEL_ENABLED", "true").lower() != "false"
 
 resource = Resource.create({"service.name": "data-module"})
 trace.set_tracer_provider(TracerProvider(resource=resource))
 
-otlp_exporter = OTLPSpanExporter(endpoint=OTEL_EXPORTER_OTLP_ENDPOINT, insecure=True)
-span_processor = BatchSpanProcessor(otlp_exporter)
-trace.get_tracer_provider().add_span_processor(span_processor)
+if _otel_enabled:
+    otlp_exporter = OTLPSpanExporter(endpoint=OTEL_EXPORTER_OTLP_ENDPOINT, insecure=True)
+    span_processor = BatchSpanProcessor(
+        otlp_exporter,
+        export_timeout_millis=5_000,   # fail fast — default is 30 s
+        schedule_delay_millis=3_000,
+    )
+    trace.get_tracer_provider().add_span_processor(span_processor)
+    # One ERROR per failed batch is enough; suppress the per-retry WARNING flood
+    logging.getLogger("opentelemetry.exporter.otlp.proto.grpc.exporter").setLevel(logging.ERROR)
+    logger.info("OTel tracing enabled — endpoint=%s", OTEL_EXPORTER_OTLP_ENDPOINT)
+else:
+    logger.info("OTel tracing disabled (OTEL_ENABLED=false)")
 
 # Instrument FastAPI
 FastAPIInstrumentor.instrument_app(app)

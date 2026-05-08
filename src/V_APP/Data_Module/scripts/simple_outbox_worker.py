@@ -38,6 +38,9 @@ import time
 import random
 import logging
 from datetime import datetime, timezone, timedelta
+from prometheus_client import (
+    Counter, Gauge, Histogram, start_http_server,
+)
 
 # ── Path setup (standalone script) ──────────────────────────────
 _script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -85,6 +88,42 @@ MAX_RETRIES = 5
 BACKOFF_BASE_SECONDS = 2       # 2, 4, 8, 16, 32 seconds
 BACKOFF_MAX_SECONDS = 60       # cap backoff at 1 minute
 JITTER_MAX_SECONDS = 2         # random jitter up to 2 seconds
+METRICS_PORT = int(os.getenv("OUTBOX_METRICS_PORT", "9100"))
+
+# ── Prometheus metrics ───────────────────────────────────────────
+_outbox_projected_total = Counter(
+    "outbox_projected_total",
+    "Total outbox events successfully projected to read models",
+    ["event_type"],
+)
+_outbox_dead_letter_total = Counter(
+    "outbox_dead_letter_total",
+    "Total outbox events moved to DEAD_LETTER",
+    ["event_type"],
+)
+_outbox_retries_total = Counter(
+    "outbox_retries_total",
+    "Total outbox projection retry increments",
+    ["event_type"],
+)
+_outbox_pending_rows = Gauge(
+    "outbox_pending_rows",
+    "Current PENDING + eligible FAILED rows in outbox_events",
+)
+_outbox_projection_lag_seconds = Gauge(
+    "outbox_projection_lag_seconds",
+    "Age in seconds of the oldest PENDING outbox row",
+)
+_outbox_batch_seconds = Histogram(
+    "outbox_batch_seconds",
+    "Wall-clock time to process one poll batch",
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0],
+)
+_outbox_projection_seconds = Histogram(
+    "outbox_projection_seconds",
+    "Time to project a single outbox event (Mongo + Redis)",
+    buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
+)
 
 # ── Logging ─────────────────────────────────────────────────────
 logging.basicConfig(
@@ -366,6 +405,38 @@ def fetch_projectable_rows(session, batch_size: int):
     )
 
 
+def _update_gauges(session) -> None:
+    """Refresh Prometheus gauges that require a DB query."""
+    try:
+        now = datetime.now(timezone.utc)
+        pending = (
+            session.query(OutboxEvent)
+            .filter(
+                or_(
+                    OutboxEvent.status == "PENDING",
+                    OutboxEvent.status == "FAILED",
+                )
+            )
+            .count()
+        )
+        _outbox_pending_rows.set(pending)
+
+        oldest = (
+            session.query(OutboxEvent.created_at)
+            .filter(OutboxEvent.status == "PENDING")
+            .order_by(OutboxEvent.id)
+            .limit(1)
+            .scalar()
+        )
+        if oldest:
+            lag = (now - oldest.replace(tzinfo=timezone.utc)).total_seconds()
+            _outbox_projection_lag_seconds.set(max(0.0, lag))
+        else:
+            _outbox_projection_lag_seconds.set(0.0)
+    except Exception as exc:
+        logger.debug("Gauge update skipped: %s", exc)
+
+
 def process_batch(session) -> int:
     """
     Fetch a batch of projectable outbox rows, project each one,
@@ -380,46 +451,52 @@ def process_batch(session) -> int:
 
     projected = 0
 
-    for row in rows:
-        try:
-            # ── Project to read models ───────────────────────
-            project_to_mongo(row)
-            project_to_redis(row, session)
+    with _outbox_batch_seconds.time():
+        for row in rows:
+            event_type = row.event_type or "unknown"
+            try:
+                # ── Project to read models ───────────────────────
+                with _outbox_projection_seconds.time():
+                    project_to_mongo(row)
+                    project_to_redis(row, session)
 
-            # ── Mark PUBLISHED in Postgres ───────────────────
-            row.status = "PUBLISHED"
-            row.published_at = datetime.now(timezone.utc)
-            projected += 1
+                # ── Mark PUBLISHED in Postgres ───────────────────
+                row.status = "PUBLISHED"
+                row.published_at = datetime.now(timezone.utc)
+                _outbox_projected_total.labels(event_type=event_type).inc()
+                projected += 1
 
-        except Exception as exc:
-            # Classify error: permanent → DEAD_LETTER, transient → retry
-            retry_count = row.retry_count or 0
-            row.retry_count = retry_count + 1
-            row.last_error = str(exc)[:500]
+            except Exception as exc:
+                # Classify error: permanent → DEAD_LETTER, transient → retry
+                retry_count = row.retry_count or 0
+                row.retry_count = retry_count + 1
+                row.last_error = str(exc)[:500]
 
-            if _is_permanent_error(exc) or row.retry_count >= MAX_RETRIES:
-                row.status = "DEAD_LETTER"
-                logger.error(
-                    "DEAD_LETTER outbox_id=%s event_id=%s retries=%d: %s",
-                    row.id,
-                    row.event_id,
-                    row.retry_count,
-                    exc,
-                )
-                _forward_to_dlq(row)
-            else:
-                row.status = "FAILED"
-                row.next_retry_at = compute_next_retry_at(row.retry_count)
-                logger.warning(
-                    "Projection FAILED (retry %d/%d) outbox_id=%s event_id=%s "
-                    "next_retry_at=%s: %s",
-                    row.retry_count,
-                    MAX_RETRIES,
-                    row.id,
-                    row.event_id,
-                    row.next_retry_at.isoformat(),
-                    exc,
-                )
+                if _is_permanent_error(exc) or row.retry_count >= MAX_RETRIES:
+                    row.status = "DEAD_LETTER"
+                    _outbox_dead_letter_total.labels(event_type=event_type).inc()
+                    logger.error(
+                        "DEAD_LETTER outbox_id=%s event_id=%s retries=%d: %s",
+                        row.id,
+                        row.event_id,
+                        row.retry_count,
+                        exc,
+                    )
+                    _forward_to_dlq(row)
+                else:
+                    row.status = "FAILED"
+                    row.next_retry_at = compute_next_retry_at(row.retry_count)
+                    _outbox_retries_total.labels(event_type=event_type).inc()
+                    logger.warning(
+                        "Projection FAILED (retry %d/%d) outbox_id=%s event_id=%s "
+                        "next_retry_at=%s: %s",
+                        row.retry_count,
+                        MAX_RETRIES,
+                        row.id,
+                        row.event_id,
+                        row.next_retry_at.isoformat(),
+                        exc,
+                    )
 
     # Single commit for the whole batch (status updates only).
     session.commit()
@@ -464,11 +541,13 @@ def warm_up_redis_cache() -> None:
 
 def main() -> None:
     """Entry-point: infinite poll loop with graceful shutdown."""
+    start_http_server(METRICS_PORT)
     logger.info(
-        "Outbox Worker started — batch_size=%d  poll_interval=%ds  max_retries=%d",
+        "Outbox Worker started — batch_size=%d  poll_interval=%ds  max_retries=%d  metrics=:%d",
         BATCH_SIZE,
         POLL_INTERVAL_SECONDS,
         MAX_RETRIES,
+        METRICS_PORT,
     )
 
     # ── Warm-up: ensure Redis has all PG appointments cached ───
@@ -480,6 +559,7 @@ def main() -> None:
             count = process_batch(session)
             if count > 0:
                 logger.info("Projected %d event(s) to read models", count)
+            _update_gauges(session)
         except Exception as exc:
             # Session-level or DB-level error — roll back and retry
             # on the next cycle.  The worker stays alive.

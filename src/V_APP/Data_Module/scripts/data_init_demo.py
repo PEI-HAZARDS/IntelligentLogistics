@@ -702,6 +702,104 @@ def init_demo_data(db: Session):
         raise
 
 
+def _sync_to_keycloak(db) -> None:
+    """
+    Provision Keycloak users for all active workers and drivers.
+
+    Uses the SQLAlchemy session so EncryptedString / SearchableEncryptedString
+    columns (Worker.email, Worker.phone) are decrypted automatically.
+    No-op when KEYCLOAK_URL or KC_ADMIN_PASSWORD are absent.
+    """
+    kc_url = os.getenv("KEYCLOAK_URL", "")
+    kc_admin_pw = os.getenv("KC_ADMIN_PASSWORD", "")
+    if not kc_url or not kc_admin_pw:
+        print("\n  [KC-SYNC] KEYCLOAK_URL / KC_ADMIN_PASSWORD not set — skipping."
+              "\n  Run 'docker-compose run --rm keycloak-sync' manually after seeding.")
+        return
+
+    try:
+        import httpx as _httpx
+    except ImportError:
+        print("\n  [KC-SYNC] httpx not installed — skipping Keycloak sync.")
+        return
+
+    kc_realm = os.getenv("KEYCLOAK_REALM", "intelligent-logistics")
+    kc_admin_user = os.getenv("KC_ADMIN_USER", "admin")
+    worker_pw = os.getenv("DEFAULT_WORKER_PASSWORD", "password123")
+    driver_pw = os.getenv("DEFAULT_DRIVER_PASSWORD", "driver123")
+
+    print(f"\n  [KC-SYNC] Syncing users to {kc_url} realm '{kc_realm}'...")
+
+    try:
+        r = _httpx.post(
+            f"{kc_url}/realms/master/protocol/openid-connect/token",
+            data={"grant_type": "password", "client_id": "admin-cli",
+                  "username": kc_admin_user, "password": kc_admin_pw},
+            timeout=15.0,
+        )
+        r.raise_for_status()
+        token = r.json()["access_token"]
+    except Exception as exc:
+        print(f"\n  [KC-SYNC] Cannot reach Keycloak ({exc}) — skipping sync.")
+        return
+
+    admin_base = f"{kc_url}/admin/realms/{kc_realm}"
+    headers = {"Authorization": f"Bearer {token}"}
+    synced = 0
+
+    def _assign_realm_roles(user_id: str, role_names: list) -> None:
+        r2 = _httpx.get(f"{admin_base}/roles", headers=headers, timeout=10.0)
+        role_map = {ro["name"]: ro for ro in r2.json()}
+        roles = [role_map[rn] for rn in role_names if rn in role_map]
+        if roles:
+            _httpx.post(f"{admin_base}/users/{user_id}/role-mappings/realm",
+                        json=roles, headers=headers, timeout=10.0)
+
+    def _upsert(username: str, password: str, email: str | None = None,
+                first_name: str | None = None, realm_roles: list | None = None) -> None:
+        nonlocal synced
+        body: dict = {"username": username, "enabled": True, "emailVerified": True}
+        if email:
+            body["email"] = email
+        if first_name:
+            body["firstName"] = first_name
+
+        r2 = _httpx.post(f"{admin_base}/users", json=body, headers=headers, timeout=10.0)
+        if r2.status_code == 409:
+            return  # already exists — idempotent
+
+        if r2.status_code not in (200, 201):
+            print(f"  [KC-SYNC] Failed to create '{username}': {r2.status_code} {r2.text[:80]}")
+            return
+
+        r3 = _httpx.get(f"{admin_base}/users", params={"username": username, "exact": "true"},
+                        headers=headers, timeout=10.0)
+        users = r3.json()
+        if not users:
+            return
+        user_id = users[0]["id"]
+
+        _httpx.put(f"{admin_base}/users/{user_id}/reset-password",
+                   json={"type": "password", "value": password, "temporary": False},
+                   headers=headers, timeout=10.0)
+
+        if realm_roles:
+            _assign_realm_roles(user_id, realm_roles)
+
+        synced += 1
+
+    # Workers — SQLAlchemy decrypts Worker.email (SearchableEncryptedString) transparently
+    for w in db.query(Worker).filter_by(active=True).all():
+        role = "manager" if w.manager else "operator"
+        _upsert(w.email, worker_pw, email=w.email, first_name=w.name, realm_roles=[role])
+
+    # Drivers — drivers_license is plaintext (PK, not encrypted)
+    for d in db.query(Driver).filter_by(active=True).all():
+        _upsert(d.drivers_license, driver_pw, first_name=d.name, realm_roles=["driver"])
+
+    print(f"  [KC-SYNC] Done — {synced} user(s) provisioned in Keycloak.")
+
+
 def create_and_seed(database_url: str):
     engine = create_engine(database_url)
     Base.metadata.create_all(engine)
@@ -709,6 +807,7 @@ def create_and_seed(database_url: str):
     db = SessionLocal()
     try:
         init_demo_data(db)
+        _sync_to_keycloak(db)
     finally:
         db.close()
 
