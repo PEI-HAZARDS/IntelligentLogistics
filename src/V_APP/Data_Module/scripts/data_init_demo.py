@@ -510,17 +510,19 @@ def init_demo_data(db: Session):
             sched_time = datetime.combine(today, slot_time)
             status = _auto_status(sched_time, 45)
             has_infraction = i in _VIDEO1_INFRACTION_INDICES
+            # Infraction only makes sense once the truck has been detected on the road
+            detected_infraction = has_infraction and status != "scheduled"
             notes = (
                 f"HAZMAT: {desc} [UN:{un_code}, Kemler:{kemler}]"
                 if is_hazmat else f"Cargo: {desc}"
             )
-            if has_infraction:
+            if detected_infraction:
                 notes += " — INFRAÇÃO DETECTADA A25"
             appt = _make_appointment(
                 db, bk.reference, main_driver, trucks_by_plate[plate],
                 terminal_liquidos if is_hazmat else terminal_norte,
                 gate_entry, gate_out, sched_time, status, notes,
-                highway_infraction=has_infraction,
+                highway_infraction=detected_infraction,
             )
             if status in ("completed", "in_process"):
                 entry = sched_time + timedelta(minutes=random.randint(2, 8))
@@ -543,12 +545,16 @@ def init_demo_data(db: Session):
             slot_time = _VIDEO2_TIMES[i % len(_VIDEO2_TIMES)]
             sched_time = datetime.combine(today, slot_time)
             status = _auto_status(sched_time, 40)
+            # Hazmat trucks on the highway gate are an infraction only once detected
+            highway_infraction = is_hazmat and status != "scheduled"
             notes = f"Highway — {'HAZMAT: ' + desc if is_hazmat else 'Cargo: ' + desc}"
+            if highway_infraction:
+                notes += " — INFRAÇÃO DETECTADA A25"
             appt = _make_appointment(
                 db, bk.reference, drivers[i % len(drivers)], trucks_by_plate[plate],
                 terminal_liquidos if is_hazmat else terminal_solidos,
                 gate_highway, gate_out, sched_time, status, notes,
-                highway_infraction=is_hazmat,
+                highway_infraction=highway_infraction,
             )
             if status in ("completed", "in_process"):
                 entry = sched_time + timedelta(minutes=random.randint(2, 8))
