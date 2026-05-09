@@ -229,7 +229,7 @@ def update_appointment_after_infraction(license_plate: str, infraction: bool = T
     # Read: find the active appointment by license plate
     db = SessionLocal()
     try:
-        appointment = db.query(Appointment).filter(Appointment.truck_license_plate == license_plate, Appointment.status.in_(["in_transit", "delayed", "in_process"])).order_by(Appointment.scheduled_start_time.desc(), Appointment.id.desc()).first()
+        appointment = db.query(Appointment).filter(Appointment.truck_license_plate == license_plate, Appointment.status.in_(["in_transit", "in_process"])).order_by(Appointment.scheduled_start_time.desc(), Appointment.id.desc()).first()
         if not appointment:
             logger.warning(f"No active appointment found for infraction update: license_plate={license_plate}")
             return None

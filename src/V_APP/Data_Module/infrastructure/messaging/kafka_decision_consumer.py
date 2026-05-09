@@ -390,7 +390,7 @@ class KafkaDecisionConsumer:
                     db.query(AppointmentORM)
                     .filter(
                         AppointmentORM.truck_license_plate == license_plate,
-                        AppointmentORM.status.in_(["in_transit", "delayed", "in_process"]),
+                        AppointmentORM.status.in_(["in_transit", "in_process"]),
                     )
                     .order_by(AppointmentORM.scheduled_start_time.desc())
                     .first()

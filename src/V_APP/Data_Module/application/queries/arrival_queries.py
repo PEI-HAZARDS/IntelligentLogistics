@@ -17,7 +17,6 @@ from infrastructure.persistence.sql_models import (
     Appointment, Visit, Shift, Cargo, Booking, Gate, ShiftType, Company, Driver,
     DELAY_TOLERANCE_MINUTES,
 )
-from datetime import timezone
 
 
 def _delayed_condition():
@@ -25,8 +24,12 @@ def _delayed_condition():
 
     Matches rows stored as 'delayed' (backward compat) and rows that are
     'in_transit' past the delay tolerance threshold.
+
+    scheduled_start_time is stored as UTC naive datetime (Docker containers
+    run with TZ=UTC). cutoff uses UTC naive to match.
     """
-    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=DELAY_TOLERANCE_MINUTES)
+    from datetime import timezone as _tz
+    cutoff = datetime.now(_tz.utc).replace(tzinfo=None) - timedelta(minutes=DELAY_TOLERANCE_MINUTES)
     return or_(
         Appointment.status == 'delayed',
         and_(
@@ -39,7 +42,8 @@ def _delayed_condition():
 
 def _in_transit_ontime_condition():
     """SQLAlchemy condition: in_transit and not yet past the delay threshold."""
-    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=DELAY_TOLERANCE_MINUTES)
+    from datetime import timezone as _tz
+    cutoff = datetime.now(_tz.utc).replace(tzinfo=None) - timedelta(minutes=DELAY_TOLERANCE_MINUTES)
     return and_(
         Appointment.status == 'in_transit',
         or_(
@@ -78,11 +82,16 @@ def _resolve_status_filter(status: str):
 
     Handles virtual sub-states 'delayed' and 'unloading' that are no longer
     stored as primary values in Appointment.status.
+
+    'in_transit' maps to on-time only — delayed in_transit appointments are
+    returned by 'delayed' filter instead, keeping the two filters disjoint.
     """
     if status == 'delayed':
         return _delayed_condition()
     if status == 'unloading':
         return _unloading_condition()
+    if status == 'in_transit':
+        return _in_transit_ontime_condition()
     return Appointment.status == status
 
 
@@ -323,11 +332,11 @@ def get_appointments_for_decision(db: Session, gate_id: Optional[int] = None) ->
     time_filters = or_(
         and_(
             Appointment.scheduled_start_time.between(day_start, day_end),
-            Appointment.status.in_(['in_transit', 'delayed'])
+            Appointment.status == 'in_transit',
         ),
         and_(
             Appointment.scheduled_start_time.between(yesterday_start, yesterday_end),
-            Appointment.status.in_(['in_transit', 'delayed'])
+            Appointment.status == 'in_transit',
         )
     )
     query = db.query(Appointment).filter(time_filters)
@@ -386,47 +395,39 @@ def get_appointments_count_by_status(
     if gate_id:
         base_filter.append(Appointment.gate_in_id == gate_id)
 
-    delayed_filter = [Appointment.status.in_(["in_transit", "delayed"]), Appointment.scheduled_start_time < start_dt]
-    if gate_id:
-        delayed_filter.append(Appointment.gate_in_id == gate_id)
+    # Use the same conditions as _resolve_status_filter so stat card counts
+    # are consistent with what each filter returns in the list.
+    gate_filter = [Appointment.gate_in_id == gate_id] if gate_id else []
 
-    in_process_filter = [Appointment.status == "in_process", Appointment.scheduled_start_time < start_dt]
-    if gate_id:
-        in_process_filter.append(Appointment.gate_in_id == gate_id)
+    def _q(condition):
+        return db.query(func.count(Appointment.id)).filter(condition, *gate_filter)
 
-    unloading_filter = [_unloading_condition(), Appointment.scheduled_start_time < start_dt]
-    if gate_id:
-        unloading_filter.append(Appointment.gate_in_id == gate_id)
+    scheduled_count   = _q(and_(Appointment.status == "scheduled",   Appointment.scheduled_start_time.between(start_dt, end_dt))).scalar() or 0
+    in_transit_count  = _q(and_(_in_transit_ontime_condition(),       Appointment.scheduled_start_time.between(start_dt, end_dt))).scalar() or 0
+    delayed_count     = _q(_delayed_condition()).scalar() or 0
+    in_process_count  = _q(and_(Appointment.status == "in_process",  Appointment.scheduled_start_time.between(start_dt, end_dt))).scalar() or 0
+    unloading_count   = _q(and_(_unloading_condition(),               Appointment.scheduled_start_time.between(start_dt, end_dt))).scalar() or 0
+    completed_count   = _q(and_(Appointment.status == "completed",   Appointment.scheduled_start_time.between(start_dt, end_dt))).scalar() or 0
+    canceled_count    = _q(and_(Appointment.status == "canceled",    Appointment.scheduled_start_time.between(start_dt, end_dt))).scalar() or 0
+    infractions_count = db.query(func.count(Appointment.id)).filter(
+        Appointment.highway_infraction == True,  # noqa: E712
+        Appointment.scheduled_start_time.between(start_dt, end_dt),
+        *gate_filter,
+    ).scalar() or 0
 
-    status_query = db.query(Appointment.status, func.count(Appointment.id)).filter(*base_filter)
-    delayed_query = db.query(func.count(Appointment.id)).filter(*delayed_filter)
-    in_process_query = db.query(func.count(Appointment.id)).filter(*in_process_filter)
-    unloading_query = db.query(func.count(Appointment.id)).filter(*unloading_filter)
-    infractions_query = db.query(func.count(Appointment.id)).filter(*base_filter, Appointment.highway_infraction == True)  # noqa: E712
-    infractions_delayed_query = db.query(func.count(Appointment.id)).filter(*delayed_filter, Appointment.highway_infraction == True)  # noqa: E712
-    infractions_in_process_query = db.query(func.count(Appointment.id)).filter(*in_process_filter, Appointment.highway_infraction == True)  # noqa: E712
+    total = scheduled_count + in_transit_count + delayed_count + in_process_count + unloading_count + completed_count + canceled_count
 
-    results = status_query.group_by(Appointment.status).all()
-    delayed_count = delayed_query.scalar() or 0
-    in_process_count = in_process_query.scalar() or 0
-    unloading_count = unloading_query.scalar() or 0
-    infractions_count = infractions_query.scalar() or 0
-    infractions_delayed_count = infractions_delayed_query.scalar() or 0
-    infractions_in_process_count = infractions_in_process_query.scalar() or 0
-
-    counts = {"scheduled": 0, "in_transit": 0, "in_process": 0, "unloading": 0, "delayed": 0, "canceled": 0, "completed": 0, "total": 0, "infractions": 0}
-    for status, count in results:
-        if status in counts:
-            counts[status] = count
-        counts["total"] += count
-    counts["delayed"] += delayed_count
-    counts["total"] += delayed_count
-    counts["in_process"] += in_process_count
-    counts["total"] += in_process_count
-    counts["unloading"] += unloading_count
-    counts["total"] += unloading_count
-    counts["infractions"] = infractions_count + infractions_delayed_count + infractions_in_process_count
-    return counts
+    return {
+        "scheduled":   scheduled_count,
+        "in_transit":  in_transit_count,
+        "delayed":     delayed_count,
+        "in_process":  in_process_count,
+        "unloading":   unloading_count,
+        "completed":   completed_count,
+        "canceled":    canceled_count,
+        "total":       total,
+        "infractions": infractions_count,
+    }
 
 
 
@@ -442,7 +443,7 @@ def get_next_appointments(db: Session, gate_id: int, limit: int = 5, status: Opt
     if status:
         base_filters.append(Appointment.status == status)
     else:
-        base_filters.append(Appointment.status.in_(['in_transit', 'delayed']))
+        base_filters.append(Appointment.status == 'in_transit')
     appointments = db.query(Appointment).filter(*base_filters).order_by(
         status_priority, Appointment.scheduled_start_time.asc()
     ).limit(limit).all()

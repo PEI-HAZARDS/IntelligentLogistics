@@ -168,7 +168,7 @@ def get_operator_gate_dashboard(
             .filter(
                 Appointment.gate_in_id == gate_id,
                 sa_func.date(Appointment.scheduled_start_time) == today,
-                Appointment.status.in_(["in_transit", "delayed"]),
+                Appointment.status == "in_transit",
             )
             .order_by(Appointment.scheduled_start_time)
             .limit(10)
