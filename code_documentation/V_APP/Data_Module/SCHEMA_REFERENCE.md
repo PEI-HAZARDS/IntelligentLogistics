@@ -122,12 +122,31 @@
 | `gate_out_id` | INTEGER | FK → gate.id | Exit gate; nullable (BR-09) |
 | `scheduled_start_time` | TIMESTAMP | — | — |
 | `expected_duration` | INTEGER | — | Minutes |
-| `status` | ENUM(appointment_status) | DEFAULT 'scheduled' | {scheduled, in_transit, in_process, unloading, canceled, delayed, completed} (BR-15) |
+| `status` | ENUM(appointment_status) | DEFAULT 'scheduled' | Primary flow states written by app: `scheduled → in_transit → in_process → completed \| canceled`. Values `unloading` and `delayed` remain in the PG enum for backward compat but are **never written** by application code — they are computed sub-states. (BR-15) |
 | `version` | INTEGER | NOT NULL, DEFAULT 1 | Optimistic concurrency (BR-48, Guardrail 6) |
 | `notes` | TEXT | — | — |
 | `highway_infraction` | BOOLEAN | DEFAULT FALSE | (BR-42) |
 
 **Triggers**: `trg_generate_arrival_id` (arrival_id via sequence), `trg_check_visit_completion` (auto-complete on visit out_time).
+
+**ORM computed properties** (never stored in DB — derived at read time by `sql_models.Appointment`):
+
+| Property | Type | Derivation |
+|----------|------|------------|
+| `is_delayed` | `bool` | `status == 'in_transit'` AND `now() > scheduled_start_time + DELAY_TOLERANCE_MINUTES` |
+| `is_unloading` | `bool` | `status == 'in_process'` AND active `Visit` exists with `Visit.state == 'unloading'` AND `Visit.out_time IS NULL` |
+| `computed_status` | `str` | Primary status → sub-state override: `in_transit + is_delayed → 'delayed'`; `in_process + is_unloading → 'unloading'`; otherwise = raw `status` |
+
+**API response fields** (populated by `AppointmentResponse` Pydantic model):
+
+| Field | Source | Notes |
+|-------|--------|-------|
+| `status` | `computed_status` | Backward-compat field for existing frontend consumers |
+| `display_status` | `computed_status` | Explicit alias for new consumers; always equals `status` |
+| `primary_status` | raw `Appointment.status` | Actual DB state; never `'delayed'`/`'unloading'` |
+| `is_delayed` | `Appointment.is_delayed` | Boolean sub-state flag |
+| `is_unloading` | `Appointment.is_unloading` | Boolean sub-state flag |
+| `highway_infraction` | `Appointment.highway_infraction` | Pre-existing boolean orthogonal flag |
 
 ### `visit`
 | Column | Type | Constraints | Notes |
