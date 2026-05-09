@@ -5,6 +5,8 @@ from prometheus_fastapi_instrumentator import Instrumentator
 import logging
 import asyncio
 import os
+import socket
+import time
 from datetime import datetime, timezone, timedelta
 
 # OpenTelemetry for distributed tracing
@@ -35,7 +37,41 @@ from config import settings
 
 # readiness flags set at startup
 _ready = {"postgres": False, "mongo": False, "redis": False}
+_otel_status = {"enabled": False, "endpoint": None, "reachable": None}
 _scheduler_task = None
+
+
+class _OtelRateLimitFilter(logging.Filter):
+    """Rate-limit OTel export-failure logs to once per interval (default 5 min).
+
+    The BatchSpanProcessor retries every schedule_delay_millis and emits an
+    ERROR on each failure via two loggers. Without rate-limiting this produces
+    ~20 ERROR lines/minute when Tempo is unreachable.
+    """
+    def __init__(self, interval_s: int = 300):
+        super().__init__()
+        self._interval = interval_s
+        self._last_logged: float = 0.0
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        now = time.monotonic()
+        if now - self._last_logged >= self._interval:
+            self._last_logged = now
+            return True
+        return False
+
+
+def _probe_otlp_endpoint(endpoint: str, timeout: float = 2.0) -> bool:
+    """TCP probe — returns True if the OTLP endpoint is accepting connections."""
+    raw = endpoint.replace("http://", "").replace("https://", "").replace("grpc://", "")
+    host, _, port_str = raw.rpartition(":")
+    if not host:
+        host, port_str = raw, "4317"
+    try:
+        with socket.create_connection((host, int(port_str)), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 logger = logging.getLogger("data_module")
 logging.basicConfig(level=logging.INFO)
@@ -165,14 +201,11 @@ app.include_router(notifications_router, prefix="/api/v1")  # Phase 2
 
 @app.get("/api/v1/health")
 def health():
-    """
-    Health endpoint:
-    - returns overall status and per-component readiness flags
-    """
     overall = "ok" if all(_ready.values()) else "degraded"
     return {
         "status": overall,
         "components": _ready,
+        "tracing": _otel_status,
         "decision_engine_url": settings.decision_engine_url,
     }
 
@@ -186,19 +219,39 @@ _otel_enabled = os.getenv("OTEL_ENABLED", "true").lower() != "false"
 resource = Resource.create({"service.name": "data-module"})
 trace.set_tracer_provider(TracerProvider(resource=resource))
 
+_otel_status["endpoint"] = OTEL_EXPORTER_OTLP_ENDPOINT
+
 if _otel_enabled:
+    _reachable = _probe_otlp_endpoint(OTEL_EXPORTER_OTLP_ENDPOINT)
+    _otel_status["enabled"] = True
+    _otel_status["reachable"] = _reachable
+
+    if _reachable:
+        logger.info("OTel: Tempo reachable at %s — distributed tracing active", OTEL_EXPORTER_OTLP_ENDPOINT)
+    else:
+        logger.warning(
+            "OTel: endpoint %s unreachable at startup — traces will queue and export when Tempo comes online",
+            OTEL_EXPORTER_OTLP_ENDPOINT,
+        )
+
     otlp_exporter = OTLPSpanExporter(endpoint=OTEL_EXPORTER_OTLP_ENDPOINT, insecure=True)
     span_processor = BatchSpanProcessor(
         otlp_exporter,
-        export_timeout_millis=5_000,   # fail fast — default is 30 s
+        export_timeout_millis=5_000,
         schedule_delay_millis=3_000,
     )
     trace.get_tracer_provider().add_span_processor(span_processor)
-    # One ERROR per failed batch is enough; suppress the per-retry WARNING flood
-    logging.getLogger("opentelemetry.exporter.otlp.proto.grpc.exporter").setLevel(logging.ERROR)
-    logger.info("OTel tracing enabled — endpoint=%s", OTEL_EXPORTER_OTLP_ENDPOINT)
+
+    # Rate-limit export-failure logs to once every 5 minutes.
+    # BatchSpanProcessor retries every 3 s — without this filter, a down Tempo
+    # produces ~20 ERROR lines/minute via two different OTel loggers.
+    _otel_filter = _OtelRateLimitFilter(interval_s=300)
+    logging.getLogger("opentelemetry.exporter.otlp.proto.grpc.exporter").addFilter(_otel_filter)
+    logging.getLogger("opentelemetry.sdk.trace.export").addFilter(_otel_filter)
 else:
     logger.info("OTel tracing disabled (OTEL_ENABLED=false)")
+    _otel_status["enabled"] = False
+    _otel_status["reachable"] = False
 
 # Instrument FastAPI
 FastAPIInstrumentor.instrument_app(app)
