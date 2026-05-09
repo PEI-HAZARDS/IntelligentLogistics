@@ -31,7 +31,7 @@ groups:
   - name: latency_alerts
     rules:
       - alert: HighLatencyP95
-        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job)) > 0.5
+        expr: histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le, job)) > 0.5
         for: 5m
         labels:
           severity: warning
@@ -40,7 +40,7 @@ groups:
           description: "P95 latency is above 500ms (current: {{ $value | humanize }}s)"
 
       - alert: HighLatencyP99
-        expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job)) > 1
+        expr: histogram_quantile(0.99, sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le, job)) > 1
         for: 5m
         labels:
           severity: critical
@@ -56,9 +56,9 @@ groups:
       - alert: HighErrorRate
         expr: |
           (
-            sum(rate(http_requests_total{status=~"5.."}[5m])) by (job)
+            sum(rate(http_server_requests_total{status=~"5.."}[5m])) by (job)
             /
-            sum(rate(http_requests_total[5m])) by (job)
+            sum(rate(http_server_requests_total[5m])) by (job)
           ) * 100 > 5
         for: 5m
         labels:
@@ -70,9 +70,9 @@ groups:
       - alert: CriticalErrorRate
         expr: |
           (
-            sum(rate(http_requests_total{status=~"5.."}[5m])) by (job)
+            sum(rate(http_server_requests_total{status=~"5.."}[5m])) by (job)
             /
-            sum(rate(http_requests_total[5m])) by (job)
+            sum(rate(http_server_requests_total[5m])) by (job)
           ) * 100 > 10
         for: 2m
         labels:
@@ -198,3 +198,67 @@ groups:
         annotations:
           summary: "V_Brain orchestrator is down"
           description: "V_Brain orchestrator has been unreachable for more than 2 minutes."
+
+  # =============================================================================
+  # OUTBOX / TRANSACTIONAL OUTBOX HEALTH
+  # =============================================================================
+  - name: outbox_alerts
+    rules:
+      - alert: OutboxBacklogHigh
+        expr: outbox_pending_rows > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox backlog is growing"
+          description: "{{ $value }} PENDING/FAILED rows in outbox_events — worker may be stalled"
+
+      - alert: OutboxBacklogCritical
+        expr: outbox_pending_rows > 2000
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Outbox backlog critical"
+          description: "{{ $value }} unprocessed outbox rows — read models are lagging"
+
+      - alert: OutboxDeadLetterRising
+        expr: increase(outbox_dead_letter_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox DLQ events detected"
+          description: "{{ $value }} event(s) moved to DEAD_LETTER in the last 10 minutes"
+
+      - alert: OutboxProjectionLagHigh
+        expr: outbox_projection_lag_seconds > 60
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox projection lag is high"
+          description: "Oldest PENDING outbox event is {{ $value | humanize }}s old"
+
+  # =============================================================================
+  # KAFKA CONSUMER (application-level)
+  # =============================================================================
+  - name: kafka_consumer_alerts
+    rules:
+      - alert: KafkaConsumerLagCritical
+        expr: kafka_consumer_lag_total > 5000
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kafka consumer lag critical"
+          description: "Consumer group {{ $labels.consumer_group }} lag: {{ $value }} messages on {{ $labels.topic }}"
+
+      - alert: KafkaConsumerProcessingSlowP95
+        expr: histogram_quantile(0.95, sum(rate(kafka_consumer_processing_seconds_bucket[5m])) by (le, topic)) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kafka consumer processing P95 slow on {{ $labels.topic }}"
+          description: "P95 processing time is {{ $value | humanize }}s (threshold: 5s)"

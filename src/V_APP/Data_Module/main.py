@@ -5,6 +5,8 @@ from prometheus_fastapi_instrumentator import Instrumentator
 import logging
 import asyncio
 import os
+import socket
+import time
 from datetime import datetime, timezone, timedelta
 
 # OpenTelemetry for distributed tracing
@@ -35,77 +37,45 @@ from config import settings
 
 # readiness flags set at startup
 _ready = {"postgres": False, "mongo": False, "redis": False}
+_otel_status = {"enabled": False, "endpoint": None, "reachable": None}
 _scheduler_task = None
+
+
+class _OtelRateLimitFilter(logging.Filter):
+    """Rate-limit OTel export-failure logs to once per interval (default 5 min).
+
+    The BatchSpanProcessor retries every schedule_delay_millis and emits an
+    ERROR on each failure via two loggers. Without rate-limiting this produces
+    ~20 ERROR lines/minute when Tempo is unreachable.
+    """
+    def __init__(self, interval_s: int = 300):
+        super().__init__()
+        self._interval = interval_s
+        self._last_logged: float = 0.0
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        now = time.monotonic()
+        if now - self._last_logged >= self._interval:
+            self._last_logged = now
+            return True
+        return False
+
+
+def _probe_otlp_endpoint(endpoint: str, timeout: float = 2.0) -> bool:
+    """TCP probe — returns True if the OTLP endpoint is accepting connections."""
+    raw = endpoint.replace("http://", "").replace("https://", "").replace("grpc://", "")
+    host, _, port_str = raw.rpartition(":")
+    if not host:
+        host, port_str = raw, "4317"
+    try:
+        with socket.create_connection((host, int(port_str)), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 logger = logging.getLogger("data_module")
 logging.basicConfig(level=logging.INFO)
 
-
-async def update_delayed_appointments():
-    """
-    Background task:
-    1. Updates in_transit appointments to delayed if past scheduled time + 15 min.
-    2. At midnight (day change), marks ALL remaining in_transit from the previous
-       day as delayed so they are never lost across day boundaries.
-
-    Uses UoW + Outbox so that status changes propagate to MongoDB/Redis
-    read models via the outbox worker (Guardrails 2, 3).
-    """
-    from application.use_cases.appointment_commands import cmd_update_status
-    from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
-
-    def _uow_factory():
-        return SqlAlchemyUnitOfWork(SessionLocal)
-
-    current_day = datetime.now(timezone.utc).date()
-
-    while True:
-        try:
-            db = SessionLocal()
-            try:
-                now = datetime.now(timezone.utc)
-                today = now.date()
-
-                # --- Day boundary: mark all previous-day in_transit as delayed ---
-                if today != current_day:
-                    yesterday_start = datetime.combine(current_day, datetime.min.time().replace(tzinfo=timezone.utc))
-                    yesterday_end = datetime.combine(current_day, datetime.max.time().replace(tzinfo=timezone.utc))
-
-                    stale = db.query(Appointment).filter(
-                        Appointment.status == 'in_transit',
-                        Appointment.scheduled_start_time != None,
-                        Appointment.scheduled_start_time.between(yesterday_start, yesterday_end)
-                    ).all()
-
-                    for appt in stale:
-                        cmd_update_status(_uow_factory, appt.id, new_status="delayed")
-
-                    if stale:
-                        logger.info(f"Midnight rollover: marked {len(stale)} in_transit from {current_day} as delayed (via Outbox)")
-
-                    current_day = today
-
-                # --- Normal: 15 min tolerance for today's appointments ---
-                cutoff = now - timedelta(minutes=15)
-
-                overdue = db.query(Appointment).filter(
-                    Appointment.status == 'in_transit',
-                    Appointment.scheduled_start_time != None,
-                    Appointment.scheduled_start_time < cutoff
-                ).all()
-
-                for appt in overdue:
-                    cmd_update_status(_uow_factory, appt.id, new_status="delayed")
-
-                if overdue:
-                    logger.info(f"Scheduler: Updated {len(overdue)} appointments to 'delayed' (via Outbox)")
-            finally:
-                db.close()
-        except Exception as e:
-            logger.error(f"Scheduler error updating delayed appointments: {e}")
-
-        # Run every 5 minutes
-        await asyncio.sleep(300)
 
 
 async def _startup_services(app: FastAPI) -> asyncio.Task | None:
@@ -139,9 +109,6 @@ async def _startup_services(app: FastAPI) -> asyncio.Task | None:
         logger.exception("Redis: ping failed: %s", e)
 
     scheduler: asyncio.Task | None = None
-    if _ready["postgres"]:
-        scheduler = asyncio.create_task(update_delayed_appointments())
-        logger.info("Background scheduler started for delayed appointments.")
 
     try:
         app.state.decision_consumer = KafkaDecisionConsumer()
@@ -234,14 +201,11 @@ app.include_router(notifications_router, prefix="/api/v1")  # Phase 2
 
 @app.get("/api/v1/health")
 def health():
-    """
-    Health endpoint:
-    - returns overall status and per-component readiness flags
-    """
     overall = "ok" if all(_ready.values()) else "degraded"
     return {
         "status": overall,
         "components": _ready,
+        "tracing": _otel_status,
         "decision_engine_url": settings.decision_engine_url,
     }
 
@@ -250,13 +214,44 @@ def health():
 # OpenTelemetry Tracing Setup
 # =============================================================================
 OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://tempo:4317")
+_otel_enabled = os.getenv("OTEL_ENABLED", "true").lower() != "false"
 
 resource = Resource.create({"service.name": "data-module"})
 trace.set_tracer_provider(TracerProvider(resource=resource))
 
-otlp_exporter = OTLPSpanExporter(endpoint=OTEL_EXPORTER_OTLP_ENDPOINT, insecure=True)
-span_processor = BatchSpanProcessor(otlp_exporter)
-trace.get_tracer_provider().add_span_processor(span_processor)
+_otel_status["endpoint"] = OTEL_EXPORTER_OTLP_ENDPOINT
+
+if _otel_enabled:
+    _reachable = _probe_otlp_endpoint(OTEL_EXPORTER_OTLP_ENDPOINT)
+    _otel_status["enabled"] = True
+    _otel_status["reachable"] = _reachable
+
+    if _reachable:
+        logger.info("OTel: Tempo reachable at %s — distributed tracing active", OTEL_EXPORTER_OTLP_ENDPOINT)
+    else:
+        logger.warning(
+            "OTel: endpoint %s unreachable at startup — traces will queue and export when Tempo comes online",
+            OTEL_EXPORTER_OTLP_ENDPOINT,
+        )
+
+    otlp_exporter = OTLPSpanExporter(endpoint=OTEL_EXPORTER_OTLP_ENDPOINT, insecure=True)
+    span_processor = BatchSpanProcessor(
+        otlp_exporter,
+        export_timeout_millis=5_000,
+        schedule_delay_millis=3_000,
+    )
+    trace.get_tracer_provider().add_span_processor(span_processor)
+
+    # Rate-limit export-failure logs to once every 5 minutes.
+    # BatchSpanProcessor retries every 3 s — without this filter, a down Tempo
+    # produces ~20 ERROR lines/minute via two different OTel loggers.
+    _otel_filter = _OtelRateLimitFilter(interval_s=300)
+    logging.getLogger("opentelemetry.exporter.otlp.proto.grpc.exporter").addFilter(_otel_filter)
+    logging.getLogger("opentelemetry.sdk.trace.export").addFilter(_otel_filter)
+else:
+    logger.info("OTel tracing disabled (OTEL_ENABLED=false)")
+    _otel_status["enabled"] = False
+    _otel_status["reachable"] = False
 
 # Instrument FastAPI
 FastAPIInstrumentor.instrument_app(app)

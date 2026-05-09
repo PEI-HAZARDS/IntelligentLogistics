@@ -17,6 +17,7 @@ Environment variables (read from .env or set directly):
     KEYCLOAK_CLIENT_SECRET — confidential client secret
 """
 
+import base64
 import os
 import sys
 import logging
@@ -38,6 +39,29 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     logger.error("DATABASE_URL environment variable is required (e.g. postgresql://user:pass@host:5432/db)")
     sys.exit(1)
+
+_ENCRYPTION_KEY_B64 = os.getenv("ENCRYPTION_KEY", "")
+_AAD = b"intelligent-logistics-v1"
+
+
+def _decrypt_field(token: str | None) -> str | None:
+    """
+    Decrypt a field stored as AES-256-GCM (EncryptedString / SearchableEncryptedString).
+    Wire format: base64url(nonce[12] || ciphertext || gcm_tag[16]).
+    Returns the raw token unchanged if ENCRYPTION_KEY is absent or decryption fails.
+    """
+    if not token or not _ENCRYPTION_KEY_B64:
+        return token
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        key = base64.urlsafe_b64decode(_ENCRYPTION_KEY_B64 + "==")
+        blob = base64.urlsafe_b64decode(token + "==")
+        nonce, ct = blob[:12], blob[12:]
+        return AESGCM(key).decrypt(nonce, ct, _AAD).decode()
+    except Exception:
+        return token  # pre-migration row or wrong key — return as-is
+
+
 KC_URL = os.getenv("KEYCLOAK_URL", "http://localhost:8443")
 KC_REALM = os.getenv("KEYCLOAK_REALM", "intelligent-logistics")
 KC_CLIENT_ID = os.getenv("KEYCLOAK_CLIENT_ID", "api-gateway")
@@ -177,7 +201,8 @@ def sync_workers(conn, token: str) -> int:
             WHERE w.active = true
         """)
         for row in cur.fetchall():
-            num_worker, name, email, role, access_level = row
+            num_worker, name, raw_email, role, access_level = row
+            email = _decrypt_field(raw_email)
             logger.info("Syncing worker: %s (%s) — %s", email, num_worker, role)
 
             realm_roles = [role]

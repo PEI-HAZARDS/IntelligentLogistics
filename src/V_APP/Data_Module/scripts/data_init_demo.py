@@ -17,6 +17,8 @@ Plate lists are overridable via env vars:
 
 Run with:
     DATABASE_URL=postgresql://... python scripts/data_init_demo.py
+    # or via the shared entry point:
+    DATABASE_URL=postgresql://... python scripts/data_init_base.py --mode demo
 """
 
 import json as _json
@@ -26,22 +28,20 @@ import sys
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
-import bcrypt
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 try:
     from Data_Module.models.sql_models import (
-        Alert, Appointment, Base, Booking, Cargo, Company, Dock, Driver,
+        Alert, Appointment, Booking, Cargo, Company, Dock, Driver,
         Gate, Manager, Operator, Shift, ShiftAlertHistory, ShiftType,
         Terminal, Truck, Visit, Worker,
     )
 except Exception:
     try:
         from infrastructure.persistence.sql_models import (
-            Alert, Appointment, Base, Booking, Cargo, Company, Dock, Driver,
+            Alert, Appointment, Booking, Cargo, Company, Dock, Driver,
             Gate, Manager, Operator, Shift, ShiftAlertHistory, ShiftType,
             Terminal, Truck, Visit, Worker,
         )
@@ -49,9 +49,7 @@ except Exception:
         print("Error importing models:", e)
         sys.exit(1)
 
-
-def _hash(pw: str) -> str:
-    return bcrypt.hashpw(pw.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+from data_init_base import _hash  # noqa: E402
 
 
 # ── Demo plate configuration (overridable via env vars) ──────────────────────
@@ -510,17 +508,19 @@ def init_demo_data(db: Session):
             sched_time = datetime.combine(today, slot_time)
             status = _auto_status(sched_time, 45)
             has_infraction = i in _VIDEO1_INFRACTION_INDICES
+            # Infraction only makes sense once the truck has been detected on the road
+            detected_infraction = has_infraction and status != "scheduled"
             notes = (
                 f"HAZMAT: {desc} [UN:{un_code}, Kemler:{kemler}]"
                 if is_hazmat else f"Cargo: {desc}"
             )
-            if has_infraction:
+            if detected_infraction:
                 notes += " — INFRAÇÃO DETECTADA A25"
             appt = _make_appointment(
                 db, bk.reference, main_driver, trucks_by_plate[plate],
                 terminal_liquidos if is_hazmat else terminal_norte,
                 gate_entry, gate_out, sched_time, status, notes,
-                highway_infraction=has_infraction,
+                highway_infraction=detected_infraction,
             )
             if status in ("completed", "in_process"):
                 entry = sched_time + timedelta(minutes=random.randint(2, 8))
@@ -543,12 +543,16 @@ def init_demo_data(db: Session):
             slot_time = _VIDEO2_TIMES[i % len(_VIDEO2_TIMES)]
             sched_time = datetime.combine(today, slot_time)
             status = _auto_status(sched_time, 40)
+            # Hazmat trucks on the highway gate are an infraction only once detected
+            highway_infraction = is_hazmat and status != "scheduled"
             notes = f"Highway — {'HAZMAT: ' + desc if is_hazmat else 'Cargo: ' + desc}"
+            if highway_infraction:
+                notes += " — INFRAÇÃO DETECTADA A25"
             appt = _make_appointment(
                 db, bk.reference, drivers[i % len(drivers)], trucks_by_plate[plate],
                 terminal_liquidos if is_hazmat else terminal_solidos,
                 gate_highway, gate_out, sched_time, status, notes,
-                highway_infraction=is_hazmat,
+                highway_infraction=highway_infraction,
             )
             if status in ("completed", "in_process"):
                 entry = sched_time + timedelta(minutes=random.randint(2, 8))
@@ -702,20 +706,3 @@ def init_demo_data(db: Session):
         raise
 
 
-def create_and_seed(database_url: str):
-    engine = create_engine(database_url)
-    Base.metadata.create_all(engine)
-    SessionLocal = sessionmaker(bind=engine)
-    db = SessionLocal()
-    try:
-        init_demo_data(db)
-    finally:
-        db.close()
-
-
-if __name__ == "__main__":
-    DATABASE_URL = os.getenv("DATABASE_URL")
-    if not DATABASE_URL:
-        raise ValueError("DATABASE_URL environment variable is required")
-    print(f"\n  Connecting to: {DATABASE_URL}\n")
-    create_and_seed(DATABASE_URL)

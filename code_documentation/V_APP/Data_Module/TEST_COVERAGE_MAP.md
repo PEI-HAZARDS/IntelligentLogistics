@@ -1,6 +1,6 @@
 # TEST COVERAGE MAP — Data Module
 
-> Business rule coverage status for all 52 BR IDs extracted from `docs/bd/`. Updated as of 2026-04-24. Test count: **470 unit / 61 integration** (0 failures).
+> Business rule coverage status for all 52 BR IDs extracted from `docs/bd/`. Updated as of 2026-05-09. Test count: **512 unit / 61 integration** (0 failures).
 
 Legend — **Covered**: rule directly verified at the right layer. **Arch**: structural source inspection confirms the mechanism. **HTTP**: exercised only via `test_integration.py` HTTP calls. **No test**: not covered.
 
@@ -120,3 +120,34 @@ Legend — **Covered**: rule directly verified at the right layer. **Arch**: str
 | `tests/test_event_dedup_a3.py` | Unit + Arch | `is_duplicate_and_mark` legacy removal, event-id dedup |
 | `tests/test_outbox_worker_b1.py` | Arch | outbox worker projection logic |
 | `tests/test_manager_statistics_endpoints.py` | Unit + Arch | manager stats queries |
+| `tests/load_test.py` | Load (Locust) | Polyglot persistence paths under concurrent load — see table below |
+
+---
+
+## Load Tests (`tests/load_test.py`)
+
+Requires Locust (`pip install locust>=2.24.0` or `tests/requirements-load-test.txt`). Targets a running stack; not part of the CI unit suite.
+
+```bash
+tests/load-venv/bin/locust -f tests/load_test.py \
+  --host=http://<host>:8080 \
+  --headless -u 20 -r 2 --run-time 60s
+```
+
+| User class | Weight | Store path exercised |
+|---|---|---|
+| `ReadHeavyUser` | — | PG paginated arrivals (default + status filters + virtual `delayed`/`unloading`) |
+| | | PG single arrival by id |
+| | | PG license-plate lookup |
+| | | PG next arrivals by gate |
+| | | Redis cache hit: `/arrivals/stats` (TTL key) |
+| | | Redis cache hit: `/alerts/active?limit=50` (default limit) |
+| | | Redis cache bypass: `/alerts/active?limit=10` (custom limit skips cache) |
+| | | Redis miss → PG fallback: `/drivers/me/active` (unknown plate) |
+| | | PG write + Outbox: `POST /decisions/detection-event` |
+| `ManagerDashboardUser` | — | Mongo aggregation: `/statistics/summary` |
+| | | Redis + Mongo: `/statistics/pipeline/performance` |
+| | | Mongo read: `/decisions/events/decisions`, `/decisions/events/detections` |
+| | | Redis TTL: `/alerts/stats` |
+
+Baseline results (VM `10.255.32.70`, 20 users, 60 s): **662 requests, 0 failures**, p95 ≤ 430 ms across all endpoints.

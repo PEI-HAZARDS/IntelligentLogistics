@@ -315,29 +315,29 @@ def manual_review(
         result["warning"] = "Appointment not found"
         return result
 
-    # MongoDB audit trail (async projection — will become outbox-driven later)
+    # MongoDB audit trail via Outbox (DW-08 — Guardrail 2).
     try:
-        # Read license plate for Mongo audit
         from application.queries.arrival_queries import get_appointment_by_id
+        from application.use_cases.decision_audit_handlers import cmd_record_manual_review_audit
+
         appointment = get_appointment_by_id(db, appointment_id)
         license_plate = appointment.truck_license_plate if appointment else "MANUAL"
 
-        process_incoming_decision(
+        cmd_record_manual_review_audit(
+            _uow_factory,
+            appointment_id=appointment_id,
             license_plate=license_plate,
             gate_id=gate_id or 0,
-            appointment_id=appointment_id,
             decision=decision,
             appointment_status=new_status,
-            delivery_state=None,
             notes=f"[MANUAL REVIEW] {notes or ''}",
-            extra_data={"manual_review": True, "_skip_pg_write": True}
         )
     except Exception as e:
         logger.error(
-            "MongoDB audit persistence failed for manual_review appointment=%s: %s",
+            "Outbox audit emit failed for manual_review appointment=%s: %s",
             appointment_id, e,
         )
-        result["audit_warning"] = "Decision recorded in PostgreSQL but audit log write failed"
+        result["audit_warning"] = "Decision recorded in PostgreSQL but audit event could not be queued"
 
     # If approved and gate_id provided, create Visit via UoW + Outbox
     if decision == "approved" and gate_id:

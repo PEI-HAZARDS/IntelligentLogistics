@@ -120,7 +120,58 @@ PostgreSQL (:5432) — primary store
 MongoDB    (:27017) — event log + read models
 Redis      (:6379)  — cache + counters
 MinIO      (:9000)  — image blob storage (detection crops)
+Tempo      (:4317)  — OTLP gRPC trace ingest (observability VM, optional)
 ```
+
+---
+
+## Observability
+
+### Distributed Tracing (OpenTelemetry)
+
+`main.py` configures `TracerProvider` + `BatchSpanProcessor` + `OTLPSpanExporter` at module load time. `FastAPIInstrumentor` adds a span per HTTP request automatically.
+
+**Startup probe** — `_probe_otlp_endpoint(endpoint, timeout=2s)` does a TCP connect to the OTLP endpoint before attaching the `BatchSpanProcessor`. Logs `INFO` if reachable, `WARNING` if not. The processor is attached regardless — `BatchSpanProcessor` reconnects automatically when Tempo comes back online without a restart.
+
+**Rate-limit filter** — `_OtelRateLimitFilter(interval_s=300)` is added to both OTel loggers (`opentelemetry.exporter.otlp.proto.grpc.exporter` and `opentelemetry.sdk.trace.export`). When Tempo is unreachable the processor retries every 3 s; the filter suppresses duplicate error lines to at most one per 5 minutes, keeping logs readable without hiding real failures.
+
+**Health endpoint** — `GET /api/v1/health` includes a `tracing` object:
+```json
+{
+  "tracing": {
+    "enabled": true,
+    "endpoint": "http://10.255.32.132:4317",
+    "reachable": true
+  }
+}
+```
+
+**Configuration** — controlled by two env vars:
+
+| Var | Default | Effect |
+|-----|---------|--------|
+| `OTEL_ENABLED` | `true` | Set to `false` to disable tracing entirely |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://tempo:4317` | OTLP gRPC endpoint (in-cluster or external) |
+
+### Observability Stack Deployment
+
+The full stack (Prometheus, Grafana, Loki, Tempo, Alertmanager, Promtail, node-exporter) lives in `src/devops/observability/`. It runs on the Jenkins VM (`10.255.32.132`) via remote Docker context. Deploy command:
+
+```bash
+# Copy config files to VM (only needed when config changes)
+scp -r src/devops/observability pei_user@10.255.32.132:~/
+
+# Start / update stack
+docker --context jenkins-vm compose \
+  -f src/devops/observability/docker-compose.yml \
+  --project-directory /home/pei_user/observability \
+  --env-file src/devops/observability/.env \
+  up -d
+```
+
+**Known config notes:**
+- `tempo-config.yml` does not include a `compactor` block — removed in Tempo latest (field no longer valid at top-level).
+- `alertmanager/entrypoint.sh` falls back to a null receiver when `ALERT_EMAIL_TO` is unset, so the container starts cleanly without SMTP credentials.
 
 ---
 

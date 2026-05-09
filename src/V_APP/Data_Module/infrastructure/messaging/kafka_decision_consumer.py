@@ -390,7 +390,7 @@ class KafkaDecisionConsumer:
                     db.query(AppointmentORM)
                     .filter(
                         AppointmentORM.truck_license_plate == license_plate,
-                        AppointmentORM.status.in_(["in_transit", "delayed", "in_process", "unloading"]),
+                        AppointmentORM.status.in_(["in_transit", "in_process"]),
                     )
                     .order_by(AppointmentORM.scheduled_start_time.desc())
                     .first()
@@ -547,7 +547,7 @@ class KafkaDecisionConsumer:
         infraction_type = decision_data.get("infraction_type", "highway_route")
         alert_description = (
             f"Highway infraction detected: truck {license_plate} "
-            f"flagged for {infraction_type}. Driver must return to highway or face a fine."
+            f"flagged for {infraction_type}."
         )
         try:
             def _create_alert():

@@ -110,7 +110,7 @@ class SqlAlchemyDriverRepository(IDriverRepository):
             self._s.query(Appointment.id)
             .filter(
                 Appointment.driver_license == drivers_license,
-                Appointment.status.in_(["in_transit", "in_process", "unloading"]),
+                Appointment.status.in_(["in_transit", "in_process"]),
             )
             .order_by(Appointment.scheduled_start_time.asc())
             .first()

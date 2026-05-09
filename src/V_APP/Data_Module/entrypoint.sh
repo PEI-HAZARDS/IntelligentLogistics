@@ -47,8 +47,8 @@ else
 fi
 
 # Step 3: Seed data (trigger fires on INSERT, arrival_id is generated)
-echo "Running database initialization..."
-python scripts/data_init_demo.py
+echo "Running database initialization (DATA_INIT_MODE=${DATA_INIT_MODE:-demo})..."
+python scripts/data_init_base.py --mode ${DATA_INIT_MODE:-demo}
 if [[ $? -eq 0 ]]; then
   echo "Data initialization completed successfully"
 else

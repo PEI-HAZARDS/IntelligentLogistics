@@ -28,19 +28,48 @@ Primary read-side for `Appointment` and `Visit` data. Filtering, pagination, det
 
 Several legacy write functions remain but are **deprecated** — they bypass UoW + Outbox and do not propagate changes to MongoDB or Redis. Each emits a `DeprecationWarning` pointing to the corresponding `appointment_commands` handler.
 
+### Status filter helpers (internal)
+
+These private helpers translate a status string into a SQLAlchemy condition. They centralise the sub-state logic so no query function assumes `Appointment.status == 'delayed'` or `Appointment.status == 'unloading'` directly.
+
+| Helper | SQL condition produced |
+|--------|----------------------|
+| `_delayed_condition()` | `status == 'in_transit' AND scheduled_start_time < now() - DELAY_TOLERANCE_MINUTES` |
+| `_in_transit_ontime_condition()` | `status == 'in_transit' AND NOT delayed` |
+| `_unloading_condition()` | `status == 'in_process' AND JOIN Visit WHERE Visit.state == 'unloading' AND Visit.out_time IS NULL` |
+| `_resolve_status_filter(status)` | Dispatches to the above helpers for `'delayed'` and `'unloading'`; falls back to `Appointment.status == status` for primary states |
+
+`_resolve_status_filter` is the single translation point for the `?status=` query parameter — every function that accepts a `status` argument calls this helper, so virtual filters work transparently for callers.
+
+### Query functions
+
 | Function | Returns | Notes |
 |----------|---------|-------|
-| `get_all_appointments(db, ...)` | `List[Appointment]` | Ordered `scheduled_start_time ASC` |
+| `get_all_appointments(db, ...)` | `List[Appointment]` | Ordered `scheduled_start_time ASC`; `status` param passed through `_resolve_status_filter` |
 | `count_all_appointments(db, ...)` | `int` | Same filters; used for pagination |
 | `get_appointment_by_id(db, id)` | `Optional[Appointment]` | PK lookup |
-| `get_appointment_detail(db, id)` | `Optional[Dict]` | Expanded with driver, truck, booking, cargo, gate, terminal, visit |
+| `get_appointment_detail(db, id)` | `Optional[Dict]` | Expanded with driver, truck, booking, cargo, gate, terminal, visit; includes `display_status`, `primary_status`, `is_delayed`, `is_unloading` |
 | `get_appointment_by_arrival_id(db, arrival_id)` | `Optional[Appointment]` | PIN-style lookup |
 | `get_appointments_by_license_plate(db, lp, ...)` | `List[Appointment]` | Today or date-filtered |
-| `get_appointments_for_decision(db, gate_id)` | `List[Dict]` | `in_transit`/`delayed` today for Decision Engine |
-| `get_appointments_count_by_status(db, gate_id, date)` | `Dict[str, int]` | Keys: scheduled, in_transit, in_process, unloading, delayed, canceled, completed, total, infractions |
-| `get_next_appointments(db, gate_id, limit, status)` | `List[Appointment]` | `delayed` prioritised over `in_transit` |
+| `get_appointments_for_decision(db, gate_id)` | `List[Dict]` | `in_transit` + delayed today for Decision Engine — uses `_delayed_condition()` |
+| `get_appointments_count_by_status(db, gate_id, date)` | `Dict[str, int]` | Keys: `scheduled`, `in_transit`, `in_process`, `unloading`, `delayed`, `canceled`, `completed`, `total`, `infractions` — counts use sub-state conditions, not raw enum values |
+| `get_next_appointments(db, gate_id, limit, status)` | `List[Appointment]` | Delayed prioritised over on-time in_transit via `sa_case(_delayed_condition(), 0, else_=1)` |
 | `get_transport_stats_by_company(db, target_date, days)` | `List[Dict]` | Per-company KPIs; joins on `Driver.company_nif` |
 | `get_avg_permanence_minutes(db, target_date)` | `float` | Avg port dwell time in minutes |
+
+**Response dict fields** (from `get_appointment_detail` and paginated list builders):
+
+```python
+{
+  "status": a.computed_status,         # display value — may be 'delayed' or 'unloading'
+  "display_status": a.computed_status, # explicit alias for new consumers
+  "primary_status": a.status,          # raw DB value — never 'delayed'/'unloading'
+  "is_delayed": a.is_delayed,
+  "is_unloading": a.is_unloading,
+  "highway_infraction": a.highway_infraction,
+  ...
+}
+```
 
 **Deprecated (use `appointment_commands` instead):** `update_appointment_status`, `create_visit_for_appointment`, `update_visit_status`, `update_appointment_from_decision`, `flag_appointment_highway_infraction`.
 

@@ -6,7 +6,7 @@ import sys
 import os
 import json
 import asyncio
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch, call
 from datetime import datetime, timezone
 
 import pytest
@@ -59,13 +59,22 @@ class TestDecisionCorrelator:
         assert result["decision_source"] == "agent"
         assert "processed_at" in result
 
-    def test_manual_review_stores_in_redis(self, correlator):
-        data = {"decision": "MANUAL_REVIEW", "license_plate": "AB12CD"}
-        result = correlator.process_agent_decision("t1", data)
-        assert result is None
-        correlator.redis.setex.assert_called_once()
-        key = correlator.redis.setex.call_args[0][0]
-        assert key == "pending_review:t1"
+    def test_manual_review_stores_via_pg_outbox(self, correlator):
+        # Phase 4 refactor: direct Redis write replaced by cmd_store_pending_review
+        # (PG + Outbox). The outbox worker then writes pending_review:{event_id}
+        # to Redis — NOT pending_review:{truck_id}. Direct redis.setex must NOT
+        # be called from the command path.
+        with patch(
+            "infrastructure.messaging.kafka_decision_consumer.cmd_store_pending_review",
+        ) as mock_store:
+            data = {"decision": "MANUAL_REVIEW", "license_plate": "AB12CD"}
+            result = correlator.process_agent_decision("t1", data)
+            assert result is None
+            mock_store.assert_called_once()
+            call_kwargs = mock_store.call_args.kwargs
+            assert call_kwargs["truck_id"] == "t1"
+            assert call_kwargs["license_plate"] == "AB12CD"
+        correlator.redis.setex.assert_not_called()
 
     def test_manual_review_redis_failure(self, correlator):
         correlator.redis.setex.side_effect = Exception("Redis down")

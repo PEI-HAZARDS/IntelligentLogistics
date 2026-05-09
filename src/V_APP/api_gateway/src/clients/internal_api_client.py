@@ -139,3 +139,15 @@ async def patch(
     return await _request("PATCH", path, params=params, json=json, headers=headers, timeout=timeout)
 
 
+async def delete(
+    path: str,
+    params: Optional[Dict[str, Any]] = None,
+    headers: Optional[Dict[str, str]] = None,
+    timeout: float = 10.0,
+) -> Any:
+    """
+    Faz um DELETE ao Data Module.
+    """
+    return await _request("DELETE", path, params=params, headers=headers, timeout=timeout)
+
+

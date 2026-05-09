@@ -1,7 +1,7 @@
 from datetime import date, time, datetime
 from decimal import Decimal
 from typing import Annotated, Optional, List, Dict, Any
-from pydantic import BaseModel, PlainSerializer
+from pydantic import BaseModel, PlainSerializer, model_validator
 from enum import Enum
 
 # Decimal serialised as float in JSON (Pydantic V2 replacement for json_encoders)
@@ -335,7 +335,7 @@ class Cargo(CargoBase):
 
 class AppointmentBase(BaseModel):
     booking_reference: str
-    driver_license: str
+    driver_license: Optional[str] = None
     truck_license_plate: str
     terminal_id: int
     gate_in_id: Optional[int] = None
@@ -360,8 +360,41 @@ class Appointment(AppointmentBase):
     terminal: Optional[Terminal] = None
     gate_in: Optional[Gate] = None
     gate_out: Optional[Gate] = None
+    # Orthogonal sub-state fields (populated by model_validator from ORM properties)
+    display_status: Optional[str] = None
+    primary_status: Optional[str] = None
+    is_delayed: Optional[bool] = None
+    is_unloading: Optional[bool] = None
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def _populate_substates(self) -> "Appointment":
+        """Derive display_status and primary_status from status + sub-state flags.
+
+        is_delayed and is_unloading are auto-populated from ORM @property via from_attributes.
+        """
+        raw = self.status.value if self.status else "scheduled"
+        is_del = self.is_delayed or False
+        is_unl = self.is_unloading or False
+
+        # primary_status: the real workflow state (never 'delayed'/'unloading')
+        if raw == "delayed":
+            self.primary_status = "in_transit"
+        elif raw == "unloading":
+            self.primary_status = "in_process"
+        else:
+            self.primary_status = raw
+
+        # display_status: computed string for UI badges
+        if raw == "in_transit" and is_del:
+            self.display_status = "delayed"
+        elif raw == "in_process" and is_unl:
+            self.display_status = "unloading"
+        else:
+            self.display_status = raw
+
+        return self
 
 
 # ==========================

@@ -19,7 +19,7 @@ import logging
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import case, cast, func, Date, Integer, extract
+from sqlalchemy import case, cast, func, Date, Integer, extract, and_, or_, select
 from sqlalchemy.orm import Session
 
 from infrastructure.persistence.postgres import SessionLocal
@@ -93,12 +93,33 @@ def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
         total_appointments = base.count()
 
         # Status counts
+        _delay_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1)
         scheduled_count = base.filter(Appointment.status == "scheduled").count()
-        in_transit_count = base.filter(Appointment.status == "in_transit").count()
+        in_transit_count = base.filter(
+            Appointment.status == "in_transit",
+            or_(Appointment.scheduled_start_time.is_(None), Appointment.scheduled_start_time >= _delay_cutoff),
+        ).count()
         in_process_count = base.filter(Appointment.status == "in_process").count()
-        unloading_count = base.filter(Appointment.status == "unloading").count()
+        _active_unloading_ids = select(Visit.appointment_id).where(
+            and_(Visit.state == 'unloading', Visit.out_time.is_(None))
+        )
+        unloading_count = base.filter(
+            or_(
+                Appointment.status == "unloading",
+                and_(Appointment.status == "in_process", Appointment.id.in_(_active_unloading_ids)),
+            )
+        ).count()
         completed_count = base.filter(Appointment.status == "completed").count()
-        delayed_count = base.filter(Appointment.status == "delayed").count()
+        delayed_count = base.filter(
+            or_(
+                Appointment.status == "delayed",
+                and_(
+                    Appointment.status == "in_transit",
+                    Appointment.scheduled_start_time.isnot(None),
+                    Appointment.scheduled_start_time < _delay_cutoff,
+                ),
+            )
+        ).count()
 
         # Trucks actually inside the port: in_process + unloading
         trucks_in_port = in_process_count + unloading_count
@@ -214,6 +235,7 @@ def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
         return {
             "trucksInPort": trucks_in_port,
             "trucksInTransit": in_transit_count,
+            "trucksInTransitDelayed": delayed_count,
             "scheduledCount": scheduled_count,
             "unloadingCount": unloading_count,
             "completedCount": completed_count,
@@ -234,6 +256,7 @@ def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
         return {
             "trucksInPort": 0,
             "trucksInTransit": 0,
+            "trucksInTransitDelayed": 0,
             "scheduledCount": 0,
             "unloadingCount": 0,
             "completedCount": 0,

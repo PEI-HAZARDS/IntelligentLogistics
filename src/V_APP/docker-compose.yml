@@ -131,6 +131,7 @@ services:
       - REDIS_PORT=${REDIS_PORT}
       - DECISION_ENGINE_URL=${DECISION_ENGINE_URL}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
+      - OTEL_ENABLED=${OTEL_ENABLED:-true}
       - PYTHONUNBUFFERED=1
       - ENVIRONMENT=${ENVIRONMENT}
       - DEBUG=${DEBUG}
@@ -141,6 +142,14 @@ services:
       - GATE_ID=${GATE_ID}
       - DECISION_GATE_IDS=${DECISION_GATE_IDS}
       - INFRACTION_GATE_IDS=${INFRACTION_GATE_IDS}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - KEYCLOAK_URL=${KEYCLOAK_URL}
+      - KEYCLOAK_REALM=${KEYCLOAK_REALM}
+      - KC_ADMIN_USER=${KC_ADMIN_USER}
+      - KC_ADMIN_PASSWORD=${KC_ADMIN_PASSWORD}
+      - DEFAULT_WORKER_PASSWORD=${DEFAULT_WORKER_PASSWORD}
+      - DEFAULT_DRIVER_PASSWORD=${DEFAULT_DRIVER_PASSWORD}
+      - DATA_INIT_MODE=${DATA_INIT_MODE:-demo}
     ports:
       - "8080:8000"
     healthcheck:
@@ -177,12 +186,16 @@ services:
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - OUTBOX_METRICS_PORT=9101
       - PYTHONUNBUFFERED=1
+    ports:
+      - "9101:9101"
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "simple_outbox_worker.py"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:9101/metrics > /dev/null || exit 1"]
       interval: 30s
       timeout: 10s
-      start_period: 10s
+      start_period: 30s
       retries: 3
     networks:
       - intelligent-logistics
@@ -213,6 +226,12 @@ services:
       - AGGREGATOR_GATE_IDS=${GATE_IDS:-["1"]}
       - AGGREGATOR_INTERVAL_SECONDS=${AGGREGATOR_INTERVAL_SECONDS:-3600}
       - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
     networks:
       - intelligent-logistics
 
@@ -244,6 +263,7 @@ services:
       - CORS_ALLOW_METHODS=${CORS_ALLOW_METHODS}
       - CORS_ALLOW_HEADERS=${CORS_ALLOW_HEADERS}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
+      - OTEL_ENABLED=${OTEL_ENABLED:-true}
       - PYTHONUNBUFFERED=1
       - GATE_IDS=${GATE_IDS}
       - INFRACTION_GATE_IDS=${INFRACTION_GATE_IDS}
@@ -529,6 +549,7 @@ services:
       - KC_ADMIN_PASSWORD=${KC_ADMIN_PASSWORD}
       - DEFAULT_WORKER_PASSWORD=${DEFAULT_WORKER_PASSWORD}
       - DEFAULT_DRIVER_PASSWORD=${DEFAULT_DRIVER_PASSWORD}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
     restart: "no"
     networks:
       - intelligent-logistics
