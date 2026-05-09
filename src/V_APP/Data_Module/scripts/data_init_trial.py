@@ -207,9 +207,10 @@ def init_trial_data(db: Session):
             return f"{prefix}-{today.strftime('%Y%m%d')}-{ref_counter[0]:04d}"
 
         # ── 87AX60 — MAIN DEMO TRUCK (in_transit, no infraction yet) ────────
-        # Scheduled 45 min ago → in_transit; AI will set infraction + transition later.
+        # Scheduled 30 min ahead → in_transit; computed_status stays 'in_transit'
+        # for the full demo window. AI will set infraction + transition later.
         print("\n  [DEMO] Creating 87AX60 appointment (in_transit, no infraction)...")
-        sched_87 = now - timedelta(minutes=45)
+        sched_87 = now + timedelta(minutes=30)
         bk_87 = Booking(reference=_ref("DEMO"), direction="inbound")
         db.add(bk_87)
         db.flush()

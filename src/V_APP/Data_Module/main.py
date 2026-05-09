@@ -41,72 +41,6 @@ logger = logging.getLogger("data_module")
 logging.basicConfig(level=logging.INFO)
 
 
-async def update_delayed_appointments():
-    """
-    Background task:
-    1. Updates in_transit appointments to delayed if past scheduled time + 15 min.
-    2. At midnight (day change), marks ALL remaining in_transit from the previous
-       day as delayed so they are never lost across day boundaries.
-
-    Uses UoW + Outbox so that status changes propagate to MongoDB/Redis
-    read models via the outbox worker (Guardrails 2, 3).
-    """
-    from application.use_cases.appointment_commands import cmd_update_status
-    from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
-
-    def _uow_factory():
-        return SqlAlchemyUnitOfWork(SessionLocal)
-
-    current_day = datetime.now(timezone.utc).date()
-
-    while True:
-        try:
-            db = SessionLocal()
-            try:
-                now = datetime.now(timezone.utc)
-                today = now.date()
-
-                # --- Day boundary: mark all previous-day in_transit as delayed ---
-                if today != current_day:
-                    yesterday_start = datetime.combine(current_day, datetime.min.time().replace(tzinfo=timezone.utc))
-                    yesterday_end = datetime.combine(current_day, datetime.max.time().replace(tzinfo=timezone.utc))
-
-                    stale = db.query(Appointment).filter(
-                        Appointment.status == 'in_transit',
-                        Appointment.scheduled_start_time != None,
-                        Appointment.scheduled_start_time.between(yesterday_start, yesterday_end)
-                    ).all()
-
-                    for appt in stale:
-                        cmd_update_status(_uow_factory, appt.id, new_status="delayed")
-
-                    if stale:
-                        logger.info(f"Midnight rollover: marked {len(stale)} in_transit from {current_day} as delayed (via Outbox)")
-
-                    current_day = today
-
-                # --- Normal: 15 min tolerance for today's appointments ---
-                cutoff = now - timedelta(minutes=15)
-
-                overdue = db.query(Appointment).filter(
-                    Appointment.status == 'in_transit',
-                    Appointment.scheduled_start_time != None,
-                    Appointment.scheduled_start_time < cutoff
-                ).all()
-
-                for appt in overdue:
-                    cmd_update_status(_uow_factory, appt.id, new_status="delayed")
-
-                if overdue:
-                    logger.info(f"Scheduler: Updated {len(overdue)} appointments to 'delayed' (via Outbox)")
-            finally:
-                db.close()
-        except Exception as e:
-            logger.error(f"Scheduler error updating delayed appointments: {e}")
-
-        # Run every 5 minutes
-        await asyncio.sleep(300)
-
 
 async def _startup_services(app: FastAPI) -> asyncio.Task | None:
     """Initialise all infrastructure services and return the scheduler task."""
@@ -139,9 +73,6 @@ async def _startup_services(app: FastAPI) -> asyncio.Task | None:
         logger.exception("Redis: ping failed: %s", e)
 
     scheduler: asyncio.Task | None = None
-    if _ready["postgres"]:
-        scheduler = asyncio.create_task(update_delayed_appointments())
-        logger.info("Background scheduler started for delayed appointments.")
 
     try:
         app.state.decision_consumer = KafkaDecisionConsumer()

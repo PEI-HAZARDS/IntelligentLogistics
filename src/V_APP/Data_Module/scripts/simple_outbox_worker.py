@@ -249,7 +249,7 @@ def _project_appointment_event(payload: dict, event_type: str, session) -> None:
         cache_appointment(int(appointment_id), snapshot)
         driver_license = getattr(appt, "driver_license", None)
         if driver_license:
-            if appt.status in {"in_process", "unloading"}:
+            if appt.status == "in_process":  # covers in_process + unloading sub-state
                 cache_driver_active_appointment(driver_license, snapshot)
             else:
                 invalidate_driver_active_appointment(driver_license)
@@ -474,6 +474,7 @@ def process_batch(session) -> int:
 
                 if _is_permanent_error(exc) or row.retry_count >= MAX_RETRIES:
                     row.status = "DEAD_LETTER"
+                    _forward_to_dlq(row)
                     _outbox_dead_letter_total.labels(event_type=event_type).inc()
                     logger.error(
                         "DEAD_LETTER outbox_id=%s event_id=%s retries=%d: %s",
@@ -482,7 +483,6 @@ def process_batch(session) -> int:
                         row.retry_count,
                         exc,
                     )
-                    _forward_to_dlq(row)
                 else:
                     row.status = "FAILED"
                     row.next_retry_at = compute_next_retry_at(row.retry_count)

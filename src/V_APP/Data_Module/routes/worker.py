@@ -39,6 +39,7 @@ from infrastructure.persistence.sql_models import Shift as ShiftORM, Visit as Vi
 from utils.auth_token import generate_internal_jwt, require_role
 from infrastructure.persistence.redis import set_session
 from utils.shift_utils import current_shift_type
+from config import settings
 
 router = APIRouter(prefix="/workers", tags=["Workers"])
 

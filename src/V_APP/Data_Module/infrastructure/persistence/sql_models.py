@@ -20,6 +20,9 @@ delivery_status_enum = SEnum('not_started', 'unloading', 'completed', name='deli
 physical_state_enum = SEnum('liquid', 'solid', 'gaseous', 'hybrid', name='physical_state')
 access_level_enum = SEnum('admin', 'basic', name='access_level')
 operational_status_enum = SEnum('maintenance', 'operational', 'closed', name='operational_status')
+# 'unloading' and 'delayed' kept for backward compat with existing rows — never written by app code.
+# Primary flow states: scheduled → in_transit → in_process → completed | canceled
+# Sub-states: delayed (computed from time), unloading (derived from Visit.state)
 appointment_status_enum = SEnum('scheduled', 'in_transit', 'in_process', 'unloading', 'canceled', 'delayed', 'completed', name='appointment_status')
 type_alert_enum = SEnum('generic', 'safety', 'problem', 'operational', name='type_alert')
 direction_enum = SEnum('inbound', 'outbound', name='direction')
@@ -299,25 +302,38 @@ class Appointment(Base):
     visit = relationship("Visit", back_populates="appointment", uselist=False)
 
     @property
+    def is_unloading(self) -> bool:
+        """True when there is an active Visit in unloading state (out_time not yet set)."""
+        if self.visit:
+            return self.visit.state == 'unloading' and self.visit.out_time is None
+        return False
+
+    @property
     def computed_status(self) -> str:
         """
-        Calculate real-time status based on scheduled time.
-        - 'completed' and 'canceled' are final states (stored in DB)
-        - 'delayed' is computed if past scheduled_start_time + tolerance (only for in_transit)
-        - 'scheduled' / 'in_transit' otherwise (returns stored status as-is)
+        Real-time display status derived from stored status + sub-state conditions.
+
+        Primary flow stored in DB: scheduled → in_transit → in_process → completed | canceled
+        Sub-states (never stored, always computed):
+          - 'delayed'   — in_transit past scheduled_start_time + DELAY_TOLERANCE_MINUTES
+          - 'unloading' — in_process with an active Visit in unloading state
         """
-        # Final and active-execution states are returned as-is
-        if self.status in ('completed', 'canceled', 'in_process', 'unloading', 'scheduled'):
+        if self.status in ('completed', 'canceled', 'scheduled'):
             return self.status
 
-        # Check if delayed based on time (only applies to in_transit)
+        if self.status == 'in_process':
+            if self.is_unloading:
+                return 'unloading'
+            return 'in_process'
+
+        # in_transit: check for delay
         if self.scheduled_start_time:
             delay_threshold = self.scheduled_start_time + timedelta(minutes=DELAY_TOLERANCE_MINUTES)
             if datetime.now(timezone.utc).replace(tzinfo=None) > delay_threshold:
                 return 'delayed'
 
         return self.status
-    
+
     @property
     def is_delayed(self) -> bool:
         """Quick check if appointment is currently delayed."""

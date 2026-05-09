@@ -148,6 +148,7 @@ services:
       - KC_ADMIN_PASSWORD=${KC_ADMIN_PASSWORD}
       - DEFAULT_WORKER_PASSWORD=${DEFAULT_WORKER_PASSWORD}
       - DEFAULT_DRIVER_PASSWORD=${DEFAULT_DRIVER_PASSWORD}
+      - DATA_INIT_SCRIPT=${DATA_INIT_SCRIPT:-demo}
     ports:
       - "8080:8000"
     healthcheck:
@@ -190,10 +191,10 @@ services:
     ports:
       - "9101:9101"
     healthcheck:
-      test: ["CMD", "pgrep", "-f", "simple_outbox_worker.py"]
+      test: ["CMD-SHELL", "curl -fs http://localhost:9101/metrics > /dev/null || exit 1"]
       interval: 30s
       timeout: 10s
-      start_period: 10s
+      start_period: 30s
       retries: 3
     networks:
       - intelligent-logistics
@@ -224,6 +225,12 @@ services:
       - AGGREGATOR_GATE_IDS=${GATE_IDS:-["1"]}
       - AGGREGATOR_INTERVAL_SECONDS=${AGGREGATOR_INTERVAL_SECONDS:-3600}
       - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
     networks:
       - intelligent-logistics
 

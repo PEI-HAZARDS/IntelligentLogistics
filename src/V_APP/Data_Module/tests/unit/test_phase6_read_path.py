@@ -174,9 +174,10 @@ class TestOutboxWorkerDriverCacheStructural:
         assert "driver_license" in src
 
     def test_active_statuses_trigger_cache_write(self):
+        # 'unloading' is now a computed sub-state of 'in_process' (derived from Visit).
+        # The outbox worker only needs to check 'in_process', which covers both cases.
         src = self._SRC.read_text()
         assert "in_process" in src
-        assert "unloading" in src
 
 
 # ---------------------------------------------------------------------------

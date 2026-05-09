@@ -15,7 +15,75 @@ from sqlalchemy import func, and_, or_, case, Integer
 
 from infrastructure.persistence.sql_models import (
     Appointment, Visit, Shift, Cargo, Booking, Gate, ShiftType, Company, Driver,
+    DELAY_TOLERANCE_MINUTES,
 )
+from datetime import timezone
+
+
+def _delayed_condition():
+    """SQLAlchemy condition: appointment is effectively delayed.
+
+    Matches rows stored as 'delayed' (backward compat) and rows that are
+    'in_transit' past the delay tolerance threshold.
+    """
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=DELAY_TOLERANCE_MINUTES)
+    return or_(
+        Appointment.status == 'delayed',
+        and_(
+            Appointment.status == 'in_transit',
+            Appointment.scheduled_start_time.isnot(None),
+            Appointment.scheduled_start_time < cutoff,
+        ),
+    )
+
+
+def _in_transit_ontime_condition():
+    """SQLAlchemy condition: in_transit and not yet past the delay threshold."""
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=DELAY_TOLERANCE_MINUTES)
+    return and_(
+        Appointment.status == 'in_transit',
+        or_(
+            Appointment.scheduled_start_time.is_(None),
+            Appointment.scheduled_start_time >= cutoff,
+        ),
+    )
+
+
+def _unloading_condition():
+    """SQLAlchemy condition: appointment is in the unloading sub-state.
+
+    Matches in_process appointments with an active Visit in unloading state,
+    plus backward-compat rows stored with status='unloading'.
+    """
+    return or_(
+        Appointment.status == 'unloading',
+        and_(
+            Appointment.status == 'in_process',
+            Appointment.id.in_(
+                # subquery: appointment_ids with an active unloading Visit
+                # (using a raw subselect to avoid JOIN conflicts in callers)
+                __import__('sqlalchemy').select(Visit.appointment_id).where(
+                    and_(
+                        Visit.state == 'unloading',
+                        Visit.out_time.is_(None),
+                    )
+                )
+            ),
+        ),
+    )
+
+
+def _resolve_status_filter(status: str):
+    """Translate a ?status= query param to the correct SQLAlchemy condition.
+
+    Handles virtual sub-states 'delayed' and 'unloading' that are no longer
+    stored as primary values in Appointment.status.
+    """
+    if status == 'delayed':
+        return _delayed_condition()
+    if status == 'unloading':
+        return _unloading_condition()
+    return Appointment.status == status
 
 
 def ensure_arrival_id(db: Session, appointment: Appointment) -> Appointment:
@@ -38,9 +106,10 @@ def _apply_appointment_filters(query, gate_id, shift_gate_id, shift_type, shift_
         if ',' in status:
             statuses_list = [s.strip() for s in status.split(',') if s.strip()]
             if statuses_list:
-                query = query.filter(Appointment.status.in_(statuses_list))
+                conditions = [_resolve_status_filter(s) for s in statuses_list]
+                query = query.filter(or_(*conditions))
         else:
-            query = query.filter(Appointment.status == status)
+            query = query.filter(_resolve_status_filter(status))
     if scheduled_date:
         query = query.filter(func.date(Appointment.scheduled_start_time) == scheduled_date)
     if search:
@@ -258,7 +327,7 @@ def get_appointments_for_decision(db: Session, gate_id: Optional[int] = None) ->
         ),
         and_(
             Appointment.scheduled_start_time.between(yesterday_start, yesterday_end),
-            Appointment.status == 'delayed'
+            Appointment.status.in_(['in_transit', 'delayed'])
         )
     )
     query = db.query(Appointment).filter(time_filters)
@@ -289,7 +358,11 @@ def get_appointments_for_decision(db: Session, gate_id: Optional[int] = None) ->
             "shift_type": current_shift.shift_type.name if current_shift and current_shift.shift_type else None,
             "shift_date": current_shift.date.isoformat() if current_shift else None,
             "scheduled_time": a.scheduled_start_time.isoformat() if a.scheduled_start_time else None,
-            "status": a.status,
+            "status": a.computed_status,           # display_status (compat)
+            "display_status": a.computed_status,   # explicit alias for new consumers
+            "primary_status": a.status,            # raw DB state (never delayed/unloading)
+            "is_delayed": a.is_delayed,
+            "is_unloading": a.is_unloading,
             "highway_infraction": a.highway_infraction,
             "cargo": cargo,
             "booking": {
@@ -313,7 +386,7 @@ def get_appointments_count_by_status(
     if gate_id:
         base_filter.append(Appointment.gate_in_id == gate_id)
 
-    delayed_filter = [Appointment.status == "delayed", Appointment.scheduled_start_time < start_dt]
+    delayed_filter = [Appointment.status.in_(["in_transit", "delayed"]), Appointment.scheduled_start_time < start_dt]
     if gate_id:
         delayed_filter.append(Appointment.gate_in_id == gate_id)
 
@@ -321,7 +394,7 @@ def get_appointments_count_by_status(
     if gate_id:
         in_process_filter.append(Appointment.gate_in_id == gate_id)
 
-    unloading_filter = [Appointment.status == "unloading", Appointment.scheduled_start_time < start_dt]
+    unloading_filter = [_unloading_condition(), Appointment.scheduled_start_time < start_dt]
     if gate_id:
         unloading_filter.append(Appointment.gate_in_id == gate_id)
 
@@ -361,7 +434,7 @@ def get_appointments_count_by_status(
 def get_next_appointments(db: Session, gate_id: int, limit: int = 5, status: Optional[str] = None) -> List[Appointment]:
     today = date.today()
     from sqlalchemy import case as sa_case
-    status_priority = sa_case((Appointment.status == 'delayed', 0), else_=1)
+    status_priority = sa_case((_delayed_condition(), 0), else_=1)
     base_filters = [
         Appointment.gate_in_id == gate_id,
         func.date(Appointment.scheduled_start_time) == today,
