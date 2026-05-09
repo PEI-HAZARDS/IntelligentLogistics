@@ -228,7 +228,7 @@ def init_trial_data(db: Session):
             driver_license=driver.drivers_license,
             truck_license_plate="87AX60",
             terminal_id=terminal_liquidos.id,
-            gate_in_id=gate_highway.id,
+            gate_in_id=gate_entry.id,
             gate_out_id=None,
             scheduled_start_time=sched_87,
             expected_duration=45,
