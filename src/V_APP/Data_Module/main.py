@@ -15,6 +15,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
 from opentelemetry.sdk.resources import Resource
 
 from routes.arrivals import router as arrivals_router
@@ -253,7 +254,8 @@ else:
     _otel_status["enabled"] = False
     _otel_status["reachable"] = False
 
-# Instrument FastAPI
+# Instrument FastAPI and pymongo
+PymongoInstrumentor().instrument()
 FastAPIInstrumentor.instrument_app(app)
 
 # Prometheus metrics at /metrics

@@ -23,6 +23,7 @@ opentelemetry-api
 opentelemetry-sdk
 opentelemetry-exporter-otlp-proto-grpc
 opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-pymongo
 
 # --- Security ---
 bcrypt==4.0.1

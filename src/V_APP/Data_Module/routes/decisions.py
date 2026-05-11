@@ -270,7 +270,7 @@ def manual_review(
 
     When approved:
     - Updates Appointment.status to 'in_process' (confirmed arrival)
-    - Creates Visit with state='unloading' if gate_id provided
+    - Creates Visit with state='not_started' if gate_id provided
 
     When rejected:
     - Updates Appointment.status to 'canceled'
@@ -359,7 +359,7 @@ def manual_review(
             )
             if visit_result:
                 result["visit_created"] = True
-                result["visit_state"] = "unloading"
+                result["visit_state"] = visit_result["state"]
         except Exception as e:
             result["visit_error"] = str(e)
 

@@ -408,7 +408,7 @@ class VisitBase(BaseModel):
     shift_date: date
     entry_time: Optional[datetime] = None
     out_time: Optional[datetime] = None
-    state: DeliveryStatusEnum = DeliveryStatusEnum.unloading
+    state: DeliveryStatusEnum = DeliveryStatusEnum.not_started
 
 
 class VisitCreate(VisitBase):

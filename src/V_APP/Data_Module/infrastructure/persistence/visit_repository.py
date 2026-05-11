@@ -62,7 +62,7 @@ class SqlAlchemyVisitRepository(IVisitRepository):
             shift_type=shift_type,
             shift_date=shift_date,
             entry_time=entry_time or datetime.now(timezone.utc).replace(tzinfo=None),
-            state="unloading",
+            state="not_started",
         )
         self._session.add(visit)
         self._session.flush()
