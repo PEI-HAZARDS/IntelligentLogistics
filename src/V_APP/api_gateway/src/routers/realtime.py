@@ -71,7 +71,7 @@ async def ws_driver(websocket: WebSocket, drivers_license: str, token: str = Que
             await websocket.close(code=4003, reason="Insufficient permissions")
             return
         # Ensure the driver can only connect to their own channel
-        if user.sub != drivers_license:
+        if user.sub.lower() != drivers_license.lower():
             await websocket.close(code=4003, reason="Cannot subscribe to another driver's channel")
             return
     except Exception:

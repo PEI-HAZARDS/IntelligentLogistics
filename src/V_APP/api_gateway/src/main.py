@@ -36,7 +36,7 @@ LOG_CONFIG: dict = {
     "loggers": {
         "uvicorn":        {"handlers": ["console"], "level": "INFO",    "propagate": False},
         "uvicorn.error": {"handlers": ["console"], "level": "INFO",    "propagate": False},
-        "uvicorn.access":{"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "uvicorn.access":{"handlers": ["console"], "level": "INFO", "propagate": False},
         "fastapi":       {"handlers": ["console"], "level": "INFO",    "propagate": False},
         "httpx":         {"handlers": ["console"], "level": "WARNING", "propagate": False},
     },
