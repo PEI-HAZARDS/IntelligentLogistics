@@ -362,6 +362,10 @@ def get_transport_stats(
                     })
             if result:
                 return result
+        logger.warning(
+            "transport_stats: company_metrics_collection is empty — falling back to PG; "
+            "check statistics_aggregator is running",
+        )
     except Exception as e:
         logger.warning("company_metrics_collection unavailable: %s — falling back to PG", e)
 
@@ -461,6 +465,11 @@ def get_volume_data(
         return mongo_result
 
     # ── 2) PostgreSQL fallback ───────────────────────────────────────────────
+    logger.warning(
+        "volume_data: no Mongo docs for interval=%s [%s, %s] — falling back to PG; "
+        "check statistics_aggregator is running",
+        interval, start.date(), end.date(),
+    )
     db: Session = SessionLocal()
     try:
         if interval == "day":
