@@ -252,7 +252,7 @@ def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
             "vehiclesPerHour": vehicles_per_hour,
         }
     except Exception as e:
-        logger.error("get_dashboard_summary failed: %s", e)
+        logger.exception("get_dashboard_summary failed: %s", e)
         return {
             "trucksInPort": 0,
             "trucksInTransit": 0,
@@ -327,7 +327,7 @@ def _transport_stats_from_pg(start, end) -> List[Dict[str, Any]]:
             })
         return result
     except Exception as e:
-        logger.error("get_transport_stats failed: %s", e)
+        logger.exception("get_transport_stats failed: %s", e)
         return []
     finally:
         db.close()
@@ -435,7 +435,7 @@ def compute_company_metrics_snapshot(db_session: Session, period_days: int = 30)
             count += 1
         return count
     except Exception as e:
-        logger.error("compute_company_metrics_snapshot failed: %s", e)
+        logger.exception("compute_company_metrics_snapshot failed: %s", e)
         return 0
 
 
@@ -513,7 +513,7 @@ def get_volume_data(
             for r in rows
         ]
     except Exception as e:
-        logger.error("get_volume_data failed: %s", e)
+        logger.exception("get_volume_data failed: %s", e)
         return []
     finally:
         db.close()
@@ -553,7 +553,7 @@ def get_alerts_breakdown(
             for r in rows
         ]
     except Exception as e:
-        logger.error("get_alerts_breakdown failed: %s", e)
+        logger.exception("get_alerts_breakdown failed: %s", e)
         return []
     finally:
         db.close()
@@ -673,7 +673,7 @@ def get_decision_analytics(
             "avgDetectionToDecisionMs": 0,
         }
     except Exception as e:
-        logger.error("get_decision_analytics failed: %s", e)
+        logger.exception("get_decision_analytics failed: %s", e)
         return {
             "totalDecisions": 0,
             "accepted": 0,
