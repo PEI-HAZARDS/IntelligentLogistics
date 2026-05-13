@@ -12,7 +12,7 @@ class VBrainConfig(BaseSettings):
     V_Brain is gate-agnostic: a single instance handles ALL gates.
     GATE_IDS is a JSON array string, e.g. '["1","2","3"]'.
     """
-    kafka_bootstrap: str = Field(default="10.255.32.70:9092")
+    kafka_bootstrap: str = Field(default="localhost:9092")
     gate_ids: str = Field(default='["1"]')
 
     # Timeout for scale correlator — how long to wait for LP + HZ results
@@ -20,7 +20,7 @@ class VBrainConfig(BaseSettings):
     correlator_timeout_seconds: int = Field(default=30)
 
     # Scaling API configuration (Tiago's slice scaling service)
-    scaling_api_url: str = Field(default="http://10.255.35.126:8008")
+    scaling_api_url: str = Field(default="http://localhost:8008")
     scaling_notification_destination: str = Field(default="https://one.one.one.one/")
     scaling_slice_id: str = Field(default="Nexus")
     scaling_request_id: str = Field(default="123456")

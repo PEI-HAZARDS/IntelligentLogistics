@@ -31,7 +31,7 @@ class BaseDecisionEngineConfig(BaseSettings):
     Supports three gate ID arrays to allow engines to subscribe to different
     physical cameras (e.g., port entry vs. highway approach).
     """
-    kafka_bootstrap: str = Field(default="10.255.32.70:9092")
+    kafka_bootstrap: str = Field(default="localhost:9092")
     gate_ids: str = Field(default=DEFAULT_GATE_IDS)            # Master list
     decision_gate_ids: str = Field(default=DEFAULT_GATE_IDS)   # Inbound/Entry gates
     infraction_gate_ids: str = Field(default=DEFAULT_GATE_IDS) # Highway/Approach gates

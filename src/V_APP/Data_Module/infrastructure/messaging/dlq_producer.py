@@ -81,7 +81,7 @@ class DLQProducer:
             "original_payload": payload,
             "error_class": type(error).__name__,
             "error_message": str(error),
-            "stacktrace_hash": hashlib.md5(tb_str.encode()).hexdigest(),
+            "stacktrace_hash": hashlib.sha256(tb_str.encode()).hexdigest(),
             "service": self.SERVICE_NAME,
             "attempt_count": attempt_count,
             "first_seen_at": now,

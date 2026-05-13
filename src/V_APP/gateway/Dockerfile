@@ -19,4 +19,7 @@ ENV PYTHONPATH=/app
 COPY V_APP/gateway/ ./V_APP/gateway/
 COPY shared/ ./shared/
 
+RUN useradd -m appuser && chown -R appuser /app
+USER appuser
+
 CMD ["python", "-m", "V_APP.gateway"]

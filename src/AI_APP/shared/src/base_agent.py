@@ -23,11 +23,11 @@ class BaseAgentConfig(BaseSettings):
     kafka_bootstrap: str = Field(default="localhost:9092")
 
     # MediaMTX RTSP (low-latency UDP stream consumption)
-    mediamtx_host: str = Field(default="10.255.32.56")
+    mediamtx_host: str = Field(default="localhost")
     mediamtx_port: int = Field(default=8554)
 
     # MinIO
-    minio_host: str = Field(default="10.255.32.82")
+    minio_host: str = Field(default="localhost")
     minio_port: int = Field(default=9000)
     minio_user: str = Field(...)
     minio_password: SecretStr = Field(...)

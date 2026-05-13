@@ -20,4 +20,7 @@ COPY V_APP/v_brain/ ./V_APP/v_brain/
 COPY shared/ ./shared/
 COPY V_APP/shared/ ./V_APP/shared/
 
+RUN useradd -m appuser && chown -R appuser /app
+USER appuser
+
 CMD ["python", "-m", "V_APP.v_brain"]

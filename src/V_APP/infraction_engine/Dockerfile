@@ -15,5 +15,8 @@ COPY V_APP/infraction_engine/ ./V_APP/infraction_engine/
 COPY shared/ ./shared/
 COPY V_APP/shared/ ./V_APP/shared/
 
+RUN useradd -m appuser && chown -R appuser /app
+USER appuser
+
 # Use module-style execution for consistent imports
 CMD ["python", "-m", "V_APP.infraction_engine.init"]
