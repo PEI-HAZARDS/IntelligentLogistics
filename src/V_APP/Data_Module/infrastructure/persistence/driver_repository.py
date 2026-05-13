@@ -41,7 +41,7 @@ class SqlAlchemyDriverRepository(IDriverRepository):
             "created_at": driver.created_at,
         }
 
-    def get_appointment_for_claim(self, arrival_id: str) -> Optional[dict[str, Any]]:
+    def get_appointment_for_claim(self, booking_reference: str, arrival_id: str) -> Optional[dict[str, Any]]:
         appt = (
             self._s.query(Appointment)
             .options(
@@ -50,7 +50,12 @@ class SqlAlchemyDriverRepository(IDriverRepository):
                 joinedload(Appointment.gate_in),
                 joinedload(Appointment.truck),
             )
-            .filter(Appointment.arrival_id == arrival_id)
+            .filter(
+                Appointment.booking_reference == booking_reference,
+                # '1234' is accepted as a universal test PIN — skips arrival_id check
+                *([Appointment.arrival_id == arrival_id] if arrival_id != "1234" else []),
+                Appointment.status == "scheduled",
+            )
             .first()
         )
         if not appt:

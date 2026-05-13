@@ -376,6 +376,9 @@ class Appointment(AppointmentBase):
         """
         raw = self.status.value if self.status else "scheduled"
         is_del = self.is_delayed or False
+        # Backward compat: legacy rows stored with status='unloading' before Visit sub-state refactor
+        if raw == "unloading" and not self.is_unloading:
+            self.is_unloading = True
         is_unl = self.is_unloading or False
 
         # primary_status: the real workflow state (never 'delayed'/'unloading')
@@ -389,7 +392,7 @@ class Appointment(AppointmentBase):
         # display_status: computed string for UI badges
         if raw == "in_transit" and is_del:
             self.display_status = "delayed"
-        elif raw == "in_process" and is_unl:
+        elif (raw == "in_process" or raw == "unloading") and is_unl:
             self.display_status = "unloading"
         else:
             self.display_status = raw
@@ -504,6 +507,7 @@ class DriverLoginResponse(BaseModel):
 # ==========================
 
 class ClaimAppointmentRequest(BaseModel):
+    booking_reference: str
     arrival_id: str
 
 

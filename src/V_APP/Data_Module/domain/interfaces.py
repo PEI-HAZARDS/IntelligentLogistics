@@ -133,7 +133,7 @@ class IDriverRepository(ABC):
         ...
 
     @abstractmethod
-    def get_appointment_for_claim(self, arrival_id: str) -> Optional[dict[str, Any]]:
+    def get_appointment_for_claim(self, booking_reference: str, arrival_id: str) -> Optional[dict[str, Any]]:
         """Return appointment dict with eager-loaded relations for claim flow."""
         ...
 

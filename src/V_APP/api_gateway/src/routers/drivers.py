@@ -43,6 +43,7 @@ def _dm_auth(drivers_license: str) -> dict[str, str]:
 class ClaimAppointmentRequest(BaseModel):
     """Request to claim appointment by PIN."""
     arrival_id: str
+    booking_reference: str
 
 
 # ---------------------------------
@@ -77,10 +78,11 @@ async def claim_appointment(
     Returns delivery details for navigation.
     Driver identity extracted from JWT token.
     """
-    params = {"drivers_license": current_user.sub.upper()}
+    drv_license = current_user.sub.upper()
+    params = {"drivers_license": drv_license}
     if debug:
         params["debug"] = True
-    return await internal_client.post("/drivers/claim", json=claim_data.model_dump(), params=params)
+    return await internal_client.post("/drivers/claim", json=claim_data.model_dump(), params=params, headers=_dm_auth(drv_license))
 
 
 @router.get("/drivers/me/active")
@@ -197,5 +199,58 @@ async def update_driver_appointment_status(
             logger.info(f"Broadcast status_changed for appointment {appointment_id} → driver {driver_license}")
         except Exception as e:
             logger.warning(f"WS driver broadcast failed for status_changed: {e}")
+
+    return result
+
+
+# ---------------------------------
+# PATCH: /api/drivers/appointments/{appointment_id}/visit
+# ---------------------------------
+class DriverVisitStateUpdate(BaseModel):
+    state: str
+    out_time: Optional[str] = None
+
+@router.patch("/drivers/appointments/{appointment_id}/visit")
+async def update_driver_visit_state(
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
+    update_data: Annotated[DriverVisitStateUpdate, Body()],
+    current_user: Annotated[TokenPayload, Depends(require_role("driver"))],
+    ws_manager: Annotated[WebSocketManager, Depends(get_ws_manager)],
+):
+    """
+    Update visit state (e.g. 'unloading', 'completed') and broadcast via WebSocket.
+    Allows drivers to signal unloading start / completion at the dock.
+    """
+    result = await internal_client.patch(
+        f"/arrivals/{appointment_id}/visit",
+        json=update_data.model_dump(exclude_none=True)
+    )
+    ws_payload = {
+        "message_type": "status_changed",
+        "appointment_id": appointment_id,
+        "new_status": update_data.state,
+    }
+
+    gate_in_id = result.get("appointment_id") if isinstance(result, dict) else None
+    # visit response has appointment_id; fetch gate from result if available
+    try:
+        appt_result = await internal_client.get(f"/arrivals/{appointment_id}")
+        gate_in_id = appt_result.get("gate_in_id") if isinstance(appt_result, dict) else None
+        driver_license = appt_result.get("driver_license") if isinstance(appt_result, dict) else None
+    except Exception:
+        gate_in_id = None
+        driver_license = None
+
+    if gate_in_id:
+        try:
+            await ws_manager.broadcast(str(gate_in_id), ws_payload)
+        except Exception as e:
+            logger.warning(f"WS gate broadcast failed for visit state change: {e}")
+
+    if driver_license:
+        try:
+            await ws_manager.broadcast_to_driver(driver_license, ws_payload)
+        except Exception as e:
+            logger.warning(f"WS driver broadcast failed for visit state change: {e}")
 
     return result

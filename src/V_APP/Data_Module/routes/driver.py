@@ -90,26 +90,28 @@ def login(credentials: DriverLoginRequest):
     )
 
 
+_driver_claims = require_role("driver")
+
+
 @router.post("/claim", response_model=ClaimAppointmentResponse, responses={400: {"description": "Invalid PIN or appointment not available"}})
 def claim_arrival(
     claim_data: ClaimAppointmentRequest,
-    drivers_license: Annotated[str, Query(description="Driver's license (from login)")],
+    claims: Annotated[dict, Depends(_driver_claims)],
     debug: Annotated[bool, Query(description="Debug mode - bypass sequential check")] = False,
 ):
     """
-    Driver uses PIN (arrival_id) to claim an appointment.
-    Returns delivery details for navigation.
+    Driver selects a booking in the UI and confirms with PIN (arrival_id).
+    Identity is taken from the JWT token — driver license is never exposed as a parameter.
 
     In production: validates sequential order.
     In debug mode (DEBUG_MODE=true): allows claiming any appointment.
-
-    Future: Will require Bearer token when OAuth 2.0 is implemented.
     """
     use_debug = debug and settings.debug_mode
 
     appointment, error = claim_appointment_by_pin(
         _uow_factory,
-        drivers_license=drivers_license,
+        driver_sub=claims["sub"],
+        booking_reference=claim_data.booking_reference,
         arrival_id=claim_data.arrival_id,
         debug_mode=use_debug,
     )
@@ -128,9 +130,6 @@ def claim_arrival(
         cargo_description=appointment.get("cargo_description"),
         navigation_url=appointment.get("navigation_url"),
     )
-
-
-_driver_claims = require_role("driver")
 
 
 @router.get("/me/active", response_model=Optional[Appointment])

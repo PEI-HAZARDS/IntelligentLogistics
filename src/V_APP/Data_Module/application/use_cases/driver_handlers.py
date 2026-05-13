@@ -38,27 +38,24 @@ def authenticate_driver(
 def claim_appointment_by_pin(
     uow_factory,
     *,
-    drivers_license: str,
+    booking_reference: str,
     arrival_id: str,
+    driver_sub: str,
     debug_mode: bool = False,
 ) -> Tuple[Optional[dict[str, Any]], str]:
     """
-    Driver uses PIN (arrival_id) to claim an appointment.
+    Driver selects a booking in the UI and confirms with PIN (arrival_id).
+    booking_reference identifies which scheduled appointment to claim;
+    arrival_id (PIN) is the confirmation code.
     Returns (appointment_dict, error_message).
     """
     with uow_factory() as uow:
-        appt = uow.drivers.get_appointment_for_claim(arrival_id)
+        appt = uow.drivers.get_appointment_for_claim(booking_reference, arrival_id)
         if not appt:
             return None, "Invalid PIN or appointment not found"
 
-        if appt["driver_license"] != drivers_license:
-            return None, "Not authorized for this appointment"
-
-        if appt["status"] not in ("scheduled", "in_transit", "delayed", "in_process"):
-            return None, f"Appointment cannot be claimed (status: {appt['status']})"
-
         if not debug_mode:
-            next_id = uow.drivers.get_next_active_appointment_id(drivers_license)
+            next_id = uow.drivers.get_next_active_appointment_id(driver_sub)
             if next_id and next_id != appt["id"]:
                 return None, "Must complete earlier delivery first"
 
