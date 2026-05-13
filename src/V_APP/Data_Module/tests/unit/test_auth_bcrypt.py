@@ -32,9 +32,9 @@ class _FakeDrivers:
             return self._driver
         return None
 
-    def get_appointment_for_claim(self, arrival_id):
+    def get_appointment_for_claim(self, booking_reference, arrival_id):
         appt = (self._driver or {}).get("_appointment") or {}
-        if appt.get("arrival_id") == arrival_id:
+        if appt.get("arrival_id") == arrival_id and appt.get("booking_reference", booking_reference) == booking_reference:
             return appt or None
         return None
 
@@ -199,23 +199,25 @@ def test_driver_auth_inactive_returns_none():
     assert result is None
 
 
-def _make_appointment(arrival_id: str, driver_license: str, appt_id: int = 1):
+def _make_appointment(arrival_id: str, driver_license: str, appt_id: int = 1, booking_reference: str = "BR-DEFAULT"):
     return {
         "id": appt_id,
         "arrival_id": arrival_id,
+        "booking_reference": booking_reference,
         "driver_license": driver_license,
         "status": "in_transit",
     }
 
 
 def test_claim_valid_pin_returns_appointment():
-    """BR-40: driver claims appointment with correct PIN (arrival_id)."""
-    appt = _make_appointment("PIN-001", "LIC-010", appt_id=10)
+    """BR-40: driver claims appointment with correct booking_reference + PIN."""
+    appt = _make_appointment("PIN-001", "LIC-010", appt_id=10, booking_reference="BR-010")
     driver = {"drivers_license": "LIC-010", "_appointment": appt}
 
     result, err = claim_appointment_by_pin(
         _uow_factory(driver=driver, next_active_id=None),
-        drivers_license="LIC-010",
+        driver_sub="LIC-010",
+        booking_reference="BR-010",
         arrival_id="PIN-001",
     )
     assert result is not None
@@ -228,25 +230,27 @@ def test_claim_wrong_pin_returns_none():
     driver = {"drivers_license": "LIC-011", "_appointment": None}
     result, err = claim_appointment_by_pin(
         _uow_factory(driver=driver),
-        drivers_license="LIC-011",
+        driver_sub="LIC-011",
+        booking_reference="BR-011",
         arrival_id="WRONG-PIN",
     )
     assert result is None
     assert "not found" in err.lower() or "invalid" in err.lower()
 
 
-def test_claim_pin_wrong_driver_returns_not_authorized():
-    """BR-40: PIN belongs to a different driver → not authorized."""
-    appt = _make_appointment("PIN-002", "LIC-OTHER", appt_id=20)
+def test_claim_pin_wrong_booking_reference_returns_not_found():
+    """BR-40: wrong booking_reference → appointment not found."""
+    appt = _make_appointment("PIN-002", "LIC-020", appt_id=20, booking_reference="BR-CORRECT")
     driver = {"drivers_license": "LIC-020", "_appointment": appt}
 
     result, err = claim_appointment_by_pin(
         _uow_factory(driver=driver),
-        drivers_license="LIC-020",
+        driver_sub="LIC-020",
+        booking_reference="BR-WRONG",
         arrival_id="PIN-002",
     )
     assert result is None
-    assert "authorized" in err.lower()
+    assert "not found" in err.lower() or "invalid" in err.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -258,13 +262,14 @@ def test_sequential_check_blocks_out_of_order_without_debug():
     BR-41: without debug_mode, a driver with an earlier active appointment
     cannot claim a later one — sequential delivery is enforced.
     """
-    appt = _make_appointment("PIN-003", "LIC-030", appt_id=30)
+    appt = _make_appointment("PIN-003", "LIC-030", appt_id=30, booking_reference="BR-030")
     driver = {"drivers_license": "LIC-030", "_appointment": appt}
 
     # next_active_id=99 means there's an earlier unfinished delivery
     result, err = claim_appointment_by_pin(
         _uow_factory(driver=driver, next_active_id=99),
-        drivers_license="LIC-030",
+        driver_sub="LIC-030",
+        booking_reference="BR-030",
         arrival_id="PIN-003",
         debug_mode=False,
     )
@@ -277,12 +282,13 @@ def test_debug_mode_bypasses_sequential_check():
     BR-41: debug_mode=True lets the driver claim an appointment even when
     a previous delivery is still active — sequential check is skipped.
     """
-    appt = _make_appointment("PIN-004", "LIC-040", appt_id=40)
+    appt = _make_appointment("PIN-004", "LIC-040", appt_id=40, booking_reference="BR-040")
     driver = {"drivers_license": "LIC-040", "_appointment": appt}
 
     result, err = claim_appointment_by_pin(
         _uow_factory(driver=driver, next_active_id=99),
-        drivers_license="LIC-040",
+        driver_sub="LIC-040",
+        booking_reference="BR-040",
         arrival_id="PIN-004",
         debug_mode=True,
     )
