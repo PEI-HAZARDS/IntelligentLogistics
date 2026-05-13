@@ -137,7 +137,7 @@ def send_alert(payload: dict) -> None:
         result.wait_for_publish(timeout=10)
 
     except Exception as e:
-        logger.error("MQTT error: %s", e)
+        logger.exception("MQTT error")
     finally:
         client.loop_stop()
         client.disconnect()

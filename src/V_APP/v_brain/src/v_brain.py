@@ -174,14 +174,14 @@ class VBrain:
                 try:
                     data = json.loads(msg.value())
                 except Exception as e:
-                    logger.warning(f"Invalid JSON from topic '{topic}': {e}")
+                    logger.exception("Invalid JSON from topic '%s'", topic)
                     continue
 
                 # Deserialize into typed message
                 try:
                     typed_message = deserialize_message(data)
                 except ValueError as e:
-                    logger.warning(f"Could not deserialize from '{topic}': {e}")
+                    logger.exception("Could not deserialize from '%s'", topic)
                     continue
 
                 # ── Route by topic ───────────────────────────────
@@ -434,7 +434,7 @@ class VBrain:
                     f"status={response.status_code}, body={response.text}"
                 )
         except requests.RequestException as e:
-            logger.error(f"Scaling API {action} request failed for gate {gate_id}: {e}")
+            logger.exception("Scaling API %s request failed for gate %s", action, gate_id)
 
     # ─── Timeout Loop ────────────────────────────────────────────
 

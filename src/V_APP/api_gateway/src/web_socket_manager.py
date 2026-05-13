@@ -116,5 +116,5 @@ class WebSocketManager:
                     await ws.send_json(message)
                     logger.info(f"Sent message to WebSocket for gate '{gate_id}'")
                 except Exception as e:
-                    logger.error(f"Failed to send to WebSocket: {e}")
+                    logger.exception("Failed to send to WebSocket")
                     self.disconnect(gate_id, ws)

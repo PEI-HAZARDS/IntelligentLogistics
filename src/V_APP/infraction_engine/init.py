@@ -54,7 +54,7 @@ def main():
         ENGINE_UP.set(0)
         infraction_engine.stop()
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.exception("Unexpected error")
         ENGINE_UP.set(0)
         infraction_engine.stop()
         raise

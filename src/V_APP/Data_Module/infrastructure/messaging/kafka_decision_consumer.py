@@ -80,7 +80,7 @@ class DecisionCorrelator:
                     payload=decision_data,
                 )
             except Exception as e:
-                logger.error(f"Failed to store pending review for truck_id={truck_id}: {e}")
+                logger.exception("Failed to store pending review for truck_id=%s", truck_id)
             return None
         
         else:
@@ -104,7 +104,7 @@ class DecisionCorrelator:
                 agent_data = json.loads(raw)
                 self.redis.delete(key)
         except Exception as e:
-            logger.error(f"Failed to retrieve pending review from Redis for truck_id={truck_id}: {e}")
+            logger.exception("Failed to retrieve pending review from Redis for truck_id=%s", truck_id)
         
         if not agent_data:
             logger.warning(f"Received operator decision for truck_id={truck_id} but no pending agent decision found.")
@@ -232,7 +232,7 @@ class KafkaDecisionConsumer:
                     continue
 
                 if data is None:
-                    logger.error(f"Failed to parse message body from {topic}")
+                    logger.error("Failed to parse message body from %s", topic)
                     continue
 
                 # Process based on topic
@@ -269,7 +269,7 @@ class KafkaDecisionConsumer:
                     self._persist_decision(truck_id)
 
             except Exception as e:
-                logger.error(f"Error in consume loop: {e}", exc_info=True)
+                logger.exception("Error in consume loop")
                 # Route to DLQ if we have message context (Guardrail 8)
                 if msg is not None:
                     try:
@@ -402,7 +402,7 @@ class KafkaDecisionConsumer:
         try:
             return await asyncio.get_event_loop().run_in_executor(None, _query)
         except Exception as e:
-            logger.error("Failed to resolve appointment_id for plate=%s: %s", license_plate, e)
+            logger.exception("Failed to resolve appointment_id for plate=%s", license_plate)
             return None
 
     def _persist_decision(self, truck_id: str):
@@ -503,7 +503,7 @@ class KafkaDecisionConsumer:
             await asyncio.get_event_loop().run_in_executor(None, _mark_processed)
 
         except Exception as e:
-            logger.error(f"Error storing infraction decision for truck_id={truck_id}: {e}", exc_info=True)
+            logger.exception("Error storing infraction decision for truck_id=%s", truck_id)
 
             def _mark_failed():
                 with SqlAlchemyUnitOfWork(SessionLocal) as uow:
@@ -513,7 +513,7 @@ class KafkaDecisionConsumer:
             try:
                 await asyncio.get_event_loop().run_in_executor(None, _mark_failed)
             except Exception as mark_err:
-                logger.error("Failed to mark infraction inbox event as failed: %s", mark_err)
+                logger.exception("Failed to mark infraction inbox event as failed")
 
     async def _handle_infraction_update(
         self, truck_id: str, gate_id: int, license_plate: str, decision_data: dict
@@ -561,7 +561,7 @@ class KafkaDecisionConsumer:
             await asyncio.get_event_loop().run_in_executor(None, _create_alert)
             logger.info("PG alert created for infraction on appointment=%s", appointment_id)
         except Exception as alert_err:
-            logger.error("Failed to create PG alert for infraction: %s", alert_err)
+            logger.exception("Failed to create PG alert for infraction")
 
         await self._emit_infraction_notifications(appointment_id, license_plate, notification_gate_id)
 
@@ -586,7 +586,7 @@ class KafkaDecisionConsumer:
                 ),
             )
         except Exception as notif_err:
-            logger.error("Failed to emit gate notification for infraction: %s", notif_err)
+            logger.exception("Failed to emit gate notification for infraction")
 
         try:
             await asyncio.get_event_loop().run_in_executor(
@@ -607,7 +607,7 @@ class KafkaDecisionConsumer:
             )
             logger.info("Driver notification emitted for infraction on appointment=%s", appointment_id)
         except Exception as notif_err:
-            logger.error("Failed to emit driver notification for infraction: %s", notif_err)
+            logger.exception("Failed to emit driver notification for infraction")
 
     async def _get_driver_gate_id(self, appointment_id: int, fallback_gate_id: int) -> int:
         """Get the gate_in_id for the appointment, or fallback."""

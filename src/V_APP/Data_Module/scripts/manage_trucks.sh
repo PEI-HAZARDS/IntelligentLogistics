@@ -42,7 +42,7 @@ NC='\033[0m' # No Color
 info()  { echo -e "${CYAN}[INFO]${NC}  $*"; return 0; }
 ok()    { echo -e "${GREEN}[OK]${NC}    $*"; return 0; }
 warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; return 0; }
-die()   { echo -e "${RED}[ERROR]${NC} $*" >&2; exit 1; }
+die()   { echo -e "${RED}[ERROR]${NC} $*" >&2; exit 1; return 0; }
 
 # Run SQL and return the trimmed result. Errors are printed to stderr.
 run_sql() {
@@ -78,6 +78,7 @@ usage() {
     echo "  $0 delete XX-99-ZZ"
     echo "  $0 list"
     exit 1
+    return 0
 }
 
 # ── Check container is running ───────────────────────────────────────────────

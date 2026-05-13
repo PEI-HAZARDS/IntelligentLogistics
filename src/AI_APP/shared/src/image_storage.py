@@ -95,15 +95,15 @@ class ImageStorage:
             return self._generate_presigned_url(prefixed_name, expires_days=expires)
 
         except S3Error as e:
-            logger.error(f"Upload failed: {e}")
+            logger.exception("Upload failed")
             return None
         
         except (MaxRetryError, NewConnectionError, ConnectionError) as e:
-            logger.warning(f"[MinIO] Connection error during upload: {e}. MinIO may be down. Skipping upload and continuing.")
+            logger.exception("[MinIO] Connection error during upload. MinIO may be down. Skipping upload and continuing.")
             return None
         
         except Exception as e:
-            logger.exception(f"Unexpected error during upload: {e}")
+            logger.exception("Unexpected error during upload")
             return None
 
     def _ensure_bucket(self) -> bool:
@@ -125,7 +125,7 @@ class ImageStorage:
             return True
         
         except S3Error as e:
-            logger.error(f"Bucket check/create failed: {e}")
+            logger.exception("Bucket check/create failed")
             return False
 
     def _set_lifecycle_policies(self):
@@ -164,7 +164,7 @@ class ImageStorage:
             logger.info("Lifecycle policies configured: annotated_frames (1 day), crops (7 days)")
         
         except S3Error as e:
-            logger.warning(f"Failed to set lifecycle policies: {e}")
+            logger.exception("Failed to set lifecycle policies")
 
     def _generate_presigned_url(self, object_name: str, expires_days: int = 7) -> str:
         """Generates a temporary access URL."""
