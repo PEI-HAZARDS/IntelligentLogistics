@@ -90,3 +90,4 @@ Thumbs.db
 coverage.xml
 htmlcov/
 .pytest_cache/
+.venv-locust/
