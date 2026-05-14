@@ -12,14 +12,14 @@ Usage:
            --host=http://localhost:8080 \
            --headless \
            --run-time 6m \
-           --html docs/milestone4/scale/stress_report.html
+           --html docs/benchmarks/scale/stress_report_1x.html
 
     # Scale-out comparison (run against 2 instances behind Nginx):
     locust -f tests/stress_test.py \
            --host=http://localhost:9090 \
            --headless \
            --run-time 6m \
-           --html docs/milestone4/scale/stress_report_2x.html
+           --html docs/benchmarks/scale/stress_report_2x.html
 
     # Web UI (watch live):
     locust -f tests/stress_test.py --host=http://localhost:8080

@@ -9,7 +9,7 @@ Usage:
     locust -f src/V_APP/api_gateway/tests/load_test.py \
            --host=http://localhost:8000 \
            --headless -u 30 -r 3 --run-time 5m \
-           --html docs/milestone4/perf/api_gateway_report.html
+           --html docs/benchmarks/perf/gw_report.html
 
     # With Locust web UI:
     locust -f src/V_APP/api_gateway/tests/load_test.py --host=http://localhost:8000
