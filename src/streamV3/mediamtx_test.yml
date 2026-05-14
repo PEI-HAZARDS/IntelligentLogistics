@@ -1,0 +1,50 @@
+###############################################
+# Server Settings
+###############################################
+webrtc: true
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+webrtcAdditionalHosts: [10.255.32.56]
+
+logLevel: info
+
+metrics: true
+metricsAddress: :9998
+
+rtsp: true
+rtspAddress: :8554
+rtpAddress: :8000
+rtcpAddress: :8001
+# Server accepts UDP from downstream clients (AI agents, VLC, etc.)
+rtspTransports: [udp, tcp]
+
+rtmp: false
+hls: false
+srt: false
+
+###############################################
+# Path defaults
+###############################################
+pathDefaults:
+   rtspTransport: tcp
+   alwaysAvailable: true
+
+###############################################
+# Paths
+###############################################
+paths:
+   streams_high/gate1:
+      #alwaysAvailableFile: ./videos/gate.mp4
+      alwaysAvailableFile: ./test_videos/gate.mp4
+
+   streams_low/gate1:
+      #alwaysAvailableFile: ./videos/gate.mp4
+      alwaysAvailableFile: ./test_videos/gate.mp4
+
+   streams_high/gate2:
+      #alwaysAvailableFile: ./videos/highway.mp4
+      alwaysAvailableFile: ./test_videos/highway.mp4
+
+   streams_low/gate2:
+      #alwaysAvailableFile: ./videos/highway.mp4
+      alwaysAvailableFile: ./test_videos/highway.mp4

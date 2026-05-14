@@ -1,0 +1,320 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "panels": [],
+      "title": "\ud83d\ude9a 1. Detection (AgentA)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2 }
+        }
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 1 },
+      "id": 2,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(agent_a_frames_processed_total{job=\"agent-a\"}[5m])) * 60",
+          "legendFormat": "Frames/min",
+          "refId": "A"
+        }
+      ],
+      "title": "AgentA Frame Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2 }
+        }
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 1 },
+      "id": 3,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(agent_a_trucks_detected_total{job=\"agent-a\"}[5m])) * 60",
+          "legendFormat": "Trucks Detected/min",
+          "refId": "A"
+        }
+      ],
+      "title": "Trucks Detected Rate",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 8 },
+      "id": 4,
+      "panels": [],
+      "title": "\ud83d\udd0d 2. AI Processing (AgentB + AgentC)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2 }
+        }
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 0, "y": 9 },
+      "id": 5,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(agent_b_plates_detected_total{job=\"agent-b\"}[5m])) * 60",
+          "legendFormat": "Plates/min",
+          "refId": "A"
+        }
+      ],
+      "title": "License Plates Detected",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2 }
+        }
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 8, "y": 9 },
+      "id": 6,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(agent_c_hazards_detected_total{job=\"agent-c\"}[5m])) * 60",
+          "legendFormat": "Hazards/min",
+          "refId": "A"
+        }
+      ],
+      "title": "Hazard Plates Detected",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2 }
+        }
+      },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 9 },
+      "id": 7,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "sum(kafka_consumergroup_lag{job=\"kafka\", topic=~\"lp-results-.*|hz-results-.*\"}) by (topic)",
+          "legendFormat": "{{ topic }}",
+          "refId": "A"
+        }
+      ],
+      "title": "Kafka Lag (Results Topics)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "id": 8,
+      "panels": [],
+      "title": "\ud83e\udde0 3. Decision & Infraction",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2 }
+        }
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 17 },
+      "id": 9,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(decision_engine_decisions_processed_total{job=\"decision-engine\"}[5m])) by (decision_type) * 60",
+          "legendFormat": "{{ decision_type }}",
+          "refId": "A"
+        }
+      ],
+      "title": "Decisions by Type",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2 }
+        }
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 17 },
+      "id": 10,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(infraction_engine_infractions_total{job=\"infraction-engine\"}[5m])) * 60",
+          "legendFormat": "Infractions/min",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(infraction_engine_no_infractions_total{job=\"infraction-engine\"}[5m])) * 60",
+          "legendFormat": "No Infraction/min",
+          "refId": "B"
+        }
+      ],
+      "title": "Infraction Results",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "id": 11,
+      "panels": [],
+      "title": "\ud83d\udd04 4. Orchestration (V_Brain)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2 }
+        }
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 25 },
+      "id": 12,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(v_brain_trucks_correlated_total[5m])) by (gate_id) * 60",
+          "legendFormat": "Correlated (gate {{ gate_id }})",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(v_brain_timeouts_total[5m])) by (gate_id) * 60",
+          "legendFormat": "Timeouts (gate {{ gate_id }})",
+          "refId": "B"
+        }
+      ],
+      "title": "Truck Correlation & Timeouts",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2 }
+        }
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 25 },
+      "id": 13,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(v_brain_scale_up_total[5m])) by (gate_id) * 60",
+          "legendFormat": "Scale UP (gate {{ gate_id }})",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(v_brain_scale_down_total[5m])) by (gate_id) * 60",
+          "legendFormat": "Scale DOWN (gate {{ gate_id }})",
+          "refId": "B"
+        }
+      ],
+      "title": "Scale Events",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+      "id": 14,
+      "panels": [],
+      "title": "\ud83c\udf10 5. API & Data Module",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2 },
+          "unit": "reqps"
+        }
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 33 },
+      "id": 15,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"api-gateway\"}[5m])) by (handler)",
+          "legendFormat": "{{ handler }}",
+          "refId": "A"
+        }
+      ],
+      "title": "API Gateway - Request Rate by Endpoint",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "fillOpacity": 20, "lineWidth": 2 },
+          "unit": "reqps"
+        }
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 33 },
+      "id": 16,
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{job=\"data-module\"}[5m])) by (handler)",
+          "legendFormat": "{{ handler }}",
+          "refId": "A"
+        }
+      ],
+      "title": "Data Module - Request Rate by Endpoint",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["intelligent-logistics", "pipeline", "end-to-end"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "IntelligentLogistics - Truck Pipeline (E2E)",
+  "uid": "il-truck-pipeline",
+  "version": 1
+}

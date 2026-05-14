@@ -1,0 +1,35 @@
+services:
+  nginx-rtmp:
+    build: .
+    container_name: nginx-rtmp
+    ports:
+      - "1935:1935"  # RTMP - EXPOSTO para rede externa
+      - "8080:8080"  # HTTP/HLS - EXPOSTO para frontend
+    environment:
+      # Stream Mode: "camera" (default) ou "test"
+      - STREAM_MODE=${STREAM_MODE}
+      # Configuração da câmara 1
+      - CAMERA1_IP=${CAMERA1_IP}
+      - CAMERA1_PORT=${CAMERA1_PORT}
+      - CAMERA1_LOW_PATH=${CAMERA1_LOW_PATH}
+      - CAMERA1_HIGH_PATH=${CAMERA1_HIGH_PATH}
+      - CAMERA1_GATE_ID=${CAMERA1_GATE_ID}
+      # Configuração da câmara 2
+      - CAMERA2_IP=${CAMERA2_IP}
+      - CAMERA2_PORT=${CAMERA2_PORT}
+      - CAMERA2_LOW_PATH=${CAMERA2_LOW_PATH}
+      - CAMERA2_HIGH_PATH=${CAMERA2_HIGH_PATH}
+      - CAMERA2_GATE_ID=${CAMERA2_GATE_ID}
+      # Configuração dos vídeos de teste
+      - TEST_VIDEO1_PATH=${TEST_VIDEO1_PATH}
+      - TEST_VIDEO2_PATH=${TEST_VIDEO2_PATH}
+    volumes:
+      # Caminho absoluto na VM para os vídeos de teste
+      - ${TEST_VIDEOS_HOST_PATH}:/videos:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

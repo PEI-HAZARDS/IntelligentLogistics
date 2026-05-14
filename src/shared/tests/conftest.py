@@ -56,3 +56,5 @@ def mock_kafka_message():
     msg.value.return_value = b'{"key": "value"}'
     msg.headers.return_value = [("truckId", b"TRUCK-123")]
     return msg
+
+

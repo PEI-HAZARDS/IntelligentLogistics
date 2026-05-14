@@ -1,0 +1,643 @@
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:15
+    container_name: dm_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - intelligent-logistics
+
+  # MongoDB for events and logs
+  mongo:
+    image: mongo:6
+    container_name: dm_mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    ports:
+      - "${MONGO_PORT}:27017"
+    volumes:
+      - mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - intelligent-logistics
+
+  # Redis cache
+  redis:
+    image: redis:7
+    container_name: dm_redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - intelligent-logistics
+
+  # MinIO Object Storage
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "${MINIO_API_PORT}:9000"
+      - "${MINIO_CONSOLE_PORT}:9090"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - miniodata:/data
+    command: server /data --console-address ":9090"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - intelligent-logistics
+
+  # One-shot schema migration — runs migrationDBv3.sql and exits.
+  # data-module and outbox-worker wait for this to complete successfully.
+  db-migrate:
+    image: postgres:15
+    container_name: dm_db_migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ./Data_Module/scripts:/migrations:ro
+    command: >
+      psql
+        -h ${POSTGRES_HOST}
+        -U ${POSTGRES_USER}
+        -d ${POSTGRES_DB}
+        -f /migrations/migrationDBv3.sql
+    networks:
+      - intelligent-logistics
+
+  # Data Module API
+  data-module:
+    build:
+      context: ..
+      dockerfile: V_APP/Data_Module/Dockerfile
+    container_name: dm_data_module
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - DATABASE_URL=${DATABASE_URL}
+      - MONGO_URL=${MONGO_URL}
+      - MONGO_HOST=${MONGO_HOST}
+      - MONGO_PORT=${MONGO_PORT}
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - DECISION_ENGINE_URL=${DECISION_ENGINE_URL}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
+      - OTEL_ENABLED=${OTEL_ENABLED:-true}
+      - PYTHONUNBUFFERED=1
+      - ENVIRONMENT=${ENVIRONMENT}
+      - DEBUG=${DEBUG}
+      - DEBUG_MODE=${DEBUG_MODE}
+      - TOKEN_EXPIRY_HOURS=${TOKEN_EXPIRY_HOURS}
+      - API_PREFIX=${DM_API_PREFIX}
+      - KAFKA_BOOTSTRAP=kafka:29092
+      - GATE_ID=${GATE_ID}
+      - DECISION_GATE_IDS=${DECISION_GATE_IDS}
+      - INFRACTION_GATE_IDS=${INFRACTION_GATE_IDS}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - KEYCLOAK_URL=${KEYCLOAK_URL}
+      - KEYCLOAK_REALM=${KEYCLOAK_REALM}
+      - KC_ADMIN_USER=${KC_ADMIN_USER}
+      - KC_ADMIN_PASSWORD=${KC_ADMIN_PASSWORD}
+      - DEFAULT_WORKER_PASSWORD=${DEFAULT_WORKER_PASSWORD}
+      - DEFAULT_DRIVER_PASSWORD=${DEFAULT_DRIVER_PASSWORD}
+      - DATA_INIT_MODE=${DATA_INIT_MODE:-demo}
+    ports:
+      - "8080:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - intelligent-logistics
+
+  # Outbox Worker — projects outbox_events to MongoDB + Redis read models
+  outbox-worker:
+    build:
+      context: ..
+      dockerfile: V_APP/Data_Module/Dockerfile
+    container_name: dm_outbox_worker
+    restart: unless-stopped
+    entrypoint: ["python", "scripts/simple_outbox_worker.py"]
+    depends_on:
+      data-module:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - MONGO_URL=${MONGO_URL}
+      - MONGO_HOST=${MONGO_HOST}
+      - MONGO_PORT=${MONGO_PORT}
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - OUTBOX_METRICS_PORT=9101
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "9101:9101"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9101/metrics > /dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    networks:
+      - intelligent-logistics
+
+  # Statistics Aggregator — computes hourly/daily Mongo rollups for dashboard queries
+  statistics-aggregator:
+    build:
+      context: ..
+      dockerfile: V_APP/Data_Module/Dockerfile
+    container_name: dm_statistics_aggregator
+    restart: unless-stopped
+    entrypoint: ["python", "scripts/statistics_aggregator.py"]
+    depends_on:
+      data-module:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - MONGO_URL=${MONGO_URL}
+      - MONGO_HOST=${MONGO_HOST}
+      - MONGO_PORT=${MONGO_PORT}
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - AGGREGATOR_GATE_IDS=${GATE_IDS:-["1"]}
+      - AGGREGATOR_INTERVAL_SECONDS=${AGGREGATOR_INTERVAL_SECONDS:-3600}
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    networks:
+      - intelligent-logistics
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ..
+      dockerfile: V_APP/api_gateway/Dockerfile
+    image: api-gateway:latest
+    container_name: api-gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATA_MODULE_URL=${DATA_MODULE_URL}
+      - STREAM_BASE_URL=${STREAM_BASE_URL}
+      - STREAM_WEBRTC_BASE_URL=${STREAM_WEBRTC_BASE_URL}
+      - KAFKA_BOOTSTRAP=kafka:29092
+      - CONSUME_TOPIC=decision-results-${GATE_ID}
+      - PRODUCE_TOPIC=operator-decision-${GATE_ID}
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - KAFKA_DECISION_TOPIC=${KAFKA_DECISION_TOPIC}
+      - KAFKA_CONSUMER_GROUP=${KAFKA_CONSUMER_GROUP}
+      - GW_API_PREFIX=${GW_API_PREFIX}
+      - GW_ENV=${GW_ENV}
+      - GATE_ID=${GATE_ID}
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS}
+      - CORS_ALLOW_CREDENTIALS=${CORS_ALLOW_CREDENTIALS}
+      - CORS_ALLOW_METHODS=${CORS_ALLOW_METHODS}
+      - CORS_ALLOW_HEADERS=${CORS_ALLOW_HEADERS}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT}
+      - OTEL_ENABLED=${OTEL_ENABLED:-true}
+      - PYTHONUNBUFFERED=1
+      - GATE_IDS=${GATE_IDS}
+      - INFRACTION_GATE_IDS=${INFRACTION_GATE_IDS}
+      - DECISION_GATE_IDS=${DECISION_GATE_IDS}
+      - KEYCLOAK_URL=${KEYCLOAK_URL}
+      - KEYCLOAK_REALM=${KEYCLOAK_REALM}
+      - KEYCLOAK_CLIENT_ID=${KEYCLOAK_CLIENT_ID}
+      - KEYCLOAK_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET}
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      data-module:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - intelligent-logistics
+
+  # Decision Engine
+  decision-engine:
+    build:
+      context: ..
+      dockerfile: V_APP/decision_engine/Dockerfile
+    image: decision-engine:latest
+    container_name: decision-engine
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
+      - GATE_IDS=${GATE_IDS}
+      - DECISION_GATE_IDS=${DECISION_GATE_IDS}
+      - API_URL=${DE_API_URL}
+      - TIME_TOLERANCE_MINUTES=${TIME_TOLERANCE_MINUTES}
+      - UN_NUMBERS_FILE=${DE_UN_NUMBERS_FILE}
+      - KEMLER_CODES_FILE=${DE_KEMLER_CODES_FILE}
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    networks:
+      - intelligent-logistics
+
+  # Infraction Engine
+  infraction-engine:
+    build:
+      context: ..
+      dockerfile: V_APP/infraction_engine/Dockerfile
+    image: infraction-engine:latest
+    container_name: infraction-engine
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP}
+      - GATE_IDS=${GATE_IDS}
+      - INFRACTION_GATE_IDS=${INFRACTION_GATE_IDS}
+      - API_URL=${DE_API_URL}
+      - TIME_TOLERANCE_MINUTES=${TIME_TOLERANCE_MINUTES}
+      - UN_NUMBERS_FILE=${DE_UN_NUMBERS_FILE}
+      - KEMLER_CODES_FILE=${DE_KEMLER_CODES_FILE}
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    networks:
+      - intelligent-logistics
+
+  # Kafka broker (KRaft mode)
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: v-kafka
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENERS: "INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
+      KAFKA_ADVERTISED_LISTENERS: "INTERNAL://kafka:29092,EXTERNAL://${KAFKA_EXTERNAL_HOST:-localhost}:9092"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+      KAFKA_LOG_DIRS: "/tmp/kraft-combined-logs"
+    networks:
+      - intelligent-logistics
+
+  # Pre-create Kafka topics
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: v-kafka-init
+    depends_on:
+      - kafka
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        echo "Waiting for Kafka to be ready..."
+        cub kafka-ready -b kafka:29092 1 60
+
+        # Parse GATE_IDS from JSON-array string e.g. ["1","2","3"] -> "1 2 3"
+        GATE_ID_LIST=$(echo "$$GATE_IDS" | tr -d '[]"' | tr ',' ' ')
+
+        echo "Creating topics for gate IDs: $$GATE_ID_LIST"
+        for GID in $$GATE_ID_LIST; do
+          for TOPIC in \
+            truck-detected-$$GID \
+            lp-results-$$GID \
+            hz-results-$$GID \
+            operator-decision-$$GID \
+            reset-agentA-$$GID \
+            agent-decision-$$GID \
+            infraction-decision-$$GID; do
+            kafka-topics --create --if-not-exists \
+              --bootstrap-server kafka:29092 \
+              --partitions 1 \
+              --replication-factor 1 \
+              --topic "$$TOPIC"
+          done
+        done
+
+        # DLQ topics for each consumed per-gate topic
+        for GID in $$GATE_ID_LIST; do
+          for TOPIC in \
+            agent-decision-$$GID.DLQ \
+            operator-decision-$$GID.DLQ \
+            infraction-decision-$$GID.DLQ; do
+            kafka-topics --create --if-not-exists \
+              --bootstrap-server kafka:29092 \
+              --partitions 1 \
+              --replication-factor 1 \
+              --topic "$$TOPIC"
+          done
+        done
+
+        # Global topics (not per-gate)
+        for TOPIC in scale-up scale-down; do
+          kafka-topics --create --if-not-exists \
+            --bootstrap-server kafka:29092 \
+            --partitions 1 \
+            --replication-factor 1 \
+            --topic "$$TOPIC"
+        done
+
+        echo "All topics created."
+    environment:
+      - GATE_IDS=${GATE_IDS}
+    restart: "no"
+    networks:
+      - intelligent-logistics
+  
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:latest
+    container_name: redpanda-console
+    ports:
+      - "9999:8080"
+    environment:
+      KAFKA_BROKERS: kafka:29092
+    depends_on:
+    - kafka
+    - kafka-init
+    restart: unless-stopped
+    networks:
+    - intelligent-logistics
+
+  # V_APP Gateway (inter-app bridge)
+  v-gateway:
+    build:
+      context: ..
+      dockerfile: V_APP/gateway/Dockerfile
+    image: v-gateway:latest
+    container_name: v-gateway
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8003:8003"
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    networks:
+      - intelligent-logistics
+
+  # V_Brain — central orchestrator (scale up/down + reset AgentA)
+  # Single instance handles ALL gates — receives GATE_IDS (JSON array)
+  v-brain:
+    build:
+      context: ..
+      dockerfile: V_APP/v_brain/Dockerfile
+    image: v-brain:latest
+    container_name: v-brain
+    restart: unless-stopped
+    ports:
+      - "8004:8004"
+    environment:
+      - KAFKA_BOOTSTRAP=kafka:29092
+      - GATE_IDS=${GATE_IDS}
+      - CORRELATOR_TIMEOUT_SECONDS=${CORRELATOR_TIMEOUT_SECONDS:-30}
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    networks:
+      - intelligent-logistics
+
+  # =============================================================================
+  # KEYCLOAK - Identity & Access Management
+  # =============================================================================
+  keycloak-db:
+    image: postgres:15
+    container_name: kc_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${KC_DB_USER}
+      POSTGRES_PASSWORD: ${KC_DB_PASSWORD}
+      POSTGRES_DB: keycloak
+    volumes:
+      - kc_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${KC_DB_USER} -d keycloak"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - intelligent-logistics
+
+  keycloak:
+    build: ./keycloak
+    image: keycloak-il:26.0
+    container_name: keycloak
+    restart: unless-stopped
+    command: start-dev --import-realm --health-enabled=true
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: ${KC_DB_USER}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD}
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+    ports:
+      - "8443:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q 'UP'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    networks:
+      - intelligent-logistics
+
+  keycloak-sync:
+    build:
+      context: ./keycloak
+      dockerfile: Dockerfile.sync
+    image: keycloak-sync:latest
+    container_name: keycloak-sync
+    depends_on:
+      keycloak:
+        condition: service_healthy
+      data-module:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - KEYCLOAK_URL=http://keycloak:8080
+      - KEYCLOAK_REALM=${KEYCLOAK_REALM}
+      - KEYCLOAK_CLIENT_ID=${KEYCLOAK_CLIENT_ID}
+      - KEYCLOAK_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET}
+      - KC_ADMIN_USER=${KC_ADMIN_USER}
+      - KC_ADMIN_PASSWORD=${KC_ADMIN_PASSWORD}
+      - DEFAULT_WORKER_PASSWORD=${DEFAULT_WORKER_PASSWORD}
+      - DEFAULT_DRIVER_PASSWORD=${DEFAULT_DRIVER_PASSWORD}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+    restart: "no"
+    networks:
+      - intelligent-logistics
+
+  # =============================================================================
+  # OBSERVABILITY - Node Exporter + Promtail
+  # =============================================================================
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yml -config.expand-env=true
+    environment:
+      - VM_NAME=V_APP
+      - LOKI_URL=10.255.32.132
+    volumes:
+      - /home/pei_user/V_APP/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  # =============================================================================
+  # DATABASE EXPORTERS (Prometheus metrics for PG, Mongo, Redis)
+  # =============================================================================
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    restart: unless-stopped
+    ports:
+      - "9187:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - intelligent-logistics
+
+  mongodb-exporter:
+    image: percona/mongodb_exporter:0.43
+    container_name: mongodb-exporter
+    restart: unless-stopped
+    ports:
+      - "9216:9216"
+    command:
+      - "--mongodb.uri=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017"
+      - "--compatible-mode"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - intelligent-logistics
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter
+    restart: unless-stopped
+    ports:
+      - "9121:9121"
+    environment:
+      REDIS_ADDR: "redis:6379"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - intelligent-logistics
+
+volumes:
+  pgdata:
+  mongodata:
+  miniodata:
+  kc_pgdata:
+
+networks:
+  intelligent-logistics:
+    driver: bridge

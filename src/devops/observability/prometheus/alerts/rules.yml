@@ -1,0 +1,264 @@
+# Prometheus Alert Rules - Golden Signals
+# Based on: Latency, Errors, Traffic, Saturation
+
+groups:
+  # =============================================================================
+  # SERVICE AVAILABILITY
+  # =============================================================================
+  - name: service_availability
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.instance }} has been unreachable for more than 2 minutes."
+
+      - alert: PrometheusTargetMissing
+        expr: absent(up{job=~".+"})
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus target missing"
+          description: "No scrape targets are reporting — Prometheus may have lost all targets"
+
+  # =============================================================================
+  # LATENCY (Golden Signal)
+  # =============================================================================
+  - name: latency_alerts
+    rules:
+      - alert: HighLatencyP95
+        expr: histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le, job)) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High P95 latency on {{ $labels.job }}"
+          description: "P95 latency is above 500ms (current: {{ $value | humanize }}s)"
+
+      - alert: HighLatencyP99
+        expr: histogram_quantile(0.99, sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le, job)) > 1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical P99 latency on {{ $labels.job }}"
+          description: "P99 latency is above 1s (current: {{ $value | humanize }}s)"
+
+  # =============================================================================
+  # ERRORS (Golden Signal)
+  # =============================================================================
+  - name: error_alerts
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_server_requests_total{status=~"5.."}[5m])) by (job)
+            /
+            sum(rate(http_server_requests_total[5m])) by (job)
+          ) * 100 > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "Error rate is {{ $value | printf \"%.1f\" }}% (threshold: 5%)"
+
+      - alert: CriticalErrorRate
+        expr: |
+          (
+            sum(rate(http_server_requests_total{status=~"5.."}[5m])) by (job)
+            /
+            sum(rate(http_server_requests_total[5m])) by (job)
+          ) * 100 > 10
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical error rate on {{ $labels.job }}"
+          description: "Error rate is {{ $value | printf \"%.1f\" }}% (threshold: 10%)"
+
+  # =============================================================================
+  # SATURATION (Golden Signal) - Resource Usage
+  # =============================================================================
+  - name: saturation_alerts
+    rules:
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value | printf \"%.1f\" }}%"
+
+      - alert: CriticalCPUUsage
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value | printf \"%.1f\" }}%"
+
+      - alert: HighMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value | printf \"%.1f\" }}%"
+
+      - alert: CriticalMemoryUsage
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Critical memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value | printf \"%.1f\" }}%"
+
+      - alert: DiskAlmostFull
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 < 10
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk almost full on {{ $labels.instance }}"
+          description: "Disk {{ $labels.mountpoint }} has only {{ $value | printf \"%.1f\" }}% free space"
+
+      - alert: DiskSpaceLow
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) * 100 < 20
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Disk {{ $labels.mountpoint }} has only {{ $value | printf \"%.1f\" }}% free space"
+
+  # =============================================================================
+  # INFRASTRUCTURE - Databases & Services
+  # =============================================================================
+  - name: infrastructure_alerts
+    rules:
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL database is not responding"
+
+      - alert: MongoDBDown
+        expr: mongodb_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "MongoDB is down"
+          description: "MongoDB database is not responding"
+
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis cache is not responding"
+
+      - alert: KafkaConsumerLag
+        expr: kafka_consumergroup_lag > 1000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Kafka consumer lag"
+          description: "Consumer group {{ $labels.consumergroup }} has lag of {{ $value }} messages"
+
+      - alert: InfractionEngineDown
+        expr: up{job="infraction-engine"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Infraction Engine is down"
+          description: "Infraction Engine has been unreachable for more than 2 minutes."
+
+      - alert: VBrainDown
+        expr: up{job="v-brain"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "V_Brain orchestrator is down"
+          description: "V_Brain orchestrator has been unreachable for more than 2 minutes."
+
+  # =============================================================================
+  # OUTBOX / TRANSACTIONAL OUTBOX HEALTH
+  # =============================================================================
+  - name: outbox_alerts
+    rules:
+      - alert: OutboxBacklogHigh
+        expr: outbox_pending_rows > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox backlog is growing"
+          description: "{{ $value }} PENDING/FAILED rows in outbox_events — worker may be stalled"
+
+      - alert: OutboxBacklogCritical
+        expr: outbox_pending_rows > 2000
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Outbox backlog critical"
+          description: "{{ $value }} unprocessed outbox rows — read models are lagging"
+
+      - alert: OutboxDeadLetterRising
+        expr: increase(outbox_dead_letter_total[10m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox DLQ events detected"
+          description: "{{ $value }} event(s) moved to DEAD_LETTER in the last 10 minutes"
+
+      - alert: OutboxProjectionLagHigh
+        expr: outbox_projection_lag_seconds > 60
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Outbox projection lag is high"
+          description: "Oldest PENDING outbox event is {{ $value | humanize }}s old"
+
+  # =============================================================================
+  # KAFKA CONSUMER (application-level)
+  # =============================================================================
+  - name: kafka_consumer_alerts
+    rules:
+      - alert: KafkaConsumerLagCritical
+        expr: kafka_consumer_lag_total > 5000
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kafka consumer lag critical"
+          description: "Consumer group {{ $labels.consumer_group }} lag: {{ $value }} messages on {{ $labels.topic }}"
+
+      - alert: KafkaConsumerProcessingSlowP95
+        expr: histogram_quantile(0.95, sum(rate(kafka_consumer_processing_seconds_bucket[5m])) by (le, topic)) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kafka consumer processing P95 slow on {{ $labels.topic }}"
+          description: "P95 processing time is {{ $value | humanize }}s (threshold: 5s)"

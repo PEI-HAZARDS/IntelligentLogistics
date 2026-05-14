@@ -23,7 +23,6 @@ ENV/
 # =====================================
 # Machine Learning / Data
 # =====================================
-**/data/
 **/datasets/
 **/checkpoints/
 **/logs/
@@ -82,3 +81,13 @@ Thumbs.db
 *.crt
 *.pem
 /secrets/
+
+# =====================================
+# Testing & Coverage
+# =====================================
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/
+.venv-locust/

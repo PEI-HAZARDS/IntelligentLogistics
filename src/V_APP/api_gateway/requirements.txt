@@ -1,0 +1,26 @@
+# --- Web & API ---
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+
+# --- HTTP ---
+httpx[http2]
+
+# --- Auth ---
+PyJWT[crypto]>=2.8.0
+
+# --- Kafka & Messaging ---
+confluent_kafka==2.12.0
+aiokafka
+
+# --- Logging ---
+loguru
+
+# --- Observability ---
+prometheus-fastapi-instrumentator
+prometheus_client
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-instrumentation-fastapi

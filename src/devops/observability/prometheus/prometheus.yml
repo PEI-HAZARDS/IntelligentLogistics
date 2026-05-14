@@ -1,0 +1,240 @@
+# Prometheus Configuration for IntelligentLogistics
+# Scrapes metrics from all services across VMs
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'intelligent-logistics'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Load alert rules
+rule_files:
+  - /etc/prometheus/alerts/*.yml
+
+# Scrape configurations
+scrape_configs:
+  # =============================================================================
+  # PROMETHEUS SELF-MONITORING
+  # =============================================================================
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # =============================================================================
+  # NODE EXPORTER - Jenkins VM (Observability + CI/CD)
+  # =============================================================================
+  - job_name: 'node-exporter-jenkins'
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          instance: 'jenkins-vm'
+          vm: 'Jenkins'
+
+  # =============================================================================
+  # NODE EXPORTER - IA_APP VM (10.255.32.110)
+  # =============================================================================
+  - job_name: 'node-exporter-ia-app'
+    static_configs:
+      - targets: ['10.255.32.110:9100']
+        labels:
+          instance: 'ia-app-vm'
+          vm: 'IA_APP'
+
+  # =============================================================================
+  # NODE EXPORTER - V_APP VM (10.255.32.70)
+  # =============================================================================
+  - job_name: 'node-exporter-v-app'
+    static_configs:
+      - targets: ['10.255.32.70:9100']
+        labels:
+          instance: 'v-app-vm'
+          vm: 'V_APP'
+
+  # =============================================================================
+  # NODE EXPORTER - MediaMTX VM (10.255.32.56)
+  # =============================================================================
+  - job_name: 'node-exporter-mediamtx'
+    static_configs:
+      - targets: ['10.255.32.56:9100']
+        labels:
+          instance: 'mediamtx-vm'
+          vm: 'MediaMTX'
+
+  # =============================================================================
+  # MEDIAMTX - Streaming Server (10.255.32.56)
+  # =============================================================================
+  - job_name: 'mediamtx'
+    metrics_path: /metrics
+    basic_auth:
+      username: prometheus
+      password: prometheus_pei
+    static_configs:
+      - targets: ['10.255.32.56:9998']
+        labels:
+          service: 'mediamtx'
+          vm: 'MediaMTX'
+
+  # =============================================================================
+  # DATA MODULE - V_APP VM (10.255.32.70)
+  # =============================================================================
+  - job_name: 'data-module'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.70:8080']
+        labels:
+          service: 'data-module'
+          vm: 'V_APP'
+
+  # =============================================================================
+  # API GATEWAY - V_APP VM (10.255.32.70)
+  # =============================================================================
+  - job_name: 'api-gateway'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.70:8000']
+        labels:
+          service: 'api-gateway'
+          vm: 'V_APP'
+
+  # =============================================================================
+  # DECISION ENGINE - V_APP VM (10.255.32.70)
+  # =============================================================================
+  - job_name: 'decision-engine'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.70:8001']
+        labels:
+          service: 'decision-engine'
+          vm: 'V_APP'
+
+  # =============================================================================
+  # INFRACTION ENGINE - V_APP VM (10.255.32.70)
+  # =============================================================================
+  - job_name: 'infraction-engine'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.70:8002']
+        labels:
+          service: 'infraction-engine'
+          vm: 'V_APP'
+
+  # =============================================================================
+  # V_BRAIN ORCHESTRATOR - V_APP VM (10.255.32.70)
+  # =============================================================================
+  - job_name: 'v-brain'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.70:8004']
+        labels:
+          service: 'v-brain'
+          vm: 'V_APP'
+
+  # =============================================================================
+  # DATABASE EXPORTERS - V_APP VM (10.255.32.70)
+  # =============================================================================
+  - job_name: 'postgres-exporter'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.70:9187']
+        labels:
+          service: 'postgres-exporter'
+          vm: 'V_APP'
+
+  - job_name: 'mongodb-exporter'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.70:9216']
+        labels:
+          service: 'mongodb-exporter'
+          vm: 'V_APP'
+
+  - job_name: 'redis-exporter'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.70:9121']
+        labels:
+          service: 'redis-exporter'
+          vm: 'V_APP'
+
+  # =============================================================================
+  # ML AGENTS - IA_APP VM (10.255.32.110)
+  # =============================================================================
+  - job_name: 'agent-a'
+    metrics_path: /metrics
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['10.255.32.110:8000']
+        labels:
+          service: 'agent-a'
+          type: 'ml-agent'
+          vm: 'IA_APP'
+
+  - job_name: 'agent-b'
+    metrics_path: /metrics
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['10.255.32.110:8001']
+        labels:
+          service: 'agent-b'
+          type: 'ml-agent'
+          vm: 'IA_APP'
+
+  - job_name: 'agent-c'
+    metrics_path: /metrics
+    scrape_interval: 30s
+    static_configs:
+      - targets: ['10.255.32.110:8002']
+        labels:
+          service: 'agent-c'
+          type: 'ml-agent'
+          vm: 'IA_APP'
+
+  # =============================================================================
+  # KAFKA EXPORTER - IA_APP VM (10.255.32.110)
+  # =============================================================================
+  - job_name: 'kafka'
+    static_configs:
+      - targets: ['10.255.32.110:9308']
+        labels:
+          service: 'kafka'
+          vm: 'IA_APP'
+
+  # =============================================================================
+  # AI GATEWAY - IA_APP VM (10.255.32.110)
+  # =============================================================================
+  - job_name: 'ai-gateway'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.110:8003']
+        labels:
+          service: 'ai-gateway'
+          vm: 'IA_APP'
+
+  # =============================================================================
+  # OUTBOX WORKER - V_APP VM (10.255.32.70)
+  # =============================================================================
+  - job_name: 'outbox-worker'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.70:9101']
+        labels:
+          service: 'outbox-worker'
+          vm: 'V_APP'
+
+  # =============================================================================
+  # V GATEWAY - V_APP VM (10.255.32.70)
+  # =============================================================================
+  - job_name: 'v-gateway'
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['10.255.32.70:8003']
+        labels:
+          service: 'v-gateway'
+          vm: 'V_APP'

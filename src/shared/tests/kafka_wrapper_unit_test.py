@@ -92,10 +92,11 @@ class TestKafkaProducerWrapper:
             # Assert
             mock_producer.poll.assert_called_once_with(0)
 
-    def test_produce_handles_exception(self):
-        """Produce handles exception gracefully."""
+    def test_produce_raises_on_kafka_exception(self):
+        """Produce raises KafkaException when broker call fails."""
         # Arrange
-        with patch("kafka_wrapper.Producer") as MockProducer:
+        with patch("kafka_wrapper.Producer") as MockProducer, \
+             patch("kafka_wrapper.KafkaException", Exception):
             mock_producer = MagicMock()
             MockProducer.return_value = mock_producer
             mock_producer.produce.side_effect = Exception("Kafka error")
@@ -103,10 +104,23 @@ class TestKafkaProducerWrapper:
             from kafka_wrapper import KafkaProducerWrapper
             wrapper = KafkaProducerWrapper("localhost:9092")
 
-            # Act - should not raise
-            wrapper.produce("topic", {"test": "data"})
+            # Act & Assert
+            with pytest.raises(Exception):
+                wrapper.produce("topic", {"test": "data"})
 
-            # Assert - no exception raised
+    def test_produce_raises_on_non_serializable_data(self):
+        """Produce raises TypeError when data is not JSON-serializable."""
+        # Arrange
+        with patch("kafka_wrapper.Producer") as MockProducer:
+            mock_producer = MagicMock()
+            MockProducer.return_value = mock_producer
+
+            from kafka_wrapper import KafkaProducerWrapper
+            wrapper = KafkaProducerWrapper("localhost:9092")
+
+            # Act & Assert
+            with pytest.raises(TypeError):
+                wrapper.produce("topic", {"bad": object()})  # object() is not serializable
 
     def test_flush_calls_producer_flush(self):
         """Flush method calls producer flush with timeout."""
@@ -374,6 +388,7 @@ class TestKafkaConsumerWrapper:
             mock_msg.error.return_value = None
             mock_msg.value.return_value = json.dumps({"key": "value"}).encode()
             mock_msg.headers.return_value = [("other_header", b"value")]
+            mock_msg.topic.return_value = "test-topic"
             
             from kafka_wrapper import KafkaConsumerWrapper
             wrapper = KafkaConsumerWrapper("localhost:9092", "group", ["topic"])
@@ -398,7 +413,7 @@ class TestKafkaConsumerWrapper:
             headers = [("truck_id", b"TRUCK456")]
 
             # Act
-            result = wrapper._extract_truck_id_from_headers(headers)
+            result = wrapper.extract_truck_id_from_headers(headers)
 
             # Assert
             assert result == "TRUCK456"
@@ -415,7 +430,7 @@ class TestKafkaConsumerWrapper:
             headers = [("truckId", b"TRUCK789")]
 
             # Act
-            result = wrapper._extract_truck_id_from_headers(headers)
+            result = wrapper.extract_truck_id_from_headers(headers)
 
             # Assert
             assert result == "TRUCK789"
@@ -432,7 +447,7 @@ class TestKafkaConsumerWrapper:
             headers = [("truckId", "STRING-TRUCK")]  # String, not bytes
 
             # Act
-            result = wrapper._extract_truck_id_from_headers(headers)
+            result = wrapper.extract_truck_id_from_headers(headers)
 
             # Assert
             assert result == "STRING-TRUCK"
@@ -448,7 +463,7 @@ class TestKafkaConsumerWrapper:
             wrapper = KafkaConsumerWrapper("localhost:9092", "group", ["topic"])
 
             # Act
-            result = wrapper._extract_truck_id_from_headers([])
+            result = wrapper.extract_truck_id_from_headers([])
 
             # Assert
             assert result is None
@@ -464,7 +479,7 @@ class TestKafkaConsumerWrapper:
             wrapper = KafkaConsumerWrapper("localhost:9092", "group", ["topic"])
 
             # Act
-            result = wrapper._extract_truck_id_from_headers(None)
+            result = wrapper.extract_truck_id_from_headers(None)
 
             # Assert
             assert result is None

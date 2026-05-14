@@ -1,84 +1,106 @@
 #!/bin/bash
-# Run all unit tests and generate coverage report for SonarQube
+# Run all unit tests and generate coverage reports for SonarQube
 # Usage: ./run_tests.sh
 
 set -e
 
 # Define root directory
-ROOT_DIR="$(dirname "$0")"
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT_DIR"
 
-# Activate virtual environment
-if [ -d ".venv" ]; then
-    echo "Activating virtual environment..."
-    source .venv/bin/activate
-else
-    echo "Warning: .venv not found."
+# Set up and activate virtual environment
+if [ ! -d ".venv" ] || [ ! -f ".venv/bin/pip" ]; then
+    echo "Creating virtual environment..."
+    python3 -m venv .venv
 fi
+
+echo "Activating virtual environment..."
+source .venv/bin/activate
+
+# Ensure test dependencies are installed
+if ! python -m pytest --version &>/dev/null; then
+    echo "Installing test dependencies..."
+    pip install --quiet pytest pytest-cov pytest-mock
+fi
+
+# Install all module requirements (skips if already satisfied)
+echo "Installing project dependencies..."
+find src/ -name "requirements.txt" -print0 | while IFS= read -r -d '' req; do
+    pip install --quiet -r "$req" 2>/dev/null || true
+done
 
 echo "========================================="
 echo "   Running IntelligentLogistics Tests    "
 echo "========================================="
 
-# Clean previous coverage data
-echo "Cleaning previous coverage..."
-coverage erase
+# Clean previous coverage reports
+echo "Cleaning previous coverage reports..."
+rm -f coverage.xml .coverage .coverage.*
 
-# Run pytest on the src directory
-# We exclude integration tests that might require Docker
-# We include --cov flags to generate XML for Sonar
-echo "Executing tests..."
+export PYTHONPATH="${ROOT_DIR}/src:${PYTHONPATH}"
 
-# Run pytest on specific working directories
-# Excludes Data_Module and api_gateway due to missing dependencies/environment
-echo "Executing tests..."
-
-# Run pytest per module to ensure correct import resolution and coverage
-# We run tests in their respective directories but aggregate coverage reports
-
-export PYTHONPATH=$PYTHONPATH:"$(pwd)/src"
+FAILED=0
 
 run_module_test() {
     MODULE_PATH=$1
-    REPORT_NAME=$2
-    
+
     if [ -d "$MODULE_PATH" ]; then
+        echo ""
         echo ">>> Testing $MODULE_PATH..."
-        cd "$MODULE_PATH"
+
         # Determine coverage target (src vs .)
-        if [ -d "src" ]; then
+        if [ -d "$MODULE_PATH/src" ]; then
             COV_TARGET="src"
         else
             COV_TARGET="."
         fi
-        
-        # Run pytest
-        # We allow failure if user requested "all available" but we want to fail on critical ones?
-        # Ideally we fail if any fail.
+
+        # Run pytest and collect coverage data (no XML yet – combined later)
         python -m pytest \
-            --cov="$COV_TARGET" \
-            --cov-report=xml:../../$REPORT_NAME \
+            "$MODULE_PATH" \
+            --cov="$MODULE_PATH/$COV_TARGET" \
+            --cov-append \
             --cov-report=term \
-            -v || exit 1
-            
-        cd - > /dev/null
+            -v || FAILED=1
     else
-        echo "Warning: $MODULE_PATH not found."
+        echo "Warning: $MODULE_PATH not found, skipping."
     fi
 }
 
-echo "Executing tests..."
-run_module_test "src/shared" "coverage-shared.xml"
-run_module_test "src/decision_engine" "coverage-decision.xml"
-run_module_test "src/agentA" "coverage-agentA.xml"
-run_module_test "src/agentB" "coverage-agentB.xml"
-run_module_test "src/agentC" "coverage-agentC.xml"
-run_module_test "src/broker" "coverage-broker.xml"
+echo ""
+echo "--- Cross-Application Shared ---"
+run_module_test "src/shared"
 
-echo "========================================="
-echo "   Tests Complete! Reports generated.    "
-echo "========================================="
+echo ""
+echo "--- AI_APP Modules ---"
+run_module_test "src/AI_APP/shared"
+run_module_test "src/AI_APP/agentA"
+run_module_test "src/AI_APP/agentB"
+run_module_test "src/AI_APP/agentC"
+#run_module_test "src/AI_APP/broker"
+run_module_test "src/AI_APP/gateway"
 
+echo ""
+echo "--- V_APP Modules ---"
+run_module_test "src/V_APP/decision_engine"
+run_module_test "src/V_APP/infraction_engine"
+run_module_test "src/V_APP/shared"
+run_module_test "src/V_APP/gateway"
+run_module_test "src/V_APP/v_brain"
+#run_module_test "src/V_APP/api_gateway"
+
+# Generate a single combined coverage XML for SonarQube
+echo ""
+echo "Generating combined coverage.xml..."
+python -m coverage xml -o coverage.xml
+
+echo ""
 echo "========================================="
-echo "   Tests Complete! Coverage generated.   "
-echo "========================================="
+if [ $FAILED -ne 0 ]; then
+    echo "   Some tests FAILED! See above.        "
+    echo "========================================="
+    exit 1
+else
+    echo "   All tests passed! Reports generated.  "
+    echo "========================================="
+fi

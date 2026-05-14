@@ -1,0 +1,33 @@
+[project]
+name = "intelligentlogistics"
+version = "0.0.0"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+python_files = ["test_*.py", "*_unitTest.py", "*_unit_test.py", "*_integrationTest.py", "*_integration_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+testpaths = ["src"]
+addopts = "-m 'not integration'"
+markers = [
+    "integration: marks tests as integration tests (require running services)",
+    "integration_system: marks end-to-end system integration tests",
+    "integration_model: marks model validation/inference integration tests",
+    "unit: marks tests as unit tests (mocked)",
+]
+
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]
