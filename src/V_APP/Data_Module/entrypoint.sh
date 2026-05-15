@@ -46,7 +46,21 @@ else
   echo "No triggers.sql found, skipping..."
 fi
 
-# Step 3: Seed data (trigger fires on INSERT, arrival_id is generated)
+# Step 3: Apply indexes
+echo "Running indexes migration..."
+if [[ -f "scripts/indexes.sql" ]]; then
+  PGPASSWORD=${POSTGRES_PASSWORD} psql -h ${POSTGRES_HOST:-postgres} -p ${POSTGRES_PORT:-5432} -U ${POSTGRES_USER} -d ${POSTGRES_DB} -v ON_ERROR_STOP=1 -f scripts/indexes.sql
+  if [[ $? -eq 0 ]]; then
+    echo "Indexes migration completed successfully"
+  else
+    echo "Indexes migration failed"
+    exit 1
+  fi
+else
+  echo "No indexes.sql found, skipping..."
+fi
+
+# Step 4: Seed data (trigger fires on INSERT, arrival_id is generated)
 echo "Running database initialization (DATA_INIT_MODE=${DATA_INIT_MODE:-demo})..."
 python scripts/data_init_base.py --mode ${DATA_INIT_MODE:-demo}
 if [[ $? -eq 0 ]]; then

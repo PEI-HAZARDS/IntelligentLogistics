@@ -12,6 +12,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from sqlalchemy import create_engine
 from infrastructure.persistence.sql_models import Base
+import infrastructure.persistence.inbox_outbox_models  # noqa: F401 — registers InboxEvent/OutboxEvent in Base.metadata
 
 if __name__ == "__main__":
     DATABASE_URL = os.getenv("DATABASE_URL")

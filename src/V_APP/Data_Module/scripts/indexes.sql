@@ -151,26 +151,61 @@ ON booking(direction);
 -- 8. SHIFT ALERT HISTORY INDEXES
 -- ============================================================
 
--- Index for alert history by alert
-CREATE INDEX IF NOT EXISTS idx_shift_alert_history_alert 
+CREATE INDEX IF NOT EXISTS idx_shift_alert_history_alert
 ON shift_alert_history(alert_id);
 
--- Composite index for shift composite FK
-CREATE INDEX IF NOT EXISTS idx_shift_alert_history_shift 
+CREATE INDEX IF NOT EXISTS idx_shift_alert_history_shift
 ON shift_alert_history(shift_gate_id, shift_type, shift_date);
 
 
 -- ============================================================
--- USAGE NOTES:
+-- 9. DRIVER VEHICLE INDEXES (BR-52)
 -- ============================================================
--- To apply these indexes:
---   psql -U <user> -d <database> -f indexes.sql
---
--- To verify indexes were created:
---   SELECT indexname, tablename FROM pg_indexes 
---   WHERE schemaname = 'public' ORDER BY tablename;
---
--- To check query performance:
---   EXPLAIN ANALYZE SELECT * FROM appointment 
---   WHERE gate_in_id = 1 AND status IN ('in_transit', 'delayed');
+
+CREATE INDEX IF NOT EXISTS idx_driver_vehicle_driver ON driver_vehicle(driver_license);
+CREATE INDEX IF NOT EXISTS idx_driver_vehicle_truck  ON driver_vehicle(truck_license_plate);
+CREATE INDEX IF NOT EXISTS idx_driver_vehicle_active ON driver_vehicle(driver_license)
+    WHERE end_date IS NULL;
+
+
 -- ============================================================
+-- 10. PENDING REVIEWS INDEXES (PD-01)
+-- ============================================================
+
+CREATE INDEX IF NOT EXISTS idx_pending_reviews_status  ON pending_reviews(status) WHERE status = 'PENDING';
+CREATE INDEX IF NOT EXISTS idx_pending_reviews_truck   ON pending_reviews(truck_id);
+CREATE INDEX IF NOT EXISTS idx_pending_reviews_gate    ON pending_reviews(gate_id);
+CREATE INDEX IF NOT EXISTS idx_pending_reviews_created ON pending_reviews(created_at);
+
+
+-- ============================================================
+-- 11. INBOX / OUTBOX WORKER POLLING INDEXES
+-- ============================================================
+
+CREATE INDEX IF NOT EXISTS idx_inbox_event_id   ON inbox_events(event_id);
+CREATE INDEX IF NOT EXISTS idx_inbox_status_id  ON inbox_events(status, id)
+    WHERE status IN ('RECEIVED', 'PROCESSING', 'FAILED');
+
+CREATE INDEX IF NOT EXISTS idx_outbox_event_id    ON outbox_events(event_id);
+CREATE INDEX IF NOT EXISTS idx_outbox_status_retry ON outbox_events(status, id)
+    WHERE status IN ('PENDING', 'FAILED');
+CREATE INDEX IF NOT EXISTS idx_outbox_next_retry  ON outbox_events(next_retry_at)
+    WHERE status = 'FAILED' AND next_retry_at IS NOT NULL;
+
+
+-- ============================================================
+-- 12. COMPOSITE INDEXES — hot query paths (stress-test identified)
+-- ============================================================
+
+-- /arrivals/query/license-plate: plate + status + ORDER BY time in one scan
+CREATE INDEX IF NOT EXISTS idx_appointment_plate_status_time
+    ON appointment(truck_license_plate, status, scheduled_start_time DESC);
+
+-- get_appointments_for_decision: timestamp range (.between) + status + gate
+-- (the DATE functional index on gate_status_date does not help for timestamp ranges)
+CREATE INDEX IF NOT EXISTS idx_appointment_gate_status_time
+    ON appointment(gate_in_id, status, scheduled_start_time);
+
+-- /drivers/claim: full WHERE (booking_reference, arrival_id, status) in one index scan
+CREATE INDEX IF NOT EXISTS idx_appointment_claim
+    ON appointment(booking_reference, arrival_id, status);
