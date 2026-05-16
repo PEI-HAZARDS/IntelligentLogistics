@@ -24,8 +24,17 @@ Environment variables:
     PG_HOST      default: localhost
     PG_PORT      default: 5432
     PG_USER      default: pei_user
-    PG_PASSWORD  default: peiHazards**
+    PG_PASSWORD  required — no default. Use the value from src/V_APP/.env (POSTGRES_PASSWORD).
     PG_DB        default: IntelligentLogistics
+
+Note: src/V_APP/.env is only loaded by docker-compose, not by this script.
+Export the variables manually before running:
+
+    export PG_PASSWORD=$(grep POSTGRES_PASSWORD src/V_APP/.env | cut -d= -f2)
+    python scripts/pg_slow_queries.py
+
+    # Against the stress-test VM:
+    PG_HOST=<vm-ip> PG_PASSWORD=<password> python scripts/pg_slow_queries.py
 """
 
 import os
@@ -36,7 +45,7 @@ import psycopg2
 PG_HOST = os.getenv("PG_HOST", "localhost")
 PG_PORT = int(os.getenv("PG_PORT", "5432"))
 PG_USER = os.getenv("PG_USER", "pei_user")
-PG_PASSWORD = os.getenv("PG_PASSWORD", "peiHazards**")
+PG_PASSWORD = os.getenv("PG_PASSWORD", "")
 PG_DB = os.getenv("PG_DB", "IntelligentLogistics")
 
 # Key queries to EXPLAIN ANALYZE in fallback mode
