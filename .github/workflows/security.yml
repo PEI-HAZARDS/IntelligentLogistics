@@ -62,7 +62,7 @@ jobs:
         if: always()
         with:
           slack_token: ${{ secrets.SLACK_BOT_TOKEN }}
-          channels: ${{ secrets.SLACK_CHANNEL_ID }}
+          channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
           file_path: 'bandit-results.txt'
           initial_comment: 'Bandit Security Report for ${{ github.repository }} (${{ github.ref_name }})'
 
@@ -161,7 +161,7 @@ jobs:
         if: always()
         with:
           slack_token: ${{ secrets.SLACK_BOT_TOKEN }}
-          channels: ${{ secrets.SLACK_CHANNEL_ID }}
+          channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
           file_path: 'pip-audit-results.txt'
           initial_comment: 'pip-audit Security Report for ${{ github.repository }} (${{ github.ref_name }})'
 
