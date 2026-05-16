@@ -57,6 +57,19 @@ jobs:
           path: bandit-results.txt
           retention-days: 30
 
+      - name: Prepare report content for Slack
+        id: get_report
+        if: always()
+        # Read the first 2000 characters to stay within Slack's limits,
+        # then use jq to safely escape newlines and quotes for JSON insertion.
+        run: |
+          REPORT=$(head -c 2000 bandit-results.txt)
+          ESCAPED_REPORT=$(jq -Rs '.' <<< "$REPORT")
+          # jq adds surrounding quotes which we remove so we can place it inside our own string
+          ESCAPED_REPORT="${ESCAPED_REPORT%\"}"
+          ESCAPED_REPORT="${ESCAPED_REPORT#\"}"
+          echo "content=$ESCAPED_REPORT" >> $GITHUB_OUTPUT
+
       - name: Notify Slack - Bandit success
         if: success() && env.BANDIT_FAILED != 'true'
         uses: slackapi/slack-github-action@v2
@@ -68,6 +81,7 @@ jobs:
               "attachments": [{
                 "color": "good",
                 "title": "✅ Bandit - No issues found",
+                "text": "```\n${{ steps.get_report.outputs.content }}\n```",
                 "fields": [
                   { "title": "Repository", "value": "${{ github.repository }}", "short": true },
                   { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
@@ -89,6 +103,7 @@ jobs:
               "attachments": [{
                 "color": "danger",
                 "title": "🚨 Bandit - Security issues detected",
+                "text": "```\n${{ steps.get_report.outputs.content }}\n```",
                 "fields": [
                   { "title": "Repository", "value": "${{ github.repository }}", "short": true },
                   { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
@@ -147,6 +162,16 @@ jobs:
         if: github.event_name == 'schedule' && env.PIP_AUDIT_FAILED == 'true'
         run: exit 1
 
+      - name: Prepare report content for Slack
+        id: get_report
+        if: always()
+        run: |
+          REPORT=$(head -c 2000 pip-audit-results.txt)
+          ESCAPED_REPORT=$(jq -Rs '.' <<< "$REPORT")
+          ESCAPED_REPORT="${ESCAPED_REPORT%\"}"
+          ESCAPED_REPORT="${ESCAPED_REPORT#\"}"
+          echo "content=$ESCAPED_REPORT" >> $GITHUB_OUTPUT
+
       - name: Notify Slack - pip-audit success
         if: success() && env.PIP_AUDIT_FAILED != 'true'
         uses: slackapi/slack-github-action@v2
@@ -158,6 +183,7 @@ jobs:
               "attachments": [{
                 "color": "good",
                 "title": "✅ pip-audit - No vulnerabilities found",
+                "text": "```\n${{ steps.get_report.outputs.content }}\n```",
                 "fields": [
                   { "title": "Repository", "value": "${{ github.repository }}", "short": true },
                   { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
@@ -179,6 +205,7 @@ jobs:
               "attachments": [{
                 "color": "danger",
                 "title": "🚨 pip-audit - Vulnerabilities detected",
+                "text": "```\n${{ steps.get_report.outputs.content }}\n```",
                 "fields": [
                   { "title": "Repository", "value": "${{ github.repository }}", "short": true },
                   { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
