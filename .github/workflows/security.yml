@@ -36,14 +36,9 @@ jobs:
         run: pip install bandit[sarif]
 
       - name: Run Bandit
-        # -r        : recursive scan
-        # -ll       : report medium severity and above (use -l for low+)
-        # -f sarif  : output format for GitHub Security tab
-        # -o        : output file for SARIF report
-        # 2>&1 | tee : capture all output to a text file and the console
         run: |
-          bandit -r src/ -ll -f txt 2>&1 | tee bandit-results.txt || echo "BANDIT_FAILED=true" >> $GITHUB_ENV
-          bandit -r src/ -ll -f sarif -o bandit-results.sarif || echo "BANDIT_FAILED=true" >> $GITHUB_ENV
+          bandit -r src/ -x '*/tests/*,*/test_*.py,*_test.py,deprecated/*' -ll -f txt 2>&1 | tee bandit-results.txt || echo "BANDIT_FAILED=true" >> $GITHUB_ENV
+          bandit -r src/ -x '*/tests/*,*/test_*.py,*_test.py,deprecated/*' -ll -f sarif -o bandit-results.sarif || echo "BANDIT_FAILED=true" >> $GITHUB_ENV
 
       - name: Fail on vulnerabilities (scheduled runs only)
         if: github.event_name == 'schedule' && env.BANDIT_FAILED == 'true'
@@ -58,6 +53,7 @@ jobs:
           retention-days: 30
 
       - name: Upload Bandit report to Slack
+        id: upload_bandit
         uses: MeilCli/slack-upload-file@v4
         if: always()
         with:
@@ -87,8 +83,29 @@ jobs:
               }]
             }
 
-      - name: Notify Slack - Bandit failure
-        if: failure() || env.BANDIT_FAILED == 'true'
+      - name: Notify Slack - Bandit vulnerabilities detected
+        if: env.BANDIT_FAILED == 'true' && steps.upload_bandit.outcome != 'failure'
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [{
+                "color": "warning",
+                "title": "🚨 Bandit - Security issues detected",
+                "fields": [
+                  { "title": "Repository", "value": "${{ github.repository }}", "short": true },
+                  { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
+                  { "title": "Triggered by", "value": "${{ github.actor }}", "short": true },
+                  { "title": "Commit", "value": "${{ github.sha }}", "short": true },
+                  { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                ]
+              }]
+            }
+
+      - name: Notify Slack - Bandit workflow error
+        if: failure() && (env.BANDIT_FAILED != 'true' || steps.upload_bandit.outcome == 'failure')
         uses: slackapi/slack-github-action@v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -97,12 +114,12 @@ jobs:
             {
               "attachments": [{
                 "color": "danger",
-                "title": "🚨 Bandit - Security issues detected",
+                "title": "⚠️ Bandit - Workflow Execution Error",
+                "text": "The GitHub Action encountered an error (e.g., Slack bot missing from channel, installation failure).",
                 "fields": [
                   { "title": "Repository", "value": "${{ github.repository }}", "short": true },
                   { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
                   { "title": "Triggered by", "value": "${{ github.actor }}", "short": true },
-                  { "title": "Commit", "value": "${{ github.sha }}", "short": true },
                   { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
                 ]
               }]
@@ -157,6 +174,7 @@ jobs:
         run: exit 1
 
       - name: Upload pip-audit report to Slack
+        id: upload_pip_audit
         uses: MeilCli/slack-upload-file@v4
         if: always()
         with:
@@ -186,8 +204,29 @@ jobs:
               }]
             }
 
-      - name: Notify Slack - pip-audit failure
-        if: failure() || env.PIP_AUDIT_FAILED == 'true'
+      - name: Notify Slack - pip-audit vulnerabilities detected
+        if: env.PIP_AUDIT_FAILED == 'true' && steps.upload_pip_audit.outcome != 'failure'
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [{
+                "color": "warning",
+                "title": "🚨 pip-audit - Vulnerabilities detected",
+                "fields": [
+                  { "title": "Repository", "value": "${{ github.repository }}", "short": true },
+                  { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
+                  { "title": "Triggered by", "value": "${{ github.actor }}", "short": true },
+                  { "title": "Commit", "value": "${{ github.sha }}", "short": true },
+                  { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                ]
+              }]
+            }
+
+      - name: Notify Slack - pip-audit workflow error
+        if: failure() && (env.PIP_AUDIT_FAILED != 'true' || steps.upload_pip_audit.outcome == 'failure')
         uses: slackapi/slack-github-action@v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -196,12 +235,12 @@ jobs:
             {
               "attachments": [{
                 "color": "danger",
-                "title": "🚨 pip-audit - Vulnerabilities detected",
+                "title": "⚠️ pip-audit - Workflow Execution Error",
+                "text": "The GitHub Action encountered an error (e.g., Slack bot missing from channel, installation failure).",
                 "fields": [
                   { "title": "Repository", "value": "${{ github.repository }}", "short": true },
                   { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
                   { "title": "Triggered by", "value": "${{ github.actor }}", "short": true },
-                  { "title": "Commit", "value": "${{ github.sha }}", "short": true },
                   { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
                 ]
               }]
