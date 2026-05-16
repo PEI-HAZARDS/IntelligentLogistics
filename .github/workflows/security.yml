@@ -42,8 +42,12 @@ jobs:
         # -o        : output file for SARIF report
         # 2>&1 | tee : capture all output to a text file and the console
         run: |
-          bandit -r src/ -l -f txt 2>&1 | tee bandit-results.txt || true
-          bandit -r src/ -l -f sarif -o bandit-results.sarif || true
+          bandit -r src/ -ll -f txt 2>&1 | tee bandit-results.txt || echo "BANDIT_FAILED=true" >> $GITHUB_ENV
+          bandit -r src/ -ll -f sarif -o bandit-results.sarif || echo "BANDIT_FAILED=true" >> $GITHUB_ENV
+
+      - name: Fail on vulnerabilities (scheduled runs only)
+        if: github.event_name == 'schedule' && env.BANDIT_FAILED == 'true'
+        run: exit 1
 
       - name: Upload Bandit report as artifact
         uses: actions/upload-artifact@v4.3.0
@@ -54,7 +58,7 @@ jobs:
           retention-days: 30
 
       - name: Notify Slack - Bandit success
-        if: success()
+        if: success() && env.BANDIT_FAILED != 'true'
         uses: slackapi/slack-github-action@v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -75,7 +79,7 @@ jobs:
             }
 
       - name: Notify Slack - Bandit failure
-        if: failure()
+        if: failure() || env.BANDIT_FAILED == 'true'
         uses: slackapi/slack-github-action@v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -125,10 +129,9 @@ jobs:
 
       - name: Run pip-audit
         # Prints a human-readable table to the log and saves it as an artifact
-        # || true keeps the job green on push/PR so the artifact upload always runs;
-        # vulnerabilities are visible in the logs and the uploaded report
+        # The env var keeps track of failure so notifications are correct.
         run: |
-          pip-audit 2>&1 | tee pip-audit-results.txt || true
+          pip-audit 2>&1 | tee pip-audit-results.txt || echo "PIP_AUDIT_FAILED=true" >> $GITHUB_ENV
 
       - name: Upload pip-audit report as artifact
         uses: actions/upload-artifact@v4.3.0
@@ -141,11 +144,11 @@ jobs:
       # Scheduled runs: fail the job explicitly if vulnerabilities are found
       # so that a nightly failure shows up as a red check on the repo
       - name: Fail on vulnerabilities (scheduled runs only)
-        if: github.event_name == 'schedule'
-        run: pip-audit
+        if: github.event_name == 'schedule' && env.PIP_AUDIT_FAILED == 'true'
+        run: exit 1
 
       - name: Notify Slack - pip-audit success
-        if: success()
+        if: success() && env.PIP_AUDIT_FAILED != 'true'
         uses: slackapi/slack-github-action@v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -166,7 +169,7 @@ jobs:
             }
 
       - name: Notify Slack - pip-audit failure
-        if: failure()
+        if: failure() || env.PIP_AUDIT_FAILED == 'true'
         uses: slackapi/slack-github-action@v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
