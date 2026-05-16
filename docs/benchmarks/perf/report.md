@@ -88,21 +88,97 @@ Source: `gw_report.html` — 2026-05-11 21:39–21:44 UTC, host `http://10.255.3
 
 The single login failure (1/44, 2.3 %) was a Keycloak transient 401 already retried by `_login()` in [load_test.py:51-71](../../../src/V_APP/api_gateway/tests/load_test.py#L51-L71); attributable to Keycloak ROPC under cold cache, not application code.
 
-## Slow query analysis (PostgreSQL)
+## Slow query analysis & cache/index optimisation cycle (PostgreSQL)
 
-Run via [pg_slow_queries.py](../../../src/V_APP/Data_Module/scripts/pg_slow_queries.py) against `pg_stat_statements` immediately after the load run:
+This is the **measure → identify → optimise → re-measure** loop that closes
+slide point 3 (*"Identificação de queries lentas e respetiva otimização —
+adição de índices, caching"*).
+
+### Baseline already in place
+
+- 176 lines of indexes defined in [`indexes.sql`](../../../src/V_APP/Data_Module/scripts/indexes.sql)
+  (appointment by gate / status / scheduled_date / composite gate+status+date,
+  plus indexes on visit, decision_audit, alert, container, hazard_inbox).
+- Redis caching with explicit TTLs on hot read paths:
+  arrivals stats, decision cache, driver active appointment, alerts list/detail,
+  pipeline stats — see [`infrastructure/persistence/redis.py`](../../../src/V_APP/Data_Module/infrastructure/persistence/redis.py).
+- `pg_stat_statements` enabled in [`docker-compose.yml:7-8`](../../../src/V_APP/docker-compose.yml#L7-L8)
+  with `shared_preload_libraries` + `track=all` — counters start collecting on container start.
+
+### Step 1 — capture (next run)
 
 ```bash
-PG_HOST=10.255.32.70 python src/V_APP/Data_Module/scripts/pg_slow_queries.py --reset  # before
-# ...run load test...
-PG_HOST=10.255.32.70 python src/V_APP/Data_Module/scripts/pg_slow_queries.py          # after
+# Before the load run: zero the counters so the window is clean
+PG_HOST=10.255.32.70 python src/V_APP/Data_Module/scripts/pg_slow_queries.py --reset
+
+# Run the load test (5 min — see "How to reproduce")
+locust -f src/V_APP/Data_Module/tests/load_test.py --host=$VM_HOST:8080 \
+       --headless -u 50 -r 5 --run-time 5m \
+       --html docs/benchmarks/perf/dm_report.html
+
+# Immediately after: dump the top slow queries + seq-scan / idx-usage stats
+PG_HOST=10.255.32.70 python src/V_APP/Data_Module/scripts/pg_slow_queries.py \
+       | tee docs/benchmarks/perf/pg_slow_queries_before.txt
 ```
 
-| Query (abbreviated) | Calls | Mean (ms) | Total (ms) | Optimisation applied |
-|--------------------|-------|-----------|------------|----------------------|
-| _to be captured during the 2x replica re-run_ | | | | |
+### Step 2 — identify (template)
 
-> The 1-replica run did not capture `pg_stat_statements` output; PG had just been restarted with `shared_preload_libraries=pg_stat_statements` (docker-compose.yml:7-8) and counters had been collecting from cold start. Capture in the next run.
+Fill from the script output above.
+
+**Top queries by mean execution time:**
+
+| Query (first 80 chars) | Calls | Mean (ms) | Total (ms) | % of total |
+|------------------------|------:|----------:|-----------:|-----------:|
+| _from `pg_slow_queries.py` output_ | | | | |
+
+**Top queries by total time (overall impact):**
+
+| Query | Calls | Mean (ms) | Total (ms) | % of total |
+|-------|------:|----------:|-----------:|-----------:|
+| _from `pg_slow_queries.py` output_ | | | | |
+
+**Sequential-scan candidates (missing index suspects):**
+
+| Table | seq_scan | idx_scan | seq_tup_read | Live rows |
+|-------|---------:|---------:|-------------:|----------:|
+| _from `pg_slow_queries.py` output_ | | | | |
+
+### Step 3 — diagnose & optimise
+
+For each top-N query in the table above, decide which lever applies:
+
+| Symptom | Lever | Where |
+|---------|-------|-------|
+| Same query repeated many times with `WHERE id = ?` (different ids) and short mean time | **N+1** — add eager-load (`selectinload` / `joinedload`) on the originating ORM relation | `application/queries/*.py` |
+| One slow query, `Seq Scan` in the plan, on a table with > 10k rows | **Missing index** — add to `scripts/indexes.sql`, run on next container restart | `scripts/indexes.sql` |
+| High-traffic read endpoint with deterministic short-window result (e.g. dashboard stats) | **Add Redis cache** with TTL between 5 s and 60 s | `infrastructure/persistence/redis.py` + use-site |
+| Slow plan despite index, because of expression like `DATE(scheduled_start_time)` | **Functional index** (already done for that one column — check others) | `scripts/indexes.sql` |
+
+### Step 4 — re-measure
+
+```bash
+# Wipe counters + restart Data Module (so new index/cache code is loaded)
+PG_HOST=10.255.32.70 python src/V_APP/Data_Module/scripts/pg_slow_queries.py --reset
+docker-compose -f src/V_APP/docker-compose.yml restart data-module
+
+# Same load profile, separate HTML
+locust -f src/V_APP/Data_Module/tests/load_test.py --host=$VM_HOST:8080 \
+       --headless -u 50 -r 5 --run-time 5m \
+       --html docs/benchmarks/perf/dm_report_optimised.html
+
+PG_HOST=10.255.32.70 python src/V_APP/Data_Module/scripts/pg_slow_queries.py \
+       | tee docs/benchmarks/perf/pg_slow_queries_after.txt
+```
+
+### Before / after (to be filled)
+
+| Endpoint | p95 baseline | p95 optimised | Δ | Optimisation applied |
+|----------|-------------:|--------------:|--:|----------------------|
+| /arrivals (default) | 410 ms | _pending_ | _pending_ | _pending_ |
+| /arrivals/:id | 270 ms | _pending_ | _pending_ | _pending_ |
+| /arrivals/stats | 250 ms | _pending_ | _pending_ | _pending_ |
+| /statistics/summary | 310 ms | _pending_ | _pending_ | _pending_ |
+| /decisions/detection-event | 220 ms | _pending_ | _pending_ | _pending_ |
 
 ## Grafana screenshots
 
