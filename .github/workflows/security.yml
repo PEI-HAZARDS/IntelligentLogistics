@@ -10,6 +10,9 @@ on:
     - cron: '0 2 * * *'   # Nightly at 02:00 UTC
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: read
   security-events: write   # Required to upload SARIF to the Security tab

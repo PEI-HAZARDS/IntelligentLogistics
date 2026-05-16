@@ -8,6 +8,9 @@ on:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   pull-requests: read # allows SonarCloud to decorate PRs with analysis results
 
@@ -45,7 +48,7 @@ jobs:
 
       - name: Analyze with SonarCloud
         # UPDATED: Using the new unified scanner action
-        uses: SonarSource/sonarqube-scan-action@v5
+        uses: SonarSource/sonarqube-scan-action@v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           # GITHUB_TOKEN is recommended for PR comments/decoration
