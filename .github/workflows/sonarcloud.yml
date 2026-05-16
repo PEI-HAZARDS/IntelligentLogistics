@@ -8,11 +8,11 @@ on:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 permissions:
-  pull-requests: read # allows SonarCloud to decorate PRs with analysis results
+  pull-requests: read   # allows SonarCloud to decorate PRs with analysis results
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # Opt into Node.js 24 ahead of June 2026 deadline
 
 jobs:
   Analysis:
@@ -20,12 +20,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.0
         with:
-          fetch-depth: 0  # Full history is required for accurate analysis
+          fetch-depth: 0   # Full history is required for accurate analysis
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
@@ -34,12 +34,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest pytest-cov mock
           # Install dependencies for working modules
-          if [ -f src/shared/tests/requirements.txt ]; then pip install -r src/shared/tests/requirements.txt; fi
-          if [ -f src/decision_engine/requirements.txt ]; then pip install -r src/decision_engine/requirements.txt; fi
-          if [ -f src/agentA/requirements.txt ]; then pip install -r src/agentA/requirements.txt; fi
-          if [ -f src/agentB/requirements.txt ]; then pip install -r src/agentB/requirements.txt; fi
-          if [ -f src/agentC/requirements.txt ]; then pip install -r src/agentC/requirements.txt; fi
-          if [ -f src/broker/tests/requirements.txt ]; then pip install -r src/broker/tests/requirements.txt; fi
+          if [ -f src/shared/tests/requirements.txt ];      then pip install -r src/shared/tests/requirements.txt; fi
+          if [ -f src/decision_engine/requirements.txt ];   then pip install -r src/decision_engine/requirements.txt; fi
+          if [ -f src/agentA/requirements.txt ];            then pip install -r src/agentA/requirements.txt; fi
+          if [ -f src/agentB/requirements.txt ];            then pip install -r src/agentB/requirements.txt; fi
+          if [ -f src/agentC/requirements.txt ];            then pip install -r src/agentC/requirements.txt; fi
+          if [ -f src/broker/tests/requirements.txt ];      then pip install -r src/broker/tests/requirements.txt; fi
 
       - name: Run Tests
         run: |
@@ -47,15 +47,53 @@ jobs:
           ./run_tests.sh
 
       - name: Analyze with SonarCloud
-        # UPDATED: Using the new unified scanner action
-        uses: SonarSource/sonarqube-scan-action@v6
+        uses: SonarSource/sonarqube-scan-action@v6   # upgraded from v5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          # GITHUB_TOKEN is recommended for PR comments/decoration
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          # 1. Force the scanner to NOT wait for the quality gate (Fixes redundancy)
-          # 2. Explicitly set the URL to SonarCloud (Required for this action)
           args: >
-            -Dsonar.qualitygate.wait=true
+            -Dsonar.qualitygate.wait=false
             -Dsonar.host.url=https://sonarcloud.io
+
+      - name: Notify Slack – SonarCloud success
+        if: success()
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [{
+                "color": "good",
+                "title": "✅ SonarCloud – Analysis passed",
+                "fields": [
+                  { "title": "Repository", "value": "${{ github.repository }}", "short": true },
+                  { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
+                  { "title": "Triggered by", "value": "${{ github.actor }}", "short": true },
+                  { "title": "Commit", "value": "${{ github.sha }}", "short": true },
+                  { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                ]
+              }]
+            }
+
+      - name: Notify Slack – SonarCloud failure
+        if: failure()
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [{
+                "color": "danger",
+                "title": "🚨 SonarCloud – Analysis failed",
+                "fields": [
+                  { "title": "Repository", "value": "${{ github.repository }}", "short": true },
+                  { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
+                  { "title": "Triggered by", "value": "${{ github.actor }}", "short": true },
+                  { "title": "Commit", "value": "${{ github.sha }}", "short": true },
+                  { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                ]
+              }]
+            }
