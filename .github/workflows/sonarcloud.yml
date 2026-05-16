@@ -54,5 +54,5 @@ jobs:
           # 1. Force the scanner to NOT wait for the quality gate (Fixes redundancy)
           # 2. Explicitly set the URL to SonarCloud (Required for this action)
           args: >
-            -Dsonar.qualitygate.wait=false
+            -Dsonar.qualitygate.wait=true
             -Dsonar.host.url=https://sonarcloud.io

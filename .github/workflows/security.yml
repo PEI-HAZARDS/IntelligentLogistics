@@ -1,0 +1,100 @@
+name: Security Analysis
+
+on:
+  push:
+    branches: [ "main", "dev" ]
+  pull_request:
+    branches: [ "main", "dev" ]
+    types: [opened, synchronize, reopened]
+  schedule:
+    - cron: '0 2 * * *'   # Nightly at 02:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write   # Required to upload SARIF to the Security tab
+  pull-requests: read
+
+jobs:
+  bandit:
+    name: Bandit - Static Security Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install Bandit
+        run: pip install bandit[sarif]
+
+      - name: Run Bandit
+        # -r        : recursive scan
+        # -ll       : report medium severity and above (use -l for low+)
+        # -f sarif  : output format for GitHub Security tab
+        # -o        : output file
+        # || true   : prevent the step from failing so SARIF still gets uploaded
+        #             even when findings exist; GitHub will surface them as alerts
+        run: |
+          bandit -r src/ -ll -f sarif -o bandit-results.sarif || true
+
+      - name: Upload Bandit results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()   # Upload even if bandit found issues
+        with:
+          sarif_file: bandit-results.sarif
+          category: bandit
+
+  pip-audit:
+    name: pip-audit - Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Install project dependencies
+        # Mirror the install logic from your SonarCloud workflow so pip-audit
+        # sees the same dependency tree that your application actually uses
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f src/shared/tests/requirements.txt ];      then pip install -r src/shared/tests/requirements.txt; fi
+          if [ -f src/decision_engine/requirements.txt ];   then pip install -r src/decision_engine/requirements.txt; fi
+          if [ -f src/agentA/requirements.txt ];            then pip install -r src/agentA/requirements.txt; fi
+          if [ -f src/agentB/requirements.txt ];            then pip install -r src/agentB/requirements.txt; fi
+          if [ -f src/agentC/requirements.txt ];            then pip install -r src/agentC/requirements.txt; fi
+          if [ -f src/broker/tests/requirements.txt ];      then pip install -r src/broker/tests/requirements.txt; fi
+
+      - name: Run pip-audit
+        # --format cyclonedx-json : machine-readable output saved as an artifact
+        # The plain run (no flag) prints a human-readable table to the log
+        # || true keeps the job green so the artifact upload always runs;
+        # vulnerabilities are visible in the logs and the uploaded report
+        run: |
+          pip-audit 2>&1 | tee pip-audit-results.txt || true
+
+      - name: Upload pip-audit report as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pip-audit-report
+          path: pip-audit-results.txt
+          retention-days: 30
+
+      # Scheduled runs: fail the job explicitly if vulnerabilities are found
+      # so that a nightly failure shows up as a red check on the repo
+      - name: Fail on vulnerabilities (scheduled runs only)
+        if: github.event_name == 'schedule'
+        run: pip-audit
