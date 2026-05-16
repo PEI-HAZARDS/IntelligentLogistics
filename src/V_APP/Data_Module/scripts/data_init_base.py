@@ -13,16 +13,17 @@ import os
 import sys
 
 import bcrypt
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 try:
-    from Data_Module.models.sql_models import Base, Driver, Manager, Worker
+    from Data_Module.models.sql_models import Base, Driver, Manager, Worker, Terminal, Appointment
 except Exception:
     try:
-        from infrastructure.persistence.sql_models import Base, Driver, Manager, Worker
+        from infrastructure.persistence.sql_models import Base, Driver, Manager, Worker, Terminal, Appointment
     except Exception as e:
         print("Error importing models:", e)
         sys.exit(1)
@@ -127,8 +128,17 @@ def create_and_seed(database_url: str, mode: str = "demo") -> None:
     SessionLocal = sessionmaker(bind=engine)
     db = SessionLocal()
     try:
-        _init(db)
-        _sync_to_keycloak(db)
+        has_terminals = db.query(Terminal).count() > 0
+        has_appointments = db.query(Appointment).count() > 0
+        if has_terminals or has_appointments:
+            print("  [SEED] Data already present — skipping seed (idempotent).")
+            return
+        try:
+            _init(db)
+            _sync_to_keycloak(db)
+        except IntegrityError as e:
+            db.rollback()
+            print(f"  [SEED] Seed skipped — data already exists (IntegrityError): {e.orig}")
     finally:
         db.close()
 

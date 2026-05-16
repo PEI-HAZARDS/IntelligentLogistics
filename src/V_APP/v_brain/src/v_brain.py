@@ -1,10 +1,25 @@
 import logging
 import json
+import os
 import time
 import threading
 import requests
 
 from prometheus_client import Counter, Histogram, Gauge, start_http_server
+
+try:
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    _OTEL_AVAILABLE = True
+except ImportError:
+    _OTEL_AVAILABLE = False
+
+
+class _NullContext:
+    def __enter__(self): return self
+    def __exit__(self, *_): pass
 
 from shared.src.kafka_wrapper import KafkaConsumerWrapper, KafkaProducerWrapper
 from shared.src.kafka_protocol import (
@@ -54,6 +69,17 @@ v_brain_messages_processed_total = Counter(
 v_brain_up = Gauge(
     "v_brain_up",
     "V_Brain health (1=running, 0=stopped)",
+)
+v_brain_kafka_consumed = Counter(
+    "worker_kafka_messages_consumed_total",
+    "Total Kafka messages consumed by worker",
+    ["worker", "topic", "status"],
+)
+v_brain_kafka_processing = Histogram(
+    "worker_kafka_processing_seconds",
+    "Kafka message processing duration in seconds",
+    ["worker", "topic"],
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
 )
 
 
@@ -135,6 +161,21 @@ class VBrain:
             timeout_seconds=self.config.correlator_timeout_seconds,
         )
 
+        # OTel tracing — enabled only if OTEL_EXPORTER_OTLP_ENDPOINT is set
+        self._tracer = None
+        otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+        if _OTEL_AVAILABLE and otlp_endpoint:
+            try:
+                provider = TracerProvider()
+                provider.add_span_processor(
+                    BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True))
+                )
+                trace.set_tracer_provider(provider)
+                self._tracer = trace.get_tracer("VBrain")
+                logger.info(f"OTel tracing enabled → {otlp_endpoint}")
+            except Exception as e:
+                logger.warning(f"OTel setup failed, tracing disabled: {e}")
+
     # ─── Main Loop ───────────────────────────────────────────────
 
     def start(self) -> None:
@@ -184,8 +225,27 @@ class VBrain:
                     logger.warning(f"Could not deserialize from '{topic}': {e}")
                     continue
 
-                # ── Route by topic ───────────────────────────────
-                self._handle_message(topic, typed_message, truck_id)
+                # ── Route by topic (with Kafka metrics + optional OTel span) ──
+                start = time.perf_counter()
+                span_ctx = (
+                    self._tracer.start_as_current_span(
+                        f"kafka.consume:{topic}",
+                        attributes={"messaging.destination": topic, "truck_id": truck_id or ""},
+                    )
+                    if self._tracer
+                    else _NullContext()
+                )
+                try:
+                    with span_ctx:
+                        self._handle_message(topic, typed_message, truck_id)
+                    v_brain_kafka_consumed.labels(worker="VBrain", topic=topic, status="success").inc()
+                except Exception:
+                    v_brain_kafka_consumed.labels(worker="VBrain", topic=topic, status="error").inc()
+                    raise
+                finally:
+                    v_brain_kafka_processing.labels(worker="VBrain", topic=topic).observe(
+                        time.perf_counter() - start
+                    )
 
         except KeyboardInterrupt:
             logger.info("V_Brain stopped by user")

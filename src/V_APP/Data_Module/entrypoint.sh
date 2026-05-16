@@ -33,6 +33,20 @@ if [[ $? -ne 0 ]]; then
   exit 1
 fi
 
+# Step 1b: Apply v3 schema migrations (idempotent — safe to re-run on every start)
+echo "Running v3 schema migration..."
+if [[ -f "scripts/migrationDBv3.sql" ]]; then
+  PGPASSWORD=${POSTGRES_PASSWORD} psql -h ${POSTGRES_HOST:-postgres} -p ${POSTGRES_PORT:-5432} -U ${POSTGRES_USER} -d ${POSTGRES_DB} -f scripts/migrationDBv3.sql
+  if [[ $? -eq 0 ]]; then
+    echo "v3 schema migration completed successfully"
+  else
+    echo "v3 schema migration failed"
+    exit 1
+  fi
+else
+  echo "No migrationDBv3.sql found, skipping..."
+fi
+
 # Step 2: Apply triggers (tables exist now, trigger will fire on INSERT)
 echo "Running database triggers migration..."
 if [[ -f "scripts/triggers.sql" ]]; then
