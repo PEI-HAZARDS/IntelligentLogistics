@@ -94,7 +94,7 @@ def _run_hourly(gate_ids: list[int], hour_timestamp: datetime | None, db, result
                 logger.warning("compute_hourly_statistics returned None for gate=%s", gate_id)
                 results["failed"].append(gate_id)
         except Exception as exc:
-            logger.error("Hourly stats failed for gate=%s: %s", gate_id, exc, exc_info=True)
+            logger.exception("Hourly stats failed for gate=%s", gate_id)
             results["failed"].append(gate_id)
 
 
@@ -106,7 +106,7 @@ def _run_daily(gate_ids: list[int], prev_day: datetime, db) -> None:
                 logger.info("Daily stats: gate=%s day=%s entries=%s exits=%s",
                             gate_id, prev_day.date(), doc.get("entries", 0), doc.get("exits", 0))
         except Exception as exc:
-            logger.error("Daily stats failed for gate=%s: %s", gate_id, exc, exc_info=True)
+            logger.exception("Daily stats failed for gate=%s", gate_id)
 
 
 def run_cycle(gate_ids: list[int], hour_timestamp: datetime | None = None) -> dict:
@@ -123,13 +123,13 @@ def run_cycle(gate_ids: list[int], hour_timestamp: datetime | None = None) -> di
             n = compute_operator_performance_snapshot()
             logger.info("Operator performance snapshot: %d operator(s) written", n)
         except Exception as exc:
-            logger.error("Operator performance snapshot failed: %s", exc, exc_info=True)
+            logger.exception("Operator performance snapshot failed")
 
         try:
             n = compute_company_metrics_snapshot(db)
             logger.info("Company metrics snapshot: %d company(ies) written", n)
         except Exception as exc:
-            logger.error("Company metrics snapshot failed: %s", exc, exc_info=True)
+            logger.exception("Company metrics snapshot failed")
     finally:
         db.close()
 

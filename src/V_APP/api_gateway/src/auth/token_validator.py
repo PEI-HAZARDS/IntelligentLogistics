@@ -46,12 +46,17 @@ class TokenValidator:
         try:
             signing_key: PyJWK = self._jwks_client.get_signing_key_from_jwt(token)
         except Exception as exc:
-            logger.warning("JWKS key lookup failed: %s (jwks_url=%s)", exc, self._jwks_client.uri)
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Could not validate token signature",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+            # Key not in cache — Keycloak may have rotated keys; force a fresh fetch and retry once.
+            try:
+                self._jwks_client.fetch_data()
+                signing_key = self._jwks_client.get_signing_key_from_jwt(token)
+            except Exception as exc2:
+                logger.warning("JWKS key lookup failed: %s (jwks_url=%s)", exc2, self._jwks_client.uri)
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Could not validate token signature",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
 
         decode_options = {
             "verify_exp": True,

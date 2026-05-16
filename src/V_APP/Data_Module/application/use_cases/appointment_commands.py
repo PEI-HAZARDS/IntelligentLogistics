@@ -21,6 +21,8 @@ from infrastructure.persistence.redis import redis_client
 
 logger = logging.getLogger(__name__)
 
+_APPT_STATE_CHANGED_TOPIC = "appointment.state.changed"
+
 
 def _invalidate_stats_cache(gate_in_id: Any = None) -> None:
     """Delete cached stats keys so the next /stats call computes fresh counts."""
@@ -97,7 +99,7 @@ def cmd_update_status(
                     "notes": notes,
                 },
             ),
-            topic="appointment.state.changed",
+            topic=_APPT_STATE_CHANGED_TOPIC,
             key=str(appointment_id),
         )
 
@@ -170,7 +172,7 @@ def cmd_process_decision(
                     "alerts_created": alerts_created,
                 },
             ),
-            topic="appointment.state.changed",
+            topic=_APPT_STATE_CHANGED_TOPIC,
             key=str(appointment_id),
         )
 
@@ -220,7 +222,7 @@ def cmd_flag_highway_infraction(
                 "AppointmentHighwayInfractionFlagged",
                 {"appointment_id": appointment_id},
             ),
-            topic="appointment.state.changed",
+            topic=_APPT_STATE_CHANGED_TOPIC,
             key=str(appointment_id),
         )
 

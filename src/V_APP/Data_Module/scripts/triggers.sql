@@ -166,6 +166,7 @@ CREATE OR REPLACE FUNCTION fn_generate_arrival_id()
 RETURNS TRIGGER AS $$
 DECLARE
     new_id TEXT;
+    seq_num INTEGER;
 BEGIN
     IF COALESCE(NEW.arrival_id, '') = '' THEN
         new_id := 'PRT-' || LPAD(nextval('appointment_arrival_seq')::TEXT, 4, '0');

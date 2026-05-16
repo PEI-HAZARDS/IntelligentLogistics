@@ -71,7 +71,7 @@ async def ws_driver(websocket: WebSocket, drivers_license: str, token: str = Que
             await websocket.close(code=4003, reason="Insufficient permissions")
             return
         # Ensure the driver can only connect to their own channel
-        if user.sub != drivers_license:
+        if user.sub.lower() != drivers_license.lower():
             await websocket.close(code=4003, reason="Cannot subscribe to another driver's channel")
             return
     except Exception:
@@ -80,14 +80,15 @@ async def ws_driver(websocket: WebSocket, drivers_license: str, token: str = Que
 
     ws_manager = _get_ws_manager(websocket)
     await ws_manager.connect_driver(drivers_license, websocket)
-    logger.info(f"Driver WebSocket connected for '{drivers_license}'")
+    safe_license = drivers_license.replace('\n', '').replace('\r', '')
+    logger.info(f"Driver WebSocket connected for '{safe_license}'")
 
     try:
         while True:
             await websocket.receive_text()
     except WebSocketDisconnect:
-        logger.info(f"Driver WebSocket disconnected for '{drivers_license}'")
+        logger.info(f"Driver WebSocket disconnected for '{safe_license}'")
         ws_manager.disconnect_driver(drivers_license, websocket)
     except Exception as e:
-        logger.error(f"Driver WebSocket error for '{drivers_license}': {e}")
+        logger.error(f"Driver WebSocket error for '{safe_license}': {e}")
         ws_manager.disconnect_driver(drivers_license, websocket)

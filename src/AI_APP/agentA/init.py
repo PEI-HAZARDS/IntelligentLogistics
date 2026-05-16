@@ -54,7 +54,7 @@ def main():
         agent.stop()
     
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.exception("Unexpected error")
         AGENT_UP.labels(agent='agent-a').set(0)
         agent.stop()
         raise

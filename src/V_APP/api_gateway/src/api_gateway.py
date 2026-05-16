@@ -187,7 +187,7 @@ class APIGateway:
                 if truck_id:
                     payload["truck_id"] = truck_id
 
-                if payload.get("decision") == "SKIPPED":
+                if payload.get("decision") == "SKIPPED" or payload.get("decision") == "MANUAL_REVIEW":
                     continue
 
                 target_gate = self._resolve_target_gate(payload, topic)

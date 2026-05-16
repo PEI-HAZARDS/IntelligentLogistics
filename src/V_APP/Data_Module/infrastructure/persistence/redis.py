@@ -116,7 +116,7 @@ def cache_driver_active_appointment(drivers_license: str, data: Dict[str, Any]) 
     try:
         redis_client.setex(key, TTL_DRIVER_ACTIVE, json.dumps(data))
     except Exception as e:
-        logger.error("Failed to cache driver active appointment %s: %s", drivers_license, e)
+        logger.exception("Failed to cache driver active appointment %s", drivers_license)
 
 
 def get_cached_driver_active_appointment(drivers_license: str) -> Optional[Dict[str, Any]]:
@@ -127,7 +127,7 @@ def get_cached_driver_active_appointment(drivers_license: str) -> Optional[Dict[
         if value:
             return json.loads(value)
     except Exception as e:
-        logger.error("Failed to get cached driver active appointment %s: %s", drivers_license, e)
+        logger.exception("Failed to get cached driver active appointment %s", drivers_license)
     return None
 
 
@@ -137,7 +137,7 @@ def invalidate_driver_active_appointment(drivers_license: str) -> None:
     try:
         redis_client.delete(key)
     except Exception as e:
-        logger.error("Failed to invalidate driver active appointment cache %s: %s", drivers_license, e)
+        logger.exception("Failed to invalidate driver active appointment cache %s", drivers_license)
 
 
 # ==================== DEDUPLICATION ====================
@@ -153,7 +153,7 @@ def is_duplicate_event(event_id: str) -> bool:
         set_ok = redis_client.set(key, "1", nx=True, ex=TTL_DEDUP)
         return not set_ok  # True if already existed
     except Exception as e:
-        logger.error(f"Event dedup check failed for {event_id}: {e}")
+        logger.exception("Event dedup check failed for %s", event_id)
         return False  # Assume not duplicate on error
 
 
@@ -168,7 +168,7 @@ def get_cached_decision(license_plate: str, gate_id: int, time_bucket: int) -> O
         if value:
             return json.loads(value)
     except Exception as e:
-        logger.error(f"Failed to get cached decision: {e}")
+        logger.exception("Failed to get cached decision")
     return None
 
 
@@ -178,7 +178,7 @@ def cache_decision(license_plate: str, gate_id: int, time_bucket: int, decision:
     try:
         redis_client.setex(key, TTL_DECISION_CACHE, json.dumps(decision))
     except Exception as e:
-        logger.error(f"Failed to cache decision: {e}")
+        logger.exception("Failed to cache decision")
 
 
 # ==================== HOT APPOINTMENT CACHE ====================
@@ -196,7 +196,7 @@ def cache_appointment(appointment_id: int, appointment_data: Dict[str, Any]):
         redis_client.setex(key, TTL_APPOINTMENT_HOT, json.dumps(appointment_data))
         logger.debug(f"Cached appointment {appointment_id}")
     except Exception as e:
-        logger.error(f"Failed to cache appointment {appointment_id}: {e}")
+        logger.exception("Failed to cache appointment %s", appointment_id)
 
 
 def get_cached_appointment(appointment_id: int) -> Optional[Dict[str, Any]]:
@@ -217,7 +217,7 @@ def get_cached_appointment(appointment_id: int) -> Optional[Dict[str, Any]]:
             return json.loads(value)
         logger.debug(f"Cache MISS for appointment {appointment_id}")
     except Exception as e:
-        logger.error(f"Failed to get cached appointment: {e}")
+        logger.exception("Failed to get cached appointment")
     return None
 
 
@@ -233,7 +233,7 @@ def invalidate_appointment_cache(appointment_id: int):
         redis_client.delete(key)
         logger.debug(f"Invalidated cache for appointment {appointment_id}")
     except Exception as e:
-        logger.error(f"Failed to invalidate appointment cache: {e}")
+        logger.exception("Failed to invalidate appointment cache")
 
 
 # ==================== LICENSE PLATE LOOKUP CACHE ====================
@@ -258,7 +258,7 @@ def cache_license_plate_appointments(license_plate: str, appointment_ids: List[i
         )
         logger.debug(f"Cached {len(appointment_ids)} appointments for LP {license_plate}")
     except Exception as e:
-        logger.error(f"Failed to cache license plate lookup: {e}")
+        logger.exception("Failed to cache license plate lookup")
 
 
 def get_cached_license_plate_appointments(license_plate: str) -> Optional[List[int]]:
@@ -279,7 +279,7 @@ def get_cached_license_plate_appointments(license_plate: str) -> Optional[List[i
             return [int(aid) for aid in json.loads(value)]
         logger.debug(f"Cache MISS for LP {license_plate}")
     except Exception as e:
-        logger.error(f"Failed to get cached license plate appointments: {e}")
+        logger.exception("Failed to get cached license plate appointments")
     return None
 
 
@@ -295,7 +295,7 @@ def invalidate_license_plate_cache(license_plate: str):
         redis_client.delete(key)
         logger.debug(f"Invalidated LP cache for {license_plate}")
     except Exception as e:
-        logger.error(f"Failed to invalidate LP cache: {e}")
+        logger.exception("Failed to invalidate LP cache")
 
 
 # ==================== REAL-TIME COUNTERS ====================
@@ -318,7 +318,7 @@ def increment_counter(gate_id: int, metric: str, amount: int = 1):
         if new_val == amount:
             redis_client.expire(key, TTL_COUNTER_REALTIME)
     except Exception as e:
-        logger.error(f"Failed to increment counter {key}: {e}")
+        logger.exception("Failed to increment counter %s", key)
 
 
 def get_counter(gate_id: int, metric: str, timestamp: datetime = None) -> int:
@@ -338,7 +338,7 @@ def get_counter(gate_id: int, metric: str, timestamp: datetime = None) -> int:
         value = redis_client.get(key)
         return int(value) if value else 0
     except Exception as e:
-        logger.error(f"Failed to get counter {key}: {e}")
+        logger.exception("Failed to get counter %s", key)
         return 0
 
 
@@ -393,7 +393,7 @@ def check_rate_limit(endpoint: str, client_id: str, limit: int = 60) -> bool:
             return False
         return True
     except Exception as e:
-        logger.error(f"Rate limit check failed: {e}")
+        logger.exception("Rate limit check failed")
         return True  # Allow on error
 
 
@@ -416,7 +416,7 @@ def get_rate_limit_remaining(endpoint: str, client_id: str, limit: int = 60) -> 
             return limit
         return max(0, limit - int(current))
     except Exception as e:
-        logger.error(f"Failed to get rate limit remaining: {e}")
+        logger.exception("Failed to get rate limit remaining")
         return limit
 
 
@@ -434,7 +434,7 @@ def set_session(role: str, identity: str, data: Dict[str, Any], ttl: int = TTL_O
         redis_client.setex(key, ttl, json.dumps(data))
         logger.debug("Set session for %s %s", role, identity)
     except Exception as e:
-        logger.error("Failed to set session for %s %s: %s", role, identity, e)
+        logger.exception("Failed to set session for %s %s", role, identity)
 
 
 def get_session(role: str, identity: str) -> Optional[Dict[str, Any]]:
@@ -445,7 +445,7 @@ def get_session(role: str, identity: str) -> Optional[Dict[str, Any]]:
         if value:
             return json.loads(value)
     except Exception as e:
-        logger.error("Failed to get session for %s %s: %s", role, identity, e)
+        logger.exception("Failed to get session for %s %s", role, identity)
     return None
 
 
@@ -456,7 +456,7 @@ def delete_session(role: str, identity: str) -> None:
         redis_client.delete(key)
         logger.debug("Deleted session for %s %s", role, identity)
     except Exception as e:
-        logger.error("Failed to delete session for %s %s: %s", role, identity, e)
+        logger.exception("Failed to delete session for %s %s", role, identity)
 
 
 # ==================== OPERATOR SESSION (legacy — kept for outbox-worker compat) ====================
@@ -474,7 +474,7 @@ def set_operator_session(operator_id: str, session_data: Dict[str, Any]):
         redis_client.setex(key, TTL_OPERATOR_SESSION, json.dumps(session_data))
         logger.debug(f"Set session for operator {operator_id}")
     except Exception as e:
-        logger.error(f"Failed to set operator session: {e}")
+        logger.exception("Failed to set operator session")
 
 
 def get_operator_session(operator_id: str) -> Optional[Dict[str, Any]]:
@@ -493,7 +493,7 @@ def get_operator_session(operator_id: str) -> Optional[Dict[str, Any]]:
         if value:
             return json.loads(value)
     except Exception as e:
-        logger.error(f"Failed to get operator session: {e}")
+        logger.exception("Failed to get operator session")
     return None
 
 
@@ -509,7 +509,7 @@ def clear_operator_session(operator_id: str):
         redis_client.delete(key)
         logger.debug(f"Cleared session for operator {operator_id}")
     except Exception as e:
-        logger.error(f"Failed to clear operator session: {e}")
+        logger.exception("Failed to clear operator session")
 
 
 # ==================== CACHE STATISTICS ====================
@@ -538,7 +538,7 @@ def get_cache_statistics() -> Dict[str, Any]:
             "connected_clients": redis_client.info("clients").get("connected_clients", 0)
         }
     except Exception as e:
-        logger.error(f"Failed to get cache statistics: {e}")
+        logger.exception("Failed to get cache statistics")
         return {}
 
 
@@ -571,7 +571,7 @@ def invalidate_all_appointment_caches():
         
         logger.info(f"Invalidated {count} appointment caches")
     except Exception as e:
-        logger.error(f"Failed to invalidate all appointment caches: {e}")
+        logger.exception("Failed to invalidate all appointment caches")
 
 
 def get_all_active_counters(gate_id: int) -> Dict[str, int]:
@@ -602,7 +602,7 @@ def get_all_active_counters(gate_id: int) -> Dict[str, int]:
         
         return counters
     except Exception as e:
-        logger.error(f"Failed to get active counters: {e}")
+        logger.exception("Failed to get active counters")
         return {}
 
 
@@ -618,5 +618,5 @@ def redis_health_check() -> bool:
     try:
         return redis_client.ping()
     except Exception as e:
-        logger.error(f"Redis health check failed: {e}")
+        logger.exception("Redis health check failed")
         return False

@@ -36,7 +36,7 @@ class KafkaProducerWrapper:
             
         except (TypeError, ValueError) as e:
             safe_topic = topic.replace('\n', '').replace('\r', '')
-            logger.error(f"Failed to serialize data for topic '{safe_topic}': {e}")
+            logger.exception("Failed to serialize data for topic '%s'", safe_topic)
             raise
 
         try:
@@ -51,7 +51,7 @@ class KafkaProducerWrapper:
 
         except KafkaException as e:
             safe_topic = topic.replace('\n', '').replace('\r', '')
-            logger.error(f"Publish failed to '{safe_topic}': {e}")
+            logger.exception("Publish failed to '%s'", safe_topic)
             raise
 
     def flush(self, timeout: int = 10) -> None:
@@ -127,7 +127,7 @@ class KafkaConsumerWrapper:
         try:
             message_obj = deserialize_message(data)
         except Exception as e:
-            logger.error(f"Failed to deserialize message from topic '{topic}': {e}")
+            logger.exception("Failed to deserialize message from topic '%s'", topic)
             raise
 
         return topic, message_obj, truck_id

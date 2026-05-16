@@ -32,6 +32,10 @@ _F_TOTAL_REVIEWS = "$total_reviews"
 _F_ENTRIES = "$entries"
 _F_EXITS = "$exits"
 _F_DAY_BUCKET = "$day_bucket"
+_MATCH = "$match"
+_PROJECT = "$project"
+_TOTAL_DETECTIONS = "$total_detections"
+_AGENT_TYPE = "$agent_type"
 
 # Cache MongoDB server version at import time to detect $percentile support.
 # $percentile requires MongoDB 7.0+; on older versions aggregation silently
@@ -90,7 +94,7 @@ def get_real_time_metrics(gate_id: int) -> Dict[str, Any]:
             "errors": {"ocr_failures": counters.get("errors:ocr", 0), "api_timeouts": counters.get("errors:api_timeout", 0)},
         }
     except Exception as e:
-        logger.error(f"Failed to get real-time metrics: {e}")
+        logger.exception("Failed to get real-time metrics")
         return {}
 
 
@@ -98,7 +102,7 @@ def get_hourly_trend(gate_id: int, metric: str, hours: int = 24) -> Dict[str, in
     try:
         return get_counter_range(gate_id, metric, hours)
     except Exception as e:
-        logger.error(f"Failed to get hourly trend: {e}")
+        logger.exception("Failed to get hourly trend")
         return {}
 
 
@@ -106,14 +110,14 @@ def get_detection_success_rate(gate_id: int, hours_ago: int = 24) -> List[Dict[s
     try:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
         pipeline = [
-            {"$match": {"timestamp": {"$gte": cutoff}, "gate_id": gate_id}},
-            {"$group": {"_id": {"agent": "$agent_type", "hour": {"$dateToString": {"format": "%Y-%m-%d %H:00", "date": "$timestamp"}}}, "total_detections": {"$sum": 1}, "avg_confidence": {"$avg": "$detection_data.confidence"}, "processed_count": {"$sum": {"$cond": ["$processing.consumed_by_decision_engine", 1, 0]}}}},
-            {"$project": {"_id": 0, "agent": "$_id.agent", "hour": "$_id.hour", "total_detections": 1, "avg_confidence": {"$round": ["$avg_confidence", 3]}, "processing_rate": {"$cond": [{"$eq": ["$total_detections", 0]}, 0, {"$divide": ["$processed_count", "$total_detections"]}]}}},
+            {_MATCH:{"timestamp": {"$gte": cutoff}, "gate_id": gate_id}},
+            {"$group": {"_id": {"agent": _AGENT_TYPE, "hour": {"$dateToString": {"format": "%Y-%m-%d %H:00", "date": "$timestamp"}}}, "total_detections": {"$sum": 1}, "avg_confidence": {"$avg": "$detection_data.confidence"}, "processed_count": {"$sum": {"$cond": ["$processing.consumed_by_decision_engine", 1, 0]}}}},
+            {_PROJECT:{"_id": 0, "agent": "$_id.agent", "hour": "$_id.hour", "total_detections": 1, "avg_confidence": {"$round": ["$avg_confidence", 3]}, "processing_rate": {"$cond": [{"$eq": [_TOTAL_DETECTIONS, 0]}, 0, {"$divide": ["$processed_count", _TOTAL_DETECTIONS]}]}}},
             {"$sort": {"hour": -1, "agent": 1}},
         ]
         return list(agent_detections_collection.aggregate(pipeline))
     except Exception as e:
-        logger.error(f"Failed to get detection success rate: {e}")
+        logger.exception("Failed to get detection success rate")
         return []
 
 
@@ -136,9 +140,9 @@ def get_decision_pipeline_performance(gate_id: int, hours_ago: int = 24) -> Dict
     try:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
         pipeline = [
-            {"$match": {"gate_id": gate_id, "created_at": {"$gte": cutoff}}},
+            {_MATCH:{"gate_id": gate_id, "created_at": {"$gte": cutoff}}},
             {"$group": {"_id": "$gate_id", "total_decisions": {"$sum": 1}, "accepted": {"$sum": {"$cond": [{"$eq": ["$final_decision", "ACCEPTED"]}, 1, 0]}}, "rejected": {"$sum": {"$cond": [{"$eq": ["$final_decision", "REJECTED"]}, 1, 0]}}, "manual_review": {"$sum": {"$cond": [{"$eq": [_F_DECISION, "MANUAL_REVIEW"]}, 1, 0]}}, "avg_pipeline_time": {"$avg": "$timing.total_pipeline_ms"}, "p50_pipeline_time": {"$percentile": {"input": "$timing.total_pipeline_ms", "p": [0.50], "method": "approximate"}}, "p95_pipeline_time": {"$percentile": {"input": "$timing.total_pipeline_ms", "p": [0.95], "method": "approximate"}}, "p99_pipeline_time": {"$percentile": {"input": "$timing.total_pipeline_ms", "p": [0.99], "method": "approximate"}}, "avg_detection_to_decision": {"$avg": "$timing.detection_to_decision_ms"}}},
-            {"$project": {"_id": 0, "gate_id": "$_id", "total_decisions": 1, "decisions_by_type": {"accepted": "$accepted", "rejected": "$rejected", "manual_review": "$manual_review"}, "acceptance_rate": {"$cond": [{"$eq": ["$total_decisions", 0]}, 0, {"$divide": ["$accepted", "$total_decisions"]}]}, "manual_review_rate": {"$cond": [{"$eq": ["$total_decisions", 0]}, 0, {"$divide": ["$manual_review", "$total_decisions"]}]}, "performance": {"avg_pipeline_ms": {"$round": ["$avg_pipeline_time", 0]}, "p50_pipeline_ms": {"$round": [{"$arrayElemAt": ["$p50_pipeline_time", 0]}, 0]}, "p95_pipeline_ms": {"$round": [{"$arrayElemAt": ["$p95_pipeline_time", 0]}, 0]}, "p99_pipeline_ms": {"$round": [{"$arrayElemAt": ["$p99_pipeline_time", 0]}, 0]}, "avg_detection_to_decision_ms": {"$round": ["$avg_detection_to_decision", 0]}}}},
+            {_PROJECT:{"_id": 0, "gate_id": "$_id", "total_decisions": 1, "decisions_by_type": {"accepted": "$accepted", "rejected": "$rejected", "manual_review": "$manual_review"}, "acceptance_rate": {"$cond": [{"$eq": ["$total_decisions", 0]}, 0, {"$divide": ["$accepted", "$total_decisions"]}]}, "manual_review_rate": {"$cond": [{"$eq": ["$total_decisions", 0]}, 0, {"$divide": ["$manual_review", "$total_decisions"]}]}, "performance": {"avg_pipeline_ms": {"$round": ["$avg_pipeline_time", 0]}, "p50_pipeline_ms": {"$round": [{"$arrayElemAt": ["$p50_pipeline_time", 0]}, 0]}, "p95_pipeline_ms": {"$round": [{"$arrayElemAt": ["$p95_pipeline_time", 0]}, 0]}, "p99_pipeline_ms": {"$round": [{"$arrayElemAt": ["$p99_pipeline_time", 0]}, 0]}, "avg_detection_to_decision_ms": {"$round": ["$avg_detection_to_decision", 0]}}}},
         ]
         result = list(decision_events_collection.aggregate(pipeline))
         data = result[0] if result else {}
@@ -156,20 +160,20 @@ def get_agent_performance(agent_type: str, gate_id: int, hours_ago: int = 24) ->
     try:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
         pipeline = [
-            {"$match": {"agent_type": agent_type, "gate_id": gate_id, "timestamp": {"$gte": cutoff}}},
+            {_MATCH:{"agent_type": agent_type, "gate_id": gate_id, "timestamp": {"$gte": cutoff}}},
             {"$group": {"_id": None, "total_detections": {"$sum": 1}, "avg_confidence": {"$avg": "$detection_data.confidence"}, "min_confidence": {"$min": "$detection_data.confidence"}, "max_confidence": {"$max": "$detection_data.confidence"}, "processed_count": {"$sum": {"$cond": ["$processing.consumed_by_decision_engine", 1, 0]}}, "avg_latency": {"$avg": "$processing.processing_latency_ms"}}},
-            {"$project": {"_id": 0, "agent_type": agent_type, "gate_id": gate_id, "total_detections": 1, "confidence_stats": {"avg": {"$round": ["$avg_confidence", 3]}, "min": {"$round": ["$min_confidence", 3]}, "max": {"$round": ["$max_confidence", 3]}}, "processing_rate": {"$cond": [{"$eq": ["$total_detections", 0]}, 0, {"$divide": ["$processed_count", "$total_detections"]}]}, "avg_latency_ms": {"$round": ["$avg_latency", 0]}}},
+            {_PROJECT:{"_id": 0, "agent_type": agent_type, "gate_id": gate_id, "total_detections": 1, "confidence_stats": {"avg": {"$round": ["$avg_confidence", 3]}, "min": {"$round": ["$min_confidence", 3]}, "max": {"$round": ["$max_confidence", 3]}}, "processing_rate": {"$cond": [{"$eq": [_TOTAL_DETECTIONS, 0]}, 0, {"$divide": ["$processed_count", _TOTAL_DETECTIONS]}]}, "avg_latency_ms": {"$round": ["$avg_latency", 0]}}},
         ]
         result = list(agent_detections_collection.aggregate(pipeline))
         return result[0] if result else {}
     except Exception as e:
-        logger.error(f"Failed to get agent performance: {e}")
+        logger.exception("Failed to get agent performance")
         return {}
 
 
 def get_complete_truck_journey(truck_id: str) -> Dict[str, Any]:
     try:
-        detections_pipeline = [{"$match": {"truck_id": truck_id}}, {"$sort": {"timestamp": 1}}, {"$group": {"_id": "$truck_id", "detections": {"$push": {"agent": "$agent_type", "timestamp": "$timestamp", "confidence": "$detection_data.confidence", "data": "$detection_data"}}, "first_detection": {"$first": "$timestamp"}, "last_detection": {"$last": "$timestamp"}}}]
+        detections_pipeline = [{_MATCH:{"truck_id": truck_id}}, {"$sort": {"timestamp": 1}}, {"$group": {"_id": "$truck_id", "detections": {"$push": {"agent": _AGENT_TYPE, "timestamp": "$timestamp", "confidence": "$detection_data.confidence", "data": "$detection_data"}}, "first_detection": {"$first": "$timestamp"}, "last_detection": {"$last": "$timestamp"}}}]
         detections_result = list(agent_detections_collection.aggregate(detections_pipeline))
         decision = decision_events_collection.find_one({"truck_id": truck_id})
         if not detections_result and not decision:
@@ -189,7 +193,7 @@ def get_complete_truck_journey(truck_id: str) -> Dict[str, Any]:
                 journey["timeline"]["postgres_updated"] = decision["postgres_updates"]["update_timestamp"].isoformat()
         return journey
     except Exception as e:
-        logger.error(f"Failed to get truck journey for {truck_id}: {e}")
+        logger.exception("Failed to get truck journey for %s", truck_id)
         return {"error": str(e)}
 
 
@@ -206,20 +210,20 @@ def get_operator_performance(hours_ago: int = 24) -> List[Dict[str, Any]]:
         if docs:
             return docs
     except Exception as e:
-        logger.warning("operator_performance_collection read failed: %s — live fallback", e)
+        logger.exception("operator_performance_collection read failed — live fallback")
 
     # Live fallback from decision_events
     try:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_ago)
         pipeline = [
-            {"$match": {"operator_decision": {"$exists": True}, "created_at": {"$gte": cutoff}}},
+            {_MATCH:{"operator_decision": {"$exists": True}, "created_at": {"$gte": cutoff}}},
             {"$group": {"_id": "$operator_decision.operator_id", "total_reviews": {"$sum": 1}, "avg_review_time_ms": {"$avg": "$timing.manual_review_duration_ms"}, "override_count": {"$sum": {"$cond": [{"$ne": [_F_DECISION, "$operator_decision.decision"]}, 1, 0]}}}},
-            {"$project": {"_id": 0, "operator_id": "$_id", "total_reviews": 1, "avg_review_time_seconds": {"$round": [{"$divide": ["$avg_review_time_ms", 1000]}, 1]}, "override_rate": {"$cond": [{"$eq": [_F_TOTAL_REVIEWS, 0]}, 0, {"$divide": ["$override_count", _F_TOTAL_REVIEWS]}]}}},
+            {_PROJECT:{"_id": 0, "operator_id": "$_id", "total_reviews": 1, "avg_review_time_seconds": {"$round": [{"$divide": ["$avg_review_time_ms", 1000]}, 1]}, "override_rate": {"$cond": [{"$eq": [_F_TOTAL_REVIEWS, 0]}, 0, {"$divide": ["$override_count", _F_TOTAL_REVIEWS]}]}}},
             {"$sort": {"total_reviews": -1}},
         ]
         return list(decision_events_collection.aggregate(pipeline))
     except Exception as e:
-        logger.error("Failed to get operator performance: %s", e)
+        logger.exception("Failed to get operator performance")
         return []
 
 
@@ -236,13 +240,13 @@ def compute_hourly_statistics(gate_id: int, hour_timestamp: datetime = None, pg_
         next_hour = hour_bucket + timedelta(hours=1)
 
         detections_pipeline = [
-            {"$match": {"gate_id": gate_id, "timestamp": {"$gte": hour_bucket, "$lt": next_hour}}},
-            {"$group": {"_id": "$agent_type", "count": {"$sum": 1}, "avg_confidence": {"$avg": "$detection_data.confidence"}}},
+            {_MATCH:{"gate_id": gate_id, "timestamp": {"$gte": hour_bucket, "$lt": next_hour}}},
+            {"$group": {"_id": _AGENT_TYPE, "count": {"$sum": 1}, "avg_confidence": {"$avg": "$detection_data.confidence"}}},
         ]
         detections_stats = list(agent_detections_collection.aggregate(detections_pipeline))
 
         decisions_pipeline = [
-            {"$match": {"gate_id": gate_id, "created_at": {"$gte": hour_bucket, "$lt": next_hour}}},
+            {_MATCH:{"gate_id": gate_id, "created_at": {"$gte": hour_bucket, "$lt": next_hour}}},
             {"$group": {"_id": "$final_decision", "count": {"$sum": 1}}},
         ]
         decisions_stats = list(decision_events_collection.aggregate(decisions_pipeline))
@@ -286,7 +290,7 @@ def compute_hourly_statistics(gate_id: int, hour_timestamp: datetime = None, pg_
         )
         return stats_doc
     except Exception as e:
-        logger.error("Failed to compute hourly statistics: %s", e)
+        logger.exception("Failed to compute hourly statistics")
         return None
 
 
@@ -351,7 +355,7 @@ def compute_daily_statistics(gate_id: int, day_timestamp: datetime = None, pg_se
         )
         return daily_doc
     except Exception as e:
-        logger.error("compute_daily_statistics failed for gate=%s: %s", gate_id, e)
+        logger.exception("compute_daily_statistics failed for gate=%s", gate_id)
         return None
 
 
@@ -365,7 +369,7 @@ def read_volume_from_mongo(from_dt: datetime, to_dt: datetime, interval: str) ->
     try:
         if interval == "hour":
             pipeline = [
-                {"$match": {"hour_bucket": {"$gte": from_dt, "$lte": to_dt}}},
+                {_MATCH:{"hour_bucket": {"$gte": from_dt, "$lte": to_dt}}},
                 {"$group": {
                     "_id": "$hour_bucket",
                     "entries": {"$sum": _F_ENTRIES},
@@ -376,7 +380,7 @@ def read_volume_from_mongo(from_dt: datetime, to_dt: datetime, interval: str) ->
             docs = list(statistics_hourly_collection.aggregate(pipeline))
         elif interval == "week":
             pipeline = [
-                {"$match": {"day_bucket": {"$gte": from_dt, "$lte": to_dt}}},
+                {_MATCH:{"day_bucket": {"$gte": from_dt, "$lte": to_dt}}},
                 {"$group": {
                     "_id": {
                         "$dateFromParts": {
@@ -393,7 +397,7 @@ def read_volume_from_mongo(from_dt: datetime, to_dt: datetime, interval: str) ->
             docs = list(statistics_daily_collection.aggregate(pipeline))
         else:  # day
             pipeline = [
-                {"$match": {"day_bucket": {"$gte": from_dt, "$lte": to_dt}}},
+                {_MATCH:{"day_bucket": {"$gte": from_dt, "$lte": to_dt}}},
                 {"$group": {
                     "_id": _F_DAY_BUCKET,
                     "entries": {"$sum": _F_ENTRIES},
@@ -415,7 +419,7 @@ def read_volume_from_mongo(from_dt: datetime, to_dt: datetime, interval: str) ->
             for d in docs
         ]
     except Exception as e:
-        logger.error("read_volume_from_mongo failed: %s", e)
+        logger.exception("read_volume_from_mongo failed")
         return None
 
 
@@ -429,7 +433,7 @@ def compute_operator_performance_snapshot(period_hours: int = 24) -> int:
         from infrastructure.persistence.mongo import operator_performance_collection
         cutoff = datetime.now(timezone.utc) - timedelta(hours=period_hours)
         pipeline = [
-            {"$match": {"operator_decision": {"$exists": True}, "created_at": {"$gte": cutoff}}},
+            {_MATCH:{"operator_decision": {"$exists": True}, "created_at": {"$gte": cutoff}}},
             {"$group": {
                 "_id": "$operator_decision.operator_id",
                 "total_reviews": {"$sum": 1},
@@ -438,7 +442,7 @@ def compute_operator_performance_snapshot(period_hours: int = 24) -> int:
                     {"$ne": [_F_DECISION, "$operator_decision.decision"]}, 1, 0
                 ]}},
             }},
-            {"$project": {
+            {_PROJECT:{
                 "_id": 0,
                 "operator_id": "$_id",
                 "total_reviews": 1,
@@ -461,7 +465,7 @@ def compute_operator_performance_snapshot(period_hours: int = 24) -> int:
             )
         return len(docs)
     except Exception as e:
-        logger.error("compute_operator_performance_snapshot failed: %s", e)
+        logger.exception("compute_operator_performance_snapshot failed")
         return 0
 
 

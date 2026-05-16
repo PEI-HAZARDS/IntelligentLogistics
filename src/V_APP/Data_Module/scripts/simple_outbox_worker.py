@@ -276,7 +276,7 @@ def _project_alert_event(event_row: OutboxEvent, payload: dict) -> None:
                 json.dumps(payload, default=str),
             )
         except Exception as _ae:
-            logger.warning("Failed to cache alert %s: %s", alert_id, _ae)
+            logger.exception("Failed to cache alert %s", alert_id)
     redis_client.delete(active_alerts_list_key())
 
 
@@ -350,7 +350,7 @@ def _forward_to_dlq(row: OutboxEvent) -> None:
         _dlq_producer.poll(0)
         logger.info("Forwarded DEAD_LETTER outbox_id=%s to %s", row.id, _DLQ_TOPIC)
     except Exception as exc:
-        logger.warning("Failed to forward DEAD_LETTER outbox_id=%s to DLQ: %s", row.id, exc)
+        logger.exception("Failed to forward DEAD_LETTER outbox_id=%s to DLQ", row.id)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -476,26 +476,24 @@ def process_batch(session) -> int:
                     row.status = "DEAD_LETTER"
                     _forward_to_dlq(row)
                     _outbox_dead_letter_total.labels(event_type=event_type).inc()
-                    logger.error(
-                        "DEAD_LETTER outbox_id=%s event_id=%s retries=%d: %s",
+                    logger.exception(
+                        "DEAD_LETTER outbox_id=%s event_id=%s retries=%d",
                         row.id,
                         row.event_id,
                         row.retry_count,
-                        exc,
                     )
                 else:
                     row.status = "FAILED"
                     row.next_retry_at = compute_next_retry_at(row.retry_count)
                     _outbox_retries_total.labels(event_type=event_type).inc()
-                    logger.warning(
+                    logger.exception(
                         "Projection FAILED (retry %d/%d) outbox_id=%s event_id=%s "
-                        "next_retry_at=%s: %s",
+                        "next_retry_at=%s",
                         row.retry_count,
                         MAX_RETRIES,
                         row.id,
                         row.event_id,
                         row.next_retry_at.isoformat(),
-                        exc,
                     )
 
     # Single commit for the whole batch (status updates only).
@@ -526,15 +524,14 @@ def warm_up_redis_cache() -> None:
                 cache_appointment(appt.id, snapshot)
                 cached += 1
             except Exception as exc:
-                logger.warning(
-                    "Warm-up: failed to cache appointment %s: %s",
+                logger.exception(
+                    "Warm-up: failed to cache appointment %s",
                     appt.id,
-                    exc,
                 )
 
         logger.info("Warm-up complete: cached %d / %d appointments", cached, total_pg)
     except Exception as exc:
-        logger.error("Warm-up failed: %s", exc, exc_info=True)
+        logger.exception("Warm-up failed")
     finally:
         session.close()
 
@@ -563,7 +560,7 @@ def main() -> None:
         except Exception as exc:
             # Session-level or DB-level error — roll back and retry
             # on the next cycle.  The worker stays alive.
-            logger.error("Batch cycle failed: %s", exc, exc_info=True)
+            logger.exception("Batch cycle failed")
             session.rollback()
         finally:
             session.close()

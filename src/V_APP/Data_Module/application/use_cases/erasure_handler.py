@@ -103,7 +103,7 @@ def erase_driver(
         logger.info("[RGPD] Redis entries evicted for driver %s", drivers_license)
     except Exception as exc:
         summary["redis"] = f"error: {exc}"
-        logger.error("[RGPD] Redis eviction failed for driver %s: %s", drivers_license, exc)
+        logger.exception("[RGPD] Redis eviction failed for driver %s", drivers_license)
 
     # ── 3. MongoDB: delete detection and decision records ───────────────────
     try:
@@ -124,7 +124,7 @@ def erase_driver(
         logger.info("[RGPD] MongoDB records deleted for driver %s: %s", drivers_license, summary["mongodb"])
     except Exception as exc:
         summary["mongodb"] = f"error: {exc}"
-        logger.error("[RGPD] MongoDB deletion failed for driver %s: %s", drivers_license, exc)
+        logger.exception("[RGPD] MongoDB deletion failed for driver %s", drivers_license)
 
     # ── 4. MinIO: delete alert image objects ─────────────────────────────────
     if image_urls:
@@ -142,7 +142,7 @@ def erase_driver(
                 logger.info("[RGPD] MinIO: %d objects deleted for driver %s", len(image_urls), drivers_license)
         except Exception as exc:
             summary["minio"] = f"error: {exc}"
-            logger.error("[RGPD] MinIO deletion failed for driver %s: %s", drivers_license, exc)
+            logger.exception("[RGPD] MinIO deletion failed for driver %s", drivers_license)
     else:
         summary["minio"] = "no_images"
 

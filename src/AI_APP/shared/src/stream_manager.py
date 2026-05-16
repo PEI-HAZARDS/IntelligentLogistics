@@ -70,7 +70,7 @@ class StreamManager:
                     logger.warning(f"Failed to open stream (attempt {attempt}).")
             
             except Exception as e:
-                logger.error(f"Error during connection: {e}")
+                logger.exception("Error during connection")
 
             if attempt < self.max_retries and self.running:
                 time.sleep(self.retry_delay)

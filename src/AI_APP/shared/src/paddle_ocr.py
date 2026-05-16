@@ -100,7 +100,7 @@ class OCR:
             return "", 0.0
         
         except RuntimeError as e:
-            logger.error(f"PaddleOCR inference error: {e}")
+            logger.exception("PaddleOCR inference error")
             return "", 0.0
     
     def _to_cv_image(self, image: str | Image.Image | np.ndarray) -> np.ndarray | None:

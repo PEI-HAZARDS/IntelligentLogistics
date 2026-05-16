@@ -82,7 +82,7 @@ def main() -> None:
         logger.info("Migration committed successfully.")
     except Exception as exc:
         session.rollback()
-        logger.error("Migration failed, rolled back: %s", exc)
+        logger.exception("Migration failed, rolled back")
         sys.exit(1)
     finally:
         session.close()
