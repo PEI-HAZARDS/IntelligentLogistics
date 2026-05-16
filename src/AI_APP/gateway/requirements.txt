@@ -9,3 +9,9 @@ pydantic-settings
 # Prometheus metrics
 prometheus_client
 prometheus-fastapi-instrumentator
+
+# OpenTelemetry (optional — enabled via OTEL_EXPORTER_OTLP_ENDPOINT env var)
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-instrumentation-fastapi

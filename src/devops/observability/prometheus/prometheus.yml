@@ -165,36 +165,32 @@ scrape_configs:
 
   # =============================================================================
   # ML AGENTS - IA_APP VM (10.255.32.110)
+  # Static targets for all 6 agent instances (2 gates × 3 agent types).
+  # Ports match the defaults defined in src/AI_APP/docker-compose.yml.
+  #
+  # PRODUCTION NOTE (not implemented — demo/test scope):
+  #   For true horizontal auto-discovery, deploy tecnativa/docker-socket-proxy
+  #   on each IA_APP VM (read-only, CONTAINERS=1 only) and replace static_configs
+  #   with docker_sd_configs pointing to tcp://<ia-app-ip>:2375.
+  #   Firewall must restrict port 2375 to the Jenkins VM IP only.
+  #   When a second IA_APP VM is added, append a second docker_sd_configs entry.
+  #   This was not applied because the institutional firewall between internal VMs
+  #   adds operational complexity not justified for demo/test purposes.
   # =============================================================================
-  - job_name: 'agent-a'
+  - job_name: 'ai-agents'
     metrics_path: /metrics
     scrape_interval: 30s
     static_configs:
-      - targets: ['10.255.32.110:8000']
+      - targets:
+          - '10.255.32.110:9001'   # agenta-gate1
+          - '10.255.32.110:9002'   # agentb-gate1
+          - '10.255.32.110:9003'   # agentc-gate1
+          - '10.255.32.110:9004'   # agenta-gate2
+          - '10.255.32.110:9005'   # agentb-gate2
+          - '10.255.32.110:9006'   # agentc-gate2
         labels:
-          service: 'agent-a'
-          type: 'ml-agent'
           vm: 'IA_APP'
-
-  - job_name: 'agent-b'
-    metrics_path: /metrics
-    scrape_interval: 30s
-    static_configs:
-      - targets: ['10.255.32.110:8001']
-        labels:
-          service: 'agent-b'
           type: 'ml-agent'
-          vm: 'IA_APP'
-
-  - job_name: 'agent-c'
-    metrics_path: /metrics
-    scrape_interval: 30s
-    static_configs:
-      - targets: ['10.255.32.110:8002']
-        labels:
-          service: 'agent-c'
-          type: 'ml-agent'
-          vm: 'IA_APP'
 
   # =============================================================================
   # KAFKA EXPORTER - IA_APP VM (10.255.32.110)

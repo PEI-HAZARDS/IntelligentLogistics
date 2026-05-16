@@ -13,19 +13,14 @@ distributor:
         http:
           endpoint: "0.0.0.0:4318"
 
-ingester:
-  trace_idle_period: 10s
-  max_block_bytes: 1_000_000
-  max_block_duration: 5m
-
 
 storage:
   trace:
     backend: local
     local:
-      path: /tmp/tempo/traces
+      path: /var/tempo/traces
     wal:
-      path: /tmp/tempo/wal
+      path: /var/tempo/wal
     pool:
       max_workers: 100
       queue_depth: 10000
@@ -35,7 +30,7 @@ metrics_generator:
     external_labels:
       source: tempo
   storage:
-    path: /tmp/tempo/generator/wal
+    path: /var/tempo/generator/wal
     remote_write:
       - url: http://prometheus:9090/api/v1/write
         send_exemplars: true

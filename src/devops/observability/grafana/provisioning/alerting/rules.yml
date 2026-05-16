@@ -1,0 +1,146 @@
+apiVersion: 1
+
+groups:
+  # ===========================================================================
+  # LOG-BASED ALERTS (Loki) — not possible in Alertmanager
+  # ===========================================================================
+  - orgId: 1
+    name: log_error_alerts
+    folder: IntelligentLogistics
+    interval: 1m
+    rules:
+      - uid: log_error_rate_uid
+        title: High Error/Fatal Rate in Logs
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum by (container) (count_over_time({job="containers"} |~ "(?i)(error|fatal|exception|traceback)" [5m]))'
+              queryType: range
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [5]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: max
+                  type: query
+              expression: A
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "High error/exception rate in logs"
+          description: "Container {{ $labels.container }} has >5 errors/exceptions in the last 5 minutes"
+        labels:
+          severity: warning
+
+      - uid: service_no_logs_uid
+        title: Service Stopped Producing Logs
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: loki
+            model:
+              expr: 'sum by (container) (count_over_time({job="containers"} [5m]))'
+              queryType: range
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [1]
+                    type: lt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: min
+                  type: query
+              expression: A
+              refId: C
+              type: threshold
+        noDataState: Alerting
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Service stopped producing logs"
+          description: "Container {{ $labels.container }} has produced no logs in the last 5 minutes — may be crashed or stuck"
+        labels:
+          severity: critical
+
+  # ===========================================================================
+  # OUTBOX WORKER HEALTH (Prometheus) — supplement to Alertmanager rules
+  # ===========================================================================
+  - orgId: 1
+    name: outbox_health
+    folder: IntelligentLogistics
+    interval: 1m
+    rules:
+      - uid: outbox_backlog_grafana_uid
+        title: Outbox Backlog Growing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 'outbox_pending_rows'
+              refId: A
+          - refId: C
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params: [500]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [A]
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              expression: A
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: "Outbox backlog is growing"
+          description: "{{ $value }} PENDING/FAILED rows — outbox worker may be stalled"
+        labels:
+          severity: warning

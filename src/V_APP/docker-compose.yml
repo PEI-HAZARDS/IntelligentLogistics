@@ -80,28 +80,6 @@ services:
     networks:
       - intelligent-logistics
 
-  # One-shot schema migration — runs migrationDBv3.sql and exits.
-  # data-module and outbox-worker wait for this to complete successfully.
-  db-migrate:
-    image: postgres:15
-    container_name: dm_db_migrate
-    restart: "no"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      PGPASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - ./Data_Module/scripts:/migrations:ro
-    command: >
-      psql
-        -h ${POSTGRES_HOST}
-        -U ${POSTGRES_USER}
-        -d ${POSTGRES_DB}
-        -f /migrations/migrationDBv3.sql
-    networks:
-      - intelligent-logistics
-
   # Data Module API
   data-module:
     build:
@@ -117,8 +95,6 @@ services:
       redis:
         condition: service_healthy
       kafka-init:
-        condition: service_completed_successfully
-      db-migrate:
         condition: service_completed_successfully
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
@@ -617,6 +593,9 @@ services:
     command:
       - "--mongodb.uri=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017"
       - "--compatible-mode"
+      - "--collector.diagnosticdata"
+      - "--collector.dbstats"
+      - "--collector.topmetrics"
     depends_on:
       mongo:
         condition: service_healthy
