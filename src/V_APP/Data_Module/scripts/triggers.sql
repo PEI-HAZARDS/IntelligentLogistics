@@ -169,8 +169,7 @@ DECLARE
     seq_num INTEGER;
 BEGIN
     IF COALESCE(NEW.arrival_id, '') = '' THEN
-        seq_num := nextval('appointment_arrival_seq');
-        new_id := 'PRT-' || LPAD(seq_num::TEXT, 4, '0');
+        new_id := 'PRT-' || LPAD(nextval('appointment_arrival_seq')::TEXT, 4, '0');
         NEW.arrival_id := new_id;
     END IF;
     RETURN NEW;

@@ -1,17 +1,48 @@
 from abc import ABC, abstractmethod
 import logging
 import logging.config
+import os
+import time
 import threading
 from typing import Optional
 import httpx # type: ignore
 import uvicorn # type: ignore
 from fastapi import FastAPI, Request  # type: ignore
 from fastapi.responses import JSONResponse # type: ignore
-from prometheus_fastapi_instrumentator import Instrumentator # type: ignore 
+from prometheus_client import Counter, Histogram, Gauge
+from prometheus_fastapi_instrumentator import Instrumentator # type: ignore
 from shared.src.kafka_wrapper import KafkaConsumerWrapper, KafkaProducerWrapper
 from shared.src.kafka_protocol import Message, deserialize_message
 from pydantic_settings import BaseSettings # type: ignore
 from pydantic import Field # type: ignore
+
+try:
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    _OTEL_AVAILABLE = True
+except ImportError:
+    _OTEL_AVAILABLE = False
+
+# Kafka consumer metrics shared across all gateway instances
+_kafka_messages_consumed = Counter(
+    "gateway_kafka_messages_consumed_total",
+    "Total Kafka messages consumed by gateway",
+    ["gateway", "topic", "status"],
+)
+_kafka_processing_seconds = Histogram(
+    "gateway_kafka_processing_seconds",
+    "Kafka message processing duration in seconds",
+    ["gateway", "topic"],
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+)
+_kafka_consumer_lag = Gauge(
+    "gateway_kafka_consumer_lag",
+    "Estimated Kafka consumer lag (messages behind)",
+    ["gateway", "topic"],
+)
 
 
 # Shared log format applied to every logger in the process,
@@ -45,6 +76,14 @@ LOG_CONFIG: dict = {
         "httpx": {"handlers": ["console"], "level": "WARNING", "propagate": False},
     },
 }
+
+
+class _NullContext:
+    """No-op context manager used when OTel tracing is disabled."""
+    def __enter__(self):
+        return self
+    def __exit__(self, *_):
+        pass
 
 
 class BaseGatewayConfig(BaseSettings):
@@ -101,6 +140,21 @@ class BaseGateway(ABC):
         # uses the same format and level.
         logging.config.dictConfig(LOG_CONFIG)
         self.logger = logging.getLogger(self.gateway_name)
+
+        # OTel tracing — enabled only if OTEL_EXPORTER_OTLP_ENDPOINT is set
+        self._tracer = None
+        otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+        if _OTEL_AVAILABLE and otlp_endpoint:
+            try:
+                provider = TracerProvider()
+                provider.add_span_processor(
+                    BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True))
+                )
+                trace.set_tracer_provider(provider)
+                self._tracer = trace.get_tracer(self.gateway_name)
+                self.logger.info(f"OTel tracing enabled → {otlp_endpoint}")
+            except Exception as e:
+                self.logger.warning(f"OTel setup failed, tracing disabled: {e}")
 
         # Build FastAPI app with routes bound to this instance
         self.app = self._create_app()
@@ -218,6 +272,10 @@ class BaseGateway(ABC):
         # Prometheus metrics at /metrics
         Instrumentator().instrument(app).expose(app)
 
+        # OTel FastAPI tracing (no-op if OTel not initialized)
+        if _OTEL_AVAILABLE and self._tracer:
+            FastAPIInstrumentor.instrument_app(app)
+
         return app
 
     # ──────────────────────────────────────────────
@@ -276,17 +334,43 @@ class BaseGateway(ABC):
                     typed_message = deserialize_message(data)
                 except ValueError as e:
                     self.logger.warning(f"Could not deserialize message from topic '{topic}': {e}")
+                    _kafka_messages_consumed.labels(
+                        gateway=self.gateway_name, topic=topic, status="error"
+                    ).inc()
                     continue
 
-                # Let the subclass pre-process / transform the message
-                processed = self.process_message(typed_message)
-                if processed is None:
-                    self.logger.debug("Message dropped by process_message()")
-                    continue
-
-                # Forward the processed message to all receiver gateways,
-                # including the source topic so the receiver can route correctly.
-                self._forward_to_recievers(processed, truck_id=truck_id, source_topic=topic)
+                # Process with metrics + optional OTel span
+                start = time.perf_counter()
+                span_ctx = (
+                    self._tracer.start_as_current_span(
+                        f"kafka.consume:{topic}",
+                        attributes={"messaging.destination": topic, "truck_id": truck_id or ""},
+                    )
+                    if self._tracer
+                    else _NullContext()
+                )
+                try:
+                    with span_ctx:
+                        processed = self.process_message(typed_message)
+                        if processed is None:
+                            self.logger.debug("Message dropped by process_message()")
+                            _kafka_messages_consumed.labels(
+                                gateway=self.gateway_name, topic=topic, status="dropped"
+                            ).inc()
+                            continue
+                        self._forward_to_recievers(processed, truck_id=truck_id, source_topic=topic)
+                    _kafka_messages_consumed.labels(
+                        gateway=self.gateway_name, topic=topic, status="success"
+                    ).inc()
+                except Exception as e:
+                    _kafka_messages_consumed.labels(
+                        gateway=self.gateway_name, topic=topic, status="error"
+                    ).inc()
+                    raise
+                finally:
+                    _kafka_processing_seconds.labels(
+                        gateway=self.gateway_name, topic=topic
+                    ).observe(time.perf_counter() - start)
 
         except Exception as e:
             self.logger.exception(f"Consumer loop crashed: {e}")

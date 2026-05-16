@@ -34,8 +34,9 @@ services:
     entrypoint: ["/bin/sh", "/etc/alertmanager/entrypoint.sh"]
     ports:
       - "9093:9093"
+    env_file: .env
     environment:
-      - SMTP_FROM=${SMTP_FROM:-IntelligentLogistics Alerts <alertas@intelligentlogistics.com>}
+      - SMTP_FROM=${SMTP_FROM}
       - SMTP_AUTH_USERNAME=${SMTP_AUTH_USERNAME}
       - SMTP_AUTH_PASSWORD=${SMTP_AUTH_PASSWORD}
       - ALERT_EMAIL_TO=${ALERT_EMAIL_TO}
@@ -55,6 +56,7 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    env_file: .env
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
@@ -63,6 +65,13 @@ services:
       - GF_SECURITY_ALLOW_EMBEDDING=true
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      # SMTP for Grafana-native alerts
+      - GF_SMTP_ENABLED=true
+      - GF_SMTP_HOST=smtp.gmail.com:587
+      - GF_SMTP_USER=${SMTP_AUTH_USERNAME}
+      - GF_SMTP_PASSWORD=${SMTP_AUTH_PASSWORD}
+      - GF_SMTP_FROM_ADDRESS=${SMTP_FROM}
+      - GF_SMTP_FROM_NAME=IntelligentLogistics Grafana
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - grafana_data:/var/lib/grafana
@@ -98,6 +107,7 @@ services:
       - /var/log:/var/log:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /run/log/journal:/run/log/journal:ro
     networks:
       - observability
 
@@ -137,7 +147,7 @@ services:
       - "0.0.0.0:4318:4318"   # OTLP HTTP (remote ingest)
     volumes:
       - ./tempo/tempo-config.yml:/etc/tempo/tempo-config.yml:ro
-      - tempo_data:/tmp/tempo
+      - tempo_data:/var/tempo
     networks:
       - observability
 

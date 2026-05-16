@@ -4,6 +4,9 @@ services:
     image: postgres:15
     container_name: dm_postgres
     restart: unless-stopped
+    command: postgres -c shared_preload_libraries=pg_stat_statements
+                      -c pg_stat_statements.track=all
+                      -c log_min_duration_statement=200
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -74,28 +77,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    networks:
-      - intelligent-logistics
-
-  # One-shot schema migration — runs migrationDBv3.sql and exits.
-  # data-module and outbox-worker wait for this to complete successfully.
-  db-migrate:
-    image: postgres:15
-    container_name: dm_db_migrate
-    restart: "no"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      PGPASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - ./Data_Module/scripts:/migrations:ro
-    command: >
-      psql
-        -h ${POSTGRES_HOST}
-        -U ${POSTGRES_USER}
-        -d ${POSTGRES_DB}
-        -f /migrations/migrationDBv3.sql
     networks:
       - intelligent-logistics
 
@@ -616,6 +597,9 @@ services:
     command:
       - "--mongodb.uri=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017"
       - "--compatible-mode"
+      - "--collector.diagnosticdata"
+      - "--collector.dbstats"
+      - "--collector.topmetrics"
     depends_on:
       mongo:
         condition: service_healthy

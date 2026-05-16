@@ -33,6 +33,20 @@ if [[ $? -ne 0 ]]; then
   exit 1
 fi
 
+# Step 1b: Apply v3 schema migrations (idempotent — safe to re-run on every start)
+echo "Running v3 schema migration..."
+if [[ -f "scripts/migrationDBv3.sql" ]]; then
+  PGPASSWORD=${POSTGRES_PASSWORD} psql -h ${POSTGRES_HOST:-postgres} -p ${POSTGRES_PORT:-5432} -U ${POSTGRES_USER} -d ${POSTGRES_DB} -f scripts/migrationDBv3.sql
+  if [[ $? -eq 0 ]]; then
+    echo "v3 schema migration completed successfully"
+  else
+    echo "v3 schema migration failed"
+    exit 1
+  fi
+else
+  echo "No migrationDBv3.sql found, skipping..."
+fi
+
 # Step 2: Apply triggers (tables exist now, trigger will fire on INSERT)
 echo "Running database triggers migration..."
 if [[ -f "scripts/triggers.sql" ]]; then
@@ -46,7 +60,21 @@ else
   echo "No triggers.sql found, skipping..."
 fi
 
-# Step 3: Seed data (trigger fires on INSERT, arrival_id is generated)
+# Step 3: Apply indexes
+echo "Running indexes migration..."
+if [[ -f "scripts/indexes.sql" ]]; then
+  PGPASSWORD=${POSTGRES_PASSWORD} psql -h ${POSTGRES_HOST:-postgres} -p ${POSTGRES_PORT:-5432} -U ${POSTGRES_USER} -d ${POSTGRES_DB} -v ON_ERROR_STOP=1 -f scripts/indexes.sql
+  if [[ $? -eq 0 ]]; then
+    echo "Indexes migration completed successfully"
+  else
+    echo "Indexes migration failed"
+    exit 1
+  fi
+else
+  echo "No indexes.sql found, skipping..."
+fi
+
+# Step 4: Seed data (trigger fires on INSERT, arrival_id is generated)
 echo "Running database initialization (DATA_INIT_MODE=${DATA_INIT_MODE:-demo})..."
 python scripts/data_init_base.py --mode ${DATA_INIT_MODE:-demo}
 if [[ $? -eq 0 ]]; then

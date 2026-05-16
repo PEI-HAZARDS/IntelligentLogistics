@@ -3,6 +3,7 @@ Unit tests for VBrain.
 """
 
 import json
+import os
 import threading
 import time
 from unittest.mock import MagicMock, patch, PropertyMock
@@ -522,6 +523,69 @@ class TestStart:
 
         brain.kafka_consumer.close.assert_called_once()
         brain.kafka_producer.close.assert_called_once()
+
+    def test_handle_message_error_increments_error_counter(self, brain):
+        """_handle_message raising must hit the error-counter branch (lines 242-244)."""
+        topic = KafkaTopicFactory.truck_detected("1")
+        kafka_msg = self._build_kafka_msg(
+            topic,
+            json.dumps({"message_type": "truck_detected", "confidence": 0.9, "num_detections": 1}).encode(),
+        )
+
+        calls = iter([kafka_msg])
+
+        def consume(timeout):
+            value = next(calls, None)
+            if value is None:
+                brain.running = False
+            return value
+
+        brain.kafka_consumer.consume_message.side_effect = consume
+        brain.kafka_consumer.extract_truck_id_from_headers.return_value = "t1"
+
+        with patch("V_APP.v_brain.src.v_brain.start_http_server"):
+            with patch.object(brain, "_handle_message", side_effect=RuntimeError("handler boom")):
+                with patch("V_APP.v_brain.src.v_brain.v_brain_kafka_consumed") as counter_mock:
+                    with patch.object(brain, "_timeout_loop"):
+                        brain.start()
+
+        error_calls = [
+            c for c in counter_mock.labels.call_args_list
+            if c.kwargs.get("status") == "error" or (c.args and "error" in c.args)
+        ]
+        assert len(error_calls) >= 1
+
+
+# ═══════════════════════════════════════════════════════════════════
+# OTel setup paths (lines 168-177)
+# ═══════════════════════════════════════════════════════════════════
+
+class TestOTelSetup:
+    def test_tracer_initialized_when_endpoint_set(self, config):
+        with patch.dict(os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}):
+            with patch("V_APP.v_brain.src.v_brain._OTEL_AVAILABLE", True):
+                with patch("V_APP.v_brain.src.v_brain.TracerProvider"):
+                    with patch("V_APP.v_brain.src.v_brain.BatchSpanProcessor"):
+                        with patch("V_APP.v_brain.src.v_brain.OTLPSpanExporter"):
+                            with patch("V_APP.v_brain.src.v_brain.trace") as mock_trace:
+                                mock_trace.get_tracer.return_value = MagicMock()
+                                b = VBrain(
+                                    config=config,
+                                    kafka_producer=MagicMock(),
+                                    kafka_consumer=MagicMock(),
+                                )
+        assert b._tracer is not None
+
+    def test_tracer_disabled_when_setup_raises(self, config):
+        with patch.dict(os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}):
+            with patch("V_APP.v_brain.src.v_brain._OTEL_AVAILABLE", True):
+                with patch("V_APP.v_brain.src.v_brain.TracerProvider", side_effect=Exception("otel down")):
+                    b = VBrain(
+                        config=config,
+                        kafka_producer=MagicMock(),
+                        kafka_consumer=MagicMock(),
+                    )
+        assert b._tracer is None
 
 
 # ═══════════════════════════════════════════════════════════════════
