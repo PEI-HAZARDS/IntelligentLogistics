@@ -22,10 +22,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.0
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
@@ -43,7 +43,7 @@ jobs:
           bandit -r src/ -ll -f sarif -o bandit-results.sarif || true
 
       - name: Upload Bandit results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4   # upgraded from v3
         if: always()   # Upload even if bandit found issues
         with:
           sarif_file: bandit-results.sarif
@@ -55,10 +55,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.0
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
@@ -78,15 +78,14 @@ jobs:
           if [ -f src/broker/tests/requirements.txt ];      then pip install -r src/broker/tests/requirements.txt; fi
 
       - name: Run pip-audit
-        # --format cyclonedx-json : machine-readable output saved as an artifact
-        # The plain run (no flag) prints a human-readable table to the log
-        # || true keeps the job green so the artifact upload always runs;
+        # Prints a human-readable table to the log and saves it as an artifact
+        # || true keeps the job green on push/PR so the artifact upload always runs;
         # vulnerabilities are visible in the logs and the uploaded report
         run: |
           pip-audit 2>&1 | tee pip-audit-results.txt || true
 
       - name: Upload pip-audit report as artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.3.0   # pinned to avoid Node.js 20 warning
         if: always()
         with:
           name: pip-audit-report
