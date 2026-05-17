@@ -9,7 +9,7 @@ Shift queries use PostgreSQL (shift data not yet projected to MongoDB).
 from typing import Annotated, List, Optional, Dict, Any
 from datetime import date, datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from loguru import logger
 
@@ -35,7 +35,7 @@ from application.queries.worker_queries import (
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from infrastructure.persistence.postgres import get_db, SessionLocal
 from sqlalchemy import func as sa_func
-from infrastructure.persistence.sql_models import Shift as ShiftORM, Visit as VisitORM
+from infrastructure.persistence.sql_models import Shift as ShiftORM, Visit as VisitORM, Operator, Manager
 from utils.auth_token import generate_internal_jwt, require_role
 from infrastructure.persistence.redis import set_session
 from utils.shift_utils import current_shift_type
@@ -178,7 +178,15 @@ def list_shifts(
     PostgreSQL — shift data not yet projected to MongoDB (Guardrail 5).
     """
     target = target_date or date.today()
-    query = db.query(ShiftORM).filter(ShiftORM.date == target)
+    query = (
+        db.query(ShiftORM)
+        .options(
+            joinedload(ShiftORM.gate),
+            joinedload(ShiftORM.operator).joinedload(Operator.worker),
+            joinedload(ShiftORM.manager).joinedload(Manager.worker),
+        )
+        .filter(ShiftORM.date == target)
+    )
     if gate_id is not None:
         query = query.filter(ShiftORM.gate_id == gate_id)
     if shift_type:
@@ -190,12 +198,26 @@ def list_shifts(
             pass
 
     shifts = query.order_by(ShiftORM.gate_id, ShiftORM.shift_type).all()
+
+    # Single GROUP BY query for all visit counts (replaces per-shift COUNT)
+    visit_counts_rows = (
+        db.query(
+            VisitORM.shift_gate_id,
+            VisitORM.shift_type,
+            VisitORM.shift_date,
+            sa_func.count().label("cnt"),
+        )
+        .filter(VisitORM.shift_date == target)
+        .group_by(VisitORM.shift_gate_id, VisitORM.shift_type, VisitORM.shift_date)
+        .all()
+    )
+    visit_count_map = {(r.shift_gate_id, r.shift_type, r.shift_date): r.cnt for r in visit_counts_rows}
+
     current_st = current_shift_type()
     today = date.today()
 
     result = []
     for s in shifts:
-        # Compute status: active if today + current shift type, completed if past, pending otherwise
         if s.date == today and s.shift_type == current_st:
             shift_status = "active"
         elif s.date < today or (s.date == today and _shift_before(s.shift_type, current_st)):
@@ -206,12 +228,7 @@ def list_shifts(
         if not s.operator_num_worker:
             shift_status = "inactive"
 
-        # Count visits for this shift
-        visit_count = db.query(sa_func.count()).select_from(VisitORM).filter(
-            VisitORM.shift_gate_id == s.gate_id,
-            VisitORM.shift_type == s.shift_type,
-            VisitORM.shift_date == s.date,
-        ).scalar() or 0
+        visit_count = visit_count_map.get((s.gate_id, s.shift_type, s.date), 0)
 
         result.append({
             "id": f"{s.gate_id}-{s.shift_type.name}-{s.date.isoformat()}",
@@ -335,7 +352,11 @@ def list_operator_shifts(
 
     PostgreSQL fallback — shift data not yet projected to MongoDB (Guardrail 5).
     """
-    query = db.query(ShiftORM).filter(ShiftORM.operator_num_worker == num_worker)
+    query = (
+        db.query(ShiftORM)
+        .options(joinedload(ShiftORM.gate))
+        .filter(ShiftORM.operator_num_worker == num_worker)
+    )
     if gate_id is not None:
         query = query.filter(ShiftORM.gate_id == gate_id)
     shifts = query.order_by(ShiftORM.date.desc(), ShiftORM.shift_type).limit(limit).all()
@@ -414,6 +435,7 @@ def list_manager_shifts(
     """
     shifts = (
         db.query(ShiftORM)
+        .options(joinedload(ShiftORM.gate))
         .filter(ShiftORM.manager_num_worker == num_worker)
         .order_by(ShiftORM.date.desc(), ShiftORM.shift_type)
         .limit(limit)

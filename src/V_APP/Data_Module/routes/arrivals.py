@@ -8,7 +8,7 @@ Reads directly from PostgreSQL (source of truth) with Redis caching.
 from typing import Annotated, List, Optional, Dict, Any, Generic, TypeVar
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload, joinedload
 from pydantic import BaseModel
 from loguru import logger
 
@@ -381,8 +381,21 @@ def create_visit(
     )
     if result is None:
         raise HTTPException(status_code=404, detail="Appointment not found or visit already exists")
-    from infrastructure.persistence.sql_models import Visit as VisitORM
-    visit_orm = db.query(VisitORM).filter(VisitORM.appointment_id == appointment_id).first()
+    from infrastructure.persistence.sql_models import Visit as VisitORM, Shift as ShiftORM, Operator, Manager
+    from application.queries.arrival_queries import _APPOINTMENT_EAGER_LOADS
+    visit_orm = (
+        db.query(VisitORM)
+        .options(
+            selectinload(VisitORM.appointment).options(*_APPOINTMENT_EAGER_LOADS),
+            selectinload(VisitORM.shift).options(
+                joinedload(ShiftORM.gate),
+                joinedload(ShiftORM.operator).joinedload(Operator.worker),
+                joinedload(ShiftORM.manager).joinedload(Manager.worker),
+            ),
+        )
+        .filter(VisitORM.appointment_id == appointment_id)
+        .first()
+    )
     return Visit.model_validate(visit_orm)
 
 
@@ -400,6 +413,19 @@ def update_visit(
     )
     if result is None:
         raise HTTPException(status_code=404, detail="Visit not found")
-    from infrastructure.persistence.sql_models import Visit as VisitORM
-    visit_orm = db.query(VisitORM).filter(VisitORM.appointment_id == appointment_id).first()
+    from infrastructure.persistence.sql_models import Visit as VisitORM, Shift as ShiftORM, Operator, Manager
+    from application.queries.arrival_queries import _APPOINTMENT_EAGER_LOADS
+    visit_orm = (
+        db.query(VisitORM)
+        .options(
+            selectinload(VisitORM.appointment).options(*_APPOINTMENT_EAGER_LOADS),
+            selectinload(VisitORM.shift).options(
+                joinedload(ShiftORM.gate),
+                joinedload(ShiftORM.operator).joinedload(Operator.worker),
+                joinedload(ShiftORM.manager).joinedload(Manager.worker),
+            ),
+        )
+        .filter(VisitORM.appointment_id == appointment_id)
+        .first()
+    )
     return Visit.model_validate(visit_orm)
