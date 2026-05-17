@@ -1,32 +1,45 @@
-import gdown  # type: ignore
-import logging
 import os
+import sys
+import shutil
+import logging
 
-# Files to download (name, Google Drive ID, destination folder)
-FILE_NAME = "hazard_plate_model.pt"
-FILE_ID = "1Vl5nbXwWBz_J3ydKxaaWb48Dut4rHZHg"
-NEW_DIR = "data"
-
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s – %(message)s")
 logger = logging.getLogger("setup-AgentC")
+
+# Make the ml-registry scripts importable
+_REGISTRY_SCRIPTS = os.path.join(
+    os.path.dirname(__file__),   # agentC/
+    "..", "..", "ml-registry", "scripts"
+)
+sys.path.insert(0, os.path.abspath(_REGISTRY_SCRIPTS))
+
+from download_model import load_model, ModelRequest  # type: ignore
+
+
+# --- Model config ---
+MODEL_NAME   = "hazard-plate-detector"
+MODEL_ALIAS  = "champion"
+DEST_DIR     = os.path.join(os.path.dirname(__file__), "data")
+DEST_FILE    = "hazard_plate_model.pt"
 
 
 def setup():
-    logger.info("[setup] Downloading models from Google Drive")
-    base_dir = os.path.dirname(__file__)
+    logger.info(f"[setup] Downloading model '{MODEL_NAME}@{MODEL_ALIAS}' from MLflow registry...")
 
-    # Build the full destination directory path
-    dest_dir = os.path.join(base_dir, NEW_DIR)
-    os.makedirs(dest_dir, exist_ok=True)
+    os.makedirs(DEST_DIR, exist_ok=True)
+    dest_path = os.path.join(DEST_DIR, DEST_FILE)
 
-    dest_path = os.path.join(dest_dir, FILE_NAME)
     if os.path.exists(dest_path):
-        logger.info(f"[setup] {FILE_NAME} already exists in {NEW_DIR} — skipping.")
-    else:
-        url = f"https://drive.google.com/uc?id={FILE_ID}"
-        logger.info(f"[setup] Downloading {FILE_NAME} to {NEW_DIR}...")
-        gdown.download(url, dest_path, quiet=False)
+        logger.info(f"[setup] {DEST_FILE} already exists in data/ — skipping download.")
+        return
 
+    pt_path = load_model(ModelRequest(model_name=MODEL_NAME, alias=MODEL_ALIAS))
+
+    # Copy from cache to the expected model directory
+    shutil.copy2(pt_path, dest_path)
+    logger.info(f"[setup] Model saved to {dest_path}")
     logger.info("[setup] All files ready!")
+
 
 if __name__ == "__main__":
     setup()

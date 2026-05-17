@@ -37,24 +37,23 @@ class OCR:
     def __init__(self, allowed_chars: str | None = None) -> None:
         """Initialize PaddleOCR with settings optimized for license/hazard plates."""
         try:
-            #self.paddle_ocr = PaddleOCR(
-            #    use_angle_cls=True,           # Enable angle classification for rotated plates
-            #    lang='en',                    # English language (A-Z, 0-9)
-            #    use_doc_orientation_classify=False,
-            #    use_doc_unwarping=False,
-            #)
-            
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            rec_model_path = os.path.join(current_dir, '..', 'data', 'en_PP-OCRv4_rec_infer')
-            
+            import paddle
+            device = (
+                'gpu'
+                if paddle.device.is_compiled_with_cuda()
+                and paddle.device.cuda.device_count() > 0
+                else 'cpu'
+            )
+            logger.info(f"PaddleOCR device selected: {device}")
+
             self.paddle_ocr = PaddleOCR(
-                rec_model_dir=rec_model_path,  # english, latin optimized
-                device='gpu',
-                use_angle_cls=False,
+                text_detection_model_name='PP-OCRv5_server_det',
+                text_recognition_model_name='PP-OCRv5_server_rec',
                 use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
-                rec_image_shape='3, 48, 320',
-                lang='en',
+                use_textline_orientation=False,
+                text_rec_score_thresh=0.5,
+                device=device,
             )
             
         except Exception as e:
@@ -94,7 +93,7 @@ class OCR:
             processed = self._preprocess_plate(img)
             
             # Run OCR
-            result = self.paddle_ocr.predict(processed, det=False, cls=False)
+            result = self.paddle_ocr.predict(processed)
             
             # Parse results
             text, conf = self._parse_result(result)

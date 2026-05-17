@@ -8,29 +8,21 @@ if src_dir not in sys.path:
     sys.path.insert(0, src_dir)
 
 import logging
+import signal
+
+# Prometheus metrics
+from prometheus_client import start_http_server, Counter, Histogram, Gauge  # type: ignore
+
+from agentC.src.agentC import AgentC
+from agentC.setup import setup
+
+logger = logging.getLogger("init-AgentC")
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s – %(message)s",
     handlers=[logging.StreamHandler()]
 )
-
-
-import gdown  # type: ignore
-import signal
-
-# Prometheus metrics
-from prometheus_client import start_http_server, Counter, Histogram, Gauge # type: ignore
-
-from agentC.src.agentC import AgentC
-
-# Files to download (name, Google Drive ID, destination folder)
-FILE_NAME = "hazard_plate_model.pt"
-FILE_ID = "1Dx1XS4pALjzP6AN5ryAJXA7sJ4KgH4JD"
-FILE_ID_V2 = "12Y0Knu9J-yLIlKGhowg_iKVCBt59jZwe"
-NEW_DIR = "data"
-
-logger = logging.getLogger("init-AgentC")
 
 # Prometheus metrics
 METRICS_PORT = int(os.getenv("METRICS_PORT", 8000))
@@ -39,63 +31,33 @@ INFERENCE_TIME = Histogram('agent_inference_seconds', 'Inference time in seconds
 AGENT_UP = Gauge('agent_up', 'Agent is running', ['agent'])
 
 
-def setup():
-    logger.info("Downloading models from Google Drive")
-    base_dir = os.path.dirname(__file__)
-
-    # Build the full destination directory path
-    dest_dir = os.path.join(base_dir, NEW_DIR)
-    os.makedirs(dest_dir, exist_ok=True)
-
-    dest_path = os.path.join(dest_dir, FILE_NAME)
-    if os.path.exists(dest_path):
-        logger.info(f"{FILE_NAME} already exists in {NEW_DIR} — skipping.")
-    else:
-        url = f"https://drive.google.com/uc?id={FILE_ID_V2}"
-        logger.info(f"Downloading {FILE_NAME} to {NEW_DIR}...")
-        gdown.download(url, dest_path, quiet=False)
-
-    # Download OCR model from Google Drive folder
-    shared_data_dir = os.path.join(base_dir, '..', 'shared', 'data')
-    ocr_dest_dir = os.path.join(shared_data_dir, 'en_PP-OCRv4_rec_infer')
-    os.makedirs(shared_data_dir, exist_ok=True)
-    
-    if os.path.exists(ocr_dest_dir) and os.listdir(ocr_dest_dir):
-        logger.info(f"en_PP-OCRv4_rec_infer already exists — skipping.")
-    else:
-        logger.info("Downloading en_PP-OCRv4_rec_infer to shared/data...")
-        gdown.download_folder(id="1Ic6w-6VxJKNLmdwM0QEBgtwdKnKAjqBy", output=ocr_dest_dir, quiet=False, use_cookies=False)
-
-    logger.info("All files ready!")
-
-
 def main():
     # Start Prometheus metrics server
     logger.info(f"Starting Prometheus metrics server on port {METRICS_PORT}")
     start_http_server(METRICS_PORT)
     AGENT_UP.labels(agent='agent-c').set(1)
-    
+
     setup()
-    
+
     logger.info("Creating AgentC instance...")
     agent = AgentC()
 
     # Reset logging level AFTER AgentC is created
     # PaddleOCR overrides it during OCR() initialization
     logging.getLogger().setLevel(logging.INFO)
-    
+
     logger.info("AgentC instance created!")
-    
+
     # Register signal handler for graceful shutdown
     def signal_handler(sig, frame):
-        logger.info("\nKeyboard interrupt received, stopping agent...")
+        logger.info("\nSignal received, stopping agent...")
         AGENT_UP.labels(agent='agent-c').set(0)
         agent.stop()
         sys.exit(0)
-    
+
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
+
     try:
         logger.info("Starting AgentC main loop...")
         agent.start()
@@ -104,10 +66,11 @@ def main():
         AGENT_UP.labels(agent='agent-c').set(0)
         agent.stop()
     except Exception as e:
-        logger.info(f"Unexpected error: {e}")
+        logger.exception(f"Unexpected error: {e}")
         AGENT_UP.labels(agent='agent-c').set(0)
         agent.stop()
         raise
+
 
 if __name__ == "__main__":
     main()

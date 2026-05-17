@@ -1,35 +1,45 @@
 import os
+import sys
+import shutil
 import logging
-import gdown  # type: ignore
 
-# Files (name, Google Drive ID, destination folder)
-FILE_NAME = "truck_model.pt"
-FILE_ID = "1LL0zMJrppkqd51zQDLixzlOIJvwlMDXe"
-NEW_DIR = "data"
-
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s – %(message)s")
 logger = logging.getLogger("setup-AgentA")
+
+# Make the ml-registry scripts importable
+_REGISTRY_SCRIPTS = os.path.join(
+    os.path.dirname(__file__),   # agentA/
+    "..", "..", "ml-registry", "scripts"
+)
+sys.path.insert(0, os.path.abspath(_REGISTRY_SCRIPTS))
+
+from download_model import load_model, ModelRequest  # type: ignore
+
+
+# --- Model config ---
+MODEL_NAME   = "truck-detector"
+MODEL_ALIAS  = "champion"
+DEST_DIR     = os.path.join(os.path.dirname(__file__), "data")
+DEST_FILE    = "truck_model.pt"
 
 
 def setup():
-    logger.info("[setup] Downloading models from Google Drive")
+    logger.info(f"[setup] Downloading model '{MODEL_NAME}@{MODEL_ALIAS}' from MLflow registry...")
 
-    # Determine which folder the script is running in
-    base_dir = os.path.dirname(__file__)
+    os.makedirs(DEST_DIR, exist_ok=True)
+    dest_path = os.path.join(DEST_DIR, DEST_FILE)
 
-    # Create destination folder if it doesn't exist
-    dest_dir = os.path.join(base_dir, NEW_DIR)
-    os.makedirs(dest_dir, exist_ok=True)
-
-    # Build the full path of the destination file
-    dest_path = os.path.join(dest_dir, FILE_NAME)
     if os.path.exists(dest_path):
-        print(f"[setup] {FILE_NAME} already exists in {NEW_DIR} — skipping.")
-    else:
-        url = f"https://drive.google.com/uc?id={FILE_ID}"
-        logger.info(f"[setup] Downloading {FILE_NAME} to {NEW_DIR}...")
-        gdown.download(url, dest_path, quiet=False)
+        logger.info(f"[setup] {DEST_FILE} already exists in data/ — skipping download.")
+        return
 
+    pt_path = load_model(ModelRequest(model_name=MODEL_NAME, alias=MODEL_ALIAS))
+
+    # Copy from cache to the expected model directory
+    shutil.copy2(pt_path, dest_path)
+    logger.info(f"[setup] Model saved to {dest_path}")
     logger.info("[setup] All files ready!")
+
 
 if __name__ == "__main__":
     setup()
