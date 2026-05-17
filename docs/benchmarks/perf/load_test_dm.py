@@ -27,7 +27,17 @@ Scenarios covered:
   - Concurrent reads: stats endpoint under parallel load
 """
 
-from locust import HttpUser, task, between
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from locust import HttpUser, task, between, events
+import metrics
+
+
+@events.init.add_listener
+def on_locust_init(environment, **_kwargs):
+    metrics.register(environment)
 import random
 
 # Seeded license plates from data_init_trial.py / data_init_demo.py

@@ -55,7 +55,17 @@ Shape:
 import os
 import random
 
-from locust import HttpUser, task, between, LoadTestShape
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from locust import HttpUser, task, between, LoadTestShape, events
+import metrics
+
+
+@events.init.add_listener
+def on_locust_init(environment, **_kwargs):
+    metrics.register(environment)
 
 KNOWN_PLATES = ["87AX60", "68BSH8", "98AZ00", "45BC30", "12DF90", "33GH72", "77KL01"]
 GATE_IDS = [1, 2, 3]

@@ -236,20 +236,16 @@ scrape_configs:
           vm: 'V_APP'
 
   # =============================================================================
-  # LOCUST - Load / Stress test runner
+  # PUSHGATEWAY - Ephemeral job metrics (locust load tests, CI runs)
   #
-  # locust-plugins PrometheusListener exposes /metrics on port 9646 on the
-  # machine running locust (dev laptop or Jenkins). Replace the target IP with
-  # the machine where you run `locust -f docs/benchmarks/...`.
-  #
-  # The listener is active only while a locust process is running; Prometheus
-  # will log scrape errors between runs — this is expected and harmless.
+  # locust pushes metrics here every 5 s via metrics.py.
+  # honor_labels: true preserves the job/instance labels set by the pusher,
+  # so metrics appear as job="locust" in Grafana.
   # =============================================================================
-  - job_name: 'locust'
+  - job_name: 'pushgateway'
     scrape_interval: 5s
-    metrics_path: /metrics
+    honor_labels: true
     static_configs:
-      - targets: ['localhost:9646']
+      - targets: ['pushgateway:9091']
         labels:
-          service: 'locust'
-          vm: 'dev'
+          service: 'pushgateway'

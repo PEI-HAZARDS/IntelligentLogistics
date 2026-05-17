@@ -33,7 +33,17 @@ Scenarios covered:
 import os
 import random
 import time
-from locust import HttpUser, task, between
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from locust import HttpUser, task, between, events
+import metrics
+
+
+@events.init.add_listener
+def on_locust_init(environment, **_kwargs):
+    metrics.register(environment)
 
 # ---------------------------------------------------------------------------
 # Seed data — must match data_init_demo.py / data_init_trial.py
