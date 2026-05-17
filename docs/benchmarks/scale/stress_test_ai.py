@@ -4,22 +4,22 @@ AI_APP horizontal scale-out stress test — Milestone 4 Scalability.
 Simulates N concurrent AI_APP pipelines hitting the V_APP API Gateway,
 validating the core scalability model:
 
-    Camera 1 → AI_APP #1 ┐
-    Camera 2 → AI_APP #2 ├──→ V_APP API Gateway (1 instance per port)
-    Camera N → AI_APP #N ┘
+    Camera 1 -> AI_APP #1 -+
+    Camera 2 -> AI_APP #2  +--> V_APP API Gateway (1 instance per port)
+    Camera N -> AI_APP #N -+
 
-Note: The real AI_APP → V_APP path uses Kafka for event publishing (AgentA/B/C
+Note: The real AI_APP -> V_APP path uses Kafka for event publishing (AgentA/B/C
 topics). What is measured here is the HTTP read path that the Decision Engine
 and V_Brain trigger after consuming those Kafka events:
-  1. License plate lookup  → GET /api/arrivals/query/license-plate/{plate}
-  2. Next arrivals at gate → GET /api/arrivals/next/{gate_id}
-  3. Active alerts check   → GET /api/alerts/active
-  4. Statistics read       → GET /api/statistics/summary  (Mongo aggregation)
+  1. License plate lookup  -> GET /api/arrivals/query/license-plate/{plate}
+  2. Next arrivals at gate -> GET /api/arrivals/next/{gate_id}
+  3. Active alerts check   -> GET /api/alerts/active
+  4. Statistics read       -> GET /api/statistics/summary  (Mongo aggregation)
 
 Each Locust user = 1 AI_APP pipeline processing detections for 1 camera.
 
-Usage:
-    pip install locust
+Usage (run from docs/benchmarks/):
+    pip install -r requirements.txt
 
     # 1. Obtain a token once (avoids Keycloak brute-force protection under
     #    concurrent spawns — all pipelines share the same long-lived JWT):
@@ -29,20 +29,26 @@ Usage:
       | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
     # 2. Run the stress test:
-    BEARER_TOKEN=$TOKEN locust -f tests/stress_test_ai.py \\
+    BEARER_TOKEN=$TOKEN locust -f scale/stress_test_ai.py \\
            --host=http://<vm-ip>:8000 \\
            --headless \\
            --run-time 8m \\
+           --html scale/stress_report_ai.html
+
+    # Or from repo root:
+    BEARER_TOKEN=$TOKEN locust -f docs/benchmarks/scale/stress_test_ai.py \\
+           --host=http://<vm-ip>:8000 \\
+           --headless --run-time 8m \\
            --html docs/benchmarks/scale/stress_report_ai.html
 
     # Web UI (set BEARER_TOKEN in env before launching):
-    BEARER_TOKEN=$TOKEN locust -f tests/stress_test_ai.py --host=http://<vm-ip>:8000
+    BEARER_TOKEN=$TOKEN locust -f scale/stress_test_ai.py --host=http://<vm-ip>:8000
 
 Shape:
-  Stage 1   0 – 60 s    1 →  5 AI_APPs   (1 camera per gate)
-  Stage 2  60 – 120 s   5 → 10 AI_APPs   (2 cameras per gate)
-  Stage 3 120 – 180 s  10 → 20 AI_APPs   (high camera density)
-  Stage 4 180 – 300 s  20 → 30 AI_APPs   (stress — breaking point hunt)
+  Stage 1   0 –  60 s   1 ->  5 AI_APPs   (1 camera per gate)
+  Stage 2  60 – 120 s   5 -> 10 AI_APPs   (2 cameras per gate)
+  Stage 3 120 – 180 s  10 -> 20 AI_APPs   (high camera density)
+  Stage 4 180 – 300 s  20 -> 30 AI_APPs   (stress — breaking point hunt)
   Stage 5 300 – 480 s  30 (hold)          (sustained load)
 """
 
