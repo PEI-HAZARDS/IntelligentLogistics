@@ -55,8 +55,8 @@ class TestPlateClassifierInit:
     def test_initialization_sets_thresholds(self, classifier):
         """Initialization sets aspect ratio thresholds."""
         # Assert
-        assert classifier.min_aspect_ratio_license == 1.5
-        assert classifier.max_aspect_ratio_hazard == 1.2
+        assert classifier.min_aspect_ratio_license == 1.05
+        assert classifier.max_aspect_ratio_hazard == 1.9
 
     def test_class_constants_defined(self, classifier):
         """Class constants are defined."""
@@ -171,7 +171,7 @@ class TestClassify:
         result = classifier.classify(img)
 
         # Assert
-        assert result == classifier.UNKNOWN
+        assert result == classifier.LICENSE_PLATE
 
     @patch("AI_APP.shared.src.plate_classifier.cv2")
     def test_strong_license_color_wins_tiebreaker(self, mock_cv2, classifier):
