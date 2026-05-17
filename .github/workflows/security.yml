@@ -1,0 +1,300 @@
+name: Security Analysis
+
+on:
+  push:
+    branches: [ "main", "dev" ]
+  pull_request:
+    branches: [ "main", "dev" ]
+    types: [opened, synchronize, reopened]
+  schedule:
+    - cron: '0 2 * * *'   # Nightly at 02:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write   # Required to upload SARIF to the Security tab
+  pull-requests: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # Opt into Node.js 24 ahead of June 2026 deadline
+
+jobs:
+  bandit:
+    name: Bandit - Static Security Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4.2.0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Bandit
+        run: pip install bandit[sarif]
+
+      - name: Run Bandit
+        run: |
+          bandit -r src/ -x '*/tests/*,*/test_*.py,*_test.py,deprecated/*' -ll -f txt 2>&1 | tee bandit-results.txt || echo "BANDIT_FAILED=true" >> $GITHUB_ENV
+          bandit -r src/ -x '*/tests/*,*/test_*.py,*_test.py,deprecated/*' -ll -f sarif -o bandit-results.sarif || echo "BANDIT_FAILED=true" >> $GITHUB_ENV
+
+      - name: Fail on vulnerabilities (scheduled runs only)
+        if: github.event_name == 'schedule' && env.BANDIT_FAILED == 'true'
+        run: exit 1
+
+      - name: Upload Bandit report as artifact
+        uses: actions/upload-artifact@v4.3.0
+        if: always()
+        with:
+          name: bandit-report
+          path: bandit-results.txt
+          retention-days: 30
+
+      - name: Upload Bandit report to Slack
+        id: upload_bandit
+        uses: MeilCli/slack-upload-file@v4
+        if: always()
+        with:
+          slack_token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
+          file_path: 'bandit-results.txt'
+          initial_comment: 'Bandit Security Report for ${{ github.repository }} (${{ github.ref_name }})'
+
+      - name: Notify Slack - Bandit success
+        if: success() && env.BANDIT_FAILED != 'true'
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [{
+                "color": "good",
+                "title": "✅ Bandit - No issues found",
+                "fields": [
+                  { "title": "Repository", "value": "${{ github.repository }}", "short": true },
+                  { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
+                  { "title": "Triggered by", "value": "${{ github.actor }}", "short": true },
+                  { "title": "Commit", "value": "${{ github.sha }}", "short": true },
+                  { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                ]
+              }]
+            }
+
+      - name: Notify Slack - Bandit vulnerabilities detected
+        if: env.BANDIT_FAILED == 'true' && steps.upload_bandit.outcome != 'failure'
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [{
+                "color": "warning",
+                "title": "🚨 Bandit - Security issues detected",
+                "fields": [
+                  { "title": "Repository", "value": "${{ github.repository }}", "short": true },
+                  { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
+                  { "title": "Triggered by", "value": "${{ github.actor }}", "short": true },
+                  { "title": "Commit", "value": "${{ github.sha }}", "short": true },
+                  { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                ]
+              }]
+            }
+
+      - name: Notify Slack - Bandit workflow error
+        if: failure() && (env.BANDIT_FAILED != 'true' || steps.upload_bandit.outcome == 'failure')
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [{
+                "color": "danger",
+                "title": "⚠️ Bandit - Workflow Execution Error",
+                "text": "The GitHub Action encountered an error (e.g., Slack bot missing from channel, installation failure).",
+                "fields": [
+                  { "title": "Repository", "value": "${{ github.repository }}", "short": true },
+                  { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
+                  { "title": "Triggered by", "value": "${{ github.actor }}", "short": true },
+                  { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                ]
+              }]
+            }
+
+  pip-audit:
+    name: pip-audit - Dependency Vulnerability Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4.2.0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Install project dependencies
+        # Mirror the install logic from your SonarCloud workflow so pip-audit
+        # sees the same dependency tree that your application actually uses
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f src/shared/tests/requirements.txt ];      then pip install -r src/shared/tests/requirements.txt; fi
+          if [ -f src/decision_engine/requirements.txt ];   then pip install -r src/decision_engine/requirements.txt; fi
+          if [ -f src/agentA/requirements.txt ];            then pip install -r src/agentA/requirements.txt; fi
+          if [ -f src/agentB/requirements.txt ];            then pip install -r src/agentB/requirements.txt; fi
+          if [ -f src/agentC/requirements.txt ];            then pip install -r src/agentC/requirements.txt; fi
+          if [ -f src/broker/tests/requirements.txt ];      then pip install -r src/broker/tests/requirements.txt; fi
+
+      - name: Run pip-audit
+        # Prints a human-readable table to the log and saves it as an artifact
+        # The env var keeps track of failure so notifications are correct.
+        run: |
+          pip-audit 2>&1 | tee pip-audit-results.txt || echo "PIP_AUDIT_FAILED=true" >> $GITHUB_ENV
+
+      - name: Upload pip-audit report as artifact
+        uses: actions/upload-artifact@v4.3.0
+        if: always()
+        with:
+          name: pip-audit-report
+          path: pip-audit-results.txt
+          retention-days: 30
+
+      # Scheduled runs: fail the job explicitly if vulnerabilities are found
+      # so that a nightly failure shows up as a red check on the repo
+      - name: Fail on vulnerabilities (scheduled runs only)
+        if: github.event_name == 'schedule' && env.PIP_AUDIT_FAILED == 'true'
+        run: exit 1
+
+      - name: Upload pip-audit report to Slack
+        id: upload_pip_audit
+        uses: MeilCli/slack-upload-file@v4
+        if: always()
+        with:
+          slack_token: ${{ secrets.SLACK_BOT_TOKEN }}
+          channel_id: ${{ secrets.SLACK_CHANNEL_ID }}
+          file_path: 'pip-audit-results.txt'
+          initial_comment: 'pip-audit Security Report for ${{ github.repository }} (${{ github.ref_name }})'
+
+      - name: Notify Slack - pip-audit success
+        if: success() && env.PIP_AUDIT_FAILED != 'true'
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [{
+                "color": "good",
+                "title": "✅ pip-audit - No vulnerabilities found",
+                "fields": [
+                  { "title": "Repository", "value": "${{ github.repository }}", "short": true },
+                  { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
+                  { "title": "Triggered by", "value": "${{ github.actor }}", "short": true },
+                  { "title": "Commit", "value": "${{ github.sha }}", "short": true },
+                  { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                ]
+              }]
+            }
+
+      - name: Notify Slack - pip-audit vulnerabilities detected
+        if: env.PIP_AUDIT_FAILED == 'true' && steps.upload_pip_audit.outcome != 'failure'
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [{
+                "color": "warning",
+                "title": "🚨 pip-audit - Vulnerabilities detected",
+                "fields": [
+                  { "title": "Repository", "value": "${{ github.repository }}", "short": true },
+                  { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
+                  { "title": "Triggered by", "value": "${{ github.actor }}", "short": true },
+                  { "title": "Commit", "value": "${{ github.sha }}", "short": true },
+                  { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                ]
+              }]
+            }
+
+      - name: Notify Slack - pip-audit workflow error
+        if: failure() && (env.PIP_AUDIT_FAILED != 'true' || steps.upload_pip_audit.outcome == 'failure')
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [{
+                "color": "danger",
+                "title": "⚠️ pip-audit - Workflow Execution Error",
+                "text": "The GitHub Action encountered an error (e.g., Slack bot missing from channel, installation failure).",
+                "fields": [
+                  { "title": "Repository", "value": "${{ github.repository }}", "short": true },
+                  { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
+                  { "title": "Triggered by", "value": "${{ github.actor }}", "short": true },
+                  { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                ]
+              }]
+            }
+
+  # Nightly summary job — only runs on schedule, waits for both scans to finish
+  # and posts a single consolidated summary to Slack regardless of outcome
+  nightly-summary:
+    name: Nightly Security Summary
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    needs: [bandit, pip-audit]   # Always runs after both jobs, even if they fail
+
+    steps:
+      - name: Notify Slack - Nightly summary (all passed)
+        if: needs.bandit.result == 'success' && needs.pip-audit.result == 'success'
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [{
+                "color": "good",
+                "title": "🌙 Nightly Security Scan - All clear",
+                "text": "Both Bandit and pip-audit completed with no issues.",
+                "fields": [
+                  { "title": "Repository", "value": "${{ github.repository }}", "short": true },
+                  { "title": "Triggered by", "value": "Scheduled (nightly)", "short": true },
+                  { "title": "Bandit", "value": "✅ Passed", "short": true },
+                  { "title": "pip-audit", "value": "✅ Passed", "short": true },
+                  { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                ]
+              }]
+            }
+
+      - name: Notify Slack - Nightly summary (failures)
+        if: needs.bandit.result == 'failure' || needs.pip-audit.result == 'failure'
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [{
+                "color": "danger",
+                "title": "🌙 Nightly Security Scan - Action required",
+                "text": "One or more security scans failed. Review the run for details.",
+                "fields": [
+                  { "title": "Repository", "value": "${{ github.repository }}", "short": true },
+                  { "title": "Triggered by", "value": "Scheduled (nightly)", "short": true },
+                  { "title": "Bandit", "value": "${{ needs.bandit.result == 'success' && '✅ Passed' || '❌ Failed' }}", "short": true },
+                  { "title": "pip-audit", "value": "${{ needs.pip-audit.result == 'success' && '✅ Passed' || '❌ Failed' }}", "short": true },
+                  { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                ]
+              }]
+            }
