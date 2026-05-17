@@ -54,6 +54,17 @@ def setup():
         logger.info(f"Downloading {FILE_NAME} to {NEW_DIR}...")
         gdown.download(url, dest_path, quiet=False)
 
+    # Download OCR model from Google Drive folder
+    shared_data_dir = os.path.join(base_dir, '..', 'shared', 'data')
+    ocr_dest_dir = os.path.join(shared_data_dir, 'en_PP-OCRv4_rec_infer')
+    os.makedirs(shared_data_dir, exist_ok=True)
+    
+    if os.path.exists(ocr_dest_dir) and os.listdir(ocr_dest_dir):
+        logger.info(f"en_PP-OCRv4_rec_infer already exists — skipping.")
+    else:
+        logger.info("Downloading en_PP-OCRv4_rec_infer to shared/data...")
+        gdown.download_folder(id="1Ic6w-6VxJKNLmdwM0QEBgtwdKnKAjqBy", output=ocr_dest_dir, quiet=False, use_cookies=False)
+
     logger.info("All files ready!")
 
 

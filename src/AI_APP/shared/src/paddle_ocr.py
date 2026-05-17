@@ -8,6 +8,7 @@ Optimized for license plate recognition with:
 
 import logging
 import cv2 # type: ignore
+import os
 import numpy as np # type: ignore
 from PIL import Image # type: ignore
 from paddleocr import PaddleOCR # type: ignore
@@ -36,11 +37,24 @@ class OCR:
     def __init__(self, allowed_chars: str | None = None) -> None:
         """Initialize PaddleOCR with settings optimized for license/hazard plates."""
         try:
+            #self.paddle_ocr = PaddleOCR(
+            #    use_angle_cls=True,           # Enable angle classification for rotated plates
+            #    lang='en',                    # English language (A-Z, 0-9)
+            #    use_doc_orientation_classify=False,
+            #    use_doc_unwarping=False,
+            #)
+            
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            rec_model_path = os.path.join(current_dir, '..', 'data', 'en_PP-OCRv4_rec_infer')
+            
             self.paddle_ocr = PaddleOCR(
-                use_angle_cls=True,           # Enable angle classification for rotated plates
-                lang='en',                    # English language (A-Z, 0-9)
+                rec_model_dir=rec_model_path,  # english, latin optimized
+                device='gpu',
+                use_angle_cls=False,
                 use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
+                rec_image_shape='3, 48, 320',
+                lang='en',
             )
             
         except Exception as e:
@@ -80,7 +94,7 @@ class OCR:
             processed = self._preprocess_plate(img)
             
             # Run OCR
-            result = self.paddle_ocr.predict(processed)
+            result = self.paddle_ocr.predict(processed, det=False, cls=False)
             
             # Parse results
             text, conf = self._parse_result(result)
