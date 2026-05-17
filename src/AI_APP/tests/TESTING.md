@@ -33,21 +33,3 @@ PYTHONPATH=src uv run --active pytest -q src/AI_APP/tests/integration_models -m 
 PYTHONPATH=src uv run --active pytest -q src/AI_APP/tests/integration_system -m integration_system
 ```
 
-## 5) Plate Classifier Integration Example
-
-Default (license plate):
-
-```bash
-PYTHONPATH=src uv run --active pytest -q src/AI_APP/tests/integration_models/plate_classifier_integration_test.py -m integration_model
-```
-
-Hazard plate with custom crops directory:
-
-```bash
-PYTHONPATH=src uv run --active pytest -q src/AI_APP/tests/integration_models/plate_classifier_integration_test.py -m integration_model --plate-type hazard_plate --crops-dir src/AI_APP/crops_hazard
-```
-or
-
-```bash
-PYTHONPATH=src uv run --active pytest -q src/AI_APP/tests/integration_models/plate_classifier_integration_test.py -m integration_model --plate-type license_plate --crops-dir ../license_plate_crops/
-```
