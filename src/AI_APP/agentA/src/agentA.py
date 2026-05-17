@@ -44,6 +44,10 @@ class AgentAConfig(BaseSettings):
     gate_id: str = Field(default="1")
     models_path: str = Field(default="/app/AI_APP/agentA/data")
     decision_timeout: int = Field(default=60)
+    min_detection_confidence: float = Field(
+        default=0.75, 
+        alias="AGENT_A_MIN_DETECTION_CONFIDENCE"
+    )
     
     # Use properties to dynamically construct dependent values
     @property
@@ -90,6 +94,7 @@ class AgentA:
         drawer: Optional[BoundingBoxDrawer] = None,
     ):
         self.config = config
+        logger.info(f"Agent A initialized with min_detection_confidence={self.config.min_detection_confidence}")
         
         try:
             self.yolo = object_detector or ObjectDetector(config.models_path + "/truck_model.pt", 7)
@@ -225,9 +230,12 @@ class AgentA:
         num_boxes = len(boxes)
         max_conf = max((b[4] for b in boxes), default=0.0)
 
-        # Discard trucks with less than 75% confidence to reduce false positives
-        if max_conf < 0.75:
-            logger.debug(f"Detections found but confidence too low (max_conf={max_conf:.2f}), skipping.")
+        # Discard trucks with less than configured confidence to reduce false positives
+        if max_conf < self.config.min_detection_confidence:
+            logger.debug(
+                "Detections found but confidence too low "
+                f"(max_conf={max_conf:.2f}, min_conf={self.config.min_detection_confidence:.2f}), skipping."
+            )
             return False
 
         # Draw detected boxes on the frame (labelled)

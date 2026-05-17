@@ -39,7 +39,6 @@ class BaseAgentConfig(BaseSettings):
 
     # Detection parameters
     max_frames: int = Field(default=40)
-    min_detection_confidence: float = Field(default=0.4)
     annotated_frames_idle_upload: bool = Field(default=True)
     annotated_frames_buffer_size: int = Field(default=100)
 
@@ -232,6 +231,10 @@ class BaseAgent(ABC):
     def get_detection_metric(self) -> Optional[object]:
         """Return the single Prometheus counter to increment per detected box, or None."""
         pass
+
+    def get_min_detection_confidence(self) -> float:
+        """Return minimum YOLO confidence threshold for this agent."""
+        return self.config.min_detection_confidence
 
     # ========================================================================
     # Template methods - common behavior with extension points
@@ -481,7 +484,7 @@ class BaseAgent(ABC):
         """
         x1, y1, x2, y2, conf = map(float, box)
 
-        if conf < self.config.min_detection_confidence:
+        if conf < self.get_min_detection_confidence():
             self.logger.debug(f"Low confidence box ignored ({conf:.2f})")
             return None, None
 
