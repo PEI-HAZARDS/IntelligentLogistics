@@ -25,42 +25,10 @@ The **Intelligent Logistics** project proposes exactly that:
 
 The system adopts a **containerized microservices architecture** organized into two main applications that communicate via gateways:
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            INTELLIGENT LOGISTICS                             │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌──────────────────────┐                      ┌──────────────────────┐    │
-│  │       AI_APP         │     HTTP/Gateway     │        V_APP         │    │
-│  │  (Computer Vision)   │◄────────────────────►│   (Business Logic)   │    │
-│  │                      │                      │                      │    │
-│  │  ┌────────────────┐  │                      │  ┌────────────────┐  │    │
-│  │  │    AgentA      │  │                      │  │  API Gateway   │  │    │
-│  │  │ Truck Detection│  │                      │  │   (FastAPI)    │  │    │
-│  │  └───────┬────────┘  │                      │  └───────┬────────┘  │    │
-│  │          │ Kafka     │                      │          │           │    │
-│  │  ┌───────▼────────┐  │                      │  ┌───────▼────────┐  │    │
-│  │  │    AgentB      │  │                      │  │ Decision Engine│  │    │
-│  │  │ License Plate  │  │                      │  │  (Validation)  │  │    │
-│  │  └───────┬────────┘  │                      │  └───────┬────────┘  │    │
-│  │          │ Kafka     │                      │          │           │    │
-│  │  ┌───────▼────────┐  │                      │  ┌───────▼────────┐  │    │
-│  │  │    AgentC      │  │                      │  │  Data Module   │  │    │
-│  │  │ Hazard Plates  │  │                      │  │  (PostgreSQL,  │  │    │
-│  │  └───────┬────────┘  │                      │  │  MongoDB, Redis│  │    │
-│  │          │           │                      │  │  MinIO)        │  │    │
-│  │  ┌───────▼────────┐  │                      │  └────────────────┘  │    │
-│  │  │   AI Gateway   │◄─┼──────────────────────┼►│    V Gateway    │  │    │
-│  │  └────────────────┘  │                      │  └────────────────┘  │    │
-│  └──────────────────────┘                      └──────────────────────┘    │
-│                                                                             │
-│  ┌──────────────────────┐          ┌──────────────────────────────────┐    │
-│  │ Streaming Middleware │          │       Observability Stack        │    │
-│  │   (NGINX RTMP)       │          │  (Prometheus, Grafana, Loki)     │    │
-│  │  RTSP → RTMP/HLS     │          └──────────────────────────────────┘    │
-│  └──────────────────────┘                                                  │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+![System architecture](docs/sketch_arquitetura/arch_technological.png)
+
+For a full deployment topology (VM layout, Kafka topics, and end-to-end flow), see
+[docs/sketch_arquitetura/arch_flow.md](docs/sketch_arquitetura/arch_flow.md).
 
 ### AI_APP — Computer Vision Pipeline
 
@@ -68,17 +36,22 @@ The AI application implements a multi-agent detection pipeline using a **Blackbo
 
 | Agent | Function | Model | Input |
 |-------|----------|-------|-------|
-| **AgentA** | Truck Detection | YOLOv8 | 720p RTMP stream |
-| **AgentB** | License Plate Detection + OCR | YOLOv8 + PaddleOCR | 4K RTMP stream |
-| **AgentC** | Hazard Plate Detection + OCR | YOLOv8 + PaddleOCR | 4K RTMP stream |
+| **AgentA** | Truck Detection | YOLOv11 | Low-res stream |
+| **AgentB** | License Plate Detection + OCR | YOLOv11 + PaddleOCR | High-res stream |
+| **AgentC** | Hazard Plate Detection + OCR | YOLOv11 + PaddleOCR | High-res stream |
 | **AI Gateway** | Inter-app communication | — | Kafka events |
 
 **Detection Flow:**
-1. AgentA monitors the 720p stream and detects trucks → publishes `truck_detected` event
-2. AgentB and AgentC subscribe to `truck_detected`, switch to 4K stream for detailed analysis
-3. AgentB extracts license plates → publishes `license_plate_results`
-4. AgentC extracts UN/Kemler codes from hazard placards → publishes `hazard_plate_results`
+1. AgentA monitors the low-res stream and detects trucks → publishes `truck-detected-{GATE_ID}`
+2. AgentB and AgentC subscribe to `truck-detected-{GATE_ID}`, switch to 4K stream for detailed analysis
+3. AgentB extracts license plates → publishes `lp-results-{GATE_ID}`
+4. AgentC extracts UN/Kemler codes from hazard placards → publishes `hz-results-{GATE_ID}`
 5. AI Gateway forwards results to V_APP via HTTP
+6. V-Brain sends a reset message to AgentA to re-arm the next detection cycle
+
+**Notes:**
+- AgentA is always-on on the low-res stream, but after publishing `truck-detected-{GATE_ID}` it waits for a V-Brain reset to re-arm (debounce ~35s as a safety net).
+- AgentB and AgentC are event-driven, run consensus OCR across multiple frames, and upload crops to MinIO buckets.
 
 ### V_APP — Business Logic & Data Services
 
@@ -88,25 +61,46 @@ The vehicle application handles business logic, data persistence, and client com
 |-----------|----------|------------|
 | **API Gateway** | REST API, WebSocket notifications | FastAPI |
 | **Decision Engine** | Access validation & routing decisions | Python |
-| **Data Module** | Data persistence & caching | PostgreSQL, MongoDB, Redis |
+| **Infraction Engine** | HighWay infraction decisions | Python |
+| **V-Brain** | Cross-gate orchestration, scale up/down, AgentA reset | Python + Kafka |
 | **V Gateway** | Inter-app communication | FastAPI + Kafka |
+| **V Broker** | Internal event bus | Kafka (KRaft) |
+| **Data Module** | Data persistence & caching | PostgreSQL, MongoDB, Redis |
+| **Keycloak** | Identity provider | Keycloak |
 | **MinIO** | Object storage for images/crops | S3-compatible |
+
+**Key behaviors:**
+- Decision Engine buffers results by `truck_id`, applies Levenshtein-based plate matching, and publishes `agent-decision-{GATE_ID}`.
+- API Gateway proxies Data Module routes, emits WebSocket notifications, and enforces Keycloak roles.
+- Data Module applies CQRS + Unit of Work + Inbox/Outbox with PostgreSQL (source of truth), MongoDB (events), and Redis (cache).
 
 ### Streaming Middleware
 
-NGINX RTMP server that ingests camera streams and redistributes to consumers:
+StreamV3 uses **MediaMTX** to ingest RTSP from IP cameras and re-serve streams to agents and UIs.
+The legacy NGINX RTMP/HLS pipeline is documented in
+[deprecated/streaming_middleware/README.md](deprecated/streaming_middleware/README.md).
 
-| Stream | Resolution | Consumers | Latency |
-|--------|------------|-----------|---------|
-| RTMP LOW | 720p | AgentA (continuous) | ~500ms |
-| RTMP HIGH | 4K | AgentB, AgentC (on-demand) | ~500ms |
-| HLS | 720p/4K | Frontend web players | ~4-6s |
+| Stream Path | Resolution | Consumers | Protocol |
+|-------------|------------|-----------|----------|
+| `streams_low/gate{N}` | Low-res | AgentA (armed by reset) | RTSP/UDP |
+| `streams_high/gate{N}` | 4K | AgentB, AgentC, operators | RTSP/UDP |
+| `streams_*` | Low/4K | Frontend web players | WebRTC (WHEP) |
+
+Key ports: RTSP `8554` (media on `8000/8001`), WebRTC `8889` (media on `8189`).
+See [src/streamV3/README.md](src/streamV3/README.md) for full deployment and troubleshooting.
 
 ### Communication Patterns
 
 - **Inter-Application**: HTTP via Gateways (AI Gateway ↔ V Gateway)
 - **Intra-Application**: Apache Kafka (KRaft mode) for event-driven messaging
 - **Client Communication**: REST API + WebSocket for real-time notifications
+- **External Alerts**: MQTT over WSS for Mobitrust dangerous materials alerts
+
+### Authentication & Authorization
+
+Keycloak is the identity provider. The API Gateway exchanges credentials (ROPC), validates JWTs via
+JWKS, and enforces RBAC for driver/operator/manager roles. See
+[src/V_APP/keycloak/README.md](src/V_APP/keycloak/README.md).
 
 ---
 
@@ -116,10 +110,11 @@ NGINX RTMP server that ingests camera streams and redistributes to consumers:
 |----------|--------------|
 | **ML/CV** | YOLOv11 (Ultralytics), PaddleOCR, PyTorch |
 | **Backend** | Python, FastAPI, Pydantic |
-| **Messaging** | Apache Kafka (KRaft mode) |
+| **Messaging** | Apache Kafka (KRaft mode)|
 | **Databases** | PostgreSQL, MongoDB, Redis |
 | **Storage** | MinIO (S3-compatible) |
-| **Streaming** | NGINX RTMP, FFmpeg |
+| **Streaming** | MediaMTX (RTSP/WebRTC), FFmpeg |
+| **Identity** | Keycloak (JWT, RBAC) |
 | **Containers** | Docker, Docker Compose |
 | **Observability** | Prometheus, Grafana, Loki, Alertmanager, Tempo |
 
@@ -150,32 +145,66 @@ NGINX RTMP server that ingests camera streams and redistributes to consumers:
 - **Availability**: The system must maintain a minimum availability of 99% in the production environment.
 - **Observability**: Full metrics, logging, and tracing pipeline
 
+Detailed requirement specifications live in [docs/requisitos/RF.md](docs/requisitos/RF.md) and
+[docs/requisitos/RNF.md](docs/requisitos/RNF.md).
+
 ---
 
 ## Project Structure
 
 ```
-src/
-├── AI_APP/                    # Computer Vision Application
-│   ├── agentA/                # Truck detection agent
-│   ├── agentB/                # License plate agent
-│   ├── agentC/                # Hazard plate agent
-│   ├── gateway/               # AI Gateway (inter-app bridge)
-│   ├── shared/                # Shared ML components
-│   └── docker-compose.yml
-│
-├── V_APP/                     # Vehicle/Business Application
-│   ├── api_gateway/           # REST API & WebSocket
-│   ├── decision_engine/       # Access decision logic
-│   ├── gateway/               # V Gateway (inter-app bridge)
-│   ├── Data_Module/           # Data persistence services
-│   └── docker-compose.yml
-│
-├── streaming_middleware/      # NGINX RTMP server
-├── devops/
-│   ├── observability/         # Prometheus, Grafana, Loki stack
-│   └── jenkins/               # CI/CD pipelines
-└── shared/                    # Cross-application utilities
+backend/
+├── code_documentation/        # Deep-dive component docs
+├── docs/                      # Requirements, architecture, benchmarks
+├── env_manager/               # .env sync tooling (rclone)
+└── src/
+	├── AI_APP/                # Computer Vision Application
+	│   ├── agentA/            # Truck detection agent
+	│   ├── agentB/            # License plate agent
+	│   ├── agentC/            # Hazard plate agent
+	│   ├── broker/            # Kafka broker + dashboards
+	│   ├── gateway/           # AI Gateway (inter-app bridge)
+	│   ├── shared/            # Shared ML components
+	│   └── tests/             # Integration and unit tests
+	│
+	├── V_APP/                 # Vehicle/Business Application
+	│   ├── api_gateway/        # REST API & WebSocket
+	│   ├── decision_engine/    # Access decision logic
+	│   ├── gateway/            # V Gateway (inter-app bridge)
+	│   ├── Data_Module/        # Data persistence services
+	│   ├── infraction_engine/  # Infractions processing
+	│   ├── keycloak/           # Keycloak realm + user sync
+	│   ├── v_brain/            # V-Brain coordination logic
+	│   ├── shared/             # Shared V_APP components
+	│   └── test_scripts/       # Manual test helpers
+	│
+	├── devops/
+	│   ├── observability/      # Prometheus, Grafana, Loki stack
+	│   └── promtail-remote/    # Remote promtail shipping
+	├── streamV3/               # MediaMTX stream router
+	└── shared/                 # Cross-application utilities
+```
+
+## Operational Docs
+
+- [env_manager/env_manager.md](env_manager/env_manager.md) — .env sync with Google Drive
+- [docs/sketch_arquitetura/arch_flow.md](docs/sketch_arquitetura/arch_flow.md) — deployment topology and full flow
+- [src/streamV3/README.md](src/streamV3/README.md) — MediaMTX stream router and ports
+- [src/devops/observability/README.md](src/devops/observability/README.md) — observability stack quickstart
+- [src/V_APP/keycloak/README.md](src/V_APP/keycloak/README.md) — Keycloak auth flow and roles
+- [src/V_APP/Data_Module/README.md](src/V_APP/Data_Module/README.md) — CQRS/UoW/Outbox architecture
+- [src/mobitrust/README.md](src/mobitrust/README.md) — MQTT alerts for dangerous materials
+- [src/AI_APP/tests/TESTING.md](src/AI_APP/tests/TESTING.md) — AI_APP integration test suites
+
+## Testing
+
+AI_APP integration tests (from repository root):
+
+```bash
+uv venv .venv
+source .venv/bin/activate
+uv pip install -r src/AI_APP/shared/tests/requirements.txt
+PYTHONPATH=src uv run --active pytest -q src/AI_APP/tests
 ```
 ---
 
