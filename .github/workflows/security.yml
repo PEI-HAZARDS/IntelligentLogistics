@@ -42,6 +42,11 @@ jobs:
           bandit -r src/ -x '*/tests/*,*/test_*.py,*_test.py,deprecated/*' -ll -f txt 2>&1 | tee bandit-results.txt || echo "BANDIT_FAILED=true" >> $GITHUB_ENV
           bandit -r src/ -x '*/tests/*,*/test_*.py,*_test.py,deprecated/*' -ll -f sarif -o bandit-results.sarif || echo "BANDIT_FAILED=true" >> $GITHUB_ENV
 
+      - name: Fail on vulnerabilities (main only)
+        # Fails the job on main so the commit/PR is blocked; dev just gets Slack warnings
+        if: env.BANDIT_FAILED == 'true' && (github.ref == 'refs/heads/main' || github.base_ref == 'main')
+        run: exit 1
+
       - name: Upload Bandit report as artifact
         uses: actions/upload-artifact@v4.3.0
         if: always()
@@ -82,7 +87,7 @@ jobs:
             }
 
       - name: Notify Slack - Bandit vulnerabilities detected
-        if: env.BANDIT_FAILED == 'true' && steps.upload_bandit.outcome != 'failure'
+        if: always() && env.BANDIT_FAILED == 'true' && steps.upload_bandit.outcome != 'failure'
         uses: slackapi/slack-github-action@v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -169,6 +174,12 @@ jobs:
           set -o pipefail
           pip-audit 2>&1 | tee pip-audit-results.txt || echo "PIP_AUDIT_FAILED=true" >> $GITHUB_ENV
 
+      - name: Fail on vulnerabilities (main and schedule)
+        # Fails the job on main so the commit/PR is blocked; dev just gets Slack warnings.
+        # Scheduled runs always fail so nightly issues show as red checks on the repo.
+        if: env.PIP_AUDIT_FAILED == 'true' && (github.ref == 'refs/heads/main' || github.base_ref == 'main' || github.event_name == 'schedule')
+        run: exit 1
+
       - name: Upload pip-audit report as artifact
         uses: actions/upload-artifact@v4.3.0
         if: always()
@@ -176,12 +187,6 @@ jobs:
           name: pip-audit-report
           path: pip-audit-results.txt
           retention-days: 30
-
-      # Scheduled runs: fail the job explicitly if vulnerabilities are found
-      # so that a nightly failure shows up as a red check on the repo
-      - name: Fail on vulnerabilities
-        if: env.PIP_AUDIT_FAILED == 'true'
-        run: exit 1
 
       - name: Upload pip-audit report to Slack
         id: upload_pip_audit
@@ -215,7 +220,7 @@ jobs:
             }
 
       - name: Notify Slack - pip-audit vulnerabilities detected
-        if: env.PIP_AUDIT_FAILED == 'true' && steps.upload_pip_audit.outcome != 'failure'
+        if: always() && env.PIP_AUDIT_FAILED == 'true' && steps.upload_pip_audit.outcome != 'failure'
         uses: slackapi/slack-github-action@v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
