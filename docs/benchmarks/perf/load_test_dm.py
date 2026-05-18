@@ -1,13 +1,21 @@
 """
 Load tests for Data Module polyglot persistence (PostgreSQL + MongoDB + Redis).
 
-Usage (install locust first: pip install -r requirements-load-test.txt):
-    locust -f tests/load_test.py --host=http://<vm-ip>:8080 --headless \
-           -u 50 -r 5 --run-time 5m \
-           --html ../../../docs/benchmarks/perf/dm_report.html
+Usage (run from docs/benchmarks/):
+    pip install -r requirements.txt
 
-Or with the web UI:
-    locust -f tests/load_test.py --host=http://<vm-ip>:8080
+    # Headless — 50 users, 5 min, HTML report saved next to this file
+    locust -f perf/load_test_dm.py --host=http://<vm-ip>:8080 --headless \
+           -u 50 -r 5 --run-time 5m \
+           --html perf/dm_report.html
+
+    # Or from repo root:
+    locust -f docs/benchmarks/perf/load_test_dm.py --host=http://<vm-ip>:8080 \
+           --headless -u 50 -r 5 --run-time 5m \
+           --html docs/benchmarks/perf/dm_report.html
+
+    # Web UI:
+    locust -f perf/load_test_dm.py --host=http://<vm-ip>:8080
     # Then open http://localhost:8089
 
 Scenarios covered:
@@ -19,7 +27,17 @@ Scenarios covered:
   - Concurrent reads: stats endpoint under parallel load
 """
 
-from locust import HttpUser, task, between
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from locust import HttpUser, task, between, events
+import metrics
+
+
+@events.init.add_listener
+def on_locust_init(environment, **_kwargs):
+    metrics.register(environment)
 import random
 
 # Seeded license plates from data_init_trial.py / data_init_demo.py

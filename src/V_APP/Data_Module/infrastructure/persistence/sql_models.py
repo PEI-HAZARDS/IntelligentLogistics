@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import func
-from sqlalchemy import Column, Integer, String, Date, Time, TIMESTAMP, DECIMAL, Boolean, ForeignKey, ForeignKeyConstraint, Text, Enum as SEnum, SmallInteger, CheckConstraint
+from sqlalchemy import Column, Integer, String, Date, Time, TIMESTAMP, DECIMAL, Boolean, ForeignKey, ForeignKeyConstraint, Text, Enum as SEnum, SmallInteger, CheckConstraint, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import declarative_base, relationship
 
@@ -457,6 +457,7 @@ class DriverVehicle(Base):
 
     __table_args__ = (
         CheckConstraint('end_date IS NULL OR end_date >= start_date', name='chk_dv_dates'),
+        UniqueConstraint('driver_license', 'truck_license_plate', 'start_date', name='uq_dv_assignment'),
     )
 
     # Relationships

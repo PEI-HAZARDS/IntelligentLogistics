@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
+from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,21 @@ def get_driver_by_license(drivers_license: str) -> Optional[Dict[str, Any]]:
         db.close()
 
 
+def _appointment_eager_options():
+    from infrastructure.persistence.sql_models import (
+        Appointment as AppointmentORM, Booking, Driver, Company,
+    )
+    return [
+        selectinload(AppointmentORM.booking).selectinload(Booking.cargos),
+        selectinload(AppointmentORM.driver).selectinload(Driver.company),
+        selectinload(AppointmentORM.truck),
+        selectinload(AppointmentORM.terminal),
+        selectinload(AppointmentORM.gate_in),
+        selectinload(AppointmentORM.gate_out),
+        selectinload(AppointmentORM.visit),
+    ]
+
+
 def get_driver_active_appointment(drivers_license: str) -> Optional[Dict[str, Any]]:
     from infrastructure.persistence.redis import (
         get_cached_driver_active_appointment,
@@ -82,6 +98,7 @@ def get_driver_active_appointment(drivers_license: str) -> Optional[Dict[str, An
     try:
         row = (
             db.query(AppointmentORM)
+            .options(*_appointment_eager_options())
             .filter(
                 AppointmentORM.driver_license == drivers_license,
                 AppointmentORM.status.in_(["in_transit", "delayed", "in_process", "unloading"])
@@ -108,6 +125,7 @@ def get_driver_today_appointments(drivers_license: str) -> List[Dict[str, Any]]:
     try:
         rows = (
             db.query(AppointmentORM)
+            .options(*_appointment_eager_options())
             .filter(
                 AppointmentORM.driver_license == drivers_license,
                 cast(AppointmentORM.scheduled_start_time, Date) == date.today(),
@@ -136,6 +154,7 @@ def get_driver_appointments(
     try:
         rows = (
             db.query(AppointmentORM)
+            .options(*_appointment_eager_options())
             .filter(AppointmentORM.driver_license == drivers_license)
             .order_by(AppointmentORM.scheduled_start_time.desc())
             .limit(limit)

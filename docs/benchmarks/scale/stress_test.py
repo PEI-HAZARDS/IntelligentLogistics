@@ -4,41 +4,58 @@ Stress test for the Data Module — ramp-to-break scenario for Milestone 4 Scala
 Progressively increases concurrent users until the system saturates, revealing the
 primary bottleneck (CPU, PG connection pool, Redis memory, etc.).
 
-Usage:
-    pip install locust
+Usage (run from docs/benchmarks/):
+    pip install -r requirements.txt
 
-    # Headless ramp: 0 → 200 users over 4 min, then hold for 2 min
-    locust -f tests/stress_test.py \
-           --host=http://localhost:8080 \
+    # Headless ramp — push to breaking point, HTML report saved next to this file
+    locust -f scale/stress_test.py \
+           --host=http://<vm-ip>:8080 \
            --headless \
-           --run-time 6m \
+           --run-time 8m \
+           --html scale/stress_report_1x.html
+
+    # Or from repo root:
+    locust -f docs/benchmarks/scale/stress_test.py \
+           --host=http://<vm-ip>:8080 \
+           --headless --run-time 8m \
            --html docs/benchmarks/scale/stress_report_1x.html
 
-    # Scale-out comparison (run against 2 instances behind Nginx):
-    locust -f tests/stress_test.py \
-           --host=http://localhost:9090 \
-           --headless \
-           --run-time 6m \
-           --html docs/benchmarks/scale/stress_report_2x.html
+    # Scale-out comparison (2 instances behind Nginx):
+    locust -f scale/stress_test.py \
+           --host=http://<vm-ip>:9090 \
+           --headless --run-time 8m \
+           --html scale/stress_report_2x.html
 
     # Web UI (watch live):
-    locust -f tests/stress_test.py --host=http://localhost:8080
+    locust -f scale/stress_test.py --host=http://<vm-ip>:8080
 
 Shape:
-  Stage 1  0 – 60 s    ramp  0 → 20  users  (warm-up)
-  Stage 2  60 – 120 s  ramp 20 → 60  users  (normal load)
-  Stage 3  120 – 180 s ramp 60 → 120 users  (high load)
-  Stage 4  180 – 240 s ramp 120 → 200 users (stress zone)
-  Stage 5  240 – 360 s hold 200 users       (sustained stress — find the knee)
+  Stage 1   0 –  60 s  ramp   0 →  20 users  (warm-up)
+  Stage 2  60 – 120 s  ramp  20 →  60 users  (normal load)
+  Stage 3 120 – 180 s  ramp  60 → 120 users  (high load)
+  Stage 4 180 – 240 s  ramp 120 → 200 users  (stress zone)
+  Stage 5 240 – 300 s  ramp 200 → 350 users  (heavy stress)
+  Stage 6 300 – 360 s  ramp 350 → 500 users  (breaking-point hunt)
+  Stage 7 360 – 480 s  hold 500 users        (observe collapse)
 
-Monitor during the run:
-  docker stats
+Monitor during the run (on VM):
+  docker stats --no-stream --format "table {{.Name}}\\t{{.CPUPerc}}\\t{{.MemUsage}}"
   watch -n2 'psql -U porto -d porto_logistica -c "SELECT count(*) FROM pg_stat_activity;"'
-  Grafana → data-module dashboard → latency heatmap + error rate panels
+  Grafana -> data-module dashboard -> latency heatmap + error rate panels
 """
 
+import sys
 import random
-from locust import HttpUser, task, between, LoadTestShape
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from locust import HttpUser, task, between, LoadTestShape, events
+import metrics
+
+
+@events.init.add_listener
+def on_locust_init(environment, **_kwargs):
+    metrics.register(environment)
 
 KNOWN_PLATES = ["87AX60", "68BSH8", "98AZ00", "45BC30", "12DF90"]
 GATE_IDS = [1, 2, 3]
@@ -193,7 +210,7 @@ class StressUser(HttpUser):
             else:
                 resp.failure(f"status {resp.status_code}")
 
-    # -- Write path (PG insert → Outbox → Mongo) ----------------------------
+    # -- Write path (PG insert -> Outbox -> Mongo) ---------------------------
 
     @task(2)
     def detection_event_write(self):
@@ -218,7 +235,7 @@ class StressUser(HttpUser):
             else:
                 resp.failure(f"status {resp.status_code}")
 
-    # -- Redis miss → PG fallback --------------------------------------------
+    # -- Redis miss -> PG fallback -------------------------------------------
 
     @task(1)
     def driver_cache_miss(self):
@@ -226,7 +243,7 @@ class StressUser(HttpUser):
         fake_plate = f"ST{random.randint(10000, 99999)}"
         with self.client.get(
             f"/api/v1/drivers/me/active?drivers_license={fake_plate}",
-            name="/drivers/me/active [cache miss→PG]",
+            name="/drivers/me/active [cache miss->PG]",
             catch_response=True,
         ) as resp:
             if resp.status_code in (200, 401, 404):

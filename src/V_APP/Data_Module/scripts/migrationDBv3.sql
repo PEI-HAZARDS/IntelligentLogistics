@@ -108,9 +108,20 @@ CREATE TABLE IF NOT EXISTS driver_vehicle (
     start_date          DATE            NOT NULL,
     end_date            DATE,
 
-    CONSTRAINT chk_dv_dates CHECK (end_date IS NULL OR end_date >= start_date),
-    CONSTRAINT uq_dv_assignment UNIQUE (driver_license, truck_license_plate, start_date)
+    CONSTRAINT chk_dv_dates CHECK (end_date IS NULL OR end_date >= start_date)
 );
+
+-- uq_dv_assignment via ALTER TABLE so it applies even when ORM created the table
+-- first (CREATE TABLE IF NOT EXISTS above is skipped when table already exists).
+DO $$ BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'uq_dv_assignment' AND conrelid = 'driver_vehicle'::regclass
+    ) THEN
+        ALTER TABLE driver_vehicle
+            ADD CONSTRAINT uq_dv_assignment UNIQUE (driver_license, truck_license_plate, start_date);
+    END IF;
+END $$;
 
 -- Indexes for driver_vehicle and pending_reviews are in indexes.sql
 

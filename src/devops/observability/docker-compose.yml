@@ -3,6 +3,18 @@
 
 services:
   # =============================================================================
+  # PUSHGATEWAY - Metrics push endpoint for ephemeral jobs (locust, CI runs)
+  # =============================================================================
+  pushgateway:
+    image: prom/pushgateway:latest
+    container_name: pushgateway
+    restart: unless-stopped
+    ports:
+      - "9091:9091"
+    networks:
+      - observability
+
+  # =============================================================================
   # PROMETHEUS - Metrics Collection
   # =============================================================================
   prometheus:
@@ -40,6 +52,8 @@ services:
       - SMTP_AUTH_USERNAME=${SMTP_AUTH_USERNAME}
       - SMTP_AUTH_PASSWORD=${SMTP_AUTH_PASSWORD}
       - ALERT_EMAIL_TO=${ALERT_EMAIL_TO}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - SLACK_CHANNEL=${SLACK_CHANNEL:-#alerts}
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml.template:ro
       - ./alertmanager/entrypoint.sh:/etc/alertmanager/entrypoint.sh:ro
