@@ -142,16 +142,26 @@ jobs:
         run: pip install pip-audit
 
       - name: Install project dependencies
-        # Mirror the install logic from your SonarCloud workflow so pip-audit
-        # sees the same dependency tree that your application actually uses
+        # Install all requirements files so pip-audit sees the full dependency tree
         run: |
           python -m pip install --upgrade pip
-          if [ -f src/shared/tests/requirements.txt ];      then pip install -r src/shared/tests/requirements.txt; fi
-          if [ -f src/decision_engine/requirements.txt ];   then pip install -r src/decision_engine/requirements.txt; fi
-          if [ -f src/agentA/requirements.txt ];            then pip install -r src/agentA/requirements.txt; fi
-          if [ -f src/agentB/requirements.txt ];            then pip install -r src/agentB/requirements.txt; fi
-          if [ -f src/agentC/requirements.txt ];            then pip install -r src/agentC/requirements.txt; fi
-          if [ -f src/broker/tests/requirements.txt ];      then pip install -r src/broker/tests/requirements.txt; fi
+          # Shared
+          if [ -f src/shared/tests/requirements.txt ];                then pip install -r src/shared/tests/requirements.txt; fi
+          if [ -f src/shared/src/requirements.txt ];                  then pip install -r src/shared/src/requirements.txt; fi
+          # AI_APP agents
+          if [ -f src/AI_APP/agentA/requirements.txt ];               then pip install -r src/AI_APP/agentA/requirements.txt; fi
+          if [ -f src/AI_APP/agentB/requirements.txt ];               then pip install -r src/AI_APP/agentB/requirements.txt; fi
+          if [ -f src/AI_APP/agentC/requirements.txt ];               then pip install -r src/AI_APP/agentC/requirements.txt; fi
+          if [ -f src/AI_APP/gateway/requirements.txt ];              then pip install -r src/AI_APP/gateway/requirements.txt; fi
+          if [ -f src/AI_APP/broker/tests/requirements.txt ];         then pip install -r src/AI_APP/broker/tests/requirements.txt; fi
+          if [ -f src/AI_APP/shared/tests/requirements.txt ];         then pip install -r src/AI_APP/shared/tests/requirements.txt; fi
+          # V_APP services
+          if [ -f src/V_APP/decision_engine/requirements.txt ];       then pip install -r src/V_APP/decision_engine/requirements.txt; fi
+          if [ -f src/V_APP/infraction_engine/requirements.txt ];     then pip install -r src/V_APP/infraction_engine/requirements.txt; fi
+          if [ -f src/V_APP/api_gateway/requirements.txt ];           then pip install -r src/V_APP/api_gateway/requirements.txt; fi
+          if [ -f src/V_APP/gateway/requirements.txt ];               then pip install -r src/V_APP/gateway/requirements.txt; fi
+          if [ -f src/V_APP/v_brain/requirements.txt ];               then pip install -r src/V_APP/v_brain/requirements.txt; fi
+          if [ -f src/V_APP/Data_Module/requirements.txt ];           then pip install -r src/V_APP/Data_Module/requirements.txt; fi
 
       - name: Run pip-audit
         # Prints a human-readable table to the log and saves it as an artifact
