@@ -28,6 +28,8 @@ ENV/
 **/logs/
 **/experiments/
 **/runs/        # TensorBoard, MLFlow, etc.
+**/models/
+**.env.upload
 
 # Large files (manuais)
 *.csv
