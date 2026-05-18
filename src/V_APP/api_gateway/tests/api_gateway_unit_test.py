@@ -135,6 +135,62 @@ class TestGatewayAppAndAuth:
         assert "manager" in response.json()["detail"]
         data_get.assert_not_awaited()
 
+    def test_driver_cannot_read_another_driver_profile(self, client):
+        with patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get:
+            response = client.get("/api/drivers/DL-999", headers=auth_headers("driver-token"))
+
+        assert response.status_code == 403
+        assert "own data" in response.json()["detail"]
+        data_get.assert_not_awaited()
+
+    def test_driver_can_read_own_profile_case_insensitively(self, client):
+        expected = {"drivers_license": "DL-123", "name": "Driver"}
+        with patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get:
+            data_get.return_value = expected
+            response = client.get("/api/drivers/DL-123", headers=auth_headers("driver-token"))
+
+        assert response.status_code == 200
+        assert response.json() == expected
+        data_get.assert_awaited_once_with("/drivers/DL-123")
+
+    def test_manager_can_read_any_driver_profile(self, client):
+        expected = {"drivers_license": "DL-999", "name": "Other Driver"}
+        with patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get:
+            data_get.return_value = expected
+            response = client.get("/api/drivers/DL-999", headers=auth_headers("manager-token"))
+
+        assert response.status_code == 200
+        assert response.json() == expected
+        data_get.assert_awaited_once_with("/drivers/DL-999")
+
+    def test_driver_cannot_read_another_driver_arrivals(self, client):
+        with patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get:
+            response = client.get("/api/drivers/DL-999/arrivals", headers=auth_headers("driver-token"))
+
+        assert response.status_code == 403
+        assert "own data" in response.json()["detail"]
+        data_get.assert_not_awaited()
+
+    def test_driver_can_read_own_arrivals(self, client):
+        expected = [{"id": 10, "driver_license": "DL-123"}]
+        with patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get:
+            data_get.return_value = expected
+            response = client.get("/api/drivers/DL-123/arrivals", headers=auth_headers("driver-token"))
+
+        assert response.status_code == 200
+        assert response.json() == expected
+        data_get.assert_awaited_once_with("/drivers/DL-123/arrivals", params={"limit": 50})
+
+    def test_manager_can_read_any_driver_arrivals(self, client):
+        expected = [{"id": 20, "driver_license": "DL-999"}]
+        with patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get:
+            data_get.return_value = expected
+            response = client.get("/api/drivers/DL-999/arrivals", headers=auth_headers("manager-token"))
+
+        assert response.status_code == 200
+        assert response.json() == expected
+        data_get.assert_awaited_once_with("/drivers/DL-999/arrivals", params={"limit": 50})
+
 
 class TestProxyRoutes:
     def test_arrivals_proxy_translates_query_aliases_and_filters(self, client):
@@ -355,6 +411,99 @@ class TestManualReviewAndWebSockets:
         ws_manager.broadcast_to_driver.assert_awaited_once_with(
             "DL-123",
             {"message_type": "status_changed", "appointment_id": 55, "new_status": "completed"},
+        )
+
+    def test_driver_status_update_requires_owned_appointment(self, client, ws_manager):
+        with (
+            patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get,
+            patch("clients.internal_api_client.patch", new_callable=AsyncMock) as data_patch,
+        ):
+            data_get.return_value = {"id": 55, "driver_license": "DL-999", "gate_in_id": 1}
+            response = client.patch(
+                "/api/drivers/appointments/55/status",
+                json={"status": "completed"},
+                headers=auth_headers("driver-token"),
+            )
+
+        assert response.status_code == 403
+        assert "own appointments" in response.json()["detail"]
+        data_get.assert_awaited_once_with("/arrivals/55")
+        data_patch.assert_not_awaited()
+        ws_manager.broadcast.assert_not_awaited()
+        ws_manager.broadcast_to_driver.assert_not_awaited()
+
+    def test_driver_status_update_allows_owned_appointment(self, client, ws_manager):
+        appointment = {"id": 55, "driver_license": "DL-123", "gate_in_id": 1}
+        result = {"id": 55, "driver_license": "DL-123", "gate_in_id": 1, "status": "completed"}
+
+        with (
+            patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get,
+            patch("clients.internal_api_client.patch", new_callable=AsyncMock) as data_patch,
+        ):
+            data_get.return_value = appointment
+            data_patch.return_value = result
+            response = client.patch(
+                "/api/drivers/appointments/55/status",
+                json={"status": "completed"},
+                headers=auth_headers("driver-token"),
+            )
+
+        assert response.status_code == 200
+        assert response.json() == result
+        data_get.assert_awaited_once_with("/arrivals/55")
+        data_patch.assert_awaited_once_with("/arrivals/55/status", json={"status": "completed"})
+        ws_manager.broadcast.assert_awaited_once()
+        ws_manager.broadcast_to_driver.assert_awaited_once_with(
+            "DL-123",
+            {"message_type": "status_changed", "appointment_id": 55, "new_status": "completed"},
+        )
+
+    def test_driver_visit_update_denied_for_non_owned_appointment(self, client, ws_manager):
+        with (
+            patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get,
+            patch("clients.internal_api_client.patch", new_callable=AsyncMock) as data_patch,
+        ):
+            data_get.return_value = {"id": 55, "driver_license": "DL-999", "gate_in_id": 1}
+            response = client.patch(
+                "/api/drivers/appointments/55/visit",
+                json={"state": "unloading"},
+                headers=auth_headers("driver-token"),
+            )
+
+        assert response.status_code == 403
+        assert "own appointments" in response.json()["detail"]
+        data_get.assert_awaited_once_with("/arrivals/55")
+        data_patch.assert_not_awaited()
+        ws_manager.broadcast.assert_not_awaited()
+        ws_manager.broadcast_to_driver.assert_not_awaited()
+
+    def test_driver_visit_update_allowed_for_owned_appointment(self, client, ws_manager):
+        appointment = {"id": 55, "driver_license": "DL-123", "gate_in_id": 1}
+        result = {"id": 55, "driver_license": "DL-123", "gate_in_id": 1, "visit_state": "unloading"}
+
+        with (
+            patch("clients.internal_api_client.get", new_callable=AsyncMock) as data_get,
+            patch("clients.internal_api_client.patch", new_callable=AsyncMock) as data_patch,
+        ):
+            data_get.return_value = appointment
+            data_patch.return_value = result
+            response = client.patch(
+                "/api/drivers/appointments/55/visit",
+                json={"state": "unloading"},
+                headers=auth_headers("driver-token"),
+            )
+
+        assert response.status_code == 200
+        assert response.json() == result
+        data_get.assert_awaited_once_with("/arrivals/55")
+        data_patch.assert_awaited_once_with("/arrivals/55/visit", json={"state": "unloading"})
+        ws_manager.broadcast.assert_awaited_once_with(
+            "1",
+            {"message_type": "status_changed", "appointment_id": 55, "new_status": "unloading"},
+        )
+        ws_manager.broadcast_to_driver.assert_awaited_once_with(
+            "DL-123",
+            {"message_type": "status_changed", "appointment_id": 55, "new_status": "unloading"},
         )
 
 
