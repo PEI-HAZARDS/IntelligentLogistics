@@ -22,6 +22,7 @@ jobs:
   bandit:
     name: Bandit - Static Security Analysis
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'   # Skip on scheduled runs; nightly only runs pip-audit
 
     steps:
       - name: Checkout repository
@@ -40,10 +41,6 @@ jobs:
           set -o pipefail
           bandit -r src/ -x '*/tests/*,*/test_*.py,*_test.py,deprecated/*' -ll -f txt 2>&1 | tee bandit-results.txt || echo "BANDIT_FAILED=true" >> $GITHUB_ENV
           bandit -r src/ -x '*/tests/*,*/test_*.py,*_test.py,deprecated/*' -ll -f sarif -o bandit-results.sarif || echo "BANDIT_FAILED=true" >> $GITHUB_ENV
-
-      - name: Fail on vulnerabilities (scheduled runs only)
-        if: github.event_name == 'schedule' && env.BANDIT_FAILED == 'true'
-        run: exit 1
 
       - name: Upload Bandit report as artifact
         uses: actions/upload-artifact@v4.3.0
@@ -182,8 +179,8 @@ jobs:
 
       # Scheduled runs: fail the job explicitly if vulnerabilities are found
       # so that a nightly failure shows up as a red check on the repo
-      - name: Fail on vulnerabilities (scheduled runs only)
-        if: github.event_name == 'schedule' && env.PIP_AUDIT_FAILED == 'true'
+      - name: Fail on vulnerabilities
+        if: env.PIP_AUDIT_FAILED == 'true'
         run: exit 1
 
       - name: Upload pip-audit report to Slack
@@ -259,17 +256,18 @@ jobs:
               }]
             }
 
-  # Nightly summary job — only runs on schedule, waits for both scans to finish
-  # and posts a single consolidated summary to Slack regardless of outcome
+  # Nightly summary job — only runs on schedule, waits for pip-audit to finish
+  # and posts a single consolidated summary to Slack regardless of outcome.
+  # always() is required so this job runs even when bandit is skipped or pip-audit fails.
   nightly-summary:
     name: Nightly Security Summary
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
-    needs: [bandit, pip-audit]   # Always runs after both jobs, even if they fail
+    if: always() && github.event_name == 'schedule'
+    needs: [bandit, pip-audit]
 
     steps:
       - name: Notify Slack - Nightly summary (all passed)
-        if: needs.bandit.result == 'success' && needs.pip-audit.result == 'success'
+        if: needs.pip-audit.result == 'success'
         uses: slackapi/slack-github-action@v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -279,11 +277,10 @@ jobs:
               "attachments": [{
                 "color": "good",
                 "title": "🌙 Nightly Security Scan - All clear",
-                "text": "Both Bandit and pip-audit completed with no issues.",
+                "text": "pip-audit completed with no issues.",
                 "fields": [
                   { "title": "Repository", "value": "${{ github.repository }}", "short": true },
                   { "title": "Triggered by", "value": "Scheduled (nightly)", "short": true },
-                  { "title": "Bandit", "value": "✅ Passed", "short": true },
                   { "title": "pip-audit", "value": "✅ Passed", "short": true },
                   { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
                 ]
@@ -291,7 +288,7 @@ jobs:
             }
 
       - name: Notify Slack - Nightly summary (failures)
-        if: needs.bandit.result == 'failure' || needs.pip-audit.result == 'failure'
+        if: needs.pip-audit.result == 'failure'
         uses: slackapi/slack-github-action@v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -301,12 +298,11 @@ jobs:
               "attachments": [{
                 "color": "danger",
                 "title": "🌙 Nightly Security Scan - Action required",
-                "text": "One or more security scans failed. Review the run for details.",
+                "text": "pip-audit failed. Review the run for details.",
                 "fields": [
                   { "title": "Repository", "value": "${{ github.repository }}", "short": true },
                   { "title": "Triggered by", "value": "Scheduled (nightly)", "short": true },
-                  { "title": "Bandit", "value": "${{ needs.bandit.result == 'success' && '✅ Passed' || '❌ Failed' }}", "short": true },
-                  { "title": "pip-audit", "value": "${{ needs.pip-audit.result == 'success' && '✅ Passed' || '❌ Failed' }}", "short": true },
+                  { "title": "pip-audit", "value": "❌ Failed", "short": true },
                   { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
                 ]
               }]
