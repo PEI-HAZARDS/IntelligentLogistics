@@ -37,6 +37,7 @@ jobs:
 
       - name: Run Bandit
         run: |
+          set -o pipefail
           bandit -r src/ -x '*/tests/*,*/test_*.py,*_test.py,deprecated/*' -ll -f txt 2>&1 | tee bandit-results.txt || echo "BANDIT_FAILED=true" >> $GITHUB_ENV
           bandit -r src/ -x '*/tests/*,*/test_*.py,*_test.py,deprecated/*' -ll -f sarif -o bandit-results.sarif || echo "BANDIT_FAILED=true" >> $GITHUB_ENV
 
@@ -164,9 +165,11 @@ jobs:
           if [ -f src/V_APP/Data_Module/requirements.txt ];           then pip install -r src/V_APP/Data_Module/requirements.txt; fi
 
       - name: Run pip-audit
-        # Prints a human-readable table to the log and saves it as an artifact
-        # The env var keeps track of failure so notifications are correct.
+        # Prints a human-readable table to the log and saves it as an artifact.
+        # set -o pipefail is required: without it, the pipeline exit code is tee's
+        # (always 0), so the || fallback never fires even when pip-audit finds CVEs.
         run: |
+          set -o pipefail
           pip-audit 2>&1 | tee pip-audit-results.txt || echo "PIP_AUDIT_FAILED=true" >> $GITHUB_ENV
 
       - name: Upload pip-audit report as artifact
