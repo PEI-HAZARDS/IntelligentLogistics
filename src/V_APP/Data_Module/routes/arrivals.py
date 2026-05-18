@@ -8,7 +8,7 @@ Reads directly from PostgreSQL (source of truth) with Redis caching.
 from typing import Annotated, List, Optional, Dict, Any, Generic, TypeVar
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload, joinedload
 from pydantic import BaseModel
 from loguru import logger
 
@@ -37,7 +37,9 @@ from application.use_cases.appointment_commands import (
     cmd_update_visit_state,
 )
 from application.queries.cache_queries import get_or_cache
+from application.queries.arrival_queries import _APPOINTMENT_EAGER_LOADS
 from infrastructure.persistence.redis import get_cached_appointment, cache_appointment
+from infrastructure.persistence.sql_models import Visit as VisitORM, Shift as ShiftORM, Operator, Manager
 
 T = TypeVar("T")
 
@@ -56,6 +58,22 @@ from utils.shift_utils import parse_shift_type
 def _uow_factory():
     """Return a new UoW context manager (Guardrail 6)."""
     return SqlAlchemyUnitOfWork(SessionLocal)
+
+
+def _load_visit(db: Session, appointment_id: int) -> VisitORM:
+    return (
+        db.query(VisitORM)
+        .options(
+            selectinload(VisitORM.appointment).options(*_APPOINTMENT_EAGER_LOADS),
+            selectinload(VisitORM.shift).options(
+                joinedload(ShiftORM.gate),
+                joinedload(ShiftORM.operator).joinedload(Operator.worker),
+                joinedload(ShiftORM.manager).joinedload(Manager.worker),
+            ),
+        )
+        .filter(VisitORM.appointment_id == appointment_id)
+        .first()
+    )
 
 router = APIRouter(prefix="/arrivals", tags=["Arrivals"])
 
@@ -381,9 +399,7 @@ def create_visit(
     )
     if result is None:
         raise HTTPException(status_code=404, detail="Appointment not found or visit already exists")
-    from infrastructure.persistence.sql_models import Visit as VisitORM
-    visit_orm = db.query(VisitORM).filter(VisitORM.appointment_id == appointment_id).first()
-    return Visit.model_validate(visit_orm)
+    return Visit.model_validate(_load_visit(db, appointment_id))
 
 
 @router.patch("/{appointment_id}/visit", response_model=Visit, responses={404: {"description": "Visit not found"}})
@@ -400,6 +416,4 @@ def update_visit(
     )
     if result is None:
         raise HTTPException(status_code=404, detail="Visit not found")
-    from infrastructure.persistence.sql_models import Visit as VisitORM
-    visit_orm = db.query(VisitORM).filter(VisitORM.appointment_id == appointment_id).first()
-    return Visit.model_validate(visit_orm)
+    return Visit.model_validate(_load_visit(db, appointment_id))

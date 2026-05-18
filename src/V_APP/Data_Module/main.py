@@ -82,12 +82,12 @@ logging.basicConfig(level=logging.INFO)
 async def _startup_services(app: FastAPI) -> asyncio.Task | None:
     """Initialise all infrastructure services and return the scheduler task."""
     try:
-        Base.metadata.create_all(bind=engine)
+        engine.connect().close()
         _ready["postgres"] = True
-        logger.info("Postgres: schemas verified / created.")
+        logger.info("Postgres: connection OK.")
     except Exception as e:
         _ready["postgres"] = False
-        logger.exception("Postgres: failed to verify/create schemas: %s", e)
+        logger.exception("Postgres: connection failed: %s", e)
 
     try:
         mongo_client.admin.command("ping")

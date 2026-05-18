@@ -234,3 +234,18 @@ scrape_configs:
         labels:
           service: 'v-gateway'
           vm: 'V_APP'
+
+  # =============================================================================
+  # PUSHGATEWAY - Ephemeral job metrics (locust load tests, CI runs)
+  #
+  # locust pushes metrics here every 5 s via metrics.py.
+  # honor_labels: true preserves the job/instance labels set by the pusher,
+  # so metrics appear as job="locust" in Grafana.
+  # =============================================================================
+  - job_name: 'pushgateway'
+    scrape_interval: 5s
+    honor_labels: true
+    static_configs:
+      - targets: ['pushgateway:9091']
+        labels:
+          service: 'pushgateway'

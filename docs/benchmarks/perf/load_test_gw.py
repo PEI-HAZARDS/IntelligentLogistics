@@ -1,24 +1,27 @@
 """
 Load tests for the API Gateway — authenticated proxy layer (Keycloak + FastAPI).
 
-Usage:
-    # Install deps (from repo root or venv):
-    pip install locust
+Usage (run from docs/benchmarks/):
+    pip install -r requirements.txt
 
-    # Run headless (operator scenario, 30 concurrent users, 5 min):
-    locust -f src/V_APP/api_gateway/tests/load_test.py \
-           --host=http://localhost:8000 \
+    # Headless — operator scenario, 30 concurrent users, 5 min
+    locust -f perf/load_test_gw.py --host=http://<vm-ip>:8000 \
+           --headless -u 30 -r 3 --run-time 5m \
+           --html perf/gw_report.html
+
+    # Or from repo root:
+    locust -f docs/benchmarks/perf/load_test_gw.py --host=http://<vm-ip>:8000 \
            --headless -u 30 -r 3 --run-time 5m \
            --html docs/benchmarks/perf/gw_report.html
 
-    # With Locust web UI:
-    locust -f src/V_APP/api_gateway/tests/load_test.py --host=http://localhost:8000
+    # Web UI:
+    locust -f perf/load_test_gw.py --host=http://<vm-ip>:8000
 
 Environment variables (override defaults):
-    OPERATOR_EMAIL      — email of a seeded operator (default: operator@porto.pt)
-    OPERATOR_PASSWORD   — password (default: operator123)
-    MANAGER_EMAIL       — email of a seeded manager (default: manager@porto.pt)
-    MANAGER_PASSWORD    — password (default: manager123)
+    OPERATOR_EMAIL      — email of a seeded operator (default: worker@porto.pt)
+    OPERATOR_PASSWORD   — password (default: password123)
+    MANAGER_EMAIL       — email of a seeded manager (default: manager@example.pt)
+    MANAGER_PASSWORD    — password (default: password123)
 
 Scenarios covered:
   - JWT login flow (Keycloak ROPC via API GW /api/auth/workers/login)
@@ -30,7 +33,17 @@ Scenarios covered:
 import os
 import random
 import time
-from locust import HttpUser, task, between
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from locust import HttpUser, task, between, events
+import metrics
+
+
+@events.init.add_listener
+def on_locust_init(environment, **_kwargs):
+    metrics.register(environment)
 
 # ---------------------------------------------------------------------------
 # Seed data — must match data_init_demo.py / data_init_trial.py

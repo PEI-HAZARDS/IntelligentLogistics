@@ -10,7 +10,7 @@ MongoDB should be migrated incrementally.
 
 from typing import List, Optional, Dict, Any
 from datetime import datetime, date, time, timedelta
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import func, and_, or_, case, Integer
 
 from infrastructure.persistence.sql_models import (
@@ -129,6 +129,17 @@ def _apply_appointment_filters(query, gate_id, shift_gate_id, shift_type, shift_
     return query
 
 
+_APPOINTMENT_EAGER_LOADS = [
+    selectinload(Appointment.booking).selectinload(Booking.cargos),
+    selectinload(Appointment.driver).selectinload(Driver.company),
+    selectinload(Appointment.truck),
+    selectinload(Appointment.terminal),
+    selectinload(Appointment.gate_in),
+    selectinload(Appointment.gate_out),
+    selectinload(Appointment.visit),
+]
+
+
 def get_all_appointments(
     db: Session,
     skip: int = 0,
@@ -142,7 +153,7 @@ def get_all_appointments(
     search: Optional[str] = None,
     highway_infraction: Optional[bool] = None,
 ) -> List[Appointment]:
-    query = db.query(Appointment)
+    query = db.query(Appointment).options(*_APPOINTMENT_EAGER_LOADS)
     query = _apply_appointment_filters(
         query, gate_id, shift_gate_id, shift_type, shift_date, status, scheduled_date, search,
         highway_infraction=highway_infraction,
@@ -174,7 +185,12 @@ def count_all_appointments(
 
 
 def get_appointment_by_id(db: Session, appointment_id: int) -> Optional[Appointment]:
-    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    appointment = (
+        db.query(Appointment)
+        .options(*_APPOINTMENT_EAGER_LOADS)
+        .filter(Appointment.id == appointment_id)
+        .first()
+    )
     if appointment and appointment.arrival_id is None:
         ensure_arrival_id(db, appointment)
     return appointment
@@ -285,7 +301,12 @@ def get_appointment_detail(db: Session, appointment_id: int) -> Optional[Dict[st
 
 
 def get_appointment_by_arrival_id(db: Session, arrival_id: str) -> Optional[Appointment]:
-    return db.query(Appointment).filter(Appointment.arrival_id == arrival_id).first()
+    return (
+        db.query(Appointment)
+        .options(*_APPOINTMENT_EAGER_LOADS)
+        .filter(Appointment.arrival_id == arrival_id)
+        .first()
+    )
 
 
 def get_appointments_by_license_plate(
@@ -297,7 +318,7 @@ def get_appointments_by_license_plate(
     status: Optional[str] = None,
     scheduled_date: Optional[date] = None
 ) -> List[Appointment]:
-    query = db.query(Appointment).filter(Appointment.truck_license_plate == license_plate)
+    query = db.query(Appointment).options(*_APPOINTMENT_EAGER_LOADS).filter(Appointment.truck_license_plate == license_plate)
     if shift_gate_id and shift_type and shift_date:
         query = query.join(Visit).filter(
             Visit.shift_gate_id == shift_gate_id,
@@ -317,7 +338,7 @@ def get_appointments_by_license_plate(
     return appointments
 
 
-def get_appointments_for_decision(db: Session, gate_id: Optional[int] = None) -> List[Dict[str, Any]]:
+def get_appointments_for_decision(db: Session, gate_id: Optional[int] = None) -> List[Dict[str, Any]]:  # noqa: E501
     today = date.today()
     yesterday = today - timedelta(days=1)
     day_start = datetime.combine(today, datetime.min.time())
@@ -339,7 +360,7 @@ def get_appointments_for_decision(db: Session, gate_id: Optional[int] = None) ->
             Appointment.status == 'in_transit',
         )
     )
-    query = db.query(Appointment).filter(time_filters)
+    query = db.query(Appointment).options(*_APPOINTMENT_EAGER_LOADS).filter(time_filters)
     if gate_id:
         query = query.filter(Appointment.gate_in_id == gate_id)
     appointments = query.order_by(Appointment.scheduled_start_time.asc()).all()
@@ -444,7 +465,7 @@ def get_next_appointments(db: Session, gate_id: int, limit: int = 5, status: Opt
         base_filters.append(Appointment.status == status)
     else:
         base_filters.append(Appointment.status == 'in_transit')
-    appointments = db.query(Appointment).filter(*base_filters).order_by(
+    appointments = db.query(Appointment).options(*_APPOINTMENT_EAGER_LOADS).filter(*base_filters).order_by(
         status_priority, Appointment.scheduled_start_time.asc()
     ).limit(limit).all()
     for appointment in appointments:

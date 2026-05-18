@@ -50,11 +50,12 @@ fi
 # Step 2: Apply triggers (tables exist now, trigger will fire on INSERT)
 echo "Running database triggers migration..."
 if [[ -f "scripts/triggers.sql" ]]; then
-  PGPASSWORD=${POSTGRES_PASSWORD} psql -h ${POSTGRES_HOST:-postgres} -p ${POSTGRES_PORT:-5432} -U ${POSTGRES_USER} -d ${POSTGRES_DB} -f scripts/triggers.sql
+  PGPASSWORD=${POSTGRES_PASSWORD} psql -h ${POSTGRES_HOST:-postgres} -p ${POSTGRES_PORT:-5432} -U ${POSTGRES_USER} -d ${POSTGRES_DB} -v ON_ERROR_STOP=1 -f scripts/triggers.sql
   if [[ $? -eq 0 ]]; then
     echo "Triggers migration completed successfully"
   else
-    echo "Triggers migration failed (may already exist, continuing...)"
+    echo "Triggers migration FAILED — aborting startup"
+    exit 1
   fi
 else
   echo "No triggers.sql found, skipping..."

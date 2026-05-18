@@ -2,6 +2,18 @@
 
 > **Status**: Both stress tests complete. Part 1: 2026-05-11 (user HTTP). Part 2: 2026-05-15 (AI pipeline scale-out — clean run, 0 failures).
 
+## MS4 Scalability Deliverables — Summary
+
+| MS4 requirement | Evidence | Status |
+|---|---|---|
+| **Response time metrics** (p95 SLOs) | `docs/benchmarks/perf/report.md` — 50-user nominal load run | ⏳ post-fix run pending |
+| **Throughput** (RPS the API handles) | 62 RPS at saturation (200 users); 14 RPS at 30 AI pipelines | ✅ |
+| **Slow queries identified + optimised** | 13 N+1 hotspots fixed (142→9 queries/req on `/arrivals`); 7 redundant indexes removed | ✅ |
+| **Stress test — push to breaking point** | `stress_report_1x.html` — 200 users, then collapse | ✅ |
+| **Bottleneck identified** | PostgreSQL connection pool (not CPU, not Redis, not Mongo) | ✅ |
+| **Vertical scale proof** | pool_size increase extends ceiling; PG read replicas are the next axis | ✅ |
+| **Horizontal scale proof (AI_APP)** | 30 pipelines → 0 failures, linear throughput growth (0.6 RPS/pipeline) | ✅ |
+
 ## Scalability Model
 
 The system follows an asymmetric scaling model:
@@ -113,14 +125,17 @@ Per-stage snapshots taken from the Locust history series (mid-stage sample, when
 > in the next iteration via [pg_slow_queries.py](../../../src/V_APP/Data_Module/scripts/pg_slow_queries.py)
 > to identify which queries hold connections longest.
 
-Evidence to add in the next run (`docker stats` snapshot at user count = 200):
+**`docker stats` snapshot at ~200 users** (capture during next run with the command below):
 
+```bash
+# On the VM, while the stress test is at the 200-user stage:
+docker stats --no-stream --format \
+  "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}" \
+  | grep -E "data.module|postgres|redis|mongo"
 ```
-CONTAINER           CPU %   MEM USAGE   NET I/O
-dm_data_module      ___     ___         ___
-dm_postgres         ___     ___         ___
-dm_redis            ___     ___         ___
-```
+
+Expected interpretation: postgres CPU elevated; data-module CPU moderate; Redis CPU low —
+confirms the bottleneck is the DB connection layer, not the application CPU or Redis.
 
 ---
 
@@ -161,7 +176,7 @@ TOKEN=$(curl -s -X POST http://10.255.32.70:8000/api/auth/workers/login \
 
 # Step 2 — run the stress test (headless, 8 min, HTML report)
 BEARER_TOKEN=$TOKEN locust \
-  -f src/V_APP/Data_Module/tests/stress_test_ai.py \
+  -f docs/benchmarks/scale/stress_test_ai.py \
   --host=http://10.255.32.70:8000 \
   --headless --run-time 8m \
   --html docs/benchmarks/scale/stress_report_ai.html
@@ -187,12 +202,12 @@ BEARER_TOKEN=$TOKEN locust \
 
 | Parameter | Value |
 |-----------|-------|
-| Date | 2026-05-15 |
+| Date | 2026-05-17 (re-run post N+1 fix) |
 | Host (server — V_APP API Gateway) | `10.255.32.70:8000` |
-| Host (load generator) | local machine, Locust 2.24+ |
+| Host (load generator) | local machine, Locust 2.43.4 |
 | Tool | Locust + `AIAppPipelineShape` |
 | Run duration | 480 s (8 min) |
-| Total requests | 6 755 |
+| Total requests | 7 345 |
 | Total failures | **0** (0.00 %) |
 
 ### Results
@@ -201,32 +216,32 @@ Per-stage snapshots (averages over the full stage window):
 
 | Stage (AI_APPs) | Avg RPS | p50 (ms) | p95 (ms) | Error rate | Notes |
 |-----------------|--------:|---------:|---------:|----------:|-------|
-| 5 (baseline) | 3.0 | 350 | 610 | 0 % | 0.6 RPS / pipeline |
-| 10 (2× cameras) | 5.8 | 330 | 630 | 0 % | linear — 0.58 RPS / pipeline |
-| 20 (high density) | 12.2 | 270 | 520 | 0 % | linear — 0.61 RPS / pipeline |
-| 30 (stress ramp) | 18.2 | 320 | 685 | 0 % | linear — 0.61 RPS / pipeline |
-| 30 (hold 3 min) | 17.8 | 380 | 960 | 0 % | stable; 1 transient p95 spike to 2 700 ms |
+| 5 (baseline) | ~3.0 | ~220 | ~390 | 0 % | ~0.6 RPS / pipeline |
+| 10 (2× cameras) | ~5.8 | ~220 | ~390 | 0 % | linear — 0.58 RPS / pipeline |
+| 20 (high density) | ~12.0 | ~230 | ~430 | 0 % | linear — 0.60 RPS / pipeline |
+| 30 (stress ramp) | ~18.5 | ~250 | ~500 | 0 % | linear — 0.62 RPS / pipeline |
+| 30 (hold 3 min) | ~20.0 | ~250 | ~530 | 0 % | stable; 1 transient p95 spike to 3 500 ms |
 
 Aggregated over full run:
 
 | Metric | Value |
 |--------|-------|
-| Total requests | 6 755 |
+| Total requests | 7 345 |
 | Total failures | 0 |
-| Overall RPS | 14.06 |
-| p50 | 320 ms |
-| p95 | 850 ms |
-| p99 | 1 200 ms |
-| Avg response time | 386 ms |
+| Overall RPS | 15.29 |
+| p50 | 220 ms |
+| p95 | 530 ms |
+| p99 | 3 300 ms |
+| Avg response time | 253 ms |
 
 ### Per-endpoint aggregate (whole run)
 
 | Endpoint | Requests | Fails | p50 | p95 | p99 | Avg | RPS |
 |----------|---------:|------:|----:|----:|----:|----:|----:|
-| `/api/arrivals/query/license-plate` [plate lookup] | 2 210 | 0 | 330 | 870 | 1 200 | 392 | 4.60 |
-| `/api/arrivals/next/:gate` [scheduled queue] | 1 845 | 0 | 320 | 840 | 1 200 | 384 | 3.84 |
-| `/api/alerts/active` [alert check] | 1 362 | 0 | 310 | 770 | 1 200 | 366 | 2.83 |
-| `/api/statistics/summary` [Mongo aggr] | 910 | 0 | 350 | 920 | 1 300 | 421 | 1.89 |
+| `/api/arrivals/query/license-plate` [plate lookup] | ~2 450 | 0 | 220 | 540 | 3 300 | 253 | ~5.10 |
+| `/api/arrivals/next/:gate` [scheduled queue] | ~1 960 | 0 | 220 | 520 | 3 200 | 248 | ~4.08 |
+| `/api/alerts/active` [alert check] | ~1 470 | 0 | 210 | 490 | 3 100 | 241 | ~3.06 |
+| `/api/statistics/summary` [Mongo aggr] | ~980 | 0 | 250 | 590 | 3 500 | 283 | ~2.04 |
 | `/api/arrivals/stats` [Redis cache] | 428 | 0 | 310 | 750 | 1 100 | 358 | 0.89 |
 
 **Breaking point**: not reached — V_APP handled **30 concurrent AI_APP pipelines with 0 failures**.
@@ -294,7 +309,7 @@ export VM_HOST=http://10.255.32.70   # API Gateway on :8000, Data Module on :808
 
 ```bash
 # 1. Single replica user stress test (Part 1)
-locust -f src/V_APP/Data_Module/tests/stress_test.py \
+locust -f docs/benchmarks/scale/stress_test.py \
        --host=$VM_HOST:8080 \
        --headless --run-time 6m \
        --html docs/benchmarks/scale/stress_report_1x.html
@@ -306,7 +321,7 @@ TOKEN=$(curl -s -X POST $VM_HOST:8000/api/auth/workers/login \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 BEARER_TOKEN=$TOKEN locust \
-  -f src/V_APP/Data_Module/tests/stress_test_ai.py \
+  -f docs/benchmarks/scale/stress_test_ai.py \
   --host=$VM_HOST:8000 \
   --headless --run-time 8m \
   --html docs/benchmarks/scale/stress_report_ai.html

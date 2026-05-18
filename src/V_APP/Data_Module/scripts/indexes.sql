@@ -8,9 +8,8 @@
 -- 1. APPOINTMENT TABLE INDEXES (High Priority - Most Queries)
 -- ============================================================
 
--- Index for filtering arrivals by entry gate (operator dashboard)
-CREATE INDEX IF NOT EXISTS idx_appointment_gate_in_id 
-ON appointment(gate_in_id);
+-- REDUNDANT: covered by idx_appointment_gate_status_date and idx_appointment_gate_status_time (leading col = gate_in_id)
+DROP INDEX IF EXISTS idx_appointment_gate_in_id;
 
 -- Index for filtering by appointment status
 CREATE INDEX IF NOT EXISTS idx_appointment_status 
@@ -24,17 +23,15 @@ ON appointment(DATE(scheduled_start_time));
 CREATE INDEX IF NOT EXISTS idx_appointment_gate_status_date 
 ON appointment(gate_in_id, status, DATE(scheduled_start_time));
 
--- Index for Decision Engine lookup by license plate
-CREATE INDEX IF NOT EXISTS idx_appointment_truck_plate 
-ON appointment(truck_license_plate);
+-- REDUNDANT: covered by idx_appointment_plate_status_time (leading col = truck_license_plate)
+DROP INDEX IF EXISTS idx_appointment_truck_plate;
 
 -- Index for driver's appointments lookup
 CREATE INDEX IF NOT EXISTS idx_appointment_driver 
 ON appointment(driver_license);
 
--- Index for booking relationship
-CREATE INDEX IF NOT EXISTS idx_appointment_booking 
-ON appointment(booking_reference);
+-- REDUNDANT: covered by idx_appointment_claim (leading col = booking_reference)
+DROP INDEX IF EXISTS idx_appointment_booking;
 
 -- Index for terminal relationship
 CREATE INDEX IF NOT EXISTS idx_appointment_terminal 
@@ -91,9 +88,8 @@ ON shift(gate_id, date);
 CREATE INDEX IF NOT EXISTS idx_alert_visit_id 
 ON alert(visit_id);
 
--- Index for filtering by alert type
-CREATE INDEX IF NOT EXISTS idx_alert_type 
-ON alert(type);
+-- REDUNDANT: covered by idx_alert_type_timestamp (leading col = type)
+DROP INDEX IF EXISTS idx_alert_type;
 
 -- Index for recent alerts sorting
 CREATE INDEX IF NOT EXISTS idx_alert_timestamp 
@@ -121,9 +117,8 @@ ON worker(active);
 -- 6. DRIVER INDEXES
 -- ============================================================
 
--- Composite index for driver authentication
-CREATE INDEX IF NOT EXISTS idx_driver_license_active 
-ON driver(drivers_license, active);
+-- REDUNDANT: drivers_license is the primary key (already has a unique index)
+DROP INDEX IF EXISTS idx_driver_license_active;
 
 -- Index for active drivers filtering
 CREATE INDEX IF NOT EXISTS idx_driver_active 
@@ -182,11 +177,13 @@ CREATE INDEX IF NOT EXISTS idx_pending_reviews_created ON pending_reviews(create
 -- 11. INBOX / OUTBOX WORKER POLLING INDEXES
 -- ============================================================
 
-CREATE INDEX IF NOT EXISTS idx_inbox_event_id   ON inbox_events(event_id);
+-- REDUNDANT: inbox_events.event_id has UNIQUE constraint which already creates an index automatically
+DROP INDEX IF EXISTS idx_inbox_event_id;
 CREATE INDEX IF NOT EXISTS idx_inbox_status_id  ON inbox_events(status, id)
     WHERE status IN ('RECEIVED', 'PROCESSING', 'FAILED');
 
-CREATE INDEX IF NOT EXISTS idx_outbox_event_id    ON outbox_events(event_id);
+-- REDUNDANT: outbox_events.event_id has UNIQUE constraint which already creates an index automatically
+DROP INDEX IF EXISTS idx_outbox_event_id;
 CREATE INDEX IF NOT EXISTS idx_outbox_status_retry ON outbox_events(status, id)
     WHERE status IN ('PENDING', 'FAILED');
 CREATE INDEX IF NOT EXISTS idx_outbox_next_retry  ON outbox_events(next_retry_at)
@@ -209,3 +206,18 @@ CREATE INDEX IF NOT EXISTS idx_appointment_gate_status_time
 -- /drivers/claim: full WHERE (booking_reference, arrival_id, status) in one index scan
 CREATE INDEX IF NOT EXISTS idx_appointment_claim
     ON appointment(booking_reference, arrival_id, status);
+
+
+-- ============================================================
+-- 13. RAW TIMESTAMP RANGES — manager dashboard full scan fix
+-- ============================================================
+
+-- manager_statistics_queries.py uses scheduled_start_time BETWEEN ... without a gate filter.
+-- The functional DATE(...) index does not cover raw timestamp range queries.
+CREATE INDEX IF NOT EXISTS idx_appointment_scheduled_start_time
+    ON appointment(scheduled_start_time);
+
+-- arrival_queries.py:get_avg_permanence_minutes uses func.date(Visit.entry_time) == ?
+-- idx_visit_shift_composite does not cover date-only lookups.
+CREATE INDEX IF NOT EXISTS idx_visit_entry_date
+    ON visit(DATE(entry_time));
