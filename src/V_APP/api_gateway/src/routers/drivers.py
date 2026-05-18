@@ -269,15 +269,8 @@ async def update_driver_visit_state(
         "new_status": update_data.state,
     }
 
-    gate_in_id = result.get("appointment_id") if isinstance(result, dict) else None
-    # visit response has appointment_id; fetch gate from result if available
-    try:
-        appt_result = appointment
-        gate_in_id = appt_result.get("gate_in_id") if isinstance(appt_result, dict) else None
-        driver_license = appt_result.get("driver_license") if isinstance(appt_result, dict) else None
-    except Exception:
-        gate_in_id = None
-        driver_license = None
+    gate_in_id = appointment.get("gate_in_id") if isinstance(appointment, dict) else None
+    driver_license = appointment.get("driver_license") if isinstance(appointment, dict) else None
 
     if gate_in_id:
         try:
