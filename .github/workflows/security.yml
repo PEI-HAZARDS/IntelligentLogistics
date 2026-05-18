@@ -22,6 +22,7 @@ jobs:
   bandit:
     name: Bandit - Static Security Analysis
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'   # Skip on scheduled runs; nightly only runs pip-audit
 
     steps:
       - name: Checkout repository
@@ -37,11 +38,13 @@ jobs:
 
       - name: Run Bandit
         run: |
+          set -o pipefail
           bandit -r src/ -x '*/tests/*,*/test_*.py,*_test.py,deprecated/*' -ll -f txt 2>&1 | tee bandit-results.txt || echo "BANDIT_FAILED=true" >> $GITHUB_ENV
           bandit -r src/ -x '*/tests/*,*/test_*.py,*_test.py,deprecated/*' -ll -f sarif -o bandit-results.sarif || echo "BANDIT_FAILED=true" >> $GITHUB_ENV
 
-      - name: Fail on vulnerabilities (scheduled runs only)
-        if: github.event_name == 'schedule' && env.BANDIT_FAILED == 'true'
+      - name: Fail on vulnerabilities (main only)
+        # Fails the job on main so the commit/PR is blocked; dev just gets Slack warnings
+        if: env.BANDIT_FAILED == 'true' && (github.ref == 'refs/heads/main' || github.base_ref == 'main')
         run: exit 1
 
       - name: Upload Bandit report as artifact
@@ -84,7 +87,7 @@ jobs:
             }
 
       - name: Notify Slack - Bandit vulnerabilities detected
-        if: env.BANDIT_FAILED == 'true' && steps.upload_bandit.outcome != 'failure'
+        if: always() && env.BANDIT_FAILED == 'true' && steps.upload_bandit.outcome != 'failure'
         uses: slackapi/slack-github-action@v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -142,22 +145,40 @@ jobs:
         run: pip install pip-audit
 
       - name: Install project dependencies
-        # Mirror the install logic from your SonarCloud workflow so pip-audit
-        # sees the same dependency tree that your application actually uses
+        # Install all requirements files so pip-audit sees the full dependency tree
         run: |
           python -m pip install --upgrade pip
-          if [ -f src/shared/tests/requirements.txt ];      then pip install -r src/shared/tests/requirements.txt; fi
-          if [ -f src/decision_engine/requirements.txt ];   then pip install -r src/decision_engine/requirements.txt; fi
-          if [ -f src/agentA/requirements.txt ];            then pip install -r src/agentA/requirements.txt; fi
-          if [ -f src/agentB/requirements.txt ];            then pip install -r src/agentB/requirements.txt; fi
-          if [ -f src/agentC/requirements.txt ];            then pip install -r src/agentC/requirements.txt; fi
-          if [ -f src/broker/tests/requirements.txt ];      then pip install -r src/broker/tests/requirements.txt; fi
+          # Shared
+          if [ -f src/shared/tests/requirements.txt ];                then pip install -r src/shared/tests/requirements.txt; fi
+          if [ -f src/shared/src/requirements.txt ];                  then pip install -r src/shared/src/requirements.txt; fi
+          # AI_APP agents
+          if [ -f src/AI_APP/agentA/requirements.txt ];               then pip install -r src/AI_APP/agentA/requirements.txt; fi
+          if [ -f src/AI_APP/agentB/requirements.txt ];               then pip install -r src/AI_APP/agentB/requirements.txt; fi
+          if [ -f src/AI_APP/agentC/requirements.txt ];               then pip install -r src/AI_APP/agentC/requirements.txt; fi
+          if [ -f src/AI_APP/gateway/requirements.txt ];              then pip install -r src/AI_APP/gateway/requirements.txt; fi
+          if [ -f src/AI_APP/broker/tests/requirements.txt ];         then pip install -r src/AI_APP/broker/tests/requirements.txt; fi
+          if [ -f src/AI_APP/shared/tests/requirements.txt ];         then pip install -r src/AI_APP/shared/tests/requirements.txt; fi
+          # V_APP services
+          if [ -f src/V_APP/decision_engine/requirements.txt ];       then pip install -r src/V_APP/decision_engine/requirements.txt; fi
+          if [ -f src/V_APP/infraction_engine/requirements.txt ];     then pip install -r src/V_APP/infraction_engine/requirements.txt; fi
+          if [ -f src/V_APP/api_gateway/requirements.txt ];           then pip install -r src/V_APP/api_gateway/requirements.txt; fi
+          if [ -f src/V_APP/gateway/requirements.txt ];               then pip install -r src/V_APP/gateway/requirements.txt; fi
+          if [ -f src/V_APP/v_brain/requirements.txt ];               then pip install -r src/V_APP/v_brain/requirements.txt; fi
+          if [ -f src/V_APP/Data_Module/requirements.txt ];           then pip install -r src/V_APP/Data_Module/requirements.txt; fi
 
       - name: Run pip-audit
-        # Prints a human-readable table to the log and saves it as an artifact
-        # The env var keeps track of failure so notifications are correct.
+        # Prints a human-readable table to the log and saves it as an artifact.
+        # set -o pipefail is required: without it, the pipeline exit code is tee's
+        # (always 0), so the || fallback never fires even when pip-audit finds CVEs.
         run: |
+          set -o pipefail
           pip-audit 2>&1 | tee pip-audit-results.txt || echo "PIP_AUDIT_FAILED=true" >> $GITHUB_ENV
+
+      - name: Fail on vulnerabilities (main and schedule)
+        # Fails the job on main so the commit/PR is blocked; dev just gets Slack warnings.
+        # Scheduled runs always fail so nightly issues show as red checks on the repo.
+        if: env.PIP_AUDIT_FAILED == 'true' && (github.ref == 'refs/heads/main' || github.base_ref == 'main' || github.event_name == 'schedule')
+        run: exit 1
 
       - name: Upload pip-audit report as artifact
         uses: actions/upload-artifact@v4.3.0
@@ -166,12 +187,6 @@ jobs:
           name: pip-audit-report
           path: pip-audit-results.txt
           retention-days: 30
-
-      # Scheduled runs: fail the job explicitly if vulnerabilities are found
-      # so that a nightly failure shows up as a red check on the repo
-      - name: Fail on vulnerabilities (scheduled runs only)
-        if: github.event_name == 'schedule' && env.PIP_AUDIT_FAILED == 'true'
-        run: exit 1
 
       - name: Upload pip-audit report to Slack
         id: upload_pip_audit
@@ -205,7 +220,7 @@ jobs:
             }
 
       - name: Notify Slack - pip-audit vulnerabilities detected
-        if: env.PIP_AUDIT_FAILED == 'true' && steps.upload_pip_audit.outcome != 'failure'
+        if: always() && env.PIP_AUDIT_FAILED == 'true' && steps.upload_pip_audit.outcome != 'failure'
         uses: slackapi/slack-github-action@v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -246,17 +261,18 @@ jobs:
               }]
             }
 
-  # Nightly summary job — only runs on schedule, waits for both scans to finish
-  # and posts a single consolidated summary to Slack regardless of outcome
+  # Nightly summary job — only runs on schedule, waits for pip-audit to finish
+  # and posts a single consolidated summary to Slack regardless of outcome.
+  # always() is required so this job runs even when bandit is skipped or pip-audit fails.
   nightly-summary:
     name: Nightly Security Summary
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule'
-    needs: [bandit, pip-audit]   # Always runs after both jobs, even if they fail
+    if: always() && github.event_name == 'schedule'
+    needs: [bandit, pip-audit]
 
     steps:
       - name: Notify Slack - Nightly summary (all passed)
-        if: needs.bandit.result == 'success' && needs.pip-audit.result == 'success'
+        if: needs.pip-audit.result == 'success'
         uses: slackapi/slack-github-action@v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -266,11 +282,10 @@ jobs:
               "attachments": [{
                 "color": "good",
                 "title": "🌙 Nightly Security Scan - All clear",
-                "text": "Both Bandit and pip-audit completed with no issues.",
+                "text": "pip-audit completed with no issues.",
                 "fields": [
                   { "title": "Repository", "value": "${{ github.repository }}", "short": true },
                   { "title": "Triggered by", "value": "Scheduled (nightly)", "short": true },
-                  { "title": "Bandit", "value": "✅ Passed", "short": true },
                   { "title": "pip-audit", "value": "✅ Passed", "short": true },
                   { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
                 ]
@@ -278,7 +293,7 @@ jobs:
             }
 
       - name: Notify Slack - Nightly summary (failures)
-        if: needs.bandit.result == 'failure' || needs.pip-audit.result == 'failure'
+        if: needs.pip-audit.result == 'failure'
         uses: slackapi/slack-github-action@v2
         with:
           webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -288,12 +303,11 @@ jobs:
               "attachments": [{
                 "color": "danger",
                 "title": "🌙 Nightly Security Scan - Action required",
-                "text": "One or more security scans failed. Review the run for details.",
+                "text": "pip-audit failed. Review the run for details.",
                 "fields": [
                   { "title": "Repository", "value": "${{ github.repository }}", "short": true },
                   { "title": "Triggered by", "value": "Scheduled (nightly)", "short": true },
-                  { "title": "Bandit", "value": "${{ needs.bandit.result == 'success' && '✅ Passed' || '❌ Failed' }}", "short": true },
-                  { "title": "pip-audit", "value": "${{ needs.pip-audit.result == 'success' && '✅ Passed' || '❌ Failed' }}", "short": true },
+                  { "title": "pip-audit", "value": "❌ Failed", "short": true },
                   { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
                 ]
               }]
