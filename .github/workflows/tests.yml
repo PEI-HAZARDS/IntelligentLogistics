@@ -1,0 +1,80 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: [ "main", "dev" ]
+  pull_request:
+    branches: [ "main", "dev" ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4.2.0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov pytest-mock
+          # Install dependencies for working modules
+          if [ -f src/shared/tests/requirements.txt ];      then pip install -r src/shared/tests/requirements.txt; fi
+          if [ -f src/decision_engine/requirements.txt ];   then pip install -r src/decision_engine/requirements.txt; fi
+          if [ -f src/agentA/requirements.txt ];            then pip install -r src/agentA/requirements.txt; fi
+          if [ -f src/agentB/requirements.txt ];            then pip install -r src/agentB/requirements.txt; fi
+          if [ -f src/agentC/requirements.txt ];            then pip install -r src/agentC/requirements.txt; fi
+          if [ -f src/broker/tests/requirements.txt ];      then pip install -r src/broker/tests/requirements.txt; fi
+
+      - name: Run Tests
+        run: |
+          chmod +x run_tests.sh
+          ./run_tests.sh
+
+      - name: Notify Slack - Tests success
+        if: success()
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [{
+                "color": "good",
+                "title": "✅ Unit Tests - Passed",
+                "fields": [
+                  { "title": "Repository", "value": "${{ github.repository }}", "short": true },
+                  { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
+                  { "title": "Triggered by", "value": "${{ github.actor }}", "short": true },
+                  { "title": "Commit", "value": "${{ github.sha }}", "short": true },
+                  { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                ]
+              }]
+            }
+
+      - name: Notify Slack - Tests failure
+        if: failure()
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "attachments": [{
+                "color": "danger",
+                "title": "🚨 Unit Tests - Failed",
+                "fields": [
+                  { "title": "Repository", "value": "${{ github.repository }}", "short": true },
+                  { "title": "Branch", "value": "${{ github.ref_name }}", "short": true },
+                  { "title": "Triggered by", "value": "${{ github.actor }}", "short": true },
+                  { "title": "Commit", "value": "${{ github.sha }}", "short": true },
+                  { "title": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "short": false }
+                ]
+              }]
+            }
