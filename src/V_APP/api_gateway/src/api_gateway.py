@@ -27,6 +27,7 @@ from routers import (
     manual_review,
     alerts,
     drivers,
+    media,
     stream,
     realtime,   # WebSockets for real-time updates
     workers,    # Operators and Managers
@@ -48,8 +49,11 @@ class APIGatewayConfig(BaseSettings):
     infraction_gate_ids: str = Field(default=DEFAULT_GATE_IDS) # Highway/Approach gates
     gateway_port: int = Field(default=8000)
     data_module_url: str = Field(default="http://data-module:8000")
-    stream_base_url: str = Field(default="http://mediamtx:8888")
-    stream_webrtc_base_url: str = Field(default="http://mediamtx:8889")
+    mediamtx_webrtc_internal_url: str = Field(default="http://mediamtx:8889")
+    mediamtx_hls_internal_url: str = Field(default="http://mediamtx:8888")
+    minio_internal_url: str = Field(default="http://minio:9000")
+    minio_root_user: str = Field(default="")
+    minio_root_password: str = Field(default="")
     api_prefix: str = Field(default="/api")
     env: str = Field(default="dev")
     cors_allow_origins: list[str] = Field(default=["*"])
@@ -187,7 +191,7 @@ class APIGateway:
                 if truck_id:
                     payload["truck_id"] = truck_id
 
-                if payload.get("decision") == "SKIPPED" or payload.get("decision") == "MANUAL_REVIEW":
+                if payload.get("decision") == "SKIPPED":# or payload.get("decision") == "MANUAL_REVIEW":
                     continue
 
                 target_gate = self._resolve_target_gate(payload, topic)
@@ -313,8 +317,20 @@ class APIGateway:
         app.state.kafka_producer = self.kafka_producer
         app.state.ws_manager = self.ws_manager
         app.state.data_module_url = self.config.data_module_url
-        app.state.stream_base_url = self.config.stream_base_url
-        app.state.stream_webrtc_base_url = self.config.stream_webrtc_base_url
+        app.state.mediamtx_webrtc_internal_url = self.config.mediamtx_webrtc_internal_url
+        app.state.mediamtx_hls_internal_url = self.config.mediamtx_hls_internal_url
+        app.state.minio_internal_url = self.config.minio_internal_url
+        # Pre-compute the Minio() constructor args used by the media router.
+        from urllib.parse import urlparse as _urlparse
+        _parsed = _urlparse(self.config.minio_internal_url)
+        _endpoint = _parsed.netloc or _parsed.path
+        app.state.minio_config = {
+            "endpoint": _endpoint,
+            "access_key": self.config.minio_root_user,
+            "secret_key": self.config.minio_root_password,
+            "secure": _parsed.scheme == "https",
+        }
+        app.state.api_prefix = self.config.api_prefix
 
         # Keycloak
         app.state.keycloak_client = KeycloakClient(
@@ -345,6 +361,7 @@ class APIGateway:
         app.include_router(alerts.router, prefix=self.config.api_prefix)
         app.include_router(drivers.router, prefix=self.config.api_prefix)
         app.include_router(stream.router, prefix=self.config.api_prefix)
+        app.include_router(media.router, prefix=self.config.api_prefix)
         app.include_router(workers.router, prefix=self.config.api_prefix)
         app.include_router(statistics.router, prefix=self.config.api_prefix)
         app.include_router(realtime.router, prefix=self.config.api_prefix)

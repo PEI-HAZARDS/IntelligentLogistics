@@ -10,14 +10,24 @@ def get_kafka_producer(request: Request) -> KafkaProducerWrapper:
     return request.app.state.kafka_producer
 
 
-def get_stream_base_url(request: Request) -> str:
-    """FastAPI dependency — retrieves the stream base URL from app.state."""
-    return request.app.state.stream_base_url
+def get_mediamtx_webrtc_internal_url(request: Request) -> str:
+    """FastAPI dependency — internal MediaMTX WebRTC/WHEP base URL (server-to-server)."""
+    return request.app.state.mediamtx_webrtc_internal_url
 
 
-def get_stream_webrtc_base_url(request: Request) -> str:
-    """FastAPI dependency — retrieves the WebRTC stream base URL from app.state."""
-    return request.app.state.stream_webrtc_base_url
+def get_mediamtx_hls_internal_url(request: Request) -> str:
+    """FastAPI dependency — internal MediaMTX HLS base URL (server-to-server)."""
+    return request.app.state.mediamtx_hls_internal_url
+
+
+def get_minio_internal_url(request: Request) -> str:
+    """FastAPI dependency — internal MinIO base URL (server-to-server, no S3 signing)."""
+    return request.app.state.minio_internal_url
+
+
+def get_api_prefix(request: Request) -> str:
+    """FastAPI dependency — API mount prefix used to build client-facing paths."""
+    return request.app.state.api_prefix
 
 
 def get_data_module_url(request: Request) -> str:

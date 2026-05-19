@@ -7,6 +7,9 @@ pydantic-settings
 # --- HTTP ---
 httpx[http2]
 
+# --- Object storage ---
+minio
+
 # --- Auth ---
 PyJWT[crypto]>=2.8.0
 

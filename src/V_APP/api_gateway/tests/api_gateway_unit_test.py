@@ -36,8 +36,8 @@ def config() -> APIGatewayConfig:
         decision_gate_ids='["1","2"]',
         infraction_gate_ids='["7"]',
         data_module_url="http://data-module.test",
-        stream_base_url="http://media.test:8888/",
-        stream_webrtc_base_url="http://media.test:8889/",
+        mediamtx_hls_internal_url="http://media.test:8888",
+        mediamtx_webrtc_internal_url="http://media.test:8889",
         env="test",
     )
 
@@ -262,9 +262,16 @@ class TestProxyRoutes:
         assert response.json() == {
             "gate_id": "gate-1",
             "quality": "high",
-            "hls_url": "http://media.test:8888/streams_high/gate-1/index.m3u8",
-            "webrtc_url": "http://media.test:8889/streams_high/gate-1/",
+            "hls_url": "/api/stream/gate-1/high/hls/index.m3u8",
+            "webrtc_url": "/api/stream/gate-1/high/whep",
         }
+
+    def test_stream_route_rejects_driver(self, client):
+        response = client.get(
+            "/api/stream/gate-1/high",
+            headers={"Authorization": "Bearer driver-token"},
+        )
+        assert response.status_code == 403
 
 
 class TestAuthRoutes:
