@@ -4,9 +4,16 @@ from AI_APP.shared.src.paddle_ocr import OCR
 from shared.src.kafka_protocol import KafkaMessageProto, Message, KafkaTopicFactory
 
 import os
+import logging
 from typing import Optional
 from prometheus_client import Counter, Histogram # type: ignore
+from pydantic import Field
 
+class AgentCConfig(BaseAgentConfig):
+    min_detection_confidence: float = Field(
+        default=0.4, 
+        alias="AGENT_C_MIN_DETECTION_CONFIDENCE"
+    )
 
 class AgentC(BaseAgent):
     """
@@ -18,10 +25,15 @@ class AgentC(BaseAgent):
     - Publish hazard plate results to Kafka
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, config: Optional[AgentCConfig] = None, **kwargs):
         """Initialize Agent C with hazard plate detection capabilities."""
+        config = config or AgentCConfig()
         # Call parent constructor (forwards any injected dependencies)
-        super().__init__(**kwargs)
+        super().__init__(config=config, **kwargs)
+        
+        # Restore logging level right after BaseAgent initialization (PaddleOCR suppresses it)
+        logging.getLogger().setLevel(logging.INFO)
+        self.logger.info(f"Agent C initialized with min_detection_confidence={self.config.min_detection_confidence}")
 
     # ========================================================================
     # Required abstract method implementations
