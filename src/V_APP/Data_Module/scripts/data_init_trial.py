@@ -116,7 +116,10 @@ def init_trial_data(db: Session):
         truck_b3 = Truck(
             license_plate="82BTN5", brand="DAF XF", company_nif=company.nif,
         )
-        db.add_all([truck_87, truck_b1, truck_b2, truck_b3])
+        truck_45 = Truck(
+            license_plate="45CD12", brand="Iveco S-Way", company_nif=company.nif,
+        )
+        db.add_all([truck_87, truck_b1, truck_b2, truck_b3, truck_45])
         db.flush()
 
         # ── Terminals ────────────────────────────────────────────────────────
@@ -237,6 +240,37 @@ def init_trial_data(db: Session):
         db.add(appt_87)
         db.flush()
         print(f"    appointment_id={appt_87.id}  status=in_transit  highway_infraction=False")
+
+        # ── 45CD12 — SECOND IN-TRANSIT TRUCK (same pattern as 87AX60) ───────
+        print("\n  [DEMO] Creating 45CD12 appointment (in_transit, no infraction)...")
+        sched_45 = now + timedelta(minutes=30)
+        bk_45 = Booking(reference=_ref("DEMO"), direction="inbound")
+        db.add(bk_45)
+        db.flush()
+        cargo_45 = Cargo(
+            booking_reference=bk_45.reference,
+            quantity=Decimal("20000"),
+            state="liquid",
+            description="Acetone [UN:1090, Kemler:33]",
+        )
+        db.add(cargo_45)
+        db.flush()
+        appt_45 = Appointment(
+            booking_reference=bk_45.reference,
+            driver_license=driver2.drivers_license,
+            truck_license_plate="45CD12",
+            terminal_id=terminal_liquidos.id,
+            gate_in_id=gate_entry.id,
+            gate_out_id=None,
+            scheduled_start_time=sched_45,
+            expected_duration=45,
+            status="in_transit",
+            notes="HAZMAT: Acetone [UN:1090, Kemler:33] — awaiting gate detection",
+            highway_infraction=False,
+        )
+        db.add(appt_45)
+        db.flush()
+        print(f"    appointment_id={appt_45.id}  status=in_transit  highway_infraction=False")
 
         # ── Bonus appointments (give the dashboard some data) ─────────────────
         print("\n  Creating bonus appointments for dashboard context...")
