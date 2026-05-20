@@ -11,7 +11,11 @@ cd "$ROOT_DIR"
 # Set up and activate virtual environment
 if [ ! -d ".venv" ] || [ ! -f ".venv/bin/pip" ]; then
     echo "Creating virtual environment..."
-    python3 -m venv .venv
+    if command -v uv &>/dev/null; then
+        uv venv --seed .venv
+    else
+        python3 -m venv .venv
+    fi
 fi
 
 echo "Activating virtual environment..."
@@ -20,13 +24,21 @@ source .venv/bin/activate
 # Ensure test dependencies are installed
 if ! python -m pytest --version &>/dev/null; then
     echo "Installing test dependencies..."
-    pip install --quiet pytest pytest-cov pytest-mock
+    if command -v uv &>/dev/null; then
+        uv pip install --quiet pytest pytest-cov pytest-mock
+    else
+        pip install --quiet pytest pytest-cov pytest-mock
+    fi
 fi
 
 # Install all module requirements (skips if already satisfied)
 echo "Installing project dependencies..."
 find src/ -name "requirements.txt" -print0 | while IFS= read -r -d '' req; do
-    pip install --quiet -r "$req" 2>/dev/null || true
+    if command -v uv &>/dev/null; then
+        uv pip install --quiet -r "$req" 2>/dev/null || true
+    else
+        pip install --quiet -r "$req" 2>/dev/null || true
+    fi
 done
 
 echo "========================================="

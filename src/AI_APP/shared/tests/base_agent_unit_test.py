@@ -22,7 +22,15 @@ from queue import Queue, Empty
 import time
 
 
+
+from pydantic import Field
+from AI_APP.shared.src.base_agent import BaseAgentConfig
+
+class MockAgentConfig(BaseAgentConfig):
+    min_detection_confidence: float = Field(default=0.4)
+
 # =============================================================================
+
 # Concrete test implementation of BaseAgent
 # =============================================================================
 
@@ -119,6 +127,9 @@ def sample_crop():
 def create_test_agent(mock_deps, config=None):
     """Create a concrete test agent instance with mocked dependencies."""
     from AI_APP.shared.src.base_agent import BaseAgent
+
+    if config is None:
+        config = MockAgentConfig()
 
     # Create a concrete subclass
     class ConcreteTestAgent(BaseAgent):
@@ -434,9 +445,7 @@ class TestDetectionPipeline:
 
     def test_run_yolo_inference_sync_upload_when_idle_mode_disabled(self, mock_dependencies, sample_frame):
         """Annotated frame upload stays synchronous when idle upload mode is disabled."""
-        from AI_APP.shared.src.base_agent import BaseAgentConfig
-
-        config = BaseAgentConfig(annotated_frames_idle_upload=False)
+        config = MockAgentConfig(annotated_frames_idle_upload=False)
         agent = create_test_agent(mock_dependencies, config=config)
         mock_results = MagicMock()
         agent.yolo.detect.return_value = mock_results
@@ -479,8 +488,7 @@ class TestDetectionPipeline:
     def test_extract_crop_low_confidence_ignored(self, mock_dependencies, sample_frame):
         """_extract_crop returns None for low confidence."""
         # Arrange
-        from AI_APP.shared.src.base_agent import BaseAgentConfig
-        config = BaseAgentConfig(min_detection_confidence=0.5)
+        config = MockAgentConfig(min_detection_confidence=0.5)
         agent = create_test_agent(mock_dependencies, config=config)
         box = [10, 20, 50, 60, 0.3]  # Low confidence
 
@@ -750,8 +758,7 @@ class TestProcessDetection:
     def test_process_detection_returns_partial_at_max_frames(self, mock_dependencies, sample_crop):
         """process_detection returns partial result at max frames."""
         # Arrange
-        from AI_APP.shared.src.base_agent import BaseAgentConfig
-        config = BaseAgentConfig(max_frames=1)
+        config = MockAgentConfig(max_frames=1)
         agent = create_test_agent(mock_dependencies, config=config)
         agent.stream_manager.read.return_value = np.zeros((480, 640, 3), dtype=np.uint8)
 
