@@ -30,6 +30,7 @@ from infrastructure.persistence.sql_models import (
     Dock,
     Truck,
     Visit,
+    DELAY_TOLERANCE_MINUTES,
 )
 
 logger = logging.getLogger("manager_statistics_queries")
@@ -93,8 +94,12 @@ def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
         total_appointments = base.count()
 
         # Status counts
-        _delay_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1)
-        scheduled_count = base.filter(Appointment.status == "scheduled").count()
+        _delay_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=DELAY_TOLERANCE_MINUTES)
+        # scheduled on-time: exclude rows already past the delay threshold
+        scheduled_count = base.filter(
+            Appointment.status == "scheduled",
+            or_(Appointment.scheduled_start_time.is_(None), Appointment.scheduled_start_time >= _delay_cutoff),
+        ).count()
         in_transit_count = base.filter(
             Appointment.status == "in_transit",
             or_(Appointment.scheduled_start_time.is_(None), Appointment.scheduled_start_time >= _delay_cutoff),
@@ -104,20 +109,15 @@ def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
             and_(Visit.state == 'unloading', Visit.out_time.is_(None))
         )
         unloading_count = base.filter(
-            or_(
-                Appointment.status == "unloading",
-                and_(Appointment.status == "in_process", Appointment.id.in_(_active_unloading_ids)),
-            )
+            and_(Appointment.status == "in_process", Appointment.id.in_(_active_unloading_ids))
         ).count()
         completed_count = base.filter(Appointment.status == "completed").count()
+        # delayed: both 'scheduled' and 'in_transit' past the tolerance threshold
         delayed_count = base.filter(
-            or_(
-                Appointment.status == "delayed",
-                and_(
-                    Appointment.status == "in_transit",
-                    Appointment.scheduled_start_time.isnot(None),
-                    Appointment.scheduled_start_time < _delay_cutoff,
-                ),
+            and_(
+                Appointment.status.in_(("scheduled", "in_transit")),
+                Appointment.scheduled_start_time.isnot(None),
+                Appointment.scheduled_start_time < _delay_cutoff,
             )
         ).count()
 

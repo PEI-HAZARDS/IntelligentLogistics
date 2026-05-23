@@ -101,7 +101,7 @@ def get_driver_active_appointment(drivers_license: str) -> Optional[Dict[str, An
             .options(*_appointment_eager_options())
             .filter(
                 AppointmentORM.driver_license == drivers_license,
-                AppointmentORM.status.in_(["in_transit", "delayed", "in_process", "unloading"])
+                AppointmentORM.status.in_(["in_transit", "in_process"])
             )
             .order_by(AppointmentORM.scheduled_start_time)
             .first()

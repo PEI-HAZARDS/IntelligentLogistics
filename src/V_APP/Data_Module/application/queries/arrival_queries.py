@@ -20,36 +20,21 @@ from infrastructure.persistence.sql_models import (
 
 
 def _delayed_condition():
-    """SQLAlchemy condition: appointment is effectively delayed.
+    """SQLAlchemy condition: scheduled appointment is past the delay threshold.
 
-    Matches rows stored as 'delayed' (backward compat) and rows that are
-    'in_transit' past the delay tolerance threshold.
+    Only applies to 'scheduled' status (truck hasn't departed yet).
+    In-transit trucks that are late are returned by the 'in_transit' filter
+    with is_delayed=True on the appointment object — they do not appear here.
 
     scheduled_start_time is stored as UTC naive datetime (Docker containers
     run with TZ=UTC). cutoff uses UTC naive to match.
     """
     from datetime import timezone as _tz
     cutoff = datetime.now(_tz.utc).replace(tzinfo=None) - timedelta(minutes=DELAY_TOLERANCE_MINUTES)
-    return or_(
-        Appointment.status == 'delayed',
-        and_(
-            Appointment.status == 'in_transit',
-            Appointment.scheduled_start_time.isnot(None),
-            Appointment.scheduled_start_time < cutoff,
-        ),
-    )
-
-
-def _in_transit_ontime_condition():
-    """SQLAlchemy condition: in_transit and not yet past the delay threshold."""
-    from datetime import timezone as _tz
-    cutoff = datetime.now(_tz.utc).replace(tzinfo=None) - timedelta(minutes=DELAY_TOLERANCE_MINUTES)
     return and_(
-        Appointment.status == 'in_transit',
-        or_(
-            Appointment.scheduled_start_time.is_(None),
-            Appointment.scheduled_start_time >= cutoff,
-        ),
+        Appointment.status == 'scheduled',
+        Appointment.scheduled_start_time.isnot(None),
+        Appointment.scheduled_start_time < cutoff,
     )
 
 
@@ -59,20 +44,15 @@ def _unloading_condition():
     Matches in_process appointments with an active Visit in unloading state,
     plus backward-compat rows stored with status='unloading'.
     """
-    return or_(
-        Appointment.status == 'unloading',
-        and_(
-            Appointment.status == 'in_process',
-            Appointment.id.in_(
-                # subquery: appointment_ids with an active unloading Visit
-                # (using a raw subselect to avoid JOIN conflicts in callers)
-                __import__('sqlalchemy').select(Visit.appointment_id).where(
-                    and_(
-                        Visit.state == 'unloading',
-                        Visit.out_time.is_(None),
-                    )
+    return and_(
+        Appointment.status == 'in_process',
+        Appointment.id.in_(
+            __import__('sqlalchemy').select(Visit.appointment_id).where(
+                and_(
+                    Visit.state == 'unloading',
+                    Visit.out_time.is_(None),
                 )
-            ),
+            )
         ),
     )
 
@@ -83,15 +63,17 @@ def _resolve_status_filter(status: str):
     Handles virtual sub-states 'delayed' and 'unloading' that are no longer
     stored as primary values in Appointment.status.
 
-    'in_transit' maps to on-time only — delayed in_transit appointments are
-    returned by 'delayed' filter instead, keeping the two filters disjoint.
+    'in_transit'  → all in_transit rows (on-time and delayed); is_delayed flag
+                    distinguishes them in the API response.
+    'delayed'     → only scheduled rows past the tolerance (trucks not yet departed).
+    'unloading'   → in_process rows with an active Visit in unloading state.
     """
     if status == 'delayed':
         return _delayed_condition()
     if status == 'unloading':
         return _unloading_condition()
     if status == 'in_transit':
-        return _in_transit_ontime_condition()
+        return Appointment.status == 'in_transit'
     return Appointment.status == status
 
 
@@ -393,6 +375,7 @@ def get_appointments_for_decision(db: Session, gate_id: Optional[int] = None) ->
             "primary_status": a.status,            # raw DB state (never delayed/unloading)
             "is_delayed": a.is_delayed,
             "is_unloading": a.is_unloading,
+            "is_visit_done": a.is_visit_done,
             "highway_infraction": a.highway_infraction,
             "cargo": cargo,
             "booking": {
@@ -423,11 +406,23 @@ def get_appointments_count_by_status(
     def _q(condition):
         return db.query(func.count(Appointment.id)).filter(condition, *gate_filter)
 
-    scheduled_count   = _q(and_(Appointment.status == "scheduled",   Appointment.scheduled_start_time.between(start_dt, end_dt))).scalar() or 0
-    in_transit_count  = _q(and_(_in_transit_ontime_condition(),       Appointment.scheduled_start_time.between(start_dt, end_dt))).scalar() or 0
-    delayed_count     = _q(_delayed_condition()).scalar() or 0
-    in_process_count  = _q(and_(Appointment.status == "in_process",  Appointment.scheduled_start_time.between(start_dt, end_dt))).scalar() or 0
+    # scheduled on-time: exclude rows that are already delayed (past tolerance)
+    from datetime import timezone as _tz
+    _cutoff = datetime.now(_tz.utc).replace(tzinfo=None) - timedelta(minutes=DELAY_TOLERANCE_MINUTES)
+    scheduled_count   = _q(and_(
+        Appointment.status == "scheduled",
+        Appointment.scheduled_start_time.between(start_dt, end_dt),
+        or_(
+            Appointment.scheduled_start_time.is_(None),
+            Appointment.scheduled_start_time >= _cutoff,
+        ),
+    )).scalar() or 0
+    in_transit_count  = _q(and_(Appointment.status == "in_transit",   Appointment.scheduled_start_time.between(start_dt, end_dt))).scalar() or 0
+    delayed_count     = _q(and_(_delayed_condition(),                  Appointment.scheduled_start_time.between(start_dt, end_dt))).scalar() or 0
+    # Unloading is a sub-state of in_process: exclude those rows from in_process_count
+    # so the two counts are disjoint and summing them gives the true total.
     unloading_count   = _q(and_(_unloading_condition(),               Appointment.scheduled_start_time.between(start_dt, end_dt))).scalar() or 0
+    in_process_count  = _q(and_(Appointment.status == "in_process",  ~_unloading_condition(), Appointment.scheduled_start_time.between(start_dt, end_dt))).scalar() or 0
     completed_count   = _q(and_(Appointment.status == "completed",   Appointment.scheduled_start_time.between(start_dt, end_dt))).scalar() or 0
     canceled_count    = _q(and_(Appointment.status == "canceled",    Appointment.scheduled_start_time.between(start_dt, end_dt))).scalar() or 0
     infractions_count = db.query(func.count(Appointment.id)).filter(
