@@ -146,9 +146,13 @@ section_data_module() {
     local DM_VENV="${DM_ROOT}/tests/.venv/bin/python"
 
     if [ ! -f "$DM_VENV" ]; then
-        echo "  ⚠  Data Module venv not found at ${DM_VENV}"
-        echo "     Run: cd ${DM_ROOT}/tests && python -m venv .venv && .venv/bin/pip install -r requirements.txt"
-        return 1
+        echo "  › Data Module venv not found — creating..."
+        (
+            cd "${DM_ROOT}/tests"
+            python3 -m venv .venv
+            .venv/bin/pip install -q -r "${DM_ROOT}/requirements.txt"
+        ) || { echo "  ✘  Failed to create Data Module venv"; return 1; }
+        echo "  ✔  Data Module venv ready"
     fi
 
     local FAILED=0
