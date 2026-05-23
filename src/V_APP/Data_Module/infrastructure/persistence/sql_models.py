@@ -16,14 +16,13 @@ DELAY_TOLERANCE_MINUTES = 1
 # ENUMS
 # ==========================
 
-delivery_status_enum = SEnum('not_started', 'unloading', 'completed', name='delivery_status')
+delivery_status_enum = SEnum('in_port', 'unloading', 'done', name='delivery_status')
 physical_state_enum = SEnum('liquid', 'solid', 'gaseous', 'hybrid', name='physical_state')
 access_level_enum = SEnum('admin', 'basic', name='access_level')
 operational_status_enum = SEnum('maintenance', 'operational', 'closed', name='operational_status')
-# 'unloading' and 'delayed' kept for backward compat with existing rows — never written by app code.
-# Primary flow states: scheduled → in_transit → in_process → completed | canceled
-# Sub-states: delayed (computed from time), unloading (derived from Visit.state)
-appointment_status_enum = SEnum('scheduled', 'in_transit', 'in_process', 'unloading', 'canceled', 'delayed', 'completed', name='appointment_status')
+# Primary flow: scheduled → in_transit → in_process → completed | canceled
+# Sub-states (never stored, always computed): delayed (time-based), unloading (from Visit.state)
+appointment_status_enum = SEnum('scheduled', 'in_transit', 'in_process', 'completed', 'canceled', name='appointment_status')
 type_alert_enum = SEnum('generic', 'safety', 'problem', 'operational', name='type_alert')
 direction_enum = SEnum('inbound', 'outbound', name='direction')
 
@@ -303,9 +302,23 @@ class Appointment(Base):
 
     @property
     def is_unloading(self) -> bool:
-        """True when there is an active Visit in unloading state (out_time not yet set)."""
+        """True when there is an active Visit in unloading state."""
         if self.visit:
-            return self.visit.state == 'unloading' and self.visit.out_time is None
+            return self.visit.state == 'unloading'
+        return False
+
+    @property
+    def is_in_port(self) -> bool:
+        """True when truck is inside the port (Visit in in_port state)."""
+        if self.visit:
+            return self.visit.state == 'in_port'
+        return False
+
+    @property
+    def is_visit_done(self) -> bool:
+        """True when unloading is complete but driver hasn't confirmed departure yet (Visit.state == 'done')."""
+        if self.visit:
+            return self.visit.state == 'done'
         return False
 
     @property
@@ -317,17 +330,22 @@ class Appointment(Base):
         Sub-states (never stored, always computed):
           - 'delayed'   — in_transit past scheduled_start_time + DELAY_TOLERANCE_MINUTES
           - 'unloading' — in_process with an active Visit in unloading state
+          - 'in_port'   — in_process with truck inside port but not yet unloading
         """
-        if self.status in ('completed', 'canceled', 'scheduled'):
+        if self.status in ('completed', 'canceled'):
             return self.status
 
         if self.status == 'in_process':
+            if self.is_visit_done:
+                return 'leaving_port'
             if self.is_unloading:
                 return 'unloading'
+            if self.is_in_port:
+                return 'in_port'
             return 'in_process'
 
-        # in_transit: check for delay
-        if self.scheduled_start_time:
+        # scheduled and in_transit: check for delay
+        if self.status in ('scheduled', 'in_transit') and self.scheduled_start_time:
             delay_threshold = self.scheduled_start_time + timedelta(minutes=DELAY_TOLERANCE_MINUTES)
             if datetime.now(timezone.utc).replace(tzinfo=None) > delay_threshold:
                 return 'delayed'
@@ -336,8 +354,14 @@ class Appointment(Base):
 
     @property
     def is_delayed(self) -> bool:
-        """Quick check if appointment is currently delayed."""
-        return self.computed_status == 'delayed'
+        """True when past scheduled_start_time + tolerance and still not in a terminal state.
+        Applies to both 'scheduled' (truck never left) and 'in_transit' (truck on the road)."""
+        if self.status not in ('scheduled', 'in_transit'):
+            return False
+        if not self.scheduled_start_time:
+            return False
+        delay_threshold = self.scheduled_start_time + timedelta(minutes=DELAY_TOLERANCE_MINUTES)
+        return datetime.now(timezone.utc).replace(tzinfo=None) > delay_threshold
     
     @property
     def delay_minutes(self) -> int:
@@ -381,7 +405,7 @@ class Visit(Base):
     out_time = Column(TIMESTAMP)
     
     # Status
-    state = Column(delivery_status_enum, default='unloading')
+    state = Column(delivery_status_enum, default='in_port')
     
     # Relationships
     appointment = relationship("Appointment", back_populates="visit")
