@@ -151,6 +151,7 @@ section_data_module() {
             cd "${DM_ROOT}/tests"
             python3 -m venv .venv
             .venv/bin/pip install -q -r "${DM_ROOT}/requirements.txt"
+            .venv/bin/pip install -q pytest pytest-mock
         ) || { echo "  ✘  Failed to create Data Module venv"; return 1; }
         echo "  ✔  Data Module venv ready"
     fi
