@@ -270,7 +270,7 @@ def manual_review(
 
     When approved:
     - Updates Appointment.status to 'in_process' (confirmed arrival)
-    - Creates Visit with state='not_started' if gate_id provided
+    - Creates Visit with state='in_port' if gate_id provided
 
     When rejected:
     - Updates Appointment.status to 'canceled'

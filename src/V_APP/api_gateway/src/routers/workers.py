@@ -97,14 +97,13 @@ async def list_operators(
 
 @router.get("/workers/operators/me")
 async def get_my_operator_info(
-    num_worker: Annotated[str, Query(description="Operator num_worker")],
     _user: Annotated[TokenPayload, Depends(require_role("operator", "manager"))],
 ):
     """
     Get authenticated operator's own profile.
-    Proxy to GET /api/v1/workers/operators/me
+    Resolves identity from JWT sub (email) — no query param needed.
     """
-    return await internal_client.get("/workers/operators/me", params={"num_worker": num_worker})
+    return await internal_client.get("/workers/operators/me", params={"email": _user.sub})
 
 
 @router.get("/workers/operators/{num_worker}")
@@ -181,14 +180,13 @@ async def list_managers(
 
 @router.get("/workers/managers/me")
 async def get_my_manager_info(
-    num_worker: Annotated[str, Query(description="Manager num_worker")],
     _user: Annotated[TokenPayload, Depends(require_role("manager"))],
 ):
     """
     Get authenticated manager's own profile.
-    Proxy to GET /api/v1/workers/managers/me
+    Resolves identity from JWT sub (email) — no query param needed.
     """
-    return await internal_client.get("/workers/managers/me", params={"num_worker": num_worker})
+    return await internal_client.get("/workers/managers/me", params={"email": _user.sub})
 
 
 @router.get("/workers/managers/{num_worker}")

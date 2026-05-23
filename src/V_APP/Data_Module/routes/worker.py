@@ -277,13 +277,14 @@ def list_operators(
 
 @router.get("/operators/me", response_model=Dict[str, Any], responses={404: {"description": "Operator not found"}})
 def get_my_operator_info(
-    num_worker: Annotated[str, Query(description="Operator num_worker (from JWT)")],
+    email: Annotated[str, Query(description="Worker email from JWT sub claim")],
 ):
-    """
-    Gets authenticated operator information.
-    In production: num_worker would come from JWT.
-    """
-    info = get_operator_info(num_worker)
+    """Gets authenticated operator information by email (resolved from JWT by the gateway)."""
+    with _uow_factory() as uow:
+        worker = uow.workers.get_by_email_active(email)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Operator not found")
+    info = get_operator_info(worker["num_worker"])
     if not info:
         raise HTTPException(status_code=404, detail="Operator not found")
     return info
@@ -399,13 +400,14 @@ def list_managers(
 
 @router.get("/managers/me", response_model=Dict[str, Any], responses={404: {"description": "Manager not found"}})
 def get_my_manager_info(
-    num_worker: Annotated[str, Query(description="Manager num_worker (from JWT)")],
+    email: Annotated[str, Query(description="Worker email from JWT sub claim")],
 ):
-    """
-    Gets authenticated manager information.
-    In production: num_worker would come from JWT.
-    """
-    info = get_manager_info(num_worker)
+    """Gets authenticated manager information by email (resolved from JWT by the gateway)."""
+    with _uow_factory() as uow:
+        worker = uow.workers.get_by_email_active(email)
+    if not worker:
+        raise HTTPException(status_code=404, detail="Manager not found")
+    info = get_manager_info(worker["num_worker"])
     if not info:
         raise HTTPException(status_code=404, detail="Manager not found")
     return info

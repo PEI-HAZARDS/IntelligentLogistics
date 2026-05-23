@@ -62,7 +62,7 @@ class SqlAlchemyVisitRepository(IVisitRepository):
             shift_type=shift_type,
             shift_date=shift_date,
             entry_time=entry_time or datetime.now(timezone.utc).replace(tzinfo=None),
-            state="not_started",
+            state="in_port",
         )
         self._session.add(visit)
         self._session.flush()
@@ -108,7 +108,7 @@ class SqlAlchemyVisitRepository(IVisitRepository):
         visit.state = new_state
         if out_time:
             visit.out_time = out_time
-        elif new_state == "completed":
+        elif new_state == "done":
             visit.out_time = datetime.now(timezone.utc).replace(tzinfo=None)
         self._session.flush()
         return self._to_dict(visit)

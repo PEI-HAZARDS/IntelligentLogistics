@@ -306,16 +306,20 @@ def query_arrivals_by_license_plate(
 
 # ==================== HIGHWAY INFRACTION ====================
 
-@router.patch("/{appointment_id}/highway-infraction", response_model=Appointment, responses={404: {"description": "Appointment not found"}})
+@router.patch("/{appointment_id}/highway-infraction", response_model=Appointment, responses={404: {"description": "Appointment not found"}, 409: {"description": "Truck already inside port — infraction not applicable"}})
 def flag_highway_infraction(
     appointment_id: Annotated[int, Path(description="Appointment ID")],
     db: Annotated[Session, Depends(get_db)] = None,
 ):
     """
     Flag an appointment as highway infraction.
-    Hazmat truck detected on restricted highway route before port entry.
+    Only allowed while the truck is in transit (scheduled or in_transit status).
+    A truck already inside the port (in_process, completed) cannot receive this flag.
     """
-    result = cmd_flag_highway_infraction(_uow_factory, appointment_id)
+    try:
+        result = cmd_flag_highway_infraction(_uow_factory, appointment_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     if result is None:
         raise HTTPException(status_code=404, detail="Appointment not found")
     appointment = get_appointment_by_id(db, appointment_id)

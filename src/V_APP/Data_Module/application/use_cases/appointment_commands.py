@@ -195,6 +195,9 @@ def cmd_process_decision(
 # Command: Flag highway infraction
 # ------------------------------------------------------------------
 
+_INFRACTION_ALLOWED_STATUSES = {"in_transit"}
+
+
 def cmd_flag_highway_infraction(
     uow_factory: Callable[..., IUnitOfWork],
     appointment_id: int,
@@ -202,11 +205,20 @@ def cmd_flag_highway_infraction(
     """Flag an appointment as highway infraction via UoW + Outbox.
 
     Returns aggregate dict on success, None if not found.
+    Raises ValueError if the appointment is already inside the port (status not in_transit/scheduled).
     """
     with uow_factory() as uow:
         aggregate = uow.appointment_state.get_for_update(appointment_id)
         if aggregate is None:
             return None
+
+        current_status = aggregate["status"]
+        if current_status not in _INFRACTION_ALLOWED_STATUSES:
+            raise ValueError(
+                f"Highway infraction can only be flagged while the truck is in_transit "
+                f"(current status: {current_status!r}). "
+                "Only trucks on the road approaching the port can receive a highway infraction update."
+            )
 
         # save_state_transition keeps same status but we need to set
         # highway_infraction — extend metadata for this flag
