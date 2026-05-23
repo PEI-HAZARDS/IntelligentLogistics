@@ -85,6 +85,7 @@ services:
     build:
       context: ..
       dockerfile: V_APP/Data_Module/Dockerfile
+    image: v_app-data-module
     container_name: dm_data_module
     restart: unless-stopped
     depends_on:
@@ -144,9 +145,7 @@ services:
 
   # Outbox Worker — projects outbox_events to MongoDB + Redis read models
   outbox-worker:
-    build:
-      context: ..
-      dockerfile: V_APP/Data_Module/Dockerfile
+    image: v_app-data-module
     container_name: dm_outbox_worker
     restart: unless-stopped
     entrypoint: ["python", "scripts/simple_outbox_worker.py"]
@@ -183,9 +182,7 @@ services:
 
   # Statistics Aggregator — computes hourly/daily Mongo rollups for dashboard queries
   statistics-aggregator:
-    build:
-      context: ..
-      dockerfile: V_APP/Data_Module/Dockerfile
+    image: v_app-data-module
     container_name: dm_statistics_aggregator
     restart: unless-stopped
     entrypoint: ["python", "scripts/statistics_aggregator.py"]

@@ -1,0 +1,30 @@
+# Python virtual environments — never needed in Docker images
+**/.venv
+**/.venv-locust
+**/venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+
+# Test artifacts
+**/coverage.xml
+**/.coverage
+**/*.egg-info
+**/htmlcov
+**/dist
+**/build
+
+# Editor / OS
+**/.git
+**/.gitignore
+**/.DS_Store
+**/*.swp
+**/*.swo
+
+# Logs and temp files
+**/*.log
+**/tmp
