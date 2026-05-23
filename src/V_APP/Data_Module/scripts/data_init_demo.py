@@ -203,7 +203,7 @@ def _make_visit(db: Session, appt, shift, entry_time, duration_min=None) -> Visi
         shift_date=shift.date,
         entry_time=entry_time,
         out_time=entry_time + timedelta(minutes=duration_min) if duration_min else None,
-        state="completed" if duration_min else "unloading",
+        state="done" if duration_min else "unloading",
     )
     db.add(v)
     db.flush()
