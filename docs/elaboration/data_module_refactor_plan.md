@@ -1,7 +1,18 @@
 # Data Module Refactor Plan (EDA + Polyglot Resilience)
 
-> **Last updated:** 2026-03-20
+> **Last updated:** 2026-05-23
 > **Status legend:** DONE | PARTIAL | TODO | BLOCKED
+>
+> **Update 2026-05-23 (T1.1 state-machine refactor):**
+> - `delivery_status` enum: `in_port / unloading / done` (removed `not_started`). Migration: `migrationDBv4.sql`.
+> - `appointment_status` enum: removed legacy stored values `unloading` / `delayed`. Only stored: `scheduled / in_transit / in_process / completed / canceled`.
+> - New ORM computed properties: `is_in_port`, `is_visit_done`, `is_unloading` (already existed), `is_delayed` (rewritten as pure time comparison).
+> - `computed_status` now returns `leaving_port` when `visit.state == 'done'` and appointment is `in_process`.
+> - Pydantic `_populate_substates` handles `leaving_port` and `in_port` display sub-states.
+> - `arrival_queries.py`: result dict includes `is_visit_done`; `in_process_count` excludes unloading rows (double-count fix).
+> - `fn_sync_delayed_appointments` trigger **replaced** by `fn_count_delayed_appointments` (read-only — `delayed` is never stored).
+> - Highway infraction guard: `_INFRACTION_ALLOWED_STATUSES = {"in_transit"}` — returns 409 if truck already inside port.
+> - Sustainability endpoints added: `GET /statistics/sustainability/summary` and `/trend` (ICCT HDV 2023 methodology).
 >
 > **Priority override (2026-03-20):** Demo deadline Tuesday morning.
 > Execution order: Step 0 (assess endpoints) → Step 1 (fix STUB/BROKEN) → Step 2 (A1-B1 refactor).

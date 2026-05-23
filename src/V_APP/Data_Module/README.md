@@ -115,10 +115,11 @@ Data_Module/
 │   │   ├── driver_handlers.py           Driver claim + session via UoW
 │   │   └── alert_handlers.py            Alert creation + hazmat via UoW
 │   └── queries/                     #   Read-side query functions
-│       ├── arrival_queries.py           Appointment reads (Redis → Mongo → PG)
+│       ├── arrival_queries.py           Appointment reads (Redis → Mongo → PG); exposes is_delayed/is_unloading/is_visit_done
 │       ├── decision_queries.py          Decision processing + MongoDB events
 │       ├── manager_statistics_queries.py Dashboard aggregations
 │       ├── statistics_queries.py        Real-time counters + timeline
+│       ├── sustainability_queries.py    CO₂ estimates + waiting-time KPIs (ICCT HDV 2023)
 │       ├── driver_queries.py            Driver lookup + auth
 │       ├── worker_queries.py            Worker lookup + auth
 │       ├── alert_queries.py             Alert reads
@@ -158,7 +159,7 @@ Data_Module/
 ├── scripts/                         # Operations
 │   ├── simple_outbox_worker.py          Outbox relay: poll → project (Mongo+Redis)
 │   │                                    Retry: exp. backoff + jitter, DEAD_LETTER
-│   ├── migrationDBv2.sql               Schema migration (inbox, outbox, triggers, indexes)
+│   ├── migrationDBv3.sql               Schema migration (BR constraints, driver_vehicle, pending_reviews)
 │   ├── triggers.sql                     PostgreSQL triggers (10 total)
 │   ├── indexes.sql                      PostgreSQL indexes (26+ total)
 │   ├── data_init_demo.py               PEI 2025 video demo data
@@ -225,8 +226,8 @@ Core entities with referential integrity, triggers, and indexes.
 
 | Entity | Description |
 |--------|-------------|
-| `Appointment` | Scheduled arrivals — core aggregate with `version` (optimistic concurrency) and `arrival_id` (PRT-XXXX via SQL sequence) |
-| `Visit` | Actual gate visits with entry/exit timestamps |
+| `Appointment` | Scheduled arrivals — core aggregate with `version` (optimistic concurrency) and `arrival_id` (PRT-XXXX via SQL sequence). Status enum: `scheduled → in_transit → in_process → completed \| canceled`. Sub-states (`delayed`, `unloading`, `in_port`, `leaving_port`) are **never stored** — always computed. |
+| `Visit` | Actual gate visits with entry/exit timestamps. State enum: `in_port → unloading → done` (default `in_port` on creation — Visit only exists once truck enters). |
 | `Driver` | Truck drivers with session-based auth |
 | `Worker` | Port staff — base for Manager and Operator roles |
 | `Company` | Transport companies (NIF) |
@@ -239,7 +240,9 @@ Core entities with referential integrity, triggers, and indexes.
 
 **Triggers (10):** arrival_id sequence, status transition validation, visit auto-completion, entry_time auto-set, alert timestamp, shift_alert_history linking, created_at for booking/worker/driver.
 
-**Migration:** `scripts/migrationDBv2.sql` — safe to re-run (IF NOT EXISTS, OR REPLACE).
+**Migrations:**
+- `scripts/migrationDBv3.sql` — BR constraints, `driver_vehicle` table, `pending_reviews` queue, auth session columns removal. Safe to re-run (IF NOT EXISTS guards). Date: 2026-04-21.
+- `scripts/migrationDBv4.sql` — state-machine refactor (2026-05): `delivery_status` enum (`in_port`/`unloading`/`done`, removes `not_started`); `appointment_status` enum removes legacy `unloading`/`delayed` stored values; backfill of existing rows.
 
 ### MongoDB — Event Store + CQRS Read Models
 
@@ -289,7 +292,7 @@ Core entities with referential integrity, triggers, and indexes.
 | GET | `/arrivals/next/{gate_id}` | Next arrivals for gate |
 | GET | `/arrivals/query/license-plate/{plate}` | Query by license plate |
 | POST | `/arrivals/{id}/decision` | Process operator decision |
-| PATCH | `/arrivals/{id}/highway-infraction` | Flag highway infraction |
+| PATCH | `/arrivals/{id}/highway-infraction` | Flag highway infraction — **only allowed when `status == in_transit`** (409 otherwise) |
 
 ### Decisions (Decision Engine Integration)
 
@@ -336,6 +339,8 @@ Core entities with referential integrity, triggers, and indexes.
 | GET | `/statistics/by-company` | Stats by transport company |
 | GET | `/statistics/volume` | Volume over time |
 | GET | `/statistics/alerts` | Alert breakdown |
+| GET | `/statistics/sustainability/summary` | CO₂ estimate + avg waiting KPIs for date range |
+| GET | `/statistics/sustainability/trend` | Time-series CO₂ + waiting (day/week/month, max 52 periods) |
 
 ### Notifications & Events
 
@@ -401,9 +406,53 @@ PYTHONPATH=. tests/.venv/bin/python -m pytest tests/test_integration.py -v
 ### Database Migration
 
 ```bash
-# Apply schema v2 (safe to re-run)
-psql -U porto -d porto_logistica -f scripts/migrationDBv2.sql
+# Base schema (inbox, outbox, triggers, indexes) — safe to re-run
+psql -U pei_user -d IntelligentLogistics -f scripts/migrationDBv3.sql
+
+# State-machine refactor (2026-05) — enum backfill + new values
+psql -U pei_user -d IntelligentLogistics -f scripts/migrationDBv4.sql
 ```
+
+---
+
+## Appointment & Visit State Machine
+
+### Appointment (`appointment.status`)
+
+Stored values (never `delayed`, `unloading`, or `leaving_port`):
+
+```
+scheduled ──► in_transit ──► in_process ──► completed
+    │               │                           ▲
+    └───────────────┴───────────► canceled      │
+                                                │
+                           (driver confirms exit via app)
+```
+
+Computed sub-states (derived at read time by `Appointment.computed_status`):
+
+| Computed value | Condition | Stored `status` |
+|---|---|---|
+| `delayed` | `now() > scheduled_start_time + 15min` | `scheduled` or `in_transit` |
+| `in_port` | `visit.state == 'in_port'` | `in_process` |
+| `unloading` | `visit.state == 'unloading'` | `in_process` |
+| `leaving_port` | `visit.state == 'done'` | `in_process` |
+
+API responses include both `primary_status` (stored) and `display_status` (computed), plus boolean flags `is_delayed`, `is_unloading`, `is_visit_done`.
+
+### Visit (`visit.state`)
+
+Created when the truck enters the port. Initial state is always `in_port`.
+
+```
+in_port ──► unloading ──► done
+```
+
+`done` means unloading is complete and the driver is heading to the exit gate. The appointment only transitions to `completed` when the driver explicitly confirms exit (manual, until automatic gate detection is implemented).
+
+### Highway Infraction Guard
+
+`PATCH /arrivals/{id}/highway-infraction` returns **409 Conflict** if `appointment.status` is not `in_transit`. A truck already inside the port cannot receive a highway infraction flag.
 
 ---
 
