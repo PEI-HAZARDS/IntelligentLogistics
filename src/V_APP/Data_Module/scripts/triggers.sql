@@ -234,11 +234,11 @@ CREATE TRIGGER trg_create_shift_alert_history
 
 
 -- ============================================================
--- 9. BOOKING CREATED_AT AUTO-SET
--- Sets created_at timestamp on booking creation if not provided
+-- 9. CREATED_AT AUTO-SET (booking / worker / driver)
+-- Single shared function; each table gets its own trigger.
 -- ============================================================
 
-CREATE OR REPLACE FUNCTION fn_set_booking_created_at()
+CREATE OR REPLACE FUNCTION fn_set_created_at()
 RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.created_at IS NULL THEN
@@ -252,51 +252,19 @@ DROP TRIGGER IF EXISTS trg_booking_created_at ON booking;
 CREATE TRIGGER trg_booking_created_at
     BEFORE INSERT ON booking
     FOR EACH ROW
-    EXECUTE FUNCTION fn_set_booking_created_at();
-
-
--- ============================================================
--- 10. WORKER CREATED_AT AUTO-SET
--- Sets created_at timestamp on worker creation if not provided
--- ============================================================
-
-CREATE OR REPLACE FUNCTION fn_set_worker_created_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF NEW.created_at IS NULL THEN
-        NEW.created_at := NOW();
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+    EXECUTE FUNCTION fn_set_created_at();
 
 DROP TRIGGER IF EXISTS trg_worker_created_at ON worker;
 CREATE TRIGGER trg_worker_created_at
     BEFORE INSERT ON worker
     FOR EACH ROW
-    EXECUTE FUNCTION fn_set_worker_created_at();
-
-
--- ============================================================
--- 11. DRIVER CREATED_AT AUTO-SET
--- Sets created_at timestamp on driver creation if not provided
--- ============================================================
-
-CREATE OR REPLACE FUNCTION fn_set_driver_created_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF NEW.created_at IS NULL THEN
-        NEW.created_at := NOW();
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+    EXECUTE FUNCTION fn_set_created_at();
 
 DROP TRIGGER IF EXISTS trg_driver_created_at ON driver;
 CREATE TRIGGER trg_driver_created_at
     BEFORE INSERT ON driver
     FOR EACH ROW
-    EXECUTE FUNCTION fn_set_driver_created_at();
+    EXECUTE FUNCTION fn_set_created_at();
 
 
 -- ============================================================
