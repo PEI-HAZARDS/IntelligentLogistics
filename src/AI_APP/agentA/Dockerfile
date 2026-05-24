@@ -24,14 +24,30 @@ RUN apt-get update && \
 # Python dependencies
 COPY AI_APP/agentA/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir --ignore-installed blinker -r requirements.txt
 
 # Source code — only what agentA needs
 COPY AI_APP/agentA/ ./AI_APP/agentA/
 COPY AI_APP/shared/ ./AI_APP/shared/
 COPY shared/ ./shared/
 
-# Download model
+# ML registry scripts (needed by setup.py to download the model)
+COPY ml-registry/scripts/ ./ml-registry/scripts/
+
+# MLflow / MinIO credentials — passed as build args so setup.py can reach the registry
+ARG MLFLOW_TRACKING_URI
+ARG MLFLOW_S3_ENDPOINT_URL
+ARG AWS_ACCESS_KEY_ID
+ARG AWS_SECRET_ACCESS_KEY
+ARG MODEL_CACHE_DIR=/tmp/model_cache
+
+ENV MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI} \
+    MLFLOW_S3_ENDPOINT_URL=${MLFLOW_S3_ENDPOINT_URL} \
+    AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} \
+    AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} \
+    MODEL_CACHE_DIR=${MODEL_CACHE_DIR}
+
+# Download model from local MLflow registry at build time
 RUN python AI_APP/agentA/setup.py
 
 CMD ["python", "AI_APP/agentA/init.py"]

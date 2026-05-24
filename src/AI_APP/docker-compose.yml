@@ -2,6 +2,11 @@ x-agenta-base: &agenta-base
   build:
     context: ..
     dockerfile: AI_APP/agentA/Dockerfile
+    args:
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
   image: agenta:latest
   restart: unless-stopped
   env_file: .env
@@ -24,6 +29,11 @@ x-agentb-base: &agentb-base
   build:
     context: ..
     dockerfile: AI_APP/agentB/Dockerfile
+    args:
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
   image: agentb:latest
   restart: unless-stopped
   env_file: .env
@@ -46,6 +56,11 @@ x-agentc-base: &agentc-base
   build:
     context: ..
     dockerfile: AI_APP/agentC/Dockerfile
+    args:
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
   image: agentc:latest
   restart: unless-stopped
   env_file: .env

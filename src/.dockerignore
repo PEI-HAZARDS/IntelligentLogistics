@@ -1,0 +1,37 @@
+# Global dockerignore for the src/ context
+# This file is placed in src/ because docker-compose files use `context: ..`
+
+# Ignore all virtual environments
+**venv/
+**env/
+**.env
+**/.venv/
+**/.env/
+
+# Ignore data folders (datasets, ML models, logs, DB volumes)
+**data/
+**/data/
+**/.data/
+**logs/
+
+# Ignore git history (this alone can be huge)
+**/.git/
+.git/
+
+# Ignore compiled python files
+**__pycache__/
+*.pyc
+*.pyo
+*.pyd
+**/.pytest_cache/
+
+# Ignore local IDE settings
+**/.vscode/
+**/.idea/
+**/.DS_Store
+
+# Ignore documentation or datasets not needed in the app
+**docs/
+
+# Ignore Node.js modules if any exist in other apps
+**/node_modules/
