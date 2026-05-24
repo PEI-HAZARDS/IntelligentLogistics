@@ -79,12 +79,12 @@ def get_sustainability_summary(
     {
         "avg_waiting_minutes": float,
         "total_co2_kg_estimate": float,
-        "appointments_with_delay": int,    # waiting > DELAY_THRESHOLD_MINUTES
+        "trucks_delayed": int,             # waiting > DELAY_THRESHOLD_MINUTES
         "trucks_processed": int,           # appointments with known entry_time
         "appointments_excluded": int,      # no scheduled_start_time → excluded
-        "co2_per_truck_avg_kg": float,
-        "period_from": str,                # ISO date
-        "period_to": str,
+        "avg_co2_per_truck_kg": float,
+        "from_date": str,                  # ISO date
+        "to_date": str,
         "methodology": str,
     }
     """
@@ -121,12 +121,13 @@ def get_sustainability_summary(
             return {
                 "avg_waiting_minutes": 0.0,
                 "total_co2_kg_estimate": 0.0,
-                "appointments_with_delay": 0,
+                "trucks_delayed": 0,
                 "trucks_processed": 0,
                 "appointments_excluded": excluded,
-                "co2_per_truck_avg_kg": 0.0,
-                "period_from": start.date().isoformat(),
-                "period_to": end.date().isoformat(),
+                "avg_co2_per_truck_kg": 0.0,
+                "wait_distribution": {"0_5": 0, "5_15": 0, "15_30": 0, "over_30": 0},
+                "from_date": start.date().isoformat(),
+                "to_date": end.date().isoformat(),
                 "methodology": f"ICCT HDV 2023 + EU JRC — {TRUCK_IDLE_CO2_KG_PER_HOUR} kg CO₂/h idling (Euro VI)",
             }
 
@@ -141,15 +142,23 @@ def get_sustainability_summary(
         co2_avg = round(total_co2 / trucks_processed, 2) if trucks_processed else 0.0
         delayed = sum(1 for w in waiting_minutes if w > DELAY_THRESHOLD_MINUTES)
 
+        wait_distribution = {
+            "0_5":    sum(1 for w in waiting_minutes if w <= 5),
+            "5_15":   sum(1 for w in waiting_minutes if 5 < w <= 15),
+            "15_30":  sum(1 for w in waiting_minutes if 15 < w <= 30),
+            "over_30": sum(1 for w in waiting_minutes if w > 30),
+        }
+
         return {
             "avg_waiting_minutes": avg_waiting,
             "total_co2_kg_estimate": total_co2,
-            "appointments_with_delay": delayed,
+            "trucks_delayed": delayed,
             "trucks_processed": trucks_processed,
             "appointments_excluded": excluded,
-            "co2_per_truck_avg_kg": co2_avg,
-            "period_from": start.date().isoformat(),
-            "period_to": end.date().isoformat(),
+            "avg_co2_per_truck_kg": co2_avg,
+            "wait_distribution": wait_distribution,
+            "from_date": start.date().isoformat(),
+            "to_date": end.date().isoformat(),
             "methodology": f"ICCT HDV 2023 + EU JRC — {TRUCK_IDLE_CO2_KG_PER_HOUR} kg CO₂/h idling (Euro VI)",
         }
     except Exception:
@@ -157,12 +166,13 @@ def get_sustainability_summary(
         return {
             "avg_waiting_minutes": 0.0,
             "total_co2_kg_estimate": 0.0,
-            "appointments_with_delay": 0,
+            "trucks_delayed": 0,
             "trucks_processed": 0,
             "appointments_excluded": 0,
-            "co2_per_truck_avg_kg": 0.0,
-            "period_from": start.date().isoformat(),
-            "period_to": end.date().isoformat(),
+            "avg_co2_per_truck_kg": 0.0,
+            "wait_distribution": {"0_5": 0, "5_15": 0, "15_30": 0, "over_30": 0},
+            "from_date": start.date().isoformat(),
+            "to_date": end.date().isoformat(),
             "methodology": f"ICCT HDV 2023 + EU JRC — {TRUCK_IDLE_CO2_KG_PER_HOUR} kg CO₂/h idling (Euro VI)",
         }
     finally:

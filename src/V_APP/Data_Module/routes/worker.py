@@ -35,10 +35,10 @@ from application.queries.worker_queries import (
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from infrastructure.persistence.postgres import get_db, SessionLocal
 from sqlalchemy import func as sa_func
-from infrastructure.persistence.sql_models import Shift as ShiftORM, Visit as VisitORM, Operator, Manager
+from infrastructure.persistence.sql_models import Shift as ShiftORM, Visit as VisitORM, Operator, Manager, Gate as GateORM
 from utils.auth_token import generate_internal_jwt, require_role
 from infrastructure.persistence.redis import set_session
-from utils.shift_utils import current_shift_type
+from utils.shift_utils import current_shift_type, parse_shift_type
 from config import settings
 
 router = APIRouter(prefix="/workers", tags=["Workers"])
@@ -96,6 +96,19 @@ class ManagerOverview(BaseModel):
     shifts_today: int
     recent_alerts: int
     statistics: Dict[str, int]
+
+
+class ShiftCreateRequest(BaseModel):
+    gate_id: int
+    shift_type: str  # MORNING | AFTERNOON | NIGHT
+    date: date
+    operator_num_worker: Optional[str] = None
+    manager_num_worker: Optional[str] = None
+
+
+class ShiftUpdateRequest(BaseModel):
+    operator_num_worker: Optional[str] = None
+    manager_num_worker: Optional[str] = None
 
 
 # ==================== AUTH ENDPOINTS ====================
@@ -252,6 +265,188 @@ def _shift_before(a, b) -> bool:
     """Return True if shift type `a` is earlier in the day than `b`."""
     order = {"MORNING": 0, "AFTERNOON": 1, "NIGHT": 2}
     return order.get(a.name, 0) < order.get(b.name, 0)
+
+
+# ==================== GATES LISTING ====================
+
+@router.get("/gates", response_model=List[Dict[str, Any]])
+def list_gates(db: Annotated[Session, Depends(get_db)]):
+    """Lists all active gates. Used by shift creation modals."""
+    gates = db.query(GateORM).filter(GateORM.estado == "Ativo").order_by(GateORM.id).all()
+    return [{"id": g.id, "label": g.label} for g in gates]
+
+
+# ==================== SHIFT CRUD ====================
+
+@router.post("/shifts", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+def create_shift(
+    body: ShiftCreateRequest,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Creates a new shift. Validates:
+    - Gate exists and is active.
+    - No existing shift for (gate_id, shift_type, date).
+    - Operator not already assigned to any shift on the same date.
+    """
+    try:
+        parsed_type = parse_shift_type(body.shift_type)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid shift_type: {body.shift_type}")
+
+    gate = db.query(GateORM).filter(GateORM.id == body.gate_id, GateORM.estado == "Ativo").first()
+    if not gate:
+        raise HTTPException(status_code=404, detail=f"Gate {body.gate_id} not found or inactive")
+
+    existing = db.query(ShiftORM).filter(
+        ShiftORM.gate_id == body.gate_id,
+        ShiftORM.shift_type == parsed_type,
+        ShiftORM.date == body.date,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Shift already exists for this gate/type/date")
+
+    if body.operator_num_worker:
+        conflict = db.query(ShiftORM).filter(
+            ShiftORM.date == body.date,
+            ShiftORM.operator_num_worker == body.operator_num_worker,
+        ).first()
+        if conflict:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Operator {body.operator_num_worker} already assigned to a shift on {body.date}",
+            )
+
+    shift = ShiftORM(
+        gate_id=body.gate_id,
+        shift_type=parsed_type,
+        date=body.date,
+        operator_num_worker=body.operator_num_worker or None,
+        manager_num_worker=body.manager_num_worker or None,
+    )
+    db.add(shift)
+    db.commit()
+    db.refresh(shift)
+
+    db.expire_all()
+    shift = db.query(ShiftORM).options(
+        joinedload(ShiftORM.gate),
+        joinedload(ShiftORM.operator).joinedload(Operator.worker),
+    ).filter(
+        ShiftORM.gate_id == body.gate_id,
+        ShiftORM.shift_type == parsed_type,
+        ShiftORM.date == body.date,
+    ).first()
+
+    return {
+        "id": f"{shift.gate_id}-{shift.shift_type.name}-{shift.date.isoformat()}",
+        "gateId": shift.gate_id,
+        "gateName": shift.gate.label if shift.gate else f"Gate {shift.gate_id}",
+        "shiftType": shift.shift_type.name,
+        "date": shift.date.isoformat(),
+        "operatorId": shift.operator_num_worker or "",
+        "operatorName": shift.operator.worker.name if shift.operator and shift.operator.worker else "",
+        "managerId": shift.manager_num_worker or "",
+        "status": "pending",
+    }
+
+
+@router.put("/shifts/{gate_id}/{shift_type}/{shift_date}", response_model=Dict[str, Any])
+def update_shift(
+    gate_id: Annotated[int, Path()],
+    shift_type: Annotated[str, Path()],
+    shift_date: Annotated[date, Path()],
+    body: ShiftUpdateRequest,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Updates operator/manager assignment for an existing shift.
+    Validates operator not already assigned elsewhere on the same date.
+    """
+    try:
+        parsed_type = parse_shift_type(shift_type)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid shift_type: {shift_type}")
+
+    shift = db.query(ShiftORM).filter(
+        ShiftORM.gate_id == gate_id,
+        ShiftORM.shift_type == parsed_type,
+        ShiftORM.date == shift_date,
+    ).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    new_op = body.operator_num_worker if body.operator_num_worker is not None else shift.operator_num_worker
+    if new_op and new_op != shift.operator_num_worker:
+        conflict = db.query(ShiftORM).filter(
+            ShiftORM.date == shift_date,
+            ShiftORM.operator_num_worker == new_op,
+            ~((ShiftORM.gate_id == gate_id) & (ShiftORM.shift_type == parsed_type)),
+        ).first()
+        if conflict:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Operator {new_op} already assigned to a shift on {shift_date}",
+            )
+
+    if body.operator_num_worker is not None:
+        shift.operator_num_worker = body.operator_num_worker or None
+    if body.manager_num_worker is not None:
+        shift.manager_num_worker = body.manager_num_worker or None
+
+    db.commit()
+    db.refresh(shift)
+
+    db.expire_all()
+    shift = db.query(ShiftORM).options(
+        joinedload(ShiftORM.gate),
+        joinedload(ShiftORM.operator).joinedload(Operator.worker),
+    ).filter(
+        ShiftORM.gate_id == gate_id,
+        ShiftORM.shift_type == parsed_type,
+        ShiftORM.date == shift_date,
+    ).first()
+
+    return {
+        "id": f"{shift.gate_id}-{shift.shift_type.name}-{shift.date.isoformat()}",
+        "gateId": shift.gate_id,
+        "gateName": shift.gate.label if shift.gate else f"Gate {shift.gate_id}",
+        "shiftType": shift.shift_type.name,
+        "date": shift.date.isoformat(),
+        "operatorId": shift.operator_num_worker or "",
+        "operatorName": shift.operator.worker.name if shift.operator and shift.operator.worker else "",
+        "managerId": shift.manager_num_worker or "",
+    }
+
+
+@router.delete("/shifts/{gate_id}/{shift_type}/{shift_date}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_shift(
+    gate_id: Annotated[int, Path()],
+    shift_type: Annotated[str, Path()],
+    shift_date: Annotated[date, Path()],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Deletes a shift. Refuses if shift is currently active (today + current shift type).
+    """
+    try:
+        parsed_type = parse_shift_type(shift_type)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid shift_type: {shift_type}")
+
+    shift = db.query(ShiftORM).filter(
+        ShiftORM.gate_id == gate_id,
+        ShiftORM.shift_type == parsed_type,
+        ShiftORM.date == shift_date,
+    ).first()
+    if not shift:
+        raise HTTPException(status_code=404, detail="Shift not found")
+
+    if shift.date == date.today() and shift.shift_type == current_shift_type():
+        raise HTTPException(status_code=409, detail="Cannot delete an active shift")
+
+    db.delete(shift)
+    db.commit()
 
 
 # ==================== OPERATOR ENDPOINTS ====================
