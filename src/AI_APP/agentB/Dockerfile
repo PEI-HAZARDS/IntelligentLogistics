@@ -1,4 +1,4 @@
-FROM nvidia/cuda:13.1.1-runtime-ubuntu22.04
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04
 
 ENV PYTHONPATH=/app:/app/AI_APP \
     MODELS_PATH=/app/AI_APP/agentB/data \
@@ -24,6 +24,11 @@ RUN apt-get update && \
 
 # Python dependencies
 COPY AI_APP/agentB/requirements.txt ./requirements.txt
+
+# Install PaddlePaddle GPU from their own index first (not on PyPI >= 3.0.0)
+RUN pip install --no-cache-dir paddlepaddle-gpu==3.0.0 \
+    -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir --ignore-installed blinker -r requirements.txt
 

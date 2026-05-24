@@ -12,6 +12,7 @@ import os
 import numpy as np # type: ignore
 from PIL import Image # type: ignore
 from paddleocr import PaddleOCR # type: ignore
+import paddle
 
 logger = logging.getLogger("PlateOCR")
 
@@ -37,7 +38,6 @@ class OCR:
     def __init__(self, allowed_chars: str | None = None) -> None:
         """Initialize PaddleOCR with settings optimized for license/hazard plates."""
         try:
-            import paddle
             device = (
                 'gpu'
                 if paddle.device.is_compiled_with_cuda()
@@ -63,6 +63,15 @@ class OCR:
         self.allowed_chars = allowed_chars if allowed_chars else 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-'
         
         logger.info("Initialized with allowed chars: " + self.allowed_chars)
+
+        device = (
+            'gpu'
+            if paddle.device.is_compiled_with_cuda()
+            and paddle.device.cuda.device_count() > 0
+            else 'cpu'
+        )
+        
+        logger.info(f"PaddleOCR device selected: {device}")
     
     
     def extract_text(self, cv_img: str | Image.Image | np.ndarray) -> tuple[str, float]:
@@ -75,6 +84,7 @@ class OCR:
         Returns:
             tuple: (text, confidence)
         """
+
         try:
             img = self._to_cv_image(cv_img)
         except TypeError:
