@@ -38,12 +38,15 @@ class OCR:
     def __init__(self, allowed_chars: str | None = None) -> None:
         """Initialize PaddleOCR with settings optimized for license/hazard plates."""
         try:
-            device = (
-                'gpu'
-                if paddle.device.is_compiled_with_cuda()
-                and paddle.device.cuda.device_count() > 0
-                else 'cpu'
-            )
+            try:
+                cuda_ok = (
+                    paddle.device.is_compiled_with_cuda()
+                    and int(paddle.device.cuda.device_count()) > 0
+                )
+            except (TypeError, ValueError):
+                cuda_ok = False
+
+            device = 'gpu' if cuda_ok else 'cpu'
             logger.info(f"PaddleOCR device selected: {device}")
 
             self.paddle_ocr = PaddleOCR(
@@ -63,15 +66,6 @@ class OCR:
         self.allowed_chars = allowed_chars if allowed_chars else 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-'
         
         logger.info("Initialized with allowed chars: " + self.allowed_chars)
-
-        device = (
-            'gpu'
-            if paddle.device.is_compiled_with_cuda()
-            and paddle.device.cuda.device_count() > 0
-            else 'cpu'
-        )
-        
-        logger.info(f"PaddleOCR device selected: {device}")
     
     
     def extract_text(self, cv_img: str | Image.Image | np.ndarray) -> tuple[str, float]:

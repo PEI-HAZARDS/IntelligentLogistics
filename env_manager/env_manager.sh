@@ -49,7 +49,9 @@ ENV_LOCATIONS=(
     "AI_APP/.env"
     "V_APP/.env"
     "devops/observability/.env"
-    "streamV2/.env"
+    "streamV3/.env"
+    "ml-registry/.env"
+    "ml-registry/.env.upload"
 )
 
 # ============================================================================
