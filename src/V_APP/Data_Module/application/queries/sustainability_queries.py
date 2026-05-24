@@ -215,8 +215,14 @@ def get_sustainability_trend(
         period_start = now - timedelta(days=n_periods)
     elif trunc == "week":
         period_start = now - timedelta(weeks=n_periods)
-    else:  # month
-        period_start = now - timedelta(days=n_periods * 30)
+    else:  # month — align to first day of month so each bucket is a full calendar month
+        today = now.date()
+        month = today.month - n_periods
+        year  = today.year
+        while month <= 0:
+            month += 12
+            year  -= 1
+        period_start = datetime(year, month, 1, tzinfo=timezone.utc)
 
     db: Session = SessionLocal()
     try:
