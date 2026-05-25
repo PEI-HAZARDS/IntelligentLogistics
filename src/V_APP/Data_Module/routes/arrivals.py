@@ -6,7 +6,7 @@ Reads directly from PostgreSQL (source of truth) with Redis caching.
 """
 
 from typing import Annotated, List, Optional, Dict, Any, Generic, TypeVar
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 import csv, io, uuid
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Path, UploadFile
 from sqlalchemy.orm import Session, selectinload, joinedload
@@ -463,6 +463,8 @@ def create_visit(
 
 # Only truck_license_plate and terminal_name are required — booking_reference is auto-generated.
 _BULK_REQUIRED_COLS = {"truck_license_plate", "terminal_name"}
+_VALID_DIRECTIONS = {"inbound", "outbound"}
+_VALID_CARGO_STATES = {"liquid", "solid", "gaseous", "hybrid"}
 
 
 @router.post(
@@ -480,7 +482,10 @@ def bulk_import_arrivals(
     drivers associate later via POST /drivers/claim with the arrival_id PIN.
 
     Required columns: truck_license_plate, terminal_name
-    Optional columns: scheduled_start_time (ISO-8601), expected_duration (minutes), notes
+    Optional columns:
+      scheduled_start_time (ISO-8601), expected_duration (minutes), notes,
+      direction (inbound|outbound, default: inbound),
+      cargo_description, cargo_type (liquid|solid|gaseous|hybrid), cargo_quantity (decimal)
 
     Booking references are auto-generated (CSV-XXXXXXXX format).
     Terminals are looked up by name (case-insensitive).
@@ -542,13 +547,60 @@ def bulk_import_arrivals(
             skipped += 1
             continue
 
-        # Auto-generate a unique booking reference
-        booking_ref = f"CSV-{uuid.uuid4().hex[:8].upper()}"
-        booking = BookingORM(reference=booking_ref, direction=None)
-        db.add(booking)
-        db.flush()  # ensure the booking FK is available before the appointment
+        # Conflict check: reject if truck already has an active appointment within ±4 h of the given time
+        # (or any active appointment today if no time provided)
+        _active_statuses = ('scheduled', 'in_transit', 'in_process')
+        raw_time_for_conflict = row.get("scheduled_start_time", "")
+        if raw_time_for_conflict:
+            try:
+                ref_time = datetime.fromisoformat(raw_time_for_conflict)
+                window_start = ref_time - timedelta(hours=4)
+                window_end   = ref_time + timedelta(hours=4)
+                conflict = (
+                    db.query(AppointmentORM)
+                    .filter(
+                        AppointmentORM.truck_license_plate == plate,
+                        AppointmentORM.status.in_(_active_statuses),
+                        AppointmentORM.scheduled_start_time >= window_start,
+                        AppointmentORM.scheduled_start_time <= window_end,
+                    )
+                    .first()
+                )
+                if conflict:
+                    conflict_time = conflict.scheduled_start_time.strftime("%Y-%m-%d %H:%M") if conflict.scheduled_start_time else "unknown time"
+                    errors.append({"row": row_num, "reason": f"Truck {plate!r} already has an active appointment at {conflict_time} (status: {conflict.status}) — within 4 h window"})
+                    skipped += 1
+                    continue
+            except ValueError:
+                pass  # invalid time format caught later in the parsing block
+        else:
+            # No time given: check for any active appointment today
+            today_start = datetime.combine(date.today(), datetime.min.time())
+            today_end   = datetime.combine(date.today(), datetime.max.time())
+            conflict = (
+                db.query(AppointmentORM)
+                .filter(
+                    AppointmentORM.truck_license_plate == plate,
+                    AppointmentORM.status.in_(_active_statuses),
+                    AppointmentORM.scheduled_start_time >= today_start,
+                    AppointmentORM.scheduled_start_time <= today_end,
+                )
+                .first()
+            )
+            if conflict:
+                conflict_time = conflict.scheduled_start_time.strftime("%H:%M") if conflict.scheduled_start_time else "unknown time"
+                errors.append({"row": row_num, "reason": f"Truck {plate!r} already has an active appointment today at {conflict_time} (status: {conflict.status})"})
+                skipped += 1
+                continue
 
-        # Parse optional fields
+        # direction (optional, default inbound)
+        raw_dir = row.get("direction", "").lower() or "inbound"
+        if raw_dir not in _VALID_DIRECTIONS:
+            errors.append({"row": row_num, "reason": f"direction must be 'inbound' or 'outbound', got {raw_dir!r}"})
+            skipped += 1
+            continue
+
+        # scheduled_start_time (optional)
         scheduled_start = None
         raw_time = row.get("scheduled_start_time", "")
         if raw_time:
@@ -559,6 +611,7 @@ def bulk_import_arrivals(
                 skipped += 1
                 continue
 
+        # expected_duration (optional, integer minutes)
         expected_dur = None
         raw_dur = row.get("expected_duration", "")
         if raw_dur:
@@ -568,6 +621,42 @@ def bulk_import_arrivals(
                 errors.append({"row": row_num, "reason": f"expected_duration must be integer minutes, got {raw_dur!r}"})
                 skipped += 1
                 continue
+
+        # cargo_quantity (optional, decimal)
+        cargo_qty = None
+        raw_qty = row.get("cargo_quantity", "")
+        if raw_qty:
+            try:
+                cargo_qty = float(raw_qty)
+            except ValueError:
+                errors.append({"row": row_num, "reason": f"cargo_quantity must be a number, got {raw_qty!r}"})
+                skipped += 1
+                continue
+
+        # cargo_type validation (optional)
+        cargo_type = row.get("cargo_type", "").lower() or None
+        if cargo_type and cargo_type not in _VALID_CARGO_STATES:
+            errors.append({"row": row_num, "reason": f"cargo_type must be one of {sorted(_VALID_CARGO_STATES)}, got {cargo_type!r}"})
+            skipped += 1
+            continue
+
+        # Auto-generate a unique booking reference
+        booking_ref = f"CSV-{uuid.uuid4().hex[:8].upper()}"
+        booking = BookingORM(reference=booking_ref, direction=raw_dir)
+        db.add(booking)
+        db.flush()  # ensure the booking FK is available before appointment and cargo
+
+        # Create cargo row if any cargo field is provided
+        cargo_description = row.get("cargo_description") or None
+        if cargo_description or cargo_type or cargo_qty is not None:
+            from infrastructure.persistence.sql_models import Cargo as CargoORM
+            cargo_row = CargoORM(
+                booking_reference=booking_ref,
+                description=cargo_description,
+                state=cargo_type or "solid",
+                quantity=cargo_qty if cargo_qty is not None else 0,
+            )
+            db.add(cargo_row)
 
         appt = AppointmentORM(
             booking_reference=booking_ref,
