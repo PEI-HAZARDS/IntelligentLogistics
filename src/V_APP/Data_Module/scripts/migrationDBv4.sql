@@ -79,8 +79,10 @@ ALTER TABLE visit ALTER COLUMN state SET DEFAULT 'not_started';
 
 
 -- ============================================================
--- 4. UPDATE TRIGGER FUNCTIONS (see triggers.sql for full bodies)
---    Replace inline to keep migration self-contained.
+-- 4. TRIGGER FUNCTIONS
+--    The updated function bodies live in triggers.sql (CREATE OR REPLACE,
+--    idempotent). Apply triggers.sql after this migration to keep them
+--    in sync. No inline copies here to avoid duplication.
 -- ============================================================
 
 -- 4a. Status-transition validator (removes 'unloading' rule)
