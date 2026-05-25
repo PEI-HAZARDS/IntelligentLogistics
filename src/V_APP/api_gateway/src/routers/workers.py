@@ -7,8 +7,9 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Optional, Dict, Any
 
+import httpx
 import jwt as _jwt
-from fastapi import APIRouter, Query, Path, Body, Depends
+from fastapi import APIRouter, HTTPException, Query, Path, Body, Depends, Request
 from pydantic import BaseModel
 
 from clients import internal_api_client as internal_client
@@ -76,6 +77,81 @@ async def list_shifts(
     if gate_id is not None:
         params["gate_id"] = gate_id
     return await internal_client.get("/workers/shifts", params=params)
+
+
+# ==================== SHIFT CRUD ====================
+
+class ShiftCreatePayload(BaseModel):
+    gate_id: int
+    shift_type: str
+    date: str
+    operator_num_worker: Optional[str] = None
+    manager_num_worker: Optional[str] = None
+
+
+class ShiftUpdatePayload(BaseModel):
+    operator_num_worker: Optional[str] = None
+    manager_num_worker: Optional[str] = None
+
+
+@router.post("/workers/shifts", status_code=201)
+async def create_shift(
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
+    body: ShiftCreatePayload,
+):
+    return await internal_client.post("/workers/shifts", json=body.model_dump())
+
+
+@router.put("/workers/shifts/{gate_id}/{shift_type}/{shift_date}")
+async def update_shift(
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
+    gate_id: Annotated[int, Path()],
+    shift_type: Annotated[str, Path()],
+    shift_date: Annotated[str, Path()],
+    body: ShiftUpdatePayload,
+):
+    return await internal_client.put(
+        f"/workers/shifts/{gate_id}/{shift_type}/{shift_date}",
+        json=body.model_dump(exclude_none=True),
+    )
+
+
+@router.delete("/workers/shifts/{gate_id}/{shift_type}/{shift_date}", status_code=204)
+async def delete_shift(
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
+    gate_id: Annotated[int, Path()],
+    shift_type: Annotated[str, Path()],
+    shift_date: Annotated[str, Path()],
+):
+    return await internal_client.delete(
+        f"/workers/shifts/{gate_id}/{shift_type}/{shift_date}"
+    )
+
+
+@router.post("/workers/shifts/bulk", status_code=200)
+async def bulk_import_shifts(
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
+    request: Request,
+):
+    """
+    Transparent proxy for multipart CSV upload. Forwards raw body without parsing.
+    """
+    from clients.internal_api_client import _build_url
+    body = await request.body()
+    content_type = request.headers.get("content-type", "multipart/form-data")
+    url = _build_url("/workers/shifts/bulk")
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, content=body, headers={"content-type": content_type})
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail=f"Data Module unreachable: {exc}")
+    if response.status_code >= 400:
+        try:
+            detail = response.json().get("detail", response.text)
+        except Exception:
+            detail = response.text
+        raise HTTPException(status_code=response.status_code, detail=detail)
+    return response.json()
 
 
 # ==================== OPERATOR ENDPOINTS ====================
