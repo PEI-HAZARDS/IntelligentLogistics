@@ -110,7 +110,9 @@ Data_Module/
 │   ├── use_cases/                   #   Write-side command handlers
 │   │   ├── container_moved_handler.py   Inbox → lock → command → Outbox → commit
 │   │   ├── appointment_commands.py      cmd_process_decision, cmd_update_status,
-│   │   │                                cmd_update_visit_state, cmd_flag_highway_infraction
+│   │   │                                cmd_update_visit_state, cmd_flag_highway_infraction,
+│   │   │                                cmd_review_infraction
+│   │   ├── driver_handlers.py           Driver claim + session via UoW
 │   │   ├── worker_handlers.py           Worker CRUD via UoW
 │   │   ├── driver_handlers.py           Driver claim + session via UoW
 │   │   └── alert_handlers.py            Alert creation + hazmat via UoW
@@ -160,6 +162,8 @@ Data_Module/
 │   ├── simple_outbox_worker.py          Outbox relay: poll → project (Mongo+Redis)
 │   │                                    Retry: exp. backoff + jitter, DEAD_LETTER
 │   ├── migrationDBv3.sql               Schema migration (BR constraints, driver_vehicle, pending_reviews)
+│   ├── migrationDBv4.sql               State-machine refactor + infraction review columns
+│   ├── migrationDBv5.sql               RGPD: appointment.driver_license → nullable
 │   ├── triggers.sql                     PostgreSQL triggers (10 total)
 │   ├── indexes.sql                      PostgreSQL indexes (26+ total)
 │   ├── data_init_demo.py               PEI 2025 video demo data
@@ -170,7 +174,7 @@ Data_Module/
 │   ├── rate_limit.py                    Rate limiting
 │   └── shift_utils.py                  Shift schedule parsing
 │
-└── tests/                           # Test Suite (101 tests)
+└── tests/                           # Test Suite (121 tests)
     ├── conftest.py                      Shared fixtures
     ├── test_appointment_commands_uow.py UoW + Outbox integration (20 tests)
     ├── test_appointment_optimistic_concurrency.py Version checks (8 tests)
@@ -179,6 +183,8 @@ Data_Module/
     ├── test_outbox_worker_b1.py         Retry + backoff + DEAD_LETTER (28 tests)
     ├── test_manager_statistics_endpoints.py Dashboard contracts (16 tests)
     ├── test_dashboard_endpoints.py      Dashboard route validation (4 tests)
+    ├── test_infraction_review.py        cmd_review_infraction + route structure (20 tests)
+    ├── test_phase11_dead_code.py        Dead-code cleanup guards (Phase 11)
     └── test_integration.py              Full integration (requires running DBs)
 ```
 

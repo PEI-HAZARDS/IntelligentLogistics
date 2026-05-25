@@ -8,7 +8,8 @@ Shift queries use PostgreSQL (shift data not yet projected to MongoDB).
 
 from typing import Annotated, List, Optional, Dict, Any
 from datetime import date, datetime
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
+import csv, io
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Path, UploadFile, File
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from loguru import logger
@@ -447,6 +448,109 @@ def delete_shift(
 
     db.delete(shift)
     db.commit()
+
+
+@router.post("/shifts/bulk", status_code=status.HTTP_200_OK)
+def bulk_create_shifts(
+    file: Annotated[UploadFile, File(description="CSV: gate_id,shift_type,date,operator_num_worker,manager_num_worker")],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Bulk-create shifts from a CSV file.
+    Required columns: gate_id, shift_type, date
+    Optional columns: operator_num_worker, manager_num_worker
+
+    Returns { created, skipped, errors } — never aborts the whole batch on a single bad row.
+    """
+    content = file.file.read()
+    try:
+        text = content.decode("utf-8-sig")  # handle BOM from Excel exports
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="File must be UTF-8 encoded")
+
+    reader = csv.DictReader(io.StringIO(text))
+    required = {"gate_id", "shift_type", "date"}
+    if not required.issubset(set(reader.fieldnames or [])):
+        raise HTTPException(
+            status_code=400,
+            detail=f"CSV must contain columns: {', '.join(sorted(required))}",
+        )
+
+    created, skipped = 0, 0
+    errors: list[dict] = []
+
+    for row_num, row in enumerate(reader, start=2):  # start=2: row 1 is header
+        gate_id_raw    = row.get("gate_id", "").strip()
+        shift_type_raw = row.get("shift_type", "").strip().upper()
+        date_raw       = row.get("date", "").strip()
+        operator_raw   = row.get("operator_num_worker", "").strip() or None
+        manager_raw    = row.get("manager_num_worker", "").strip() or None
+
+        # Basic validation
+        if not gate_id_raw or not shift_type_raw or not date_raw:
+            errors.append({"row": row_num, "reason": "Missing required field (gate_id, shift_type, or date)"})
+            continue
+
+        try:
+            gate_id = int(gate_id_raw)
+        except ValueError:
+            errors.append({"row": row_num, "reason": f"gate_id must be an integer, got '{gate_id_raw}'"})
+            continue
+
+        try:
+            parsed_type = parse_shift_type(shift_type_raw)
+        except ValueError:
+            errors.append({"row": row_num, "reason": f"Invalid shift_type '{shift_type_raw}' — use MORNING, AFTERNOON, or NIGHT"})
+            continue
+
+        try:
+            parsed_date = date.fromisoformat(date_raw)
+        except ValueError:
+            errors.append({"row": row_num, "reason": f"Invalid date '{date_raw}' — use YYYY-MM-DD"})
+            continue
+
+        # Gate must exist and be active
+        gate = db.query(GateORM).filter(GateORM.id == gate_id, GateORM.estado == "Ativo").first()
+        if not gate:
+            errors.append({"row": row_num, "reason": f"Gate {gate_id} not found or inactive"})
+            continue
+
+        # Skip duplicate (gate, type, date)
+        existing = db.query(ShiftORM).filter(
+            ShiftORM.gate_id == gate_id,
+            ShiftORM.shift_type == parsed_type,
+            ShiftORM.date == parsed_date,
+        ).first()
+        if existing:
+            skipped += 1
+            continue
+
+        # Operator conflict (same operator, same date)
+        if operator_raw:
+            conflict = db.query(ShiftORM).filter(
+                ShiftORM.date == parsed_date,
+                ShiftORM.operator_num_worker == operator_raw,
+            ).first()
+            if conflict:
+                errors.append({
+                    "row": row_num,
+                    "reason": f"Operator {operator_raw} already assigned to a shift on {date_raw}",
+                })
+                continue
+
+        db.add(ShiftORM(
+            gate_id=gate_id,
+            shift_type=parsed_type,
+            date=parsed_date,
+            operator_num_worker=operator_raw,
+            manager_num_worker=manager_raw,
+        ))
+        created += 1
+
+    if created > 0:
+        db.commit()
+
+    return {"created": created, "skipped": skipped, "errors": errors}
 
 
 # ==================== OPERATOR ENDPOINTS ====================

@@ -1,7 +1,25 @@
 # Data Module Refactor Plan (EDA + Polyglot Resilience)
 
-> **Last updated:** 2026-05-23
+> **Last updated:** 2026-05-25 (2)
+
 > **Status legend:** DONE | PARTIAL | TODO | BLOCKED
+>
+> **Update 2026-05-25 (T2.4 CSV Appointments + RGPD):**
+> - `migrationDBv5.sql`: `appointment.driver_license` → nullable (DROP NOT NULL). Idempotent.
+> - `sql_models.py`: `Appointment.driver_license` → `nullable=True`.
+> - `application/schemas.py`: `AppointmentManagerView` — extends `Appointment` with `driver_license=None`, `driver=None` (always redacted).
+> - `routes/arrivals.py`: `POST /arrivals/bulk` — multipart CSV import (no driver); required cols: `booking_reference`, `truck_license_plate`, `terminal_id`; returns `{created, skipped, errors[]}`. `GET /arrivals` now uses `AppointmentManagerView` as response model.
+> - `application/queries/driver_queries.py`: `get_available_bookings_for_driver(company_nif, page, limit)` — unclaimed scheduled appointments filtered by `Truck.company_nif`.
+> - `routes/driver.py`: `GET /drivers/me/available-bookings` — authenticated driver sees unclaimed appointments for their company.
+> - Driver app: `AvailableBookingsScreen.tsx` + `ClaimModal` + service `getAvailableBookings()`. Added to `MainDrawerNavigator` as "Available Bookings" entry.
+>
+> **Update 2026-05-25 (T2.3 Infraction Review):**
+> - `migrationDBv4.sql` extended with section 5: `reviewed_at TIMESTAMPTZ`, `reviewed_by VARCHAR(50)`, `review_note TEXT` added to `appointment` with `IF NOT EXISTS` guards.
+> - `sql_models.py`: `Appointment` ORM model updated with the 3 review columns.
+> - `appointment_commands.py`: `cmd_review_infraction(appointment, reviewed_by, note)` pure function — raises `ValueError` if no `highway_infraction`, sets `reviewed_at` (naive UTC), `reviewed_by`, `review_note` (strips whitespace, `None` if empty). Idempotent (re-review overwrites).
+> - `routes/arrivals.py`: `PATCH /arrivals/{id}/review` — role: manager; calls `cmd_review_infraction`, persists to ORM, commits. Returns 404 if appointment missing, 409 if no infraction flag.
+> - `tests/unit/test_infraction_review.py`: 20 tests — validation, success, idempotency, route structure.
+> - Frontend: `InfractionReviewModal`, `InfractionsPage` review column, `reviewInfraction()` service function.
 >
 > **Update 2026-05-23 (T1.1 state-machine refactor):**
 > - `delivery_status` enum: `in_port / unloading / done` (removed `not_started`). Migration: `migrationDBv4.sql`.

@@ -267,7 +267,7 @@ class Appointment(Base):
     
     # Foreign Keys
     booking_reference = Column(String(50), ForeignKey('booking.reference'), nullable=False)
-    driver_license = Column(String(50), ForeignKey('driver.drivers_license'), nullable=False)
+    driver_license = Column(String(50), ForeignKey('driver.drivers_license'), nullable=True)
     truck_license_plate = Column(String(20), ForeignKey('truck.license_plate'), nullable=False)
     terminal_id = Column(Integer, ForeignKey('terminal.id'), nullable=False)
     gate_in_id = Column(Integer, ForeignKey('gate.id'))
@@ -282,7 +282,12 @@ class Appointment(Base):
     version = Column(Integer, nullable=False, default=1, server_default="1")  # Optimistic concurrency control
     notes = Column(Text)
     highway_infraction = Column(Boolean, default=False, server_default="false")  # Hazmat truck on restricted highway route
-    
+
+    # Infraction review (manager acknowledgement)
+    reviewed_at  = Column(TIMESTAMP, nullable=True)
+    reviewed_by  = Column(String(50), nullable=True)   # num_worker of reviewing manager
+    review_note  = Column(Text, nullable=True)
+
     # Relationships
     booking = relationship("Booking", back_populates="appointments")
     driver = relationship("Driver", back_populates="appointments")

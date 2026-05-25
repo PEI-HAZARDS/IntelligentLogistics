@@ -358,6 +358,10 @@ class Appointment(AppointmentBase):
     terminal: Optional[Terminal] = None
     gate_in: Optional[Gate] = None
     gate_out: Optional[Gate] = None
+    # Infraction review fields (nullable — set by manager PATCH /arrivals/{id}/review)
+    reviewed_at: Optional[datetime] = None
+    reviewed_by: Optional[str] = None
+    review_note: Optional[str] = None
     # Orthogonal sub-state fields (populated by model_validator from ORM properties)
     display_status: Optional[str] = None
     primary_status: Optional[str] = None
@@ -399,6 +403,20 @@ class Appointment(AppointmentBase):
         else:
             self.display_status = raw
 
+        return self
+
+
+# ==========================
+# MANAGER VIEW — driver fields always redacted (RGPD)
+# ==========================
+
+class AppointmentManagerView(Appointment):
+    """Appointment schema for manager-facing endpoints.
+    Driver identity fields are always nullified — managers see the truck, not the person."""
+    @model_validator(mode='after')
+    def _redact_driver(self):
+        self.driver_license = None
+        self.driver = None
         return self
 
 

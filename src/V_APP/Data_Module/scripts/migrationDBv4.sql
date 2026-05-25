@@ -1,7 +1,8 @@
 -- ============================================================
--- Migration v4 — State Machine Refactor
+-- Migration v4 — State Machine Refactor + Infraction Review
 -- Appointment: remove 'unloading' and 'delayed' from persisted enum.
 -- Visit: replace 'completed' with 'in_port' and 'done'.
+-- Infraction review: reviewed_at, reviewed_by, review_note.
 -- ============================================================
 -- Safe to re-run: all steps use IF NOT EXISTS / OR REPLACE / idempotent logic.
 -- Apply AFTER migrationDBv3.sql.
@@ -131,6 +132,17 @@ BEGIN
         COALESCE(found_ids, ARRAY[]::INTEGER[]);
 END;
 $$ LANGUAGE plpgsql;
+
+
+-- ============================================================
+-- 5. INFRACTION REVIEW FIELDS
+--    Track manager acknowledgement of highway infractions.
+-- ============================================================
+
+ALTER TABLE appointment
+    ADD COLUMN IF NOT EXISTS reviewed_at  TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS reviewed_by  VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS review_note  TEXT;
 
 
 COMMIT;

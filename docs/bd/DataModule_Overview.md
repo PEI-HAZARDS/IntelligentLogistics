@@ -32,7 +32,7 @@ Stores all transactional state with referential integrity. Key tables:
 
 | Entity | Description |
 |--------|-------------|
-| `appointment` | Scheduled arrivals — core aggregate with `version` (optimistic concurrency) and `arrival_id` (PRT-XXXX via SQL sequence trigger). Status: `scheduled → in_transit → in_process → completed \| canceled`. Sub-states (`delayed`, `unloading`, `in_port`, `leaving_port`) are computed at read time — never stored. |
+| `appointment` | Scheduled arrivals — core aggregate with `version` (optimistic concurrency) and `arrival_id` (PRT-XXXX via SQL sequence trigger). Status: `scheduled → in_transit → in_process → completed \| canceled`. Sub-states (`delayed`, `unloading`, `in_port`, `leaving_port`) are computed at read time — never stored. Infraction review tracked via `reviewed_at`, `reviewed_by`, `review_note` (nullable). `driver_license` nullable (RGPD — driver claims PIN separately via `/drivers/claim`). |
 | `visit` | Actual gate visits (entry/exit timestamps, shift assignment). State: `in_port → unloading → done`. Always created with `in_port` as initial state. |
 | `driver` | Truck drivers with session-based auth |
 | `worker` | Port staff (Manager/Operator inheritance via FK) |
@@ -50,7 +50,8 @@ Stores all transactional state with referential integrity. Key tables:
 
 **Migrations (apply in order):**
 - `scripts/migrationDBv3.sql` — BR constraints, `driver_vehicle`, `pending_reviews`, session cleanup. Idempotent.
-- `scripts/migrationDBv4.sql` — state-machine refactor: `delivery_status` / `appointment_status` enums + backfill.
+- `scripts/migrationDBv4.sql` — state-machine refactor: `delivery_status` / `appointment_status` enums + backfill + infraction review columns (`reviewed_at`, `reviewed_by`, `review_note`). Idempotent.
+- `scripts/migrationDBv5.sql` — RGPD driver decoupling: `appointment.driver_license` → nullable. Idempotent.
 
 ### MongoDB — Event Store + CQRS Read Models
 
@@ -122,9 +123,9 @@ GET /arrivals/{id}
 | Category | Key Endpoints |
 |----------|---------------|
 | **Health** | `GET /health` |
-| **Arrivals** | `GET /arrivals`, `GET /arrivals/{id}`, `GET /arrivals/next/{gate_id}`, `POST /arrivals/{id}/decision`, `PATCH /arrivals/{id}/highway-infraction` (in_transit only — 409 otherwise) |
+| **Arrivals** | `GET /arrivals`, `GET /arrivals/{id}`, `GET /arrivals/next/{gate_id}`, `POST /arrivals/{id}/decision`, `PATCH /arrivals/{id}/highway-infraction` (in_transit only — 409 otherwise), `PATCH /arrivals/{id}/review` (manager: sets reviewed_at/by/note), `POST /arrivals/bulk` (CSV import — no driver, RGPD) |
 | **Decisions** | `POST /decisions/process`, `POST /decisions/query-appointments`, `POST /decisions/detection-event` |
-| **Drivers** | `POST /drivers/login`, `POST /drivers/claim`, `GET /drivers/me/today` |
+| **Drivers** | `POST /drivers/login`, `POST /drivers/claim`, `GET /drivers/me/today`, `GET /drivers/me/available-bookings` (bookings by company NIF, unassigned) |
 | **Workers** | `POST /workers/login`, `GET /workers/me` |
 | **Alerts** | `GET /alerts`, `POST /alerts/hazmat`, `GET /alerts/reference/adr-codes` |
 | **Statistics** | `GET /statistics/summary`, `/by-company`, `/volume`, `/alerts`, `/sustainability/summary`, `/sustainability/trend` |

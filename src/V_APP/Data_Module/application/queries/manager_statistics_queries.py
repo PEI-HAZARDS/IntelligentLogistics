@@ -473,11 +473,14 @@ def compute_company_metrics_snapshot(db_session: Session, period_days: int = 30)
                     extract("epoch", Visit.out_time - Visit.entry_time) / 60
                 ).label("avg_unloading"),
                 func.avg(
-                    extract(
-                        "epoch",
-                        Visit.entry_time - Appointment.scheduled_start_time,
+                    func.greatest(
+                        0.0,
+                        extract(
+                            "epoch",
+                            Visit.entry_time - Appointment.scheduled_start_time,
+                        )
+                        / 60,
                     )
-                    / 60
                 ).label("avg_waiting"),
                 func.sum(
                     case(

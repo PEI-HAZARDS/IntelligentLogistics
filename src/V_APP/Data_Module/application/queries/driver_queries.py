@@ -141,6 +141,53 @@ def get_driver_today_appointments(drivers_license: str) -> List[Dict[str, Any]]:
         db.close()
 
 
+def get_available_bookings_for_driver(
+    company_nif: str,
+    *,
+    page: int = 1,
+    limit: int = 20,
+) -> Dict[str, Any]:
+    """Unclaimed scheduled appointments for trucks belonging to `company_nif`.
+
+    An appointment is 'available' when:
+    - driver_license IS NULL (no driver assigned yet)
+    - status = 'scheduled'
+    - The truck is owned by the driver's company (Truck.company_nif == company_nif)
+    """
+    from infrastructure.persistence.postgres import SessionLocal
+    from infrastructure.persistence.sql_models import (
+        Appointment as AppointmentORM,
+        Truck as TruckORM,
+    )
+    from application.schemas import Appointment as AppointmentSchema
+
+    db = SessionLocal()
+    try:
+        q = (
+            db.query(AppointmentORM)
+            .options(*_appointment_eager_options())
+            .join(TruckORM, AppointmentORM.truck_license_plate == TruckORM.license_plate)
+            .filter(
+                AppointmentORM.driver_license.is_(None),
+                AppointmentORM.status == "scheduled",
+                TruckORM.company_nif == company_nif,
+            )
+            .order_by(AppointmentORM.scheduled_start_time)
+        )
+        total = q.count()
+        rows = q.offset((page - 1) * limit).limit(limit).all()
+        items = [AppointmentSchema.model_validate(r).model_dump(mode="json") for r in rows]
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "pages": max(1, -(-total // limit)),
+        }
+    finally:
+        db.close()
+
+
 def get_driver_appointments(
     drivers_license: str,
     *,

@@ -120,6 +120,7 @@ def get_sustainability_summary(
         if trucks_processed == 0:
             return {
                 "avg_waiting_minutes": 0.0,
+                "total_waiting_minutes": 0.0,
                 "total_co2_kg_estimate": 0.0,
                 "trucks_delayed": 0,
                 "trucks_processed": 0,
@@ -151,6 +152,7 @@ def get_sustainability_summary(
 
         return {
             "avg_waiting_minutes": avg_waiting,
+            "total_waiting_minutes": round(total_waiting, 1),
             "total_co2_kg_estimate": total_co2,
             "trucks_delayed": delayed,
             "trucks_processed": trucks_processed,
@@ -165,6 +167,7 @@ def get_sustainability_summary(
         logger.exception("get_sustainability_summary failed")
         return {
             "avg_waiting_minutes": 0.0,
+            "total_waiting_minutes": 0.0,
             "total_co2_kg_estimate": 0.0,
             "trucks_delayed": 0,
             "trucks_processed": 0,
