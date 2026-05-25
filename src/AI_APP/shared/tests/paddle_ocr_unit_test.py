@@ -54,8 +54,10 @@ class TestOCRInit:
             # Assert
             MockPaddleOCR.assert_called_once()
             call_kwargs = MockPaddleOCR.call_args[1]
-            assert call_kwargs["use_angle_cls"] is True
-            assert call_kwargs["lang"] == "en"
+            assert call_kwargs["text_detection_model_name"] == "PP-OCRv5_server_det"
+            assert call_kwargs["text_recognition_model_name"] == "PP-OCRv5_server_rec"
+            assert call_kwargs["use_doc_orientation_classify"] is False
+            assert call_kwargs["use_doc_unwarping"] is False
 
 
 # =============================================================================

@@ -8,9 +8,11 @@ Optimized for license plate recognition with:
 
 import logging
 import cv2 # type: ignore
+import os
 import numpy as np # type: ignore
 from PIL import Image # type: ignore
 from paddleocr import PaddleOCR # type: ignore
+import paddle
 
 logger = logging.getLogger("PlateOCR")
 
@@ -36,11 +38,25 @@ class OCR:
     def __init__(self, allowed_chars: str | None = None) -> None:
         """Initialize PaddleOCR with settings optimized for license/hazard plates."""
         try:
+            try:
+                cuda_ok = (
+                    paddle.device.is_compiled_with_cuda()
+                    and int(paddle.device.cuda.device_count()) > 0
+                )
+            except (TypeError, ValueError):
+                cuda_ok = False
+
+            device = 'gpu' if cuda_ok else 'cpu'
+            logger.info(f"PaddleOCR device selected: {device}")
+
             self.paddle_ocr = PaddleOCR(
-                use_angle_cls=True,           # Enable angle classification for rotated plates
-                lang='en',                    # English language (A-Z, 0-9)
+                text_detection_model_name='PP-OCRv5_server_det',
+                text_recognition_model_name='PP-OCRv5_server_rec',
                 use_doc_orientation_classify=False,
                 use_doc_unwarping=False,
+                use_textline_orientation=False,
+                text_rec_score_thresh=0.5,
+                device=device,
             )
             
         except Exception as e:
@@ -62,6 +78,7 @@ class OCR:
         Returns:
             tuple: (text, confidence)
         """
+
         try:
             img = self._to_cv_image(cv_img)
         except TypeError:
