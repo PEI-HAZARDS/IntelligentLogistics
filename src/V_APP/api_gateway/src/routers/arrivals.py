@@ -422,22 +422,9 @@ async def bulk_import_arrivals(request: Request):
     Bulk-import appointments from CSV. Transparent proxy to POST /api/v1/arrivals/bulk.
     Forwards the raw multipart body without parsing it (no python-multipart needed here).
     """
-    from clients.internal_api_client import _build_url
     body = await request.body()
     content_type = request.headers.get("content-type", "multipart/form-data")
-    url = _build_url("/arrivals/bulk")
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(url, content=body, headers={"content-type": content_type})
-    except httpx.RequestError as exc:
-        raise HTTPException(status_code=502, detail=f"Data Module unreachable: {exc}")
-    if response.status_code >= 400:
-        try:
-            detail = response.json().get("detail", response.text)
-        except Exception:
-            detail = response.text
-        raise HTTPException(status_code=response.status_code, detail=detail)
-    return response.json()
+    return await internal_client.proxy_multipart("/arrivals/bulk", body, content_type)
 
 
 # -------------------------------
