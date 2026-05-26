@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated, Optional, Dict, Any
 
 import jwt as _jwt
-from fastapi import APIRouter, Query, Path, Body, Depends
+from fastapi import APIRouter, Query, Path, Body, Depends, Request
 from pydantic import BaseModel
 
 from clients import internal_api_client as internal_client
@@ -78,6 +78,66 @@ async def list_shifts(
     return await internal_client.get("/workers/shifts", params=params)
 
 
+# ==================== SHIFT CRUD ====================
+
+class ShiftCreatePayload(BaseModel):
+    gate_id: int
+    shift_type: str
+    date: str
+    operator_num_worker: Optional[str] = None
+    manager_num_worker: Optional[str] = None
+
+
+class ShiftUpdatePayload(BaseModel):
+    operator_num_worker: Optional[str] = None
+    manager_num_worker: Optional[str] = None
+
+
+@router.post("/workers/shifts", status_code=201)
+async def create_shift(
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
+    body: ShiftCreatePayload,
+):
+    return await internal_client.post("/workers/shifts", json=body.model_dump())
+
+
+@router.put("/workers/shifts/{gate_id}/{shift_type}/{shift_date}")
+async def update_shift(
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
+    gate_id: Annotated[int, Path()],
+    shift_type: Annotated[str, Path()],
+    shift_date: Annotated[str, Path()],
+    body: ShiftUpdatePayload,
+):
+    return await internal_client.put(
+        f"/workers/shifts/{gate_id}/{shift_type}/{shift_date}",
+        json=body.model_dump(exclude_none=True),
+    )
+
+
+@router.delete("/workers/shifts/{gate_id}/{shift_type}/{shift_date}", status_code=204)
+async def delete_shift(
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
+    gate_id: Annotated[int, Path()],
+    shift_type: Annotated[str, Path()],
+    shift_date: Annotated[str, Path()],
+):
+    return await internal_client.delete(
+        f"/workers/shifts/{gate_id}/{shift_type}/{shift_date}"
+    )
+
+
+@router.post("/workers/shifts/bulk", status_code=200)
+async def bulk_import_shifts(
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
+    request: Request,
+):
+    """Transparent proxy for multipart CSV upload."""
+    body = await request.body()
+    content_type = request.headers.get("content-type", "multipart/form-data")
+    return await internal_client.proxy_multipart("/workers/shifts/bulk", body, content_type)
+
+
 # ==================== OPERATOR ENDPOINTS ====================
 # NOTE: These must come BEFORE /workers/{num_worker} to avoid path conflicts
 
@@ -97,14 +157,13 @@ async def list_operators(
 
 @router.get("/workers/operators/me")
 async def get_my_operator_info(
-    num_worker: Annotated[str, Query(description="Operator num_worker")],
     _user: Annotated[TokenPayload, Depends(require_role("operator", "manager"))],
 ):
     """
     Get authenticated operator's own profile.
-    Proxy to GET /api/v1/workers/operators/me
+    Resolves identity from JWT sub (email) — no query param needed.
     """
-    return await internal_client.get("/workers/operators/me", params={"num_worker": num_worker})
+    return await internal_client.get("/workers/operators/me", params={"email": _user.sub})
 
 
 @router.get("/workers/operators/{num_worker}")
@@ -181,14 +240,13 @@ async def list_managers(
 
 @router.get("/workers/managers/me")
 async def get_my_manager_info(
-    num_worker: Annotated[str, Query(description="Manager num_worker")],
     _user: Annotated[TokenPayload, Depends(require_role("manager"))],
 ):
     """
     Get authenticated manager's own profile.
-    Proxy to GET /api/v1/workers/managers/me
+    Resolves identity from JWT sub (email) — no query param needed.
     """
-    return await internal_client.get("/workers/managers/me", params={"num_worker": num_worker})
+    return await internal_client.get("/workers/managers/me", params={"email": _user.sub})
 
 
 @router.get("/workers/managers/{num_worker}")

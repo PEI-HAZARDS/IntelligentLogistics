@@ -151,3 +151,23 @@ async def delete(
     return await _request("DELETE", path, params=params, headers=headers, timeout=timeout)
 
 
+async def proxy_multipart(path: str, body: bytes, content_type: str, timeout: float = 30.0) -> Any:
+    """
+    Forward a raw multipart POST to the Data Module without re-parsing the body.
+    Used by bulk CSV upload endpoints (arrivals/bulk, workers/shifts/bulk).
+    """
+    url = _build_url(path)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(url, content=body, headers={"content-type": content_type})
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Data Module unreachable: {exc}")
+    if response.status_code >= 400:
+        try:
+            detail = response.json().get("detail", response.text)
+        except Exception:
+            detail = response.text
+        raise HTTPException(status_code=response.status_code, detail=detail)
+    return response.json()
+
+

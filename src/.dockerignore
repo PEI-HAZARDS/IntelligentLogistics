@@ -1,37 +1,56 @@
-# Global dockerignore for the src/ context
-# This file is placed in src/ because docker-compose files use `context: ..`
+# Python virtual environments — never needed in Docker images
+  **venv/
+  **env/
+  **.env
+  **/.venv/
+  **/.env/
+  **/.venv-locust
+  **/venv
+  **/__pycache__
+  **__pycache__/
+  *.pyc
+  *.pyo
+  *.pyd
+  **/*.pyc
+  **/*.pyo
+  **/*.pyd
+  **/.pytest_cache/
+  **/.mypy_cache
+  **/.ruff_cache
 
-# Ignore all virtual environments
-**venv/
-**env/
-**.env
-**/.venv/
-**/.env/
+  # Data folders (datasets, ML models, logs, DB volumes)
+  **data/
+  **/data/
+  **/.data/
+  **logs/
 
-# Ignore data folders (datasets, ML models, logs, DB volumes)
-**data/
-**/data/
-**/.data/
-**logs/
+  # Test artifacts
+  **/coverage.xml
+  **/.coverage
+  **/*.egg-info
+  **/htmlcov
+  **/dist
+  **/build
 
-# Ignore git history (this alone can be huge)
-**/.git/
-.git/
+  # Git
+  **/.git/
+  .git/
+  **/.git
+  **/.gitignore
 
-# Ignore compiled python files
-**__pycache__/
-*.pyc
-*.pyo
-*.pyd
-**/.pytest_cache/
+  # Editor / OS
+  **/.vscode/
+  **/.idea/
+  **/.DS_Store
+  **/*.swp
+  **/*.swo
 
-# Ignore local IDE settings
-**/.vscode/
-**/.idea/
-**/.DS_Store
+  # Logs and temp files
+  **/*.log
+  **/tmp
 
-# Ignore documentation or datasets not needed in the app
-**docs/
+  # Docs not needed in the app
+  **docs/
 
-# Ignore Node.js modules if any exist in other apps
-**/node_modules/
+  # Node.js modules
+  **/node_modules/

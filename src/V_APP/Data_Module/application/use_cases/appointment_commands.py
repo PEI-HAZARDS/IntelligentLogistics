@@ -195,6 +195,9 @@ def cmd_process_decision(
 # Command: Flag highway infraction
 # ------------------------------------------------------------------
 
+_INFRACTION_ALLOWED_STATUSES = {"in_transit"}
+
+
 def cmd_flag_highway_infraction(
     uow_factory: Callable[..., IUnitOfWork],
     appointment_id: int,
@@ -202,11 +205,20 @@ def cmd_flag_highway_infraction(
     """Flag an appointment as highway infraction via UoW + Outbox.
 
     Returns aggregate dict on success, None if not found.
+    Raises ValueError if the appointment is already inside the port (status not in_transit/scheduled).
     """
     with uow_factory() as uow:
         aggregate = uow.appointment_state.get_for_update(appointment_id)
         if aggregate is None:
             return None
+
+        current_status = aggregate["status"]
+        if current_status not in _INFRACTION_ALLOWED_STATUSES:
+            raise ValueError(
+                f"Highway infraction can only be flagged while the truck is in_transit "
+                f"(current status: {current_status!r}). "
+                "Only trucks on the road approaching the port can receive a highway infraction update."
+            )
 
         # save_state_transition keeps same status but we need to set
         # highway_infraction — extend metadata for this flag
@@ -322,3 +334,40 @@ def cmd_update_visit_state(
         appointment_id, new_state,
     )
     return visit
+
+
+def cmd_review_infraction(
+    appointment: dict,
+    reviewed_by: str,
+    note: Optional[str] = None,
+) -> dict:
+    """
+    Apply a manager review to a highway infraction appointment.
+
+    Args:
+        appointment: dict with at least {"id", "highway_infraction"}.
+        reviewed_by: num_worker of the reviewing manager.
+        note: optional contact/warning note.
+
+    Returns:
+        Updated appointment dict with review fields set.
+
+    Raises:
+        ValueError: if the appointment has no highway_infraction flag.
+    """
+    if not appointment.get("highway_infraction"):
+        raise ValueError(
+            f"Appointment {appointment.get('id')} has no highway infraction — cannot review."
+        )
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    appointment["reviewed_at"] = now
+    appointment["reviewed_by"] = reviewed_by
+    appointment["review_note"] = note.strip() if note and note.strip() else None
+
+    logger.info(
+        "cmd_review_infraction: appointment=%s reviewed_by=%s",
+        appointment.get("id"),
+        reviewed_by,
+    )
+    return appointment

@@ -210,8 +210,9 @@ def get_operator_gate_dashboard(
                 for a in upcoming_rows
             ],
             "stats": {
+                "scheduled": stats_dict.get("scheduled", 0),
                 "in_transit": stats_dict.get("in_transit", 0),
-                "delayed": stats_dict.get("delayed", 0),
+                "in_process": stats_dict.get("in_process", 0),
                 "completed": stats_dict.get("completed", 0),
                 "canceled": stats_dict.get("canceled", 0),
             },

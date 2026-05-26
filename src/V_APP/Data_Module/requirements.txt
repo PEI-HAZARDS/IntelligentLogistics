@@ -1,6 +1,7 @@
 # --- Web & API ---
 fastapi
 uvicorn[standard]
+python-multipart
 pydantic
 pydantic-settings
 

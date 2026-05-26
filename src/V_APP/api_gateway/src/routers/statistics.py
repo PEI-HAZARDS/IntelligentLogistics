@@ -194,3 +194,41 @@ async def operator_performance(
         "/statistics/operators/performance",
         params={"hours": hours}
     )
+
+
+# ==================== SUSTAINABILITY ====================
+
+@router.get("/statistics/sustainability/summary")
+async def sustainability_summary(
+    from_date: Annotated[Optional[str], Query(description="Start date YYYY-MM-DD")] = None,
+    to_date: Annotated[Optional[str], Query(description="End date YYYY-MM-DD")] = None,
+):
+    """Proxy to Data Module: CO₂ and waiting-time KPIs."""
+    params = {}
+    if from_date:
+        params["from_date"] = from_date
+    if to_date:
+        params["to_date"] = to_date
+    try:
+        result = await internal_client.get("/statistics/sustainability/summary", params=params)
+        return result if isinstance(result, dict) else {}
+    except Exception as e:
+        logger.warning("Failed to fetch sustainability summary: %s", e)
+        return {}
+
+
+@router.get("/statistics/sustainability/trend")
+async def sustainability_trend(
+    granularity: Annotated[str, Query(description="'day' | 'week' | 'month'")] = "month",
+    n_periods: Annotated[int, Query(ge=1, le=52, description="Number of past periods")] = 12,
+):
+    """Proxy to Data Module: CO₂ time-series trend."""
+    try:
+        result = await internal_client.get(
+            "/statistics/sustainability/trend",
+            params={"granularity": granularity, "n": n_periods},
+        )
+        return result if isinstance(result, list) else []
+    except Exception as e:
+        logger.warning("Failed to fetch sustainability trend: %s", e)
+        return []

@@ -337,7 +337,7 @@ def init_trial_data(db: Session):
                 appointment_id=appt_c.id, shift_gate_id=shift_c.gate_id,
                 shift_type=shift_c.shift_type, shift_date=shift_c.date,
                 entry_time=entry_c, out_time=entry_c + timedelta(minutes=40),
-                state="completed",
+                state="done",
             ))
             db.flush()
 
