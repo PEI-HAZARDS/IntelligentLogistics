@@ -100,39 +100,15 @@ class TestDataInitDemoEnvConfig:
         src = _src("scripts/data_init_demo.py")
         assert "DEMO_VIDEO2_PLATES" in src
 
-    def test_max_arrivals_env_var(self):
+    def test_base_daily_controls_volume(self):
+        # MAX_ARRIVALS was replaced by BASE_DAILY + monthly load factors
         src = _src("scripts/data_init_demo.py")
-        assert "MAX_ARRIVALS" in src
+        assert "BASE_DAILY" in src
 
-    def test_plates_sliced_by_max_arrivals(self):
+    def test_monthly_load_factors_present(self):
         src = _src("scripts/data_init_demo.py")
-        assert "[:MAX_ARRIVALS]" in src
+        assert "_MONTHLY_LOAD" in src
 
-    def test_max_arrivals_env_overrides(self):
-        """MAX_ARRIVALS from env truncates both plate lists."""
-        import importlib
-        import sys
-        import os
-
-        # Inject env before import
-        os.environ["MAX_ARRIVALS"] = "2"
-        os.environ["DEMO_VIDEO1_PLATES"] = '["A","B","C","D"]'
-        os.environ["DEMO_VIDEO2_PLATES"] = '["X","Y","Z"]'
-
-        # Reload to pick up env changes
-        script_path = str(_BASE / "scripts")
-        if script_path not in sys.path:
-            sys.path.insert(0, script_path)
-
-        if "data_init_demo" in sys.modules:
-            del sys.modules["data_init_demo"]
-        try:
-            import data_init_demo as demo
-            assert len(demo.VIDEO1_PLATES) <= 2
-            assert len(demo.VIDEO2_PLATES) <= 2
-        finally:
-            del os.environ["MAX_ARRIVALS"]
-            del os.environ["DEMO_VIDEO1_PLATES"]
-            del os.environ["DEMO_VIDEO2_PLATES"]
-            if "data_init_demo" in sys.modules:
-                del sys.modules["data_init_demo"]
+    def test_company_delay_profiles_present(self):
+        src = _src("scripts/data_init_demo.py")
+        assert "_COMPANY_DELAY_PROFILES" in src

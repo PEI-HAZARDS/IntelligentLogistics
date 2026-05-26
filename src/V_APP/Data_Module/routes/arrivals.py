@@ -6,14 +6,15 @@ Reads directly from PostgreSQL (source of truth) with Redis caching.
 """
 
 from typing import Annotated, List, Optional, Dict, Any, Generic, TypeVar
-from datetime import date
-from fastapi import APIRouter, Depends, HTTPException, Query, Path
+from datetime import date, datetime, timezone, timedelta
+import csv, io, uuid
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Path, UploadFile
 from sqlalchemy.orm import Session, selectinload, joinedload
 from pydantic import BaseModel
 from loguru import logger
 
 from application.schemas import (
-    Appointment, AppointmentStatusUpdate, Visit, VisitStatusUpdate, ShiftTypeEnum
+    Appointment, AppointmentManagerView, AppointmentStatusUpdate, Visit, VisitStatusUpdate, ShiftTypeEnum
 )
 from application.queries.arrival_queries import (
     get_all_appointments,
@@ -35,11 +36,12 @@ from application.use_cases.appointment_commands import (
     cmd_flag_highway_infraction,
     cmd_create_visit,
     cmd_update_visit_state,
+    cmd_review_infraction,
 )
 from application.queries.cache_queries import get_or_cache
 from application.queries.arrival_queries import _APPOINTMENT_EAGER_LOADS
 from infrastructure.persistence.redis import get_cached_appointment, cache_appointment
-from infrastructure.persistence.sql_models import Visit as VisitORM, Shift as ShiftORM, Operator, Manager
+from infrastructure.persistence.sql_models import Visit as VisitORM, Shift as ShiftORM, Operator, Manager, Appointment as AppointmentORM
 
 T = TypeVar("T")
 
@@ -98,7 +100,7 @@ class CreateVisitRequest(BaseModel):
 
 # ==================== GET ENDPOINTS ====================
 
-@router.get("", response_model=PaginatedResponse[Appointment], responses={400: {"description": "Invalid shift type"}})
+@router.get("", response_model=PaginatedResponse[AppointmentManagerView], responses={400: {"description": "Invalid shift type"}})
 def list_arrivals(
     page: Annotated[int, Query(ge=1, description="Page number (1-based)")] = 1,
     limit: Annotated[int, Query(ge=1, le=100, description="Items per page")] = 20,
@@ -326,6 +328,57 @@ def flag_highway_infraction(
     return Appointment.model_validate(appointment)
 
 
+class InfractionReviewRequest(BaseModel):
+    note: Optional[str] = None
+    reviewed_by: str  # num_worker of the reviewing manager
+
+
+@router.patch(
+    "/{appointment_id}/review",
+    status_code=200,
+    responses={
+        404: {"description": "Appointment not found"},
+        409: {"description": "Appointment has no highway infraction"},
+    },
+)
+def review_infraction(
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
+    body: InfractionReviewRequest,
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    """
+    Mark a highway infraction as reviewed by a manager.
+    Records reviewed_at (UTC), reviewed_by (num_worker), and an optional note.
+    Idempotent — re-reviewing overwrites the previous review record.
+    """
+    appt = db.query(AppointmentORM).filter(AppointmentORM.id == appointment_id).first()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if not appt.highway_infraction:
+        raise HTTPException(status_code=409, detail="Appointment has no highway infraction")
+
+    aggregate = {
+        "id": appt.id,
+        "highway_infraction": appt.highway_infraction,
+    }
+    try:
+        updated = cmd_review_infraction(aggregate, body.reviewed_by, body.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+    appt.reviewed_at = updated["reviewed_at"]
+    appt.reviewed_by = updated["reviewed_by"]
+    appt.review_note = updated["review_note"]
+    db.commit()
+
+    return {
+        "id": appt.id,
+        "reviewed_at": appt.reviewed_at.isoformat() if appt.reviewed_at else None,
+        "reviewed_by": appt.reviewed_by,
+        "review_note": appt.review_note,
+    }
+
+
 # ==================== UPDATE ENDPOINTS ====================
 
 @router.patch("/{appointment_id}/status", response_model=Appointment, responses={404: {"description": "Appointment not found"}})
@@ -404,6 +457,223 @@ def create_visit(
     if result is None:
         raise HTTPException(status_code=404, detail="Appointment not found or visit already exists")
     return Visit.model_validate(_load_visit(db, appointment_id))
+
+
+# ==================== CSV BULK IMPORT ====================
+
+# Only truck_license_plate and terminal_name are required — booking_reference is auto-generated.
+_BULK_REQUIRED_COLS = {"truck_license_plate", "terminal_name"}
+_VALID_DIRECTIONS = {"inbound", "outbound"}
+_VALID_CARGO_STATES = {"liquid", "solid", "gaseous", "hybrid"}
+
+
+@router.post(
+    "/bulk",
+    status_code=201,
+    summary="Bulk-import appointments from CSV (no driver — RGPD flow)",
+    responses={400: {"description": "Invalid or empty CSV"}},
+)
+def bulk_import_arrivals(
+    file: UploadFile = File(...),
+    db: Annotated[Session, Depends(get_db)] = None,
+):
+    """
+    Import appointments from a CSV file.  Driver is NOT included in the CSV;
+    drivers associate later via POST /drivers/claim with the arrival_id PIN.
+
+    Required columns: truck_license_plate, terminal_name
+    Optional columns:
+      scheduled_start_time (ISO-8601), expected_duration (minutes), notes,
+      direction (inbound|outbound, default: inbound),
+      cargo_description, cargo_type (liquid|solid|gaseous|hybrid), cargo_quantity (decimal)
+
+    Booking references are auto-generated (CSV-XXXXXXXX format).
+    Terminals are looked up by name (case-insensitive).
+
+    Returns: { created, skipped, errors: [{row, reason}] }
+    """
+    content = file.file.read()
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="File must be UTF-8 encoded")
+
+    reader = csv.DictReader(io.StringIO(text))
+    if reader.fieldnames is None:
+        raise HTTPException(status_code=400, detail="Empty or unreadable CSV")
+
+    headers = {h.strip().lower() for h in reader.fieldnames}
+    missing = _BULK_REQUIRED_COLS - headers
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing required columns: {', '.join(sorted(missing))}",
+        )
+
+    from infrastructure.persistence.sql_models import (
+        Appointment as AppointmentORM,
+        Booking as BookingORM,
+        Truck as TruckORM,
+        Terminal as TerminalORM,
+    )
+    from sqlalchemy import func as sql_func
+
+    created = skipped = 0
+    errors: List[Dict[str, Any]] = []
+
+    for row_num, raw in enumerate(reader, start=2):
+        row = {k.strip().lower(): (v or "").strip() for k, v in raw.items()}
+
+        plate = row.get("truck_license_plate", "")
+        terminal_name = row.get("terminal_name", "")
+
+        if not plate or not terminal_name:
+            errors.append({"row": row_num, "reason": "Missing required field (truck_license_plate or terminal_name)"})
+            skipped += 1
+            continue
+
+        # Resolve terminal by name (case-insensitive)
+        terminal = db.query(TerminalORM).filter(
+            sql_func.lower(TerminalORM.name) == terminal_name.lower()
+        ).first()
+        if not terminal:
+            errors.append({"row": row_num, "reason": f"Terminal {terminal_name!r} not found"})
+            skipped += 1
+            continue
+
+        # Validate truck
+        if not db.query(TruckORM).filter(TruckORM.license_plate == plate).first():
+            errors.append({"row": row_num, "reason": f"Truck {plate!r} not registered in the system"})
+            skipped += 1
+            continue
+
+        # Conflict check: reject if truck already has an active appointment within ±4 h of the given time
+        # (or any active appointment today if no time provided)
+        _active_statuses = ('scheduled', 'in_transit', 'in_process')
+        raw_time_for_conflict = row.get("scheduled_start_time", "")
+        if raw_time_for_conflict:
+            try:
+                ref_time = datetime.fromisoformat(raw_time_for_conflict)
+                window_start = ref_time - timedelta(hours=4)
+                window_end   = ref_time + timedelta(hours=4)
+                conflict = (
+                    db.query(AppointmentORM)
+                    .filter(
+                        AppointmentORM.truck_license_plate == plate,
+                        AppointmentORM.status.in_(_active_statuses),
+                        AppointmentORM.scheduled_start_time >= window_start,
+                        AppointmentORM.scheduled_start_time <= window_end,
+                    )
+                    .first()
+                )
+                if conflict:
+                    conflict_time = conflict.scheduled_start_time.strftime("%Y-%m-%d %H:%M") if conflict.scheduled_start_time else "unknown time"
+                    errors.append({"row": row_num, "reason": f"Truck {plate!r} already has an active appointment at {conflict_time} (status: {conflict.status}) — within 4 h window"})
+                    skipped += 1
+                    continue
+            except ValueError:
+                pass  # invalid time format caught later in the parsing block
+        else:
+            # No time given: check for any active appointment today
+            today_start = datetime.combine(date.today(), datetime.min.time())
+            today_end   = datetime.combine(date.today(), datetime.max.time())
+            conflict = (
+                db.query(AppointmentORM)
+                .filter(
+                    AppointmentORM.truck_license_plate == plate,
+                    AppointmentORM.status.in_(_active_statuses),
+                    AppointmentORM.scheduled_start_time >= today_start,
+                    AppointmentORM.scheduled_start_time <= today_end,
+                )
+                .first()
+            )
+            if conflict:
+                conflict_time = conflict.scheduled_start_time.strftime("%H:%M") if conflict.scheduled_start_time else "unknown time"
+                errors.append({"row": row_num, "reason": f"Truck {plate!r} already has an active appointment today at {conflict_time} (status: {conflict.status})"})
+                skipped += 1
+                continue
+
+        # direction (optional, default inbound)
+        raw_dir = row.get("direction", "").lower() or "inbound"
+        if raw_dir not in _VALID_DIRECTIONS:
+            errors.append({"row": row_num, "reason": f"direction must be 'inbound' or 'outbound', got {raw_dir!r}"})
+            skipped += 1
+            continue
+
+        # scheduled_start_time (optional)
+        scheduled_start = None
+        raw_time = row.get("scheduled_start_time", "")
+        if raw_time:
+            try:
+                scheduled_start = datetime.fromisoformat(raw_time)
+            except ValueError:
+                errors.append({"row": row_num, "reason": f"Invalid scheduled_start_time: {raw_time!r} (expected ISO-8601)"})
+                skipped += 1
+                continue
+
+        # expected_duration (optional, integer minutes)
+        expected_dur = None
+        raw_dur = row.get("expected_duration", "")
+        if raw_dur:
+            try:
+                expected_dur = int(raw_dur)
+            except ValueError:
+                errors.append({"row": row_num, "reason": f"expected_duration must be integer minutes, got {raw_dur!r}"})
+                skipped += 1
+                continue
+
+        # cargo_quantity (optional, decimal)
+        cargo_qty = None
+        raw_qty = row.get("cargo_quantity", "")
+        if raw_qty:
+            try:
+                cargo_qty = float(raw_qty)
+            except ValueError:
+                errors.append({"row": row_num, "reason": f"cargo_quantity must be a number, got {raw_qty!r}"})
+                skipped += 1
+                continue
+
+        # cargo_type validation (optional)
+        cargo_type = row.get("cargo_type", "").lower() or None
+        if cargo_type and cargo_type not in _VALID_CARGO_STATES:
+            errors.append({"row": row_num, "reason": f"cargo_type must be one of {sorted(_VALID_CARGO_STATES)}, got {cargo_type!r}"})
+            skipped += 1
+            continue
+
+        # Auto-generate a unique booking reference
+        booking_ref = f"CSV-{uuid.uuid4().hex[:8].upper()}"
+        booking = BookingORM(reference=booking_ref, direction=raw_dir)
+        db.add(booking)
+        db.flush()  # ensure the booking FK is available before appointment and cargo
+
+        # Create cargo row if any cargo field is provided
+        cargo_description = row.get("cargo_description") or None
+        if cargo_description or cargo_type or cargo_qty is not None:
+            from infrastructure.persistence.sql_models import Cargo as CargoORM
+            cargo_row = CargoORM(
+                booking_reference=booking_ref,
+                description=cargo_description,
+                state=cargo_type or "solid",
+                quantity=cargo_qty if cargo_qty is not None else 0,
+            )
+            db.add(cargo_row)
+
+        appt = AppointmentORM(
+            booking_reference=booking_ref,
+            driver_license=None,
+            truck_license_plate=plate,
+            terminal_id=terminal.id,
+            scheduled_start_time=scheduled_start,
+            expected_duration=expected_dur,
+            notes=row.get("notes") or None,
+            highway_infraction=False,
+            status="scheduled",
+        )
+        db.add(appt)
+        created += 1
+
+    db.commit()
+    return {"created": created, "skipped": skipped, "errors": errors}
 
 
 @router.patch("/{appointment_id}/visit", response_model=Visit, responses={404: {"description": "Visit not found"}})

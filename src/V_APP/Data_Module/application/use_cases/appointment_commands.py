@@ -334,3 +334,40 @@ def cmd_update_visit_state(
         appointment_id, new_state,
     )
     return visit
+
+
+def cmd_review_infraction(
+    appointment: dict,
+    reviewed_by: str,
+    note: Optional[str] = None,
+) -> dict:
+    """
+    Apply a manager review to a highway infraction appointment.
+
+    Args:
+        appointment: dict with at least {"id", "highway_infraction"}.
+        reviewed_by: num_worker of the reviewing manager.
+        note: optional contact/warning note.
+
+    Returns:
+        Updated appointment dict with review fields set.
+
+    Raises:
+        ValueError: if the appointment has no highway_infraction flag.
+    """
+    if not appointment.get("highway_infraction"):
+        raise ValueError(
+            f"Appointment {appointment.get('id')} has no highway infraction — cannot review."
+        )
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    appointment["reviewed_at"] = now
+    appointment["reviewed_by"] = reviewed_by
+    appointment["review_note"] = note.strip() if note and note.strip() else None
+
+    logger.info(
+        "cmd_review_infraction: appointment=%s reviewed_by=%s",
+        appointment.get("id"),
+        reviewed_by,
+    )
+    return appointment

@@ -24,6 +24,10 @@ from application.queries.manager_statistics_queries import (
     get_alerts_breakdown,
     get_decision_analytics,
 )
+from application.queries.sustainability_queries import (
+    get_sustainability_summary,
+    get_sustainability_trend,
+)
 
 router = APIRouter(prefix="/statistics", tags=["Statistics & Analytics"])
 
@@ -471,3 +475,32 @@ def dashboard_summary(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate dashboard summary: {str(e)}"
         )
+
+
+# ==================== SUSTAINABILITY (manager only) ====================
+
+@router.get("/sustainability/summary")
+def sustainability_summary(
+    from_date: Annotated[Optional[str], Query(description="Start date YYYY-MM-DD (default: start of current week)")] = None,
+    to_date: Annotated[Optional[str], Query(description="End date YYYY-MM-DD (default: today)")] = None,
+):
+    """
+    CO₂ and waiting-time KPIs for a date range.
+
+    **Methodology:** ICCT HDV Roadmap 2023 + EU JRC — 0.84 kg CO₂/h idling (Euro VI).
+    Waiting time = MAX(0, entry_time − scheduled_start_time).
+    Appointments without scheduled_start_time are excluded and reported in `appointments_excluded`.
+    """
+    return get_sustainability_summary(from_date, to_date)
+
+
+@router.get("/sustainability/trend")
+def sustainability_trend(
+    granularity: Annotated[str, Query(description="'day' | 'week' | 'month'")] = "day",
+    n: Annotated[int, Query(description="Number of past periods to return (max 52)", ge=1, le=52)] = 12,
+):
+    """
+    Time-series of CO₂ estimates and avg waiting times for the chart.
+    Returns the last `n` complete periods at the requested granularity.
+    """
+    return get_sustainability_trend(granularity, n)

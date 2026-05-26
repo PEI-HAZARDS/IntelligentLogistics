@@ -14,7 +14,7 @@ Future: OAuth 2.0 + JWT
 CQRS: GET endpoints read from MongoDB. POST (auth/claim) use UoW.
 """
 
-from typing import Annotated, List, Optional
+from typing import Annotated, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 
 from application.schemas import (
@@ -33,6 +33,7 @@ from application.queries.driver_queries import (
     get_driver_active_appointment,
     get_driver_today_appointments,
     get_driver_appointments,
+    get_available_bookings_for_driver,
 )
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from infrastructure.persistence.postgres import SessionLocal
@@ -146,6 +147,23 @@ def get_my_today_arrivals(
 ):
     """Gets today's appointments for the authenticated driver."""
     return get_driver_today_appointments(claims["sub"])
+
+
+@router.get("/me/available-bookings", response_model=Dict)
+def get_available_bookings(
+    claims: Annotated[dict, Depends(_driver_claims)],
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+):
+    """
+    Returns unclaimed scheduled appointments for trucks belonging to the driver's company.
+    Used by the driver app 'Available Bookings' screen.
+    Driver claims one via POST /drivers/claim with the arrival_id PIN.
+    """
+    driver = get_driver_by_license(claims["sub"])
+    if not driver or not driver.get("company_nif"):
+        return {"items": [], "total": 0, "page": page, "limit": limit, "pages": 1}
+    return get_available_bookings_for_driver(driver["company_nif"], page=page, limit=limit)
 
 
 @router.get("/me/history", response_model=List[Appointment])

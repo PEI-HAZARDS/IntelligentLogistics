@@ -1,7 +1,8 @@
 -- ============================================================
--- Migration v4 — State Machine Refactor
+-- Migration v4 — State Machine Refactor + Infraction Review
 -- Appointment: remove 'unloading' and 'delayed' from persisted enum.
 -- Visit: replace 'completed' with 'in_port' and 'done'.
+-- Infraction review: reviewed_at, reviewed_by, review_note.
 -- ============================================================
 -- Safe to re-run: all steps use IF NOT EXISTS / OR REPLACE / idempotent logic.
 -- Apply AFTER migrationDBv3.sql.
@@ -83,5 +84,67 @@ ALTER TABLE visit ALTER COLUMN state SET DEFAULT 'not_started';
 --    idempotent). Apply triggers.sql after this migration to keep them
 --    in sync. No inline copies here to avoid duplication.
 -- ============================================================
+
+-- 4a. Status-transition validator (removes 'unloading' rule)
+CREATE OR REPLACE FUNCTION fn_validate_status_transition()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF OLD.status IN ('completed', 'canceled') AND NEW.status != OLD.status THEN
+        RAISE EXCEPTION 'Cannot change appointment status from % to %', OLD.status, NEW.status;
+    END IF;
+    IF OLD.status = 'scheduled' AND NEW.status NOT IN ('scheduled', 'in_transit', 'canceled') THEN
+        RAISE EXCEPTION 'Invalid transition: scheduled → %', NEW.status;
+    END IF;
+    IF OLD.status = 'in_transit' AND NEW.status NOT IN ('in_transit', 'in_process', 'canceled') THEN
+        RAISE EXCEPTION 'Invalid transition: in_transit → %', NEW.status;
+    END IF;
+    IF OLD.status = 'in_process' AND NEW.status NOT IN ('in_process', 'completed', 'canceled') THEN
+        RAISE EXCEPTION 'Invalid transition: in_process → %', NEW.status;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 4b. Visit completion (no longer auto-completes appointment)
+CREATE OR REPLACE FUNCTION fn_check_visit_completion()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.state = 'done' AND OLD.state = 'unloading' THEN
+        IF NEW.out_time IS NULL THEN
+            NEW.out_time := NOW();
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 4c. Analytics helper (replaces fn_sync_delayed_appointments)
+CREATE OR REPLACE FUNCTION fn_count_delayed_appointments(tolerance_minutes INTEGER DEFAULT 15)
+RETURNS TABLE(delayed_count INTEGER, appointment_ids INTEGER[]) AS $$
+DECLARE
+    found_ids INTEGER[];
+BEGIN
+    SELECT ARRAY_AGG(id) INTO found_ids
+    FROM appointment
+    WHERE status = 'in_transit'
+      AND scheduled_start_time IS NOT NULL
+      AND scheduled_start_time + (tolerance_minutes || ' minutes')::INTERVAL < NOW();
+    RETURN QUERY SELECT
+        COALESCE(array_length(found_ids, 1), 0),
+        COALESCE(found_ids, ARRAY[]::INTEGER[]);
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- ============================================================
+-- 5. INFRACTION REVIEW FIELDS
+--    Track manager acknowledgement of highway infractions.
+-- ============================================================
+
+ALTER TABLE appointment
+    ADD COLUMN IF NOT EXISTS reviewed_at  TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS reviewed_by  VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS review_note  TEXT;
+
 
 COMMIT;
