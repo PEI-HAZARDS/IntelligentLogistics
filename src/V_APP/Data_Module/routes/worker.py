@@ -509,7 +509,7 @@ class ShiftTemplateRequest(BaseModel):
     operator_num_worker: Optional[str] = None
     manager_num_worker: Optional[str] = None
     valid_from: Optional[date] = None        # default: today
-    valid_until: Optional[date] = None       # NULL = open-ended
+    valid_until: Optional[date] = None
     active: bool = True
 
 

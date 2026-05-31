@@ -61,6 +61,16 @@ def _validate_session_id(session_id: str) -> None:
         raise HTTPException(status_code=400, detail="invalid session id")
 
 
+def _assert_trusted_url(constructed: str, base_url: str) -> None:
+    """SSRF guard: verify the constructed upstream URL shares the same host and
+    port as the server-configured base URL.  Individual path-segment validation
+    already prevents injection, but this provides a second line of defence at
+    the network level — even if a segment slips through, the request can never
+    be redirected to a host outside the configured MediaMTX server."""
+    if urlparse(constructed).netloc != urlparse(base_url).netloc:
+        raise HTTPException(status_code=400, detail="invalid upstream target")
+
+
 def _build_hls_url(api_prefix: str, gate_id: str, quality: str) -> str:
     """Client-facing HLS playlist URL served by this gateway."""
     prefix = api_prefix.rstrip("/")
@@ -141,6 +151,7 @@ async def hls_proxy(
     # All components are now validated — safe to construct the upstream URL.
     base = hls_url.rstrip("/")
     target = f"{base}/streams_{quality}/{gate_id}/{path}"
+    _assert_trusted_url(target, hls_url)
 
     # Preserve query string — LL-HLS variants and partial segments carry session ids
     # plus _HLS_msn / _HLS_part flags that MediaMTX needs to honor.
@@ -160,7 +171,7 @@ async def hls_proxy(
         upstream = await client.send(req, stream=True)
     except httpx.RequestError as exc:
         await client.aclose()
-        logger.error("HLS upstream GET failed: %s", exc)
+        logger.exception("HLS upstream GET failed: %s", exc)
         raise HTTPException(status_code=502, detail="mediamtx unreachable") from exc
 
     if upstream.status_code >= 400:
@@ -211,12 +222,13 @@ async def whep_create(
 
     # All components are now validated — safe to construct the upstream URL.
     target = f"{mediamtx_url.rstrip('/')}/streams_{quality}/{gate_id}/whep"
+    _assert_trusted_url(target, mediamtx_url)
 
     try:
         async with httpx.AsyncClient(timeout=_WHEP_TIMEOUT, follow_redirects=False) as client:
             upstream = await client.post(target, content=body, headers={"Content-Type": content_type})
     except httpx.RequestError as exc:
-        logger.error("WHEP upstream POST failed: %s", exc)
+        logger.exception("WHEP upstream POST failed: %s", exc)
         raise HTTPException(status_code=502, detail="mediamtx unreachable") from exc
 
     rewritten_location = _rewrite_session_location(
@@ -260,6 +272,7 @@ async def whep_patch(
 
     # All components are now validated — safe to construct the upstream URL.
     target = f"{mediamtx_url.rstrip('/')}/streams_{quality}/{gate_id}/whep/{session_id}"
+    _assert_trusted_url(target, mediamtx_url)
 
     headers = {"Content-Type": content_type}
     if if_match:
@@ -269,7 +282,7 @@ async def whep_patch(
         async with httpx.AsyncClient(timeout=_WHEP_TIMEOUT, follow_redirects=False) as client:
             upstream = await client.patch(target, content=body, headers=headers)
     except httpx.RequestError as exc:
-        logger.error("WHEP PATCH upstream failed: %s", exc)
+        logger.exception("WHEP PATCH upstream failed: %s", exc)
         raise HTTPException(status_code=502, detail="mediamtx unreachable") from exc
 
     return Response(content=upstream.content, status_code=upstream.status_code)
@@ -290,12 +303,13 @@ async def whep_delete(
 
     # All components are now validated — safe to construct the upstream URL.
     target = f"{mediamtx_url.rstrip('/')}/streams_{quality}/{gate_id}/whep/{session_id}"
+    _assert_trusted_url(target, mediamtx_url)
 
     try:
         async with httpx.AsyncClient(timeout=_WHEP_TIMEOUT, follow_redirects=False) as client:
             upstream = await client.delete(target)
     except httpx.RequestError as exc:
-        logger.error("WHEP DELETE upstream failed: %s", exc)
+        logger.exception("WHEP DELETE upstream failed: %s", exc)
         raise HTTPException(status_code=502, detail="mediamtx unreachable") from exc
 
     return Response(status_code=upstream.status_code)

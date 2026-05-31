@@ -241,7 +241,7 @@ class ShiftTemplate(Base):
     operator_num_worker = Column(String(20), ForeignKey('operator.num_worker'))
     manager_num_worker = Column(String(20), ForeignKey('manager.num_worker'))
     valid_from = Column(Date, nullable=False, server_default=func.current_date())
-    valid_until = Column(Date)  # NULL = open-ended
+    valid_until = Column(Date)
     active = Column(Boolean, nullable=False, default=True)
     created_at = Column(TIMESTAMP, server_default=func.now())
 
