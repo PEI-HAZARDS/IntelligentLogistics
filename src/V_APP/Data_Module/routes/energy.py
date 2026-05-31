@@ -1,0 +1,64 @@
+"""
+Energy/RAN spike telemetry routes.
+
+Stores one document per scale_up spike (timestamped) and serves recent spikes to
+the simulated energy graph so spikes survive a page refresh. This is telemetry,
+not a domain event, so it writes MongoDB directly (same pattern as notifications)
+— no Outbox / Unit of Work involved.
+"""
+
+from typing import Annotated, List, Optional
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Query
+from pydantic import BaseModel, Field
+
+from infrastructure.persistence.mongo import record_energy_spike, get_energy_spikes
+
+__all__ = ["router"]
+
+router = APIRouter(prefix="/energy", tags=["Energy"])
+
+
+class EnergySpikeIn(BaseModel):
+    gate_id: int
+    value: float = Field(..., description="Power reading (kW) at the spike")
+    mode: str = "scale_up"
+    timestamp: Optional[str] = None  # ISO 8601; defaults to now (UTC)
+
+
+class EnergySpikeOut(BaseModel):
+    gate_id: int
+    value: float
+    mode: str
+    timestamp: str
+
+
+def _parse_ts(raw: Optional[str]) -> datetime:
+    if not raw:
+        return datetime.now(timezone.utc)
+    try:
+        ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return datetime.now(timezone.utc)
+
+
+@router.post("/spikes", response_model=EnergySpikeOut)
+def create_energy_spike(payload: EnergySpikeIn):
+    """Record a single energy spike (called by the API Gateway on scale_up)."""
+    return record_energy_spike(
+        gate_id=payload.gate_id,
+        value=payload.value,
+        mode=payload.mode,
+        timestamp=_parse_ts(payload.timestamp),
+    )
+
+
+@router.get("/spikes", response_model=List[EnergySpikeOut])
+def list_energy_spikes(
+    gate_id: Annotated[Optional[int], Query(description="Filter by gate")] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+):
+    """Recent energy spikes, newest first."""
+    return get_energy_spikes(gate_id=gate_id, limit=limit)

@@ -164,6 +164,10 @@ class Driver(DriverBase):
     active: bool = True
     created_at: Optional[datetime] = None
     company: Optional[Company] = None
+    # Flat company name resolved from the related company (read-side queries
+    # provide this directly). Declared so it survives response serialization
+    # and reaches the driver app profile / login user_info.
+    company_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

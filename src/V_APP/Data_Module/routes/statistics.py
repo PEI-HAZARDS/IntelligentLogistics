@@ -37,6 +37,8 @@ router = APIRouter(prefix="/statistics", tags=["Statistics & Analytics"])
 @router.get("/summary")
 def dashboard_summary_for_manager(
     date: Annotated[Optional[str], Query(description="ISO date (YYYY-MM-DD), defaults to today")] = None,
+    from_date: Annotated[Optional[str], Query(alias="from", description="Range start (YYYY-MM-DD) — period KPIs")] = None,
+    to_date: Annotated[Optional[str], Query(alias="to", description="Range end (YYYY-MM-DD) — period KPIs")] = None,
 ):
     """
     Dashboard summary consumed by the Logistics Manager frontend.
@@ -49,7 +51,7 @@ def dashboard_summary_for_manager(
       "delayRate", "slaCompliance", "infractionCount", "peakHour" }
     ```
     """
-    return get_dashboard_summary(date)
+    return get_dashboard_summary(date, from_date, to_date)
 
 
 @router.get("/by-company")

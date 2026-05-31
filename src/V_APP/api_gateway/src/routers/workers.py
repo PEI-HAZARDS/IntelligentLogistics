@@ -61,21 +61,38 @@ class UpdateEmailRequest(BaseModel):
 async def list_shifts(
     _user: Annotated[TokenPayload, Depends(require_role("operator", "manager"))],
     target_date: Annotated[Optional[str], Query()] = None,
+    date_from: Annotated[Optional[str], Query()] = None,
+    date_to: Annotated[Optional[str], Query()] = None,
     shift_type: Annotated[Optional[str], Query()] = None,
     gate_id: Annotated[Optional[int], Query()] = None,
 ):
     """
-    List all shifts for a date (manager ShiftsPage).
+    List shifts for a date (manager ShiftsPage) or a date range (calendar).
     Proxy to GET /api/v1/workers/shifts
     """
     params: Dict[str, Any] = {}
     if target_date:
         params["target_date"] = target_date
+    if date_from:
+        params["date_from"] = date_from
+    if date_to:
+        params["date_to"] = date_to
     if shift_type:
         params["shift_type"] = shift_type
     if gate_id is not None:
         params["gate_id"] = gate_id
     return await internal_client.get("/workers/shifts", params=params)
+
+
+@router.get("/workers/shifts/active")
+async def list_active_shifts(
+    _user: Annotated[TokenPayload, Depends(require_role("operator", "manager"))],
+):
+    """
+    Shifts running right now across all gates (midnight-aware).
+    Proxy to GET /api/v1/workers/shifts/active — used by the manager dashboard.
+    """
+    return await internal_client.get("/workers/shifts/active")
 
 
 # ==================== SHIFT CRUD ====================
@@ -127,6 +144,69 @@ async def delete_shift(
     )
 
 
+# ==================== RECURRING SHIFT TEMPLATES ====================
+
+class ShiftTemplatePayload(BaseModel):
+    gate_id: int
+    shift_type: str
+    weekdays: str = "1111100"
+    operator_num_worker: Optional[str] = None
+    manager_num_worker: Optional[str] = None
+    valid_from: Optional[str] = None
+    valid_until: Optional[str] = None
+    active: bool = True
+
+
+class ShiftTemplateUpdatePayload(BaseModel):
+    weekdays: Optional[str] = None
+    operator_num_worker: Optional[str] = None
+    manager_num_worker: Optional[str] = None
+    valid_until: Optional[str] = None
+    active: Optional[bool] = None
+
+
+@router.get("/workers/shifts/templates")
+async def list_shift_templates(
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
+    include_inactive: Annotated[bool, Query()] = False,
+):
+    return await internal_client.get("/workers/shifts/templates", params={"include_inactive": include_inactive})
+
+
+@router.post("/workers/shifts/templates", status_code=201)
+async def create_shift_template(
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
+    body: ShiftTemplatePayload,
+):
+    return await internal_client.post("/workers/shifts/templates", json=body.model_dump(exclude_none=True))
+
+
+@router.patch("/workers/shifts/templates/{template_id}")
+async def update_shift_template(
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
+    template_id: Annotated[int, Path()],
+    body: ShiftTemplateUpdatePayload,
+):
+    return await internal_client.patch(f"/workers/shifts/templates/{template_id}", json=body.model_dump(exclude_none=True))
+
+
+@router.delete("/workers/shifts/templates/{template_id}", status_code=204)
+async def delete_shift_template(
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
+    template_id: Annotated[int, Path()],
+):
+    return await internal_client.delete(f"/workers/shifts/templates/{template_id}")
+
+
+@router.post("/workers/shifts/generate", status_code=200)
+async def generate_shifts(
+    _user: Annotated[TokenPayload, Depends(require_role("manager"))],
+    horizon_days: Annotated[int, Query(ge=1, le=90)] = 14,
+):
+    """Trigger on-demand materialisation of shifts from active templates."""
+    return await internal_client.post("/workers/shifts/generate", params={"horizon_days": horizon_days})
+
+
 @router.post("/workers/shifts/bulk", status_code=200)
 async def bulk_import_shifts(
     _user: Annotated[TokenPayload, Depends(require_role("manager"))],
@@ -136,6 +216,21 @@ async def bulk_import_shifts(
     body = await request.body()
     content_type = request.headers.get("content-type", "multipart/form-data")
     return await internal_client.proxy_multipart("/workers/shifts/bulk", body, content_type)
+
+
+# ==================== GATES ====================
+# NOTE: Must come BEFORE /workers/{num_worker} or it is shadowed by the catch-all
+# (a request to /workers/gates would otherwise resolve num_worker="gates" → 404).
+
+@router.get("/workers/gates")
+async def list_gates(
+    _user: Annotated[TokenPayload, Depends(require_role("operator", "manager"))],
+):
+    """
+    List active gates (manager AddShiftModal dropdown).
+    Proxy to GET /api/v1/workers/gates
+    """
+    return await internal_client.get("/workers/gates")
 
 
 # ==================== OPERATOR ENDPOINTS ====================

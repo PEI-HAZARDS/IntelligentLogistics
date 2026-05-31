@@ -36,10 +36,11 @@ from application.queries.worker_queries import (
 from infrastructure.persistence.unit_of_work import SqlAlchemyUnitOfWork
 from infrastructure.persistence.postgres import get_db, SessionLocal
 from sqlalchemy import func as sa_func
-from infrastructure.persistence.sql_models import Shift as ShiftORM, Visit as VisitORM, Operator, Manager, Gate as GateORM
+from infrastructure.persistence.sql_models import Shift as ShiftORM, Visit as VisitORM, Operator, Manager, Gate as GateORM, ShiftType, ShiftTemplate as ShiftTemplateORM
+from sqlalchemy.exc import IntegrityError
 from utils.auth_token import generate_internal_jwt, require_role
 from infrastructure.persistence.redis import set_session
-from utils.shift_utils import current_shift_type, parse_shift_type
+from utils.shift_utils import current_shift_type, parse_shift_type, active_shift_window, shift_order_key
 from config import settings
 
 router = APIRouter(prefix="/workers", tags=["Workers"])
@@ -182,16 +183,20 @@ def get_worker_by_email(email: Annotated[str, Path(description="Worker email")])
 def list_shifts(
     db: Annotated[Session, Depends(get_db)],
     target_date: Annotated[Optional[date], Query(description="Date to query (default: today)")] = None,
+    date_from: Annotated[Optional[date], Query(description="Range start (inclusive) — for the calendar")] = None,
+    date_to: Annotated[Optional[date], Query(description="Range end (inclusive) — for the calendar")] = None,
     shift_type: Annotated[Optional[str], Query(description="Filter by shift type (MORNING/AFTERNOON/NIGHT)")] = None,
     gate_id: Annotated[Optional[int], Query(description="Filter by gate")] = None,
 ):
     """
-    Lists all shifts for a given date with operator/gate details.
-    Used by the Manager ShiftsPage.
+    Lists shifts with operator/gate details. Used by the Manager ShiftsPage.
+
+    Pass ``date_from``/``date_to`` for a date range (calendar month view), or
+    ``target_date`` (default today) for a single day.
 
     PostgreSQL — shift data not yet projected to MongoDB (Guardrail 5).
     """
-    target = target_date or date.today()
+    use_range = date_from is not None and date_to is not None
     query = (
         db.query(ShiftORM)
         .options(
@@ -199,8 +204,13 @@ def list_shifts(
             joinedload(ShiftORM.operator).joinedload(Operator.worker),
             joinedload(ShiftORM.manager).joinedload(Manager.worker),
         )
-        .filter(ShiftORM.date == target)
     )
+    if use_range:
+        query = query.filter(ShiftORM.date >= date_from, ShiftORM.date <= date_to)
+    else:
+        target = target_date or date.today()
+        query = query.filter(ShiftORM.date == target)
+
     if gate_id is not None:
         query = query.filter(ShiftORM.gate_id == gate_id)
     if shift_type:
@@ -211,61 +221,101 @@ def list_shifts(
         except ValueError:
             pass
 
-    shifts = query.order_by(ShiftORM.gate_id, ShiftORM.shift_type).all()
+    shifts = query.order_by(ShiftORM.date, ShiftORM.gate_id, ShiftORM.shift_type).all()
 
     # Single GROUP BY query for all visit counts (replaces per-shift COUNT)
-    visit_counts_rows = (
-        db.query(
-            VisitORM.shift_gate_id,
-            VisitORM.shift_type,
-            VisitORM.shift_date,
-            sa_func.count().label("cnt"),
-        )
-        .filter(VisitORM.shift_date == target)
-        .group_by(VisitORM.shift_gate_id, VisitORM.shift_type, VisitORM.shift_date)
-        .all()
+    visit_q = db.query(
+        VisitORM.shift_gate_id,
+        VisitORM.shift_type,
+        VisitORM.shift_date,
+        sa_func.count().label("cnt"),
     )
+    if use_range:
+        visit_q = visit_q.filter(VisitORM.shift_date >= date_from, VisitORM.shift_date <= date_to)
+    else:
+        visit_q = visit_q.filter(VisitORM.shift_date == (target_date or date.today()))
+    visit_counts_rows = visit_q.group_by(
+        VisitORM.shift_gate_id, VisitORM.shift_type, VisitORM.shift_date
+    ).all()
     visit_count_map = {(r.shift_gate_id, r.shift_type, r.shift_date): r.cnt for r in visit_counts_rows}
 
-    current_st = current_shift_type()
-    today = date.today()
+    active_date, active_type = active_shift_window()
+    active_key = shift_order_key(active_date, active_type)
 
     result = []
     for s in shifts:
-        if s.date == today and s.shift_type == current_st:
-            shift_status = "active"
-        elif s.date < today or (s.date == today and _shift_before(s.shift_type, current_st)):
-            shift_status = "completed"
-        else:
-            shift_status = "pending"
-
-        if not s.operator_num_worker:
-            shift_status = "inactive"
-
         visit_count = visit_count_map.get((s.gate_id, s.shift_type, s.date), 0)
-
-        result.append({
-            "id": f"{s.gate_id}-{s.shift_type.name}-{s.date.isoformat()}",
-            "gateId": s.gate_id,
-            "gateName": s.gate.label if s.gate else f"Gate {s.gate_id}",
-            "shiftType": s.shift_type.name,
-            "date": s.date.isoformat(),
-            "operatorId": s.operator_num_worker or "",
-            "operatorName": s.operator.worker.name if s.operator and s.operator.worker else "",
-            "managerId": s.manager_num_worker or "",
-            "managerName": s.manager.worker.name if s.manager and s.manager.worker else "",
-            "currentArrivals": visit_count,
-            "maxArrivals": 25,
-            "status": shift_status,
-        })
+        status = _shift_status(s, active_date, active_type, active_key)
+        result.append(_serialize_shift_row(s, status, visit_count))
 
     return result
 
 
-def _shift_before(a, b) -> bool:
-    """Return True if shift type `a` is earlier in the day than `b`."""
-    order = {"MORNING": 0, "AFTERNOON": 1, "NIGHT": 2}
-    return order.get(a.name, 0) < order.get(b.name, 0)
+def _shift_status(s, active_date, active_type, active_key) -> str:
+    """Lifecycle label for a shift relative to the window running now.
+
+    Midnight-aware via ``active_shift_window`` — a NIGHT shift in progress after
+    midnight is matched against its real (previous-day) start date, not today.
+    """
+    if not s.operator_num_worker:
+        return "inactive"
+    if s.date == active_date and s.shift_type == active_type:
+        return "active"
+    if shift_order_key(s.date, s.shift_type) < active_key:
+        return "completed"
+    return "pending"
+
+
+def _serialize_shift_row(s, status: str, visit_count: int) -> Dict[str, Any]:
+    return {
+        "id": f"{s.gate_id}-{s.shift_type.name}-{s.date.isoformat()}",
+        "gateId": s.gate_id,
+        "gateName": s.gate.label if s.gate else f"Gate {s.gate_id}",
+        "shiftType": s.shift_type.name,
+        "date": s.date.isoformat(),
+        "operatorId": s.operator_num_worker or "",
+        "operatorName": s.operator.worker.name if s.operator and s.operator.worker else "",
+        "managerId": s.manager_num_worker or "",
+        "managerName": s.manager.worker.name if s.manager and s.manager.worker else "",
+        "currentArrivals": visit_count,
+        "maxArrivals": 25,
+        "status": status,
+    }
+
+
+@router.get("/shifts/active", response_model=List[Dict[str, Any]])
+def list_active_shifts(db: Annotated[Session, Depends(get_db)]):
+    """Shifts running *right now* across all gates — midnight-aware.
+
+    Unlike ``GET /shifts`` (a single calendar date), this resolves the NIGHT
+    shift that spans midnight to its real start date, so the manager dashboard
+    always shows the shift actually in progress (not yesterday's marked done).
+    """
+    active_date, active_type = active_shift_window()
+    shifts = (
+        db.query(ShiftORM)
+        .options(
+            joinedload(ShiftORM.gate),
+            joinedload(ShiftORM.operator).joinedload(Operator.worker),
+            joinedload(ShiftORM.manager).joinedload(Manager.worker),
+        )
+        .filter(ShiftORM.date == active_date, ShiftORM.shift_type == active_type)
+        .order_by(ShiftORM.gate_id)
+        .all()
+    )
+    visit_rows = (
+        db.query(VisitORM.shift_gate_id, sa_func.count().label("cnt"))
+        .filter(VisitORM.shift_date == active_date, VisitORM.shift_type == active_type)
+        .group_by(VisitORM.shift_gate_id)
+        .all()
+    )
+    visit_count_map = {r.shift_gate_id: r.cnt for r in visit_rows}
+
+    return [
+        _serialize_shift_row(s, "active" if s.operator_num_worker else "inactive",
+                         visit_count_map.get(s.gate_id, 0))
+        for s in shifts
+    ]
 
 
 # ==================== GATES LISTING ====================
@@ -448,6 +498,151 @@ def delete_shift(
 
     db.delete(shift)
     db.commit()
+
+
+# ==================== RECURRING SHIFT TEMPLATES ====================
+
+class ShiftTemplateRequest(BaseModel):
+    gate_id: int
+    shift_type: str
+    weekdays: str = "1111100"               # Mon–Fri by default
+    operator_num_worker: Optional[str] = None
+    manager_num_worker: Optional[str] = None
+    valid_from: Optional[date] = None        # default: today
+    valid_until: Optional[date] = None       # NULL = open-ended
+    active: bool = True
+
+
+class ShiftTemplateUpdate(BaseModel):
+    weekdays: Optional[str] = None
+    operator_num_worker: Optional[str] = None
+    manager_num_worker: Optional[str] = None
+    valid_until: Optional[date] = None
+    active: Optional[bool] = None
+
+
+def _serialize_template(t: ShiftTemplateORM) -> Dict[str, Any]:
+    return {
+        "id": t.id,
+        "gate_id": t.gate_id,
+        "gate_name": t.gate.label if t.gate else f"Gate {t.gate_id}",
+        "shift_type": t.shift_type.name,
+        "weekdays": t.weekdays,
+        "operator_num_worker": t.operator_num_worker or "",
+        "manager_num_worker": t.manager_num_worker or "",
+        "valid_from": t.valid_from.isoformat() if t.valid_from else None,
+        "valid_until": t.valid_until.isoformat() if t.valid_until else None,
+        "active": t.active,
+    }
+
+
+def _validate_weekdays(mask: str) -> None:
+    if not isinstance(mask, str) or len(mask) != 7 or any(c not in "01" for c in mask):
+        raise HTTPException(status_code=400, detail="weekdays must be a 7-char '0'/'1' mask (Mon..Sun)")
+
+
+@router.get("/shifts/templates", response_model=List[Dict[str, Any]])
+def list_shift_templates(
+    db: Annotated[Session, Depends(get_db)],
+    include_inactive: Annotated[bool, Query()] = False,
+):
+    """List recurring-shift templates (active only unless include_inactive)."""
+    q = db.query(ShiftTemplateORM).options(joinedload(ShiftTemplateORM.gate))
+    if not include_inactive:
+        q = q.filter(ShiftTemplateORM.active.is_(True))
+    rows = q.order_by(ShiftTemplateORM.gate_id, ShiftTemplateORM.shift_type).all()
+    return [_serialize_template(t) for t in rows]
+
+
+@router.post("/shifts/templates", status_code=status.HTTP_201_CREATED)
+def create_shift_template(
+    body: ShiftTemplateRequest,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Create a recurring-shift template. The scheduler expands it into Shift rows."""
+    try:
+        parsed_type = parse_shift_type(body.shift_type)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid shift_type: {body.shift_type}")
+    _validate_weekdays(body.weekdays)
+
+    gate = db.query(GateORM).filter(GateORM.id == body.gate_id, GateORM.estado == "Ativo").first()
+    if not gate:
+        raise HTTPException(status_code=404, detail=f"Gate {body.gate_id} not found or inactive")
+
+    tpl = ShiftTemplateORM(
+        gate_id=body.gate_id,
+        shift_type=parsed_type,
+        weekdays=body.weekdays,
+        operator_num_worker=body.operator_num_worker or None,
+        manager_num_worker=body.manager_num_worker or None,
+        valid_from=body.valid_from or date.today(),
+        valid_until=body.valid_until,
+        active=body.active,
+    )
+    db.add(tpl)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="A matching template already exists for this gate/type/operator/start date")
+    db.refresh(tpl)
+    db.refresh(tpl, attribute_names=["gate"])
+    return _serialize_template(tpl)
+
+
+@router.patch("/shifts/templates/{template_id}")
+def update_shift_template(
+    template_id: Annotated[int, Path()],
+    body: ShiftTemplateUpdate,
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Update a template (toggle active, change staffing, end it, edit weekdays)."""
+    tpl = db.query(ShiftTemplateORM).options(joinedload(ShiftTemplateORM.gate)).filter(ShiftTemplateORM.id == template_id).first()
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    if body.weekdays is not None:
+        _validate_weekdays(body.weekdays)
+        tpl.weekdays = body.weekdays
+    if body.operator_num_worker is not None:
+        tpl.operator_num_worker = body.operator_num_worker or None
+    if body.manager_num_worker is not None:
+        tpl.manager_num_worker = body.manager_num_worker or None
+    if body.valid_until is not None:
+        tpl.valid_until = body.valid_until
+    if body.active is not None:
+        tpl.active = body.active
+
+    db.commit()
+    db.refresh(tpl)
+    return _serialize_template(tpl)
+
+
+@router.delete("/shifts/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_shift_template(
+    template_id: Annotated[int, Path()],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Delete a template. Already-generated shifts are left untouched."""
+    tpl = db.query(ShiftTemplateORM).filter(ShiftTemplateORM.id == template_id).first()
+    if not tpl:
+        raise HTTPException(status_code=404, detail="Template not found")
+    db.delete(tpl)
+    db.commit()
+
+
+@router.post("/shifts/generate", status_code=status.HTTP_200_OK)
+def generate_shifts(
+    horizon_days: Annotated[int, Query(ge=1, le=90, description="Days ahead to materialise")] = 14,
+):
+    """Materialise concrete shifts from active templates for the next N days.
+
+    Idempotent — existing shifts are skipped. Called on-demand here and on a
+    schedule by ``scripts/shift_scheduler.py``.
+    """
+    from application.use_cases.shift_scheduler import generate_shifts_from_templates
+    return generate_shifts_from_templates(horizon_days)
 
 
 @router.post("/shifts/bulk", status_code=status.HTTP_200_OK)

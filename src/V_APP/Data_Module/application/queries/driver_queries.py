@@ -21,6 +21,7 @@ def _driver_to_dict(driver) -> Dict[str, Any]:
         "drivers_license": driver.drivers_license,
         "name": driver.name,
         "company_nif": driver.company_nif,
+        "company_name": driver.company.name if driver.company else None,
         "mobile_device_token": driver.mobile_device_token,
         "active": driver.active,
         "created_at": driver.created_at.isoformat() if driver.created_at else None,
@@ -43,7 +44,7 @@ def get_drivers(
 
     db = SessionLocal()
     try:
-        q = db.query(Driver)
+        q = db.query(Driver).options(selectinload(Driver.company))
         if only_active:
             q = q.filter(Driver.active == True)  # noqa: E712
         rows = q.offset(skip).limit(limit).all()
@@ -58,7 +59,12 @@ def get_driver_by_license(drivers_license: str) -> Optional[Dict[str, Any]]:
 
     db = SessionLocal()
     try:
-        row = db.query(Driver).filter(Driver.drivers_license == drivers_license).first()
+        row = (
+            db.query(Driver)
+            .options(selectinload(Driver.company))
+            .filter(Driver.drivers_license == drivers_license)
+            .first()
+        )
         return _driver_to_dict(row) if row else None
     finally:
         db.close()

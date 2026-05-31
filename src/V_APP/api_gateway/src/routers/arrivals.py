@@ -133,6 +133,22 @@ async def get_arrival_detail(
 
 
 # -------------------------------
+# GET: /api/arrivals/by-id/{appointment_id}
+# NOTE: Must be before /arrivals/{gate_id} (the catch-all interprets the segment
+# as a gate_id and returns a paginated list, not a single appointment).
+# -------------------------------
+@router.get("/arrivals/by-id/{appointment_id}")
+async def get_arrival_by_id(
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
+):
+    """
+    Get a single appointment by its ID.
+    Proxy to GET /api/v1/arrivals/{appointment_id}
+    """
+    return await internal_client.get(f"/arrivals/{appointment_id}")
+
+
+# -------------------------------
 # GET: /api/arrivals/query/license-plate/{license_plate}
 # NOTE: Must be before /arrivals/{gate_id}
 # -------------------------------

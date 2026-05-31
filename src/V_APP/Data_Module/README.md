@@ -161,9 +161,12 @@ Data_Module/
 ├── scripts/                         # Operations
 │   ├── simple_outbox_worker.py          Outbox relay: poll → project (Mongo+Redis)
 │   │                                    Retry: exp. backoff + jitter, DEAD_LETTER
+│   ├── shift_scheduler.py               Recurring-shift scheduler: expands active
+│   │                                    shift_template rules → concrete shifts (idempotent)
 │   ├── migrationDBv3.sql               Schema migration (BR constraints, driver_vehicle, pending_reviews)
 │   ├── migrationDBv4.sql               State-machine refactor + infraction review columns
 │   ├── migrationDBv5.sql               RGPD: appointment.driver_license → nullable
+│   ├── migrationDBv6.sql               Recurring shift templates (shift_template table)
 │   ├── triggers.sql                     PostgreSQL triggers (10 total)
 │   ├── indexes.sql                      PostgreSQL indexes (26+ total)
 │   ├── data_init_demo.py               PEI 2025 video demo data
@@ -172,7 +175,7 @@ Data_Module/
 ├── utils/                           # Utilities
 │   ├── hashing_pass.py                  bcrypt password hashing
 │   ├── rate_limit.py                    Rate limiting
-│   └── shift_utils.py                  Shift schedule parsing
+│   └── shift_utils.py                  Shift parsing + active_shift_window (midnight-aware) + shift_order_key
 │
 └── tests/                           # Test Suite (121 tests)
     ├── conftest.py                      Shared fixtures
@@ -239,7 +242,8 @@ Core entities with referential integrity, triggers, and indexes.
 | `Company` | Transport companies (NIF) |
 | `Booking` / `Cargo` | Reservations with hazmat flags |
 | `Terminal` / `Gate` / `Dock` | Port infrastructure |
-| `Shift` | Work shifts per gate |
+| `Shift` | Work shifts per gate (PK: gate_id + shift_type + date). "Active" is computed midnight-aware via `active_shift_window`. |
+| `ShiftTemplate` | Recurring-shift rule (gate, type, weekday mask, optional operator/manager, validity window). The shift scheduler (`scripts/shift_scheduler.py`) expands active templates into concrete `Shift` rows idempotently. |
 | `Alert` | Safety and operational alerts |
 | `InboxEvent` | Idempotent Kafka consumer inbox (state machine: RECEIVED → PROCESSING → PROCESSED/FAILED/DEAD_LETTER) |
 | `OutboxEvent` | Transactional outbox with retry (state machine: PENDING → PUBLISHED/FAILED/DEAD_LETTER) |
@@ -249,6 +253,8 @@ Core entities with referential integrity, triggers, and indexes.
 **Migrations:**
 - `scripts/migrationDBv3.sql` — BR constraints, `driver_vehicle` table, `pending_reviews` queue, auth session columns removal. Safe to re-run (IF NOT EXISTS guards). Date: 2026-04-21.
 - `scripts/migrationDBv4.sql` — state-machine refactor (2026-05): `delivery_status` enum (`in_port`/`unloading`/`done`, removes `not_started`); `appointment_status` enum removes legacy `unloading`/`delayed` stored values; backfill of existing rows.
+- `scripts/migrationDBv5.sql` — RGPD decoupling: `appointment.driver_license` → nullable (CSV import without driver; driver associates later via claim PIN).
+- `scripts/migrationDBv6.sql` — recurring shift templates: `shift_template` table (weekday mask, validity window, optional staffing). Safe to re-run (IF NOT EXISTS). The `shifttype` enum is created by `Base.metadata.create_all`.
 
 ### MongoDB — Event Store + CQRS Read Models
 
@@ -325,7 +331,11 @@ Core entities with referential integrity, triggers, and indexes.
 |--------|----------|-------------|
 | POST | `/workers/login` | Authentication |
 | GET | `/workers/me` | Current worker info |
-| GET | `/workers/shifts` | Shift listing |
+| GET | `/workers/shifts` | Shift listing (single `target_date` or `date_from`/`date_to` range for the calendar) |
+| GET | `/workers/shifts/active` | Shifts running now (midnight-aware) |
+| GET/POST | `/workers/shifts/templates` | List / create recurring-shift templates |
+| PATCH/DELETE | `/workers/shifts/templates/{id}` | Update / delete a template |
+| POST | `/workers/shifts/generate` | Materialise shifts from active templates (`horizon_days`) |
 
 ### Alerts
 
