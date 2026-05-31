@@ -72,19 +72,41 @@ def _date_range(from_str: Optional[str], to_str: Optional[str]):
     return start, end
 
 
+def _expected_buckets(start: datetime, end: datetime, interval: str) -> float:
+    """Approximate number of time buckets a fully-covered range should yield,
+    used to detect a sparse/stale Mongo rollup and fall back to PostgreSQL."""
+    span_seconds = max(0.0, (end - start).total_seconds())
+    if interval == "hour":
+        return max(1.0, span_seconds / 3600.0)
+    if interval == "week":
+        return max(1.0, span_seconds / (7.0 * 86400.0))
+    return max(1.0, span_seconds / 86400.0)  # day
+
+
 # ---------------------------------------------------------------------------
 # 1. GET /statistics/summary
 # ---------------------------------------------------------------------------
 
-def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
+def get_dashboard_summary(
+    target_date: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Returns enriched dashboard summary:
         { trucksInPort, trucksInTransit, scheduledCount, unloadingCount,
           completedCount, entriesCount, exitsCount,
           avgPermanenceMinutes, avgWaitingMinutes,
           delayRate, slaCompliance, infractionCount, peakHour }
+
+    Scope: a single day (``target_date`` or today) by default; pass
+    ``from_date``/``to_date`` for a period window (week/month/quarter/year) so
+    the analytics KPIs reflect the selected range.
     """
-    day_start, day_end = _today_range(target_date)
+    if from_date and to_date:
+        day_start, day_end = _date_range(from_date, to_date)
+    else:
+        day_start, day_end = _today_range(target_date)
     db: Session = SessionLocal()
     try:
         # Appointments scheduled for this day
@@ -579,7 +601,12 @@ def get_volume_data(
     # ── 1) MongoDB pre-computed collections ─────────────────────────────────
     from application.queries.statistics_queries import read_volume_from_mongo
     mongo_result = read_volume_from_mongo(start, end, interval)
-    if mongo_result is not None:
+    # The aggregator only maintains recent rollups (previous day), so for
+    # historical ranges the Mongo series can be sparse or empty. Trust it only
+    # when it adequately covers the requested range; otherwise fall through to
+    # the authoritative PostgreSQL aggregation below (so charts like the
+    # congestion trend / volume don't collapse to a single bucket).
+    if mongo_result and len(mongo_result) >= 0.5 * _expected_buckets(start, end, interval):
         return mongo_result
 
     # ── 2) PostgreSQL fallback ───────────────────────────────────────────────

@@ -32,6 +32,7 @@ from routers import (
     realtime,   # WebSockets for real-time updates
     workers,    # Operators and Managers
     statistics, # Statistics proxy for manager dashboard
+    energy,     # Energy spike telemetry proxy
 )
 from auth.keycloak_client import KeycloakClient
 from auth.token_validator import TokenValidator
@@ -166,6 +167,10 @@ class APIGateway:
             if license_plate and license_plate != "N/A":
                 self._notify_driver_of_acceptance(license_plate)
 
+        # A scale_up is an energy spike — persist it (timestamped) for the energy graph.
+        if message_type == "scale_network" and payload.get("mode") == "scale_up":
+            self._record_energy_spike_async(target_gate, payload)
+
     def _consumer_loop(self):
         """Consume from Kafka, process, and send via a unified WebSocket channel."""
         logger.info(f"[Consumer thread] Listening on topics: {self.consume_topics}")
@@ -221,6 +226,28 @@ class APIGateway:
             self.ws_manager.broadcast(target_gates, message),
             self._loop,
         )
+
+    def _record_energy_spike_async(self, gate_id: str, payload: dict):
+        """Schedule a fire-and-forget POST of the energy spike to the Data Module."""
+        asyncio.run_coroutine_threadsafe(
+            self._record_energy_spike(gate_id, payload),
+            self._loop,
+        )
+
+    async def _record_energy_spike(self, gate_id: str, payload: dict):
+        """Persist a scale_up spike in the Data Module (telemetry, best-effort)."""
+        from clients import internal_api_client as internal_client
+        try:
+            await internal_client.post("/energy/spikes", json={
+                "gate_id": int(gate_id),
+                # No real kW metric exists yet — store the high-power target so the
+                # graph can plot the spike height; timestamp is the source of truth.
+                "value": float(payload.get("value", 1.83)),
+                "mode": "scale_up",
+                "timestamp": payload.get("timestamp"),
+            })
+        except Exception as e:
+            logger.warning(f"Failed to record energy spike for gate {gate_id}: {e}")
 
     def _notify_driver_of_infraction(self, license_plate: str, gate_id: str):
         """Resolve driver_license from license plate and broadcast infraction_warning to the driver WS."""
@@ -364,6 +391,7 @@ class APIGateway:
         app.include_router(media.router, prefix=self.config.api_prefix)
         app.include_router(workers.router, prefix=self.config.api_prefix)
         app.include_router(statistics.router, prefix=self.config.api_prefix)
+        app.include_router(energy.router, prefix=self.config.api_prefix)
         app.include_router(realtime.router, prefix=self.config.api_prefix)
 
         @app.get("/health", tags=["health"])

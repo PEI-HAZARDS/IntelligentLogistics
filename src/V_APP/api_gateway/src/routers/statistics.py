@@ -20,6 +20,8 @@ router = APIRouter(tags=["statistics"], dependencies=[Depends(require_role("mana
 @router.get("/statistics/summary")
 async def manager_dashboard_summary(
     date: Annotated[Optional[str], Query(description="Date (YYYY-MM-DD)")] = None,
+    from_date: Annotated[Optional[str], Query(alias="from", description="Range start (YYYY-MM-DD)")] = None,
+    to_date: Annotated[Optional[str], Query(alias="to", description="Range end (YYYY-MM-DD)")] = None,
 ):
     """
     Combined summary for manager dashboard.
@@ -28,10 +30,16 @@ async def manager_dashboard_summary(
         completedCount, entriesCount, exitsCount,
         avgPermanenceMinutes, avgWaitingMinutes,
         delayRate, slaCompliance, infractionCount, peakHour }
+
+    Pass ``from``/``to`` for period-scoped KPIs (analytics views).
     """
     params = {}
     if date:
         params["date"] = date
+    if from_date:
+        params["from"] = from_date
+    if to_date:
+        params["to"] = to_date
 
     try:
         result = await internal_client.get("/statistics/summary", params=params)

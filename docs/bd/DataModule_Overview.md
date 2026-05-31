@@ -41,6 +41,8 @@ Stores all transactional state with referential integrity. Key tables:
 | `terminal` / `gate` / `dock` | Port infrastructure |
 | `shift` | Work shifts per gate |
 | `alert` | Safety and operational alerts |
+| `driver_vehicle` | Driver↔truck assignment history (M:N, temporal) — `start_date`/`end_date`, `UNIQUE(driver, truck, start_date)` (BR-52) |
+| `pending_reviews` | Durable operator review queue (`event_id` UUID PK; PENDING → APPROVED/REJECTED) (PD-01) |
 | `inbox_events` | Kafka consumer inbox (RECEIVED → PROCESSING → PROCESSED/FAILED/DEAD_LETTER) |
 | `outbox_events` | Transactional outbox (PENDING → PUBLISHED/FAILED/DEAD_LETTER) |
 
@@ -167,6 +169,6 @@ Highway Camera → AgentC (hazmat detection) → Decision Engine
 - **Relational schema:** `docs/bd/Relacional/Base_Dados_relacional.md`
 - **Non-relational schema:** `docs/bd/Nao_Relacional/`
 - **ER diagrams:** `docs/bd/Relacional/*.drawio`
-- **Domain model:** `docs/bd/domain_model.png`
+- **Domain model:** `docs/bd/domain_model.md` (Mermaid erDiagram)
 - **Refactor plan:** `docs/elaboration/data_module_refactor_plan.md`
 - **Architecture guardrails:** `CLAUDE.md` (11 guardrails governing the refactor)
