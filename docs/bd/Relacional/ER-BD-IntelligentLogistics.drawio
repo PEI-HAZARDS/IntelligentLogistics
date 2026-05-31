@@ -426,6 +426,47 @@
                         </Array>
                     </mxGeometry>
                 </mxCell>
+                <!-- ===== Appointment: atributos adicionados (v4/v5) ===== -->
+                <mxCell id="310" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Highway_infraction&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="772" y="59" width="120" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="311" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Version&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="892" y="59" width="70" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="312" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Reviewed_at&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="962" y="59" width="90" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="313" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Reviewed_by&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="1052" y="59" width="90" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="314" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Review_note&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="1142" y="59" width="90" height="20" as="geometry"/>
+                </mxCell>
+                <!-- ===== Driver_Vehicle (M:N Condutor x Camião, histórico — BR-52) ===== -->
+                <mxCell id="300" value="&lt;font style=&quot;font-size: 14px;&quot;&gt;Driver_Vehicle&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" parent="1" vertex="1">
+                    <mxGeometry x="460" y="820" width="120" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="301" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;&lt;u&gt;Id (PK)&lt;/u&gt;&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="460" y="850" width="60" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="302" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Drivers_License (FK)&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="520" y="850" width="130" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="303" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Truck_License_Plate (FK)&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="650" y="850" width="150" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="304" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;Start_date&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="800" y="850" width="80" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="305" value="&lt;font style=&quot;font-size: 11px;&quot;&gt;End_date&lt;/font&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+                    <mxGeometry x="880" y="850" width="70" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="306" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="302" target="34">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="307" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" parent="1" source="303" target="2">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
             </root>
         </mxGraphModel>
     </diagram>
