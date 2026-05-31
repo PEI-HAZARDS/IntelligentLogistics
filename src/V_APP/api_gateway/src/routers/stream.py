@@ -94,7 +94,7 @@ def _rewrite_session_location(
     return f"{prefix}/stream/{gate_id}/{quality}/whep/sessions/{session_id}"
 
 
-@router.get("/stream/{gate_id}/low")
+@router.get("/stream/{gate_id}/low", responses={404: {"description": "Unknown gate"}})
 async def get_low_stream(
     gate_id: str,
     api_prefix: Annotated[str, Depends(get_api_prefix)],
@@ -109,7 +109,7 @@ async def get_low_stream(
     }
 
 
-@router.get("/stream/{gate_id}/high")
+@router.get("/stream/{gate_id}/high", responses={404: {"description": "Unknown gate"}})
 async def get_high_stream(
     gate_id: str,
     api_prefix: Annotated[str, Depends(get_api_prefix)],
@@ -124,7 +124,7 @@ async def get_high_stream(
     }
 
 
-@router.get("/stream/{gate_id}/{quality}/hls/{path:path}")
+@router.get("/stream/{gate_id}/{quality}/hls/{path:path}", responses={400: {"description": "Invalid HLS path"}, 404: {"description": "Unknown gate or quality"}, 502: {"description": "MediaMTX unreachable"}})
 async def hls_proxy(
     gate_id: str,
     quality: str,
@@ -193,7 +193,7 @@ async def hls_proxy(
     )
 
 
-@router.post("/stream/{gate_id}/{quality}/whep")
+@router.post("/stream/{gate_id}/{quality}/whep", responses={404: {"description": "Unknown gate or quality"}, 502: {"description": "MediaMTX unreachable"}})
 async def whep_create(
     gate_id: str,
     quality: str,
@@ -240,7 +240,7 @@ async def whep_create(
     )
 
 
-@router.patch("/stream/{gate_id}/{quality}/whep/sessions/{session_id}")
+@router.patch("/stream/{gate_id}/{quality}/whep/sessions/{session_id}", responses={400: {"description": "Invalid session ID"}, 404: {"description": "Unknown gate or quality"}, 502: {"description": "MediaMTX unreachable"}})
 async def whep_patch(
     gate_id: str,
     quality: str,
@@ -275,7 +275,7 @@ async def whep_patch(
     return Response(content=upstream.content, status_code=upstream.status_code)
 
 
-@router.delete("/stream/{gate_id}/{quality}/whep/sessions/{session_id}")
+@router.delete("/stream/{gate_id}/{quality}/whep/sessions/{session_id}", responses={400: {"description": "Invalid session ID"}, 404: {"description": "Unknown gate or quality"}, 502: {"description": "MediaMTX unreachable"}})
 async def whep_delete(
     gate_id: str,
     quality: str,

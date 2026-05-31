@@ -58,7 +58,7 @@ def get_minio_client(request: Request) -> Minio:
     return client
 
 
-@router.get("/media/{bucket}/{key:path}")
+@router.get("/media/{bucket}/{key:path}", responses={404: {"description": "Unknown bucket or object not found"}, 502: {"description": "MinIO unreachable or S3 error"}})
 async def media_proxy(
     bucket: str,
     key: str,

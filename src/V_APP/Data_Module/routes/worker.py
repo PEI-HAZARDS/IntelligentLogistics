@@ -115,7 +115,7 @@ class ShiftUpdateRequest(BaseModel):
 
 # ==================== AUTH ENDPOINTS ====================
 
-@router.post("/login", response_model=WorkerLoginResponse)
+@router.post("/login", response_model=WorkerLoginResponse, responses={401: {"description": "Invalid credentials or account deactivated"}})
 def login(credentials: WorkerLoginRequest):
     """
     Worker login (operator or manager).
@@ -155,7 +155,7 @@ def login(credentials: WorkerLoginRequest):
 
 # ==================== PROFILE LOOKUP (used by API Gateway auth router) ====================
 
-@router.get("/by-email/{email}")
+@router.get("/by-email/{email}", responses={404: {"description": "Worker not found or deactivated"}})
 def get_worker_by_email(email: Annotated[str, Path(description="Worker email")]):
     """
     Look up a worker profile by email (no password check).
@@ -329,7 +329,7 @@ def list_gates(db: Annotated[Session, Depends(get_db)]):
 
 # ==================== SHIFT CRUD ====================
 
-@router.post("/shifts", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+@router.post("/shifts", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED, responses={400: {"description": "Invalid shift_type"}, 404: {"description": "Gate not found or inactive"}, 409: {"description": "Shift already exists or operator already assigned"}})
 def create_shift(
     body: ShiftCreateRequest,
     db: Annotated[Session, Depends(get_db)],
@@ -402,7 +402,7 @@ def create_shift(
     }
 
 
-@router.put("/shifts/{gate_id}/{shift_type}/{shift_date}", response_model=Dict[str, Any])
+@router.put("/shifts/{gate_id}/{shift_type}/{shift_date}", response_model=Dict[str, Any], responses={400: {"description": "Invalid shift_type"}, 404: {"description": "Shift not found"}, 409: {"description": "Operator already assigned to another shift on this date"}})
 def update_shift(
     gate_id: Annotated[int, Path()],
     shift_type: Annotated[str, Path()],
@@ -470,7 +470,7 @@ def update_shift(
     }
 
 
-@router.delete("/shifts/{gate_id}/{shift_type}/{shift_date}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/shifts/{gate_id}/{shift_type}/{shift_date}", status_code=status.HTTP_204_NO_CONTENT, responses={400: {"description": "Invalid shift_type"}, 404: {"description": "Shift not found"}, 409: {"description": "Cannot delete an active shift"}})
 def delete_shift(
     gate_id: Annotated[int, Path()],
     shift_type: Annotated[str, Path()],
@@ -554,7 +554,7 @@ def list_shift_templates(
     return [_serialize_template(t) for t in rows]
 
 
-@router.post("/shifts/templates", status_code=status.HTTP_201_CREATED)
+@router.post("/shifts/templates", status_code=status.HTTP_201_CREATED, responses={400: {"description": "Invalid shift_type or weekdays mask"}, 404: {"description": "Gate not found or inactive"}, 409: {"description": "Matching template already exists"}})
 def create_shift_template(
     body: ShiftTemplateRequest,
     db: Annotated[Session, Depends(get_db)],
@@ -591,7 +591,7 @@ def create_shift_template(
     return _serialize_template(tpl)
 
 
-@router.patch("/shifts/templates/{template_id}")
+@router.patch("/shifts/templates/{template_id}", responses={400: {"description": "Invalid weekdays mask"}, 404: {"description": "Template not found"}})
 def update_shift_template(
     template_id: Annotated[int, Path()],
     body: ShiftTemplateUpdate,
@@ -619,7 +619,7 @@ def update_shift_template(
     return _serialize_template(tpl)
 
 
-@router.delete("/shifts/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/shifts/templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT, responses={404: {"description": "Template not found"}})
 def delete_shift_template(
     template_id: Annotated[int, Path()],
     db: Annotated[Session, Depends(get_db)],
@@ -645,7 +645,7 @@ def generate_shifts(
     return generate_shifts_from_templates(horizon_days)
 
 
-@router.post("/shifts/bulk", status_code=status.HTTP_200_OK)
+@router.post("/shifts/bulk", status_code=status.HTTP_200_OK, responses={400: {"description": "File not UTF-8 encoded or missing required CSV columns"}})
 def bulk_create_shifts(
     file: Annotated[UploadFile, File(description="CSV: gate_id,shift_type,date,operator_num_worker,manager_num_worker")],
     db: Annotated[Session, Depends(get_db)],
@@ -990,7 +990,7 @@ def get_worker(
 _worker_claims = require_role("operator", "manager")
 
 
-@router.post("/password", status_code=status.HTTP_200_OK)
+@router.post("/password", status_code=status.HTTP_200_OK, responses={401: {"description": "Current password is incorrect"}, 404: {"description": "Worker not found"}})
 def change_password(
     request: UpdatePasswordRequest,
     claims: Annotated[dict, Depends(_worker_claims)],
