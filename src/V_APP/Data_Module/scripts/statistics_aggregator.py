@@ -15,10 +15,17 @@ Per cycle (triggered by the previous completed hour):
 Usage:
     python scripts/statistics_aggregator.py
 
+On startup it also backfills statistics_daily/statistics_hourly for a historical
+window (idempotent) so the volume / congestion-trend / heatmap / occupancy charts
+have a full series from the first request — not just yesterday's rollup.
+
 Environment variables:
-    GATE_ID                      — single gate id (fallback when AGGREGATOR_GATE_IDS absent)
-    AGGREGATOR_GATE_IDS          — JSON array of gate ids, e.g. '["1","2","3"]'
-    AGGREGATOR_INTERVAL_SECONDS  — poll interval (default: 3600)
+    GATE_ID                          — single gate id (fallback when AGGREGATOR_GATE_IDS absent)
+    AGGREGATOR_GATE_IDS              — JSON array of gate ids, e.g. '["1","2","3"]'
+    AGGREGATOR_INTERVAL_SECONDS      — poll interval (default: 3600)
+    AGGREGATOR_BACKFILL              — run the startup backfill (default: "true")
+    AGGREGATOR_BACKFILL_DAILY_DAYS   — daily backfill horizon (default: 400)
+    AGGREGATOR_BACKFILL_HOURLY_DAYS  — hourly backfill horizon (default: 14)
 """
 
 import json
@@ -41,6 +48,7 @@ from application.queries.statistics_queries import (
 )
 from application.queries.manager_statistics_queries import compute_company_metrics_snapshot
 from infrastructure.persistence.postgres import SessionLocal
+from infrastructure.persistence.mongo import statistics_daily_collection
 from config import settings
 
 # ── Logging ─────────────────────────────────────────────────────
@@ -53,6 +61,9 @@ logger = logging.getLogger("statistics_aggregator")
 
 # ── Configuration ────────────────────────────────────────────────
 INTERVAL_SECONDS = int(os.getenv("AGGREGATOR_INTERVAL_SECONDS", "3600"))
+BACKFILL_ENABLED = os.getenv("AGGREGATOR_BACKFILL", "true").lower() == "true"
+BACKFILL_DAILY_DAYS = int(os.getenv("AGGREGATOR_BACKFILL_DAILY_DAYS", "400"))
+BACKFILL_HOURLY_DAYS = int(os.getenv("AGGREGATOR_BACKFILL_HOURLY_DAYS", "14"))
 
 _shutdown_requested = False
 
@@ -109,6 +120,76 @@ def _run_daily(gate_ids: list[int], prev_day: datetime, db) -> None:
             logger.exception("Daily stats failed for gate=%s", gate_id)
 
 
+def backfill(gate_ids: list[int]) -> None:
+    """Idempotently populate statistics_daily/hourly for the historical window.
+
+    Entry/exit counts come straight from PostgreSQL (both compute functions
+    accept a ``pg_session``), so the daily/hourly volume series is accurate for
+    past dates even though no Mongo hourly source docs exist for them. Without
+    this, the rollups only contain "yesterday" and the volume / congestion /
+    heatmap / occupancy charts collapse to a single bucket.
+
+    Skipped when the daily collection already covers the window (cheap restarts).
+    """
+    if not BACKFILL_ENABLED:
+        logger.info("Backfill disabled (AGGREGATOR_BACKFILL=false)")
+        return
+
+    now = datetime.now(timezone.utc)
+    # Coverage guard: each backfilled day upserts one doc per gate, so a populated
+    # window has ~ BACKFILL_DAILY_DAYS × gates docs. Skip if already covered.
+    try:
+        existing = statistics_daily_collection.count_documents(
+            {"day_bucket": {"$gte": now - timedelta(days=BACKFILL_DAILY_DAYS)}}
+        )
+        expected = BACKFILL_DAILY_DAYS * len(gate_ids)
+        if expected and existing >= 0.9 * expected:
+            logger.info("Backfill skipped — statistics_daily already covers the window (%d docs)", existing)
+            return
+    except Exception:
+        logger.exception("Backfill coverage check failed — proceeding with backfill")
+
+    logger.info(
+        "Backfill starting — daily=%d day(s), hourly=%d day(s), gates=%s (idempotent)",
+        BACKFILL_DAILY_DAYS, BACKFILL_HOURLY_DAYS, gate_ids,
+    )
+    db = SessionLocal()
+    days_done = hours_done = 0
+    try:
+        # Daily rollups — covers month/quarter/year volume + congestion trend.
+        for i in range(1, BACKFILL_DAILY_DAYS + 1):
+            if _shutdown_requested:
+                break
+            day = now - timedelta(days=i)
+            for gate_id in gate_ids:
+                try:
+                    compute_daily_statistics(gate_id, day, pg_session=db)
+                except Exception:
+                    logger.exception("backfill daily failed gate=%s day=%s", gate_id, day.date())
+            days_done += 1
+
+        # Hourly rollups — recent days only (feeds the weekly heatmap + occupancy).
+        for d in range(1, BACKFILL_HOURLY_DAYS + 1):
+            if _shutdown_requested:
+                break
+            base = now - timedelta(days=d)
+            for h in range(24):
+                hour = base.replace(hour=h, minute=0, second=0, microsecond=0)
+                for gate_id in gate_ids:
+                    try:
+                        compute_hourly_statistics(gate_id, hour, pg_session=db)
+                    except Exception:
+                        logger.exception("backfill hourly failed gate=%s hour=%s", gate_id, hour)
+                hours_done += 1
+    finally:
+        db.close()
+
+    logger.info(
+        "Backfill complete — %d day(s) and %d hour(s) per gate (%d gate(s))",
+        days_done, hours_done, len(gate_ids),
+    )
+
+
 def run_cycle(gate_ids: list[int], hour_timestamp: datetime | None = None) -> dict:
     """Run one aggregation pass for all gates. Returns summary dict."""
     results: dict = {"ok": [], "failed": []}
@@ -142,6 +223,9 @@ def main() -> None:
         "Statistics Aggregator started — gates=%s  interval=%ds",
         gate_ids, INTERVAL_SECONDS,
     )
+
+    # One-time historical backfill so charts have a full series immediately.
+    backfill(gate_ids)
 
     # Run immediately on startup for the previous completed hour
     prev_hour = datetime.now(timezone.utc) - timedelta(hours=1)
