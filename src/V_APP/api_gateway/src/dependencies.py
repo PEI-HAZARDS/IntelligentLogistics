@@ -30,6 +30,11 @@ def get_api_prefix(request: Request) -> str:
     return request.app.state.api_prefix
 
 
+def get_allowed_gate_ids(request: Request) -> set[str]:
+    """FastAPI dependency — server-configured set of valid gate IDs."""
+    return request.app.state.allowed_gate_ids
+
+
 def get_data_module_url(request: Request) -> str:
     """FastAPI dependency — retrieves the Data Module URL from app.state."""
     return request.app.state.data_module_url

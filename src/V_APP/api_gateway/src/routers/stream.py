@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Annotated
 from urllib.parse import urlparse
 
@@ -8,6 +9,7 @@ from fastapi.responses import StreamingResponse  # type: ignore
 
 from dependencies import (
     get_api_prefix,
+    get_allowed_gate_ids,
     get_mediamtx_hls_internal_url,
     get_mediamtx_webrtc_internal_url,
 )
@@ -19,6 +21,44 @@ router = APIRouter(tags=["stream"], dependencies=[Depends(require_role("operator
 
 # httpx default timeout — generous because MediaMTX needs to negotiate ICE.
 _WHEP_TIMEOUT = httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=5.0)
+
+# Allowlist for quality values — exhaustive, server-defined.
+_ALLOWED_QUALITIES = frozenset({"low", "high"})
+
+# Safe characters for HLS sub-path segments: alphanumeric, slash, dot, hyphen, underscore.
+_SAFE_HLS_PATH_RE = re.compile(r"^[A-Za-z0-9/_.\-]+$")
+
+# Safe characters for a WHEP session ID (UUID-like or MediaMTX token).
+_SAFE_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
+
+
+def _validate_gate_id(gate_id: str, allowed_gate_ids: set[str]) -> None:
+    """Raise 404 if gate_id is not in the server-configured allowlist.
+
+    The URL convention uses the prefix 'gate' (e.g. 'gate1'), while GATE_IDS
+    stores plain numeric strings (e.g. '1').  Strip the prefix before comparing.
+    """
+    numeric_id = gate_id.removeprefix("gate")
+    if numeric_id not in allowed_gate_ids:
+        raise HTTPException(status_code=404, detail="unknown gate")
+
+
+def _validate_quality(quality: str) -> None:
+    """Raise 404 if quality is not an allowed value."""
+    if quality not in _ALLOWED_QUALITIES:
+        raise HTTPException(status_code=404, detail="unknown quality")
+
+
+def _validate_hls_path(path: str) -> None:
+    """Raise 400 if the HLS sub-path contains characters outside the safe set."""
+    if not path or not _SAFE_HLS_PATH_RE.match(path):
+        raise HTTPException(status_code=400, detail="invalid path")
+
+
+def _validate_session_id(session_id: str) -> None:
+    """Raise 400 if the session ID contains characters outside the safe set."""
+    if not session_id or not _SAFE_SESSION_ID_RE.match(session_id):
+        raise HTTPException(status_code=400, detail="invalid session id")
 
 
 def _build_hls_url(api_prefix: str, gate_id: str, quality: str) -> str:
@@ -47,6 +87,9 @@ def _rewrite_session_location(
     session_id = path.rstrip("/").rsplit("/", 1)[-1]
     if not session_id:
         return None
+    # Only rewrite if the extracted session_id is safe; otherwise drop it.
+    if not _SAFE_SESSION_ID_RE.match(session_id):
+        return None
     prefix = api_prefix.rstrip("/")
     return f"{prefix}/stream/{gate_id}/{quality}/whep/sessions/{session_id}"
 
@@ -55,7 +98,9 @@ def _rewrite_session_location(
 async def get_low_stream(
     gate_id: str,
     api_prefix: Annotated[str, Depends(get_api_prefix)],
+    allowed_gate_ids: Annotated[set[str], Depends(get_allowed_gate_ids)],
 ):
+    _validate_gate_id(gate_id, allowed_gate_ids)
     return {
         "gate_id": gate_id,
         "quality": "low",
@@ -68,7 +113,9 @@ async def get_low_stream(
 async def get_high_stream(
     gate_id: str,
     api_prefix: Annotated[str, Depends(get_api_prefix)],
+    allowed_gate_ids: Annotated[set[str], Depends(get_allowed_gate_ids)],
 ):
+    _validate_gate_id(gate_id, allowed_gate_ids)
     return {
         "gate_id": gate_id,
         "quality": "high",
@@ -84,16 +131,22 @@ async def hls_proxy(
     path: str,
     request: Request,
     hls_url: Annotated[str, Depends(get_mediamtx_hls_internal_url)],
+    allowed_gate_ids: Annotated[set[str], Depends(get_allowed_gate_ids)],
 ):
     """Proxy HLS playlists and segments from MediaMTX. Auth enforced by router-level role check."""
-    if quality not in ("low", "high"):
-        raise HTTPException(status_code=404, detail="unknown quality")
+    _validate_gate_id(gate_id, allowed_gate_ids)
+    _validate_quality(quality)
+    _validate_hls_path(path)
 
-    target = f"{hls_url.rstrip('/')}/streams_{quality}/{gate_id}/{path}"
+    # All components are now validated — safe to construct the upstream URL.
+    base = hls_url.rstrip("/")
+    target = f"{base}/streams_{quality}/{gate_id}/{path}"
+
     # Preserve query string — LL-HLS variants and partial segments carry session ids
     # plus _HLS_msn / _HLS_part flags that MediaMTX needs to honor.
     if request.url.query:
         target = f"{target}?{request.url.query}"
+
     upstream_headers: dict[str, str] = {}
     range_hdr = request.headers.get("range")
     if range_hdr:
@@ -147,13 +200,16 @@ async def whep_create(
     request: Request,
     mediamtx_url: Annotated[str, Depends(get_mediamtx_webrtc_internal_url)],
     api_prefix: Annotated[str, Depends(get_api_prefix)],
+    allowed_gate_ids: Annotated[set[str], Depends(get_allowed_gate_ids)],
 ):
     """Create a WHEP session — proxies the SDP offer to MediaMTX and rewrites Location."""
-    if quality not in ("low", "high"):
-        raise HTTPException(status_code=404, detail="unknown quality")
+    _validate_gate_id(gate_id, allowed_gate_ids)
+    _validate_quality(quality)
 
     body = await request.body()
     content_type = request.headers.get("content-type", "application/sdp")
+
+    # All components are now validated — safe to construct the upstream URL.
     target = f"{mediamtx_url.rstrip('/')}/streams_{quality}/{gate_id}/whep"
 
     try:
@@ -191,14 +247,18 @@ async def whep_patch(
     session_id: str,
     request: Request,
     mediamtx_url: Annotated[str, Depends(get_mediamtx_webrtc_internal_url)],
+    allowed_gate_ids: Annotated[set[str], Depends(get_allowed_gate_ids)],
 ):
     """Trickle ICE — proxy PATCH to MediaMTX session."""
-    if quality not in ("low", "high"):
-        raise HTTPException(status_code=404, detail="unknown quality")
+    _validate_gate_id(gate_id, allowed_gate_ids)
+    _validate_quality(quality)
+    _validate_session_id(session_id)
 
     body = await request.body()
     content_type = request.headers.get("content-type", "application/trickle-ice-sdpfrag")
     if_match = request.headers.get("if-match")
+
+    # All components are now validated — safe to construct the upstream URL.
     target = f"{mediamtx_url.rstrip('/')}/streams_{quality}/{gate_id}/whep/{session_id}"
 
     headers = {"Content-Type": content_type}
@@ -221,12 +281,16 @@ async def whep_delete(
     quality: str,
     session_id: str,
     mediamtx_url: Annotated[str, Depends(get_mediamtx_webrtc_internal_url)],
+    allowed_gate_ids: Annotated[set[str], Depends(get_allowed_gate_ids)],
 ):
     """Terminate a WHEP session."""
-    if quality not in ("low", "high"):
-        raise HTTPException(status_code=404, detail="unknown quality")
+    _validate_gate_id(gate_id, allowed_gate_ids)
+    _validate_quality(quality)
+    _validate_session_id(session_id)
 
+    # All components are now validated — safe to construct the upstream URL.
     target = f"{mediamtx_url.rstrip('/')}/streams_{quality}/{gate_id}/whep/{session_id}"
+
     try:
         async with httpx.AsyncClient(timeout=_WHEP_TIMEOUT, follow_redirects=False) as client:
             upstream = await client.delete(target)

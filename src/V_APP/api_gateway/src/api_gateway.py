@@ -358,6 +358,7 @@ class APIGateway:
             "secure": _parsed.scheme == "https",
         }
         app.state.api_prefix = self.config.api_prefix
+        app.state.allowed_gate_ids = set(self.config.gate_id_list)
 
         # Keycloak
         app.state.keycloak_client = KeycloakClient(

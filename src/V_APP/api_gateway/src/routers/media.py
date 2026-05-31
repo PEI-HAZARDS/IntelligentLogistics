@@ -75,10 +75,10 @@ async def media_proxy(
     except S3Error as exc:
         if exc.code in ("NoSuchKey", "NoSuchBucket"):
             raise HTTPException(status_code=404, detail="not found") from exc
-        logger.warning("MinIO S3Error bucket=%s key=%s code=%s", bucket, key, exc.code)
+        logger.warning("MinIO S3Error")
         raise HTTPException(status_code=502, detail="minio error") from exc
     except Exception as exc:
-        logger.error("MinIO get_object failed bucket=%s key=%s: %s", bucket, key, exc)
+        logger.error("MinIO get_object failed")
         raise HTTPException(status_code=502, detail="minio unreachable") from exc
 
     content_type = response.headers.get("Content-Type", "application/octet-stream")
