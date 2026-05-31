@@ -95,7 +95,7 @@ class BaseGatewayConfig(BaseSettings):
     
     # Gateway specific configuration
     gateway_port: int = Field(default=8000)
-    gateway_host: str = Field(default="0.0.0.0")
+    gateway_host: str = Field(default="0.0.0.0")  # nosec B104 – configurable via env var
     receivers: list[str] = Field(default=[""])  # List of receiver gateway addresses (ip:port)
 
 class BaseGateway(ABC):

@@ -225,7 +225,7 @@ def load_and_log_model(framework: str, model_path: str, artifact_path: str, regi
     elif framework == "pytorch":
         import torch
         print(f"  Loading PyTorch model from: {model_path}")
-        model = torch.load(model_path, map_location="cpu", weights_only=False)
+        model = torch.load(model_path, map_location="cpu", weights_only=True)
         mlflow.pytorch.log_model(
             pytorch_model=model,
             artifact_path=artifact_path,

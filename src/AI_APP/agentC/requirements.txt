@@ -9,7 +9,7 @@ boto3>=1.34.0
 
 # Prometheus metrics
 prometheus_client
-pillow==12.0.0
+pillow==12.2.0
 numpy
 minio
 # paddlepaddle-gpu installed separately in Dockerfile from PaddlePaddle's index

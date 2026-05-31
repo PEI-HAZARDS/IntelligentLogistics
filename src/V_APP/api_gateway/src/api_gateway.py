@@ -49,6 +49,7 @@ class APIGatewayConfig(BaseSettings):
     decision_gate_ids: str = Field(default=DEFAULT_GATE_IDS)   # Inbound/Entry gates
     infraction_gate_ids: str = Field(default=DEFAULT_GATE_IDS) # Highway/Approach gates
     gateway_port: int = Field(default=8000)
+    gateway_host: str = Field(default="0.0.0.0")  # nosec B104 – configurable via env var
     data_module_url: str = Field(default="http://data-module:8000")
     mediamtx_webrtc_internal_url: str = Field(default="http://mediamtx:8889")
     mediamtx_hls_internal_url: str = Field(default="http://mediamtx:8888")
@@ -417,7 +418,7 @@ class APIGateway:
         self._consumer_thread.start()
 
         try:
-            config = uvicorn.Config(self.app, host="0.0.0.0", port=self.config.gateway_port, loop="asyncio")
+            config = uvicorn.Config(self.app, host=self.config.gateway_host, port=self.config.gateway_port, loop="asyncio")
             server = uvicorn.Server(config)
             self._loop.run_until_complete(server.serve())
         except KeyboardInterrupt:

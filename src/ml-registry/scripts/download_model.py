@@ -13,7 +13,7 @@ class MLflowSettings(BaseSettings):
     s3_endpoint_url: str = Field(default="http://localhost:9000", alias="MLFLOW_S3_ENDPOINT_URL")
     aws_access_key_id: str = Field(default="minioadmin", alias="AWS_ACCESS_KEY_ID")
     aws_secret_access_key: str = Field(default="change_me_minio", alias="AWS_SECRET_ACCESS_KEY")
-    model_cache_dir: str = Field(default="/tmp/model_cache", alias="MODEL_CACHE_DIR")
+    model_cache_dir: str = Field(default="/tmp/model_cache", alias="MODEL_CACHE_DIR")  # nosec B108
 
     model_config = {"populate_by_name": True}
 
