@@ -2,6 +2,7 @@ import json
 import logging
 import threading
 import asyncio
+from datetime import datetime, timezone
 import httpx
 from web_socket_manager import WebSocketManager
 from shared.src.kafka_wrapper import KafkaConsumerWrapper, KafkaProducerWrapper
@@ -245,10 +246,27 @@ class APIGateway:
                 # graph can plot the spike height; timestamp is the source of truth.
                 "value": float(payload.get("value", 1.83)),
                 "mode": "scale_up",
-                "timestamp": payload.get("timestamp"),
+                # Kafka Message timestamps are epoch-milliseconds (int); the Data
+                # Module expects ISO-8601, so translate here. Sending the raw int
+                # would fail body validation (422) and the spike would be dropped.
+                "timestamp": self._spike_timestamp_iso(payload.get("timestamp")),
             })
         except Exception as e:
             logger.warning(f"Failed to record energy spike for gate {gate_id}: {e}")
+
+    @staticmethod
+    def _spike_timestamp_iso(raw) -> str | None:
+        """Normalise a Kafka message timestamp (epoch-ms int) to an ISO-8601 string."""
+        if isinstance(raw, bool):
+            return None
+        if isinstance(raw, (int, float)):
+            # Heuristic: values past ~year 2001 in seconds are < 1e12; our
+            # Message timestamps are milliseconds (> 1e12), so scale them down.
+            seconds = raw / 1000.0 if raw > 1e12 else float(raw)
+            return datetime.fromtimestamp(seconds, tz=timezone.utc).isoformat()
+        if isinstance(raw, str) and raw:
+            return raw
+        return None
 
     def _notify_driver_of_infraction(self, license_plate: str, gate_id: str):
         """Resolve driver_license from license plate and broadcast infraction_warning to the driver WS."""
@@ -272,11 +290,28 @@ class APIGateway:
                 logger.warning(f"No appointments found for plate {license_plate} (infraction)")
                 return
 
-            appointment = appointments[0]
+            # Select the SAME appointment the Data Module flags
+            # (decision_queries.update_appointment_after_infraction): the active
+            # trip (in_transit/in_process), latest scheduled. The query returns
+            # every appointment for the plate today ordered ascending, so picking
+            # appointments[0] would lock onto an older, already-flagged trip and
+            # suppress the warning for every new appointment of the same truck.
+            active = [a for a in appointments if a.get("status") in ("in_transit", "in_process")]
+            pool = active or appointments
+            appointment = max(pool, key=lambda a: (a.get("scheduled_start_time") or "", a.get("id") or 0))
             driver_license = appointment.get("driver_license")
 
             if not driver_license:
                 logger.warning(f"No driver_license on appointment for plate {license_plate} (infraction)")
+                return
+
+            # Only warn on the transition into infraction. Once this appointment is
+            # already flagged (highway_infraction=True), the warning was already sent —
+            # stop re-broadcasting so the driver popup doesn't keep reappearing.
+            if appointment.get("highway_infraction") is True:
+                logger.info(
+                    f"Appointment for plate {license_plate} already flagged as infraction — skipping driver warning"
+                )
                 return
 
             ws_payload = {

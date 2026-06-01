@@ -485,10 +485,12 @@ def bulk_import_arrivals(
     Optional columns:
       scheduled_start_time (ISO-8601), expected_duration (minutes), notes,
       direction (inbound|outbound, default: inbound),
+      gate_label (entry gate, e.g. 'Portaria 1' — needed for the appointment to
+        appear on that gate operator's dashboard),
       cargo_description, cargo_type (liquid|solid|gaseous|hybrid), cargo_quantity (decimal)
 
     Booking references are auto-generated (CSV-XXXXXXXX format).
-    Terminals are looked up by name (case-insensitive).
+    Terminals are looked up by name (case-insensitive); gates by label (case-insensitive, active only).
 
     Returns: { created, skipped, errors: [{row, reason}] }
     """
@@ -513,6 +515,7 @@ def bulk_import_arrivals(
     from infrastructure.persistence.sql_models import (
         Appointment as AppointmentORM,
         Booking as BookingORM,
+        Gate as GateORM,
         Truck as TruckORM,
         Terminal as TerminalORM,
     )
@@ -540,6 +543,35 @@ def bulk_import_arrivals(
             errors.append({"row": row_num, "reason": f"Terminal {terminal_name!r} not found"})
             skipped += 1
             continue
+
+        # Resolve entry gate by label (optional). Without it the appointment is created
+        # but stays invisible on gate operator dashboards (which filter by gate_in_id).
+        gate_in_id = None
+        gate_label = row.get("gate_label", "").strip()
+        if gate_label:
+            needle = gate_label.lower()
+            # Seeded gate labels carry a descriptive suffix (e.g.
+            # "Portaria 1 — Entrada Principal"), so an exact match on a short
+            # value like "Portaria 1" would never resolve. Try exact first, then
+            # fall back to a prefix match; reject only when the prefix is
+            # ambiguous (matches more than one active gate).
+            active_gates = db.query(GateORM).filter(GateORM.estado == "Ativo").all()
+            exact = [g for g in active_gates if g.label.strip().lower() == needle]
+            if exact:
+                gate_in_id = exact[0].id
+            else:
+                prefix = [g for g in active_gates if g.label.strip().lower().startswith(needle)]
+                if len(prefix) == 1:
+                    gate_in_id = prefix[0].id
+                elif len(prefix) > 1:
+                    matched = ", ".join(repr(g.label) for g in prefix)
+                    errors.append({"row": row_num, "reason": f"Gate {gate_label!r} is ambiguous — matches {matched}"})
+                    skipped += 1
+                    continue
+                else:
+                    errors.append({"row": row_num, "reason": f"Gate {gate_label!r} not found or inactive"})
+                    skipped += 1
+                    continue
 
         # Validate truck
         if not db.query(TruckORM).filter(TruckORM.license_plate == plate).first():
@@ -663,6 +695,7 @@ def bulk_import_arrivals(
             driver_license=None,
             truck_license_plate=plate,
             terminal_id=terminal.id,
+            gate_in_id=gate_in_id,
             scheduled_start_time=scheduled_start,
             expected_duration=expected_dur,
             notes=row.get("notes") or None,

@@ -7,7 +7,7 @@ not a domain event, so it writes MongoDB directly (same pattern as notifications
 — no Outbox / Unit of Work involved.
 """
 
-from typing import Annotated, List, Optional
+from typing import Annotated, List, Optional, Union
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Query
@@ -24,7 +24,10 @@ class EnergySpikeIn(BaseModel):
     gate_id: int
     value: float = Field(..., description="Power reading (kW) at the spike")
     mode: str = "scale_up"
-    timestamp: Optional[str] = None  # ISO 8601; defaults to now (UTC)
+    # ISO-8601 string, or an epoch number (seconds or milliseconds). Accepting the
+    # numeric form avoids dropping spikes whose caller forwards a raw Kafka
+    # Message timestamp (epoch-ms int). Defaults to now (UTC).
+    timestamp: Optional[Union[str, int, float]] = None
 
 
 class EnergySpikeOut(BaseModel):
@@ -34,11 +37,18 @@ class EnergySpikeOut(BaseModel):
     timestamp: str
 
 
-def _parse_ts(raw: Optional[str]) -> datetime:
-    if not raw:
+def _parse_ts(raw: Optional[Union[str, int, float]]) -> datetime:
+    if raw is None or raw == "":
         return datetime.now(timezone.utc)
+    # Numeric epoch (seconds or milliseconds — our Kafka messages use ms).
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        seconds = raw / 1000.0 if raw > 1e12 else float(raw)
+        try:
+            return datetime.fromtimestamp(seconds, tz=timezone.utc)
+        except (ValueError, OverflowError, OSError):
+            return datetime.now(timezone.utc)
     try:
-        ts = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        ts = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
         return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
     except ValueError:
         return datetime.now(timezone.utc)

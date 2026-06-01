@@ -81,13 +81,20 @@ def create_alert(
     alert_type: str,
     description: str,
     image_url: Optional[str] = None,
+    appointment_id: Optional[int] = None,
 ) -> dict[str, Any]:
     with uow_factory() as uow:
+        # Link the alert to its appointment; derive the visit when one already
+        # exists so the alert resolves to the truck/visit in the manager UI.
+        if appointment_id is not None and visit_id is None:
+            visit_id = uow.alerts.get_appointment_visit_id(appointment_id)
+
         alert = uow.alerts.add(
             visit_id=visit_id,
             alert_type=alert_type,
             description=description,
             image_url=image_url,
+            appointment_id=appointment_id,
         )
         _append_outbox(uow, alert, "AlertCreated")
         uow.commit()

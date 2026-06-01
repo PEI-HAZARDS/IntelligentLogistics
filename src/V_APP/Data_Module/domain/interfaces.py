@@ -133,8 +133,25 @@ class IDriverRepository(ABC):
         ...
 
     @abstractmethod
-    def get_appointment_for_claim(self, booking_reference: str, arrival_id: str) -> Optional[dict[str, Any]]:
-        """Return appointment dict with eager-loaded relations for claim flow."""
+    def get_appointment_for_claim(
+        self, booking_reference: str, arrival_id: str, drivers_license: str
+    ) -> Optional[dict[str, Any]]:
+        """
+        Return appointment dict with eager-loaded relations for claim flow.
+
+        Matches a scheduled appointment that is either unclaimed (PIN required) or
+        already owned by ``drivers_license`` (PIN skipped — enables a re-claim from
+        the Delivery tab without re-entering the PIN).
+        """
+        ...
+
+    @abstractmethod
+    def assign_driver_to_appointment(self, appointment_id: int, drivers_license: str) -> bool:
+        """
+        Persist ownership: set Appointment.driver_license and Driver.current_appointment_id
+        under a row lock. Returns True if the driver now owns it (newly assigned or already
+        owned — idempotent), False if it is owned by a different driver.
+        """
         ...
 
     @abstractmethod

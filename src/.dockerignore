@@ -24,6 +24,11 @@
   **/.data/
   **logs/
 
+  # …but keep the small hazmat lookup tables (UN numbers / Kemler codes) the
+  # decision_engine and infraction_engine load at startup from V_APP/shared/data.
+  !V_APP/shared/data
+  !V_APP/shared/data/**
+
   # Test artifacts
   **/coverage.xml
   **/.coverage

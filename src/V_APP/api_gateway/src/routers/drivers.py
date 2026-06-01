@@ -186,10 +186,10 @@ async def report_problem(
     """
     drv_license = current_user.sub.upper()
     description = _compose_problem_description(report, drv_license)
-    return await internal_client.post(
-        "/alerts",
-        json={"type": "problem", "description": description},
-    )
+    payload: dict = {"type": "problem", "description": description}
+    if report.appointment_id is not None:
+        payload["appointment_id"] = report.appointment_id  # link alert → appointment/visit
+    return await internal_client.post("/alerts", json=payload)
 
 
 @router.get("/drivers/me/active")
