@@ -1,0 +1,61 @@
+# Python virtual environments — never needed in Docker images
+  **venv/
+  **env/
+  **.env
+  **/.venv/
+  **/.env/
+  **/.venv-locust
+  **/venv
+  **/__pycache__
+  **__pycache__/
+  *.pyc
+  *.pyo
+  *.pyd
+  **/*.pyc
+  **/*.pyo
+  **/*.pyd
+  **/.pytest_cache/
+  **/.mypy_cache
+  **/.ruff_cache
+
+  # Data folders (datasets, ML models, logs, DB volumes)
+  **data/
+  **/data/
+  **/.data/
+  **logs/
+
+  # …but keep the small hazmat lookup tables (UN numbers / Kemler codes) the
+  # decision_engine and infraction_engine load at startup from V_APP/shared/data.
+  !V_APP/shared/data
+  !V_APP/shared/data/**
+
+  # Test artifacts
+  **/coverage.xml
+  **/.coverage
+  **/*.egg-info
+  **/htmlcov
+  **/dist
+  **/build
+
+  # Git
+  **/.git/
+  .git/
+  **/.git
+  **/.gitignore
+
+  # Editor / OS
+  **/.vscode/
+  **/.idea/
+  **/.DS_Store
+  **/*.swp
+  **/*.swo
+
+  # Logs and temp files
+  **/*.log
+  **/tmp
+
+  # Docs not needed in the app
+  **docs/
+
+  # Node.js modules
+  **/node_modules/

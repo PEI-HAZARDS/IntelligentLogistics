@@ -32,11 +32,14 @@ class _FakeDrivers:
             return self._driver
         return None
 
-    def get_appointment_for_claim(self, booking_reference, arrival_id):
+    def get_appointment_for_claim(self, booking_reference, arrival_id, drivers_license):
         appt = (self._driver or {}).get("_appointment") or {}
         if appt.get("arrival_id") == arrival_id and appt.get("booking_reference", booking_reference) == booking_reference:
             return appt or None
         return None
+
+    def assign_driver_to_appointment(self, appointment_id, drivers_license):
+        return True
 
     def get_next_active_appointment_id(self, lic):
         return self._next_active_id

@@ -37,6 +37,7 @@ _uow_factory = lambda: SqlAlchemyUnitOfWork(SessionLocal)
 class CreateAlertRequest(BaseModel):
     """Request to create alert manually."""
     visit_id: Optional[int] = None
+    appointment_id: Optional[int] = None  # links the alert to an appointment (visit derived if present)
     type: str  # generic, safety, problem, operational
     description: str
     image_url: Optional[str] = None
@@ -138,6 +139,7 @@ def create_manual_alert(request: CreateAlertRequest):
         alert_type=request.type,
         description=request.description,
         image_url=request.image_url,
+        appointment_id=request.appointment_id,
     )
     return alert
 

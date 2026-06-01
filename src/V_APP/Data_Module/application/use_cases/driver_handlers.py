@@ -50,7 +50,7 @@ def claim_appointment_by_pin(
     Returns (appointment_dict, error_message).
     """
     with uow_factory() as uow:
-        appt = uow.drivers.get_appointment_for_claim(booking_reference, arrival_id)
+        appt = uow.drivers.get_appointment_for_claim(booking_reference, arrival_id, driver_sub)
         if not appt:
             return None, "Invalid PIN or appointment not found"
 
@@ -58,5 +58,10 @@ def claim_appointment_by_pin(
             next_id = uow.drivers.get_next_active_appointment_id(driver_sub)
             if next_id and next_id != appt["id"]:
                 return None, "Must complete earlier delivery first"
+
+        # Persist ownership atomically (driver_license + current_appointment_id).
+        if not uow.drivers.assign_driver_to_appointment(appt["id"], driver_sub):
+            return None, "Already claimed by another driver"
+        uow.commit()
 
         return appt, ""

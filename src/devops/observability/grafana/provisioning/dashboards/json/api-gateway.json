@@ -804,6 +804,38 @@
       ],
       "title": "API Gateway Logs",
       "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      },
+      "id": 12,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "sortOrder": "Descending"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "limit": 20,
+          "queryType": "traceql",
+          "query": "{ resource.service.name = \"api-gateway\" }",
+          "refId": "A"
+        }
+      ],
+      "title": "Recent Traces - api-gateway",
+      "type": "traces"
     }
   ],
   "refresh": "30s",

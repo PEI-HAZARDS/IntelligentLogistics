@@ -2,18 +2,16 @@
 """
 PEI 2025 Demo data initializer — Porto de Aveiro.
 
-Populates a rich dataset so the logistics manager dashboard has data on
-first load: completed appointments with visits, historical days, alerts,
-and multiple companies for per-company statistics.
+Populates a rich dataset:
+  - 12 months of completed historical appointments (sustainability CO₂ trend)
+  - Today: 87AX60 in_transit (AI-detection trial) + an approaching in_transit queue
+    and live alerts at Portaria 1 for the gate operator (Maria Santos / OPR001);
+    mix of scheduled/in_process/completed/canceled
+  - Multiple companies, terminals, and drivers for per-company statistics
 
 Gate / camera assignment:
   Video1 plates → Gate 1 (Decision Engine / port entry)
   Video2 plates → Gate 2 (Infraction Engine / highway approach)
-
-Plate lists are overridable via env vars:
-  DEMO_VIDEO1_PLATES — JSON array of plate strings
-  DEMO_VIDEO2_PLATES — JSON array of plate strings
-  MAX_ARRIVALS       — cap on appointments per gate (default: all)
 
 Run with:
     DATABASE_URL=postgresql://... python scripts/data_init_demo.py
@@ -35,14 +33,14 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 try:
     from Data_Module.models.sql_models import (
         Alert, Appointment, Booking, Cargo, Company, Dock, Driver,
-        Gate, Manager, Operator, Shift, ShiftAlertHistory, ShiftType,
+        Gate, Manager, Operator, Shift, ShiftAlertHistory, ShiftTemplate, ShiftType,
         Terminal, Truck, Visit, Worker,
     )
 except Exception:
     try:
         from infrastructure.persistence.sql_models import (
             Alert, Appointment, Booking, Cargo, Company, Dock, Driver,
-            Gate, Manager, Operator, Shift, ShiftAlertHistory, ShiftType,
+            Gate, Manager, Operator, Shift, ShiftAlertHistory, ShiftTemplate, ShiftType,
             Terminal, Truck, Visit, Worker,
         )
     except Exception as e:
@@ -52,7 +50,7 @@ except Exception:
 from data_init_base import _hash  # noqa: E402
 
 
-# ── Demo plate configuration (overridable via env vars) ──────────────────────
+# ── Plate configuration ──────────────────────────────────────────────────────
 _DEFAULT_VIDEO1 = ["87AX60", "68BSH8", "PEI2025", "LN67OIZGB", "92BLN3", "82BTN5"]
 _DEFAULT_VIDEO2 = ["321BI13", "GGAB425", "SLJP1523", "CA93896"]
 
@@ -63,97 +61,109 @@ VIDEO2_PLATES: list = _json.loads(
     os.environ.get("DEMO_VIDEO2_PLATES", _json.dumps(_DEFAULT_VIDEO2))
 )
 
-_raw_max = os.environ.get("MAX_ARRIVALS", "")
-MAX_ARRIVALS: int = (
-    int(_raw_max) if _raw_max.isdigit() else max(len(VIDEO1_PLATES), len(VIDEO2_PLATES))
-)
-
-VIDEO1_PLATES = VIDEO1_PLATES[:MAX_ARRIVALS]
-VIDEO2_PLATES = VIDEO2_PLATES[:MAX_ARRIVALS]
-
 # ── Reference data ────────────────────────────────────────────────────────────
 
 COMPANIES = [
-    ("PT509123456", "Transportes Aveiro Lda", "+351 234 567 890"),
-    ("PT509234567", "Iberian Logistics SA", "+351 234 678 901"),
-    ("PT509345678", "EuroTrans Portugal", "+351 234 789 012"),
-    ("ES-B12345678", "Transportes Garcia SL", "+34 91 234 5678"),
-    ("DE123456789", "Schmidt Spedition GmbH", "+49 30 1234567"),
-    ("FR12345678901", "Transports Dupont SARL", "+33 1 23 45 67 89"),
+    ("PT509123456", "Transportes Aveiro Lda",    "+351 234 567 890"),
+    ("PT509234567", "Iberian Logistics SA",       "+351 234 678 901"),
+    ("PT509345678", "EuroTrans Portugal",         "+351 234 789 012"),
+    ("ES-B12345678", "Transportes Garcia SL",     "+34 91 234 5678"),
+    ("DE123456789",  "Schmidt Spedition GmbH",    "+49 30 1234567"),
+    ("FR12345678901","Transports Dupont SARL",    "+33 1 23 45 67 89"),
 ]
 
-# (license, name, company_idx)
 DRIVERS = [
-    ("PT12345678", "Oscar Almeida", 0),
-    ("PT23456789", "Sofia Rodrigues", 0),
-    ("PT34567890", "Miguel Santos", 1),
-    ("PT45678901", "Ana Ferreira", 1),
-    ("PT56789012", "Bruno Costa", 2),
+    ("PT12345678", "Oscar Almeida",       0),
+    ("PT23456789", "Sofia Rodrigues",     0),
+    ("PT34567890", "Miguel Santos",       1),
+    ("PT45678901", "Ana Ferreira",        1),
+    ("PT56789012", "Bruno Costa",         2),
     ("ES87654321", "Carlos Garcia Lopez", 3),
-    ("ES76543210", "Maria Fernandez", 3),
-    ("DE11223344", "Hans Mueller", 4),
-    ("FR99887766", "Pierre Dubois", 5),
-    ("FR88776655", "Jean-Luc Martin", 5),
+    ("ES76543210", "Maria Fernandez",     3),
+    ("DE11223344", "Hans Mueller",        4),
+    ("FR99887766", "Pierre Dubois",       5),
+    ("FR88776655", "Jean-Luc Martin",     5),
 ]
 
-# Extra historical trucks (supplement the demo plates)
-# (plate, brand, company_idx)
-_BRAND_SCANIA = "Scania R500"
-_BRAND_MAN = "MAN TGX"
+_BRAND_SCANIA   = "Scania R500"
+_BRAND_MAN      = "MAN TGX"
 _BRAND_MERCEDES = "Mercedes Actros"
-_BRAND_DAF = "DAF XF"
-_BRAND_VOLVO = "Volvo FH16"
+_BRAND_DAF      = "DAF XF"
+_BRAND_VOLVO    = "Volvo FH16"
+_BRAND_IVECO    = "Iveco S-Way"
 
 EXTRA_TRUCKS = [
-    ("AA00AA", _BRAND_SCANIA, 0),
-    ("BB11BB", _BRAND_MAN, 1),
-    ("CC22CC", _BRAND_MERCEDES, 2),
-    ("DD33DD", _BRAND_DAF, 3),
-    ("12AB34", _BRAND_VOLVO, 0),
-    ("56CD78", _BRAND_SCANIA, 1),
-    ("90EF12", _BRAND_MAN, 2),
-    ("34GH56", _BRAND_MERCEDES, 0),
-    ("78IJ90", _BRAND_DAF, 1),
-    ("23LM45", _BRAND_VOLVO, 0),
-    ("67NP89", _BRAND_SCANIA, 1),
-    ("45ST67", _BRAND_VOLVO, 0),
-    ("89UV01", _BRAND_SCANIA, 1),
-    ("23WX45", _BRAND_MAN, 2),
+    ("AA00AA", _BRAND_SCANIA,   0), ("BB11BB", _BRAND_MAN,      1),
+    ("CC22CC", _BRAND_MERCEDES, 2), ("DD33DD", _BRAND_DAF,      3),
+    ("12AB34", _BRAND_VOLVO,    0), ("56CD78", _BRAND_SCANIA,   1),
+    ("90EF12", _BRAND_MAN,      2), ("34GH56", _BRAND_MERCEDES, 0),
+    ("78IJ90", _BRAND_DAF,      1), ("23LM45", _BRAND_VOLVO,    0),
+    ("67NP89", _BRAND_SCANIA,   1), ("45ST67", _BRAND_VOLVO,    0),
+    ("89UV01", _BRAND_SCANIA,   1), ("23WX45", _BRAND_MAN,      2),
+    ("11YZ22", _BRAND_IVECO,    3), ("33AB44", _BRAND_DAF,      4),
+    ("55CD66", _BRAND_SCANIA,   5), ("77EF88", _BRAND_VOLVO,    0),
+    ("99GH00", _BRAND_MAN,      1), ("11IJ22", _BRAND_MERCEDES, 2),
 ]
 
-# (desc, state, weight_kg, is_hazmat, un_code, kemler)
 CARGO_TYPES = [
-    ("Sulfuric acid (fuming)", "liquid", 22000, True, "1831", "X886"),
-    ("Gasoline ADR", "liquid", 24000, True, "1203", "33"),
-    ("Propane cylinders", "gaseous", 8000, True, "1978", "23"),
-    ("Industrial chemicals", "liquid", 15000, True, "1830", "80"),
-    ("Ammonium nitrate fert.", "solid", 22000, True, "1942", "50"),
-    ("Ceramic tiles", "solid", 24000, False, None, None),
-    ("Cork products", "solid", 8000, False, None, None),
-    ("Paper pulp", "solid", 28000, False, None, None),
-    ("Salt (Salinas Aveiro)", "solid", 26000, False, None, None),
-    ("Fish (fresh catch)", "solid", 12000, False, None, None),
-    ("Wine (Bairrada DOC)", "liquid", 18000, False, None, None),
-    ("Timber (eucalyptus)", "solid", 30000, False, None, None),
-    ("Auto parts", "solid", 16000, False, None, None),
-    ("Construction steel", "solid", 28000, False, None, None),
-    ("Olive oil (bulk)", "liquid", 20000, False, None, None),
-    ("Cement bags", "solid", 25000, False, None, None),
-    ("Plastic granules", "solid", 15000, False, None, None),
-    ("Machinery parts", "solid", 12000, False, None, None),
-    ("Canned fish", "solid", 8000, False, None, None),
-    ("General cargo", "solid", 10000, False, None, None),
+    ("Sulfuric acid (fuming)",   "liquid", 22000, True,  "1831", "X886"),
+    ("Gasoline ADR",             "liquid", 24000, True,  "1203", "33"),
+    ("Propane cylinders",        "gaseous", 8000, True,  "1978", "23"),
+    ("Industrial chemicals",     "liquid", 15000, True,  "1830", "80"),
+    ("Ammonium nitrate fert.",   "solid",  22000, True,  "1942", "50"),
+    ("Ceramic tiles",            "solid",  24000, False, None,   None),
+    ("Cork products",            "solid",   8000, False, None,   None),
+    ("Paper pulp",               "solid",  28000, False, None,   None),
+    ("Salt (Salinas Aveiro)",    "solid",  26000, False, None,   None),
+    ("Fish (fresh catch)",       "solid",  12000, False, None,   None),
+    ("Wine (Bairrada DOC)",      "liquid", 18000, False, None,   None),
+    ("Timber (eucalyptus)",      "solid",  30000, False, None,   None),
+    ("Auto parts",               "solid",  16000, False, None,   None),
+    ("Construction steel",       "solid",  28000, False, None,   None),
+    ("Olive oil (bulk)",         "liquid", 20000, False, None,   None),
+    ("Cement bags",              "solid",  25000, False, None,   None),
+    ("Plastic granules",         "solid",  15000, False, None,   None),
+    ("Machinery parts",          "solid",  12000, False, None,   None),
+    ("Canned fish",              "solid",   8000, False, None,   None),
+    ("General cargo",            "solid",  10000, False, None,   None),
 ]
 
 _ALERT_DESCS = {
-    "safety": "Hazardous cargo safety check triggered",
+    "safety":      "Hazardous cargo safety check triggered",
     "operational": "Dock assignment delay — manual reassignment needed",
-    "problem": "Weight discrepancy detected — cargo exceeds declared weight",
-    "generic": "Documentation check — CMR waybill verified",
+    "problem":     "Weight discrepancy detected — cargo exceeds declared weight",
+    "generic":     "Documentation check — CMR waybill verified",
 }
 
+# ── Per-company delay profiles (lo_min, hi_min, weight) ──────────────────────
+# Drives SLA variation in per-company analytics (Port Performance page).
+# Each tuple is (min_delay_minutes, max_delay_minutes, relative_weight).
+_COMPANY_DELAY_PROFILES: dict = {
+    "PT509123456":  [(0, 4, 52), (5, 14, 32), (15, 29, 12), (30, 70,  4)],  # Transportes Aveiro — excellent
+    "PT509234567":  [(0, 4, 42), (5, 14, 33), (15, 29, 18), (30, 80,  7)],  # Iberian Logistics — good
+    "PT509345678":  [(0, 4, 22), (5, 14, 33), (15, 29, 30), (30, 90, 15)],  # EuroTrans — mediocre
+    "ES-B12345678": [(0, 4, 12), (5, 14, 23), (15, 29, 38), (30, 90, 27)],  # Garcia SL — consistently late
+    "DE123456789":  [(0, 4, 68), (5, 14, 22), (15, 29,  8), (30, 60,  2)],  # Schmidt — punctual (German ops)
+    "FR12345678901":[(0, 4, 28), (5, 14, 34), (15, 29, 26), (30, 85, 12)],  # Dupont — below average
+}
+# Fallback for unlisted companies
+_DEFAULT_DELAY_BUCKETS = [(0, 5, 40), (5, 15, 30), (15, 30, 20), (30, 90, 10)]
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _random_delay_for_company(company_nif: str) -> int:
+    """Return a realistic delay in minutes for the given company."""
+    profile = _COMPANY_DELAY_PROFILES.get(company_nif, _DEFAULT_DELAY_BUCKETS)
+    buckets, weights = zip(*[((lo, hi), w) for lo, hi, w in profile])
+    lo, hi = random.choices(buckets, weights=weights, k=1)[0]
+    return random.randint(lo, hi)
+
+
+def _random_delay_minutes() -> int:
+    """Pick a delay in minutes using the default weighted buckets (legacy helper)."""
+    return _random_delay_for_company("")
+
+
+# ── Low-level helpers ─────────────────────────────────────────────────────────
 
 def _make_booking(db: Session, ref: str, direction: str = "inbound") -> Booking:
     bk = Booking(reference=ref, direction=direction)
@@ -164,50 +174,12 @@ def _make_booking(db: Session, ref: str, direction: str = "inbound") -> Booking:
 
 def _make_cargo(db: Session, bk_ref: str, cargo_def: tuple) -> Cargo:
     desc, st, weight, is_hazmat, un, kemler = cargo_def
-    label = (
-        f"{desc} [UN:{un}, Kemler:{kemler}]" if is_hazmat else desc
-    )
-    c = Cargo(booking_reference=bk_ref, quantity=Decimal(str(weight)), state=st, description=label)
+    label = f"{desc} [UN:{un}, Kemler:{kemler}]" if is_hazmat else desc
+    c = Cargo(booking_reference=bk_ref, quantity=Decimal(str(weight)),
+              state=st, description=label)
     db.add(c)
     db.flush()
     return c
-
-
-def _make_appointment(
-    db: Session, bk_ref, driver, truck, terminal, gate_in, gate_out,
-    sched_time, status, notes, expected_duration=45, highway_infraction=False,
-) -> Appointment:
-    appt = Appointment(
-        booking_reference=bk_ref,
-        driver_license=driver.drivers_license,
-        truck_license_plate=truck.license_plate,
-        terminal_id=terminal.id,
-        gate_in_id=gate_in.id,
-        gate_out_id=gate_out.id if status == "completed" else None,
-        scheduled_start_time=sched_time,
-        expected_duration=expected_duration,
-        status=status,
-        notes=notes,
-        highway_infraction=highway_infraction,
-    )
-    db.add(appt)
-    db.flush()
-    return appt
-
-
-def _make_visit(db: Session, appt, shift, entry_time, duration_min=None) -> Visit:
-    v = Visit(
-        appointment_id=appt.id,
-        shift_gate_id=shift.gate_id,
-        shift_type=shift.shift_type,
-        shift_date=shift.date,
-        entry_time=entry_time,
-        out_time=entry_time + timedelta(minutes=duration_min) if duration_min else None,
-        state="completed" if duration_min else "unloading",
-    )
-    db.add(v)
-    db.flush()
-    return v
 
 
 def _make_alert(db: Session, visit, appt, shift, timestamp, alert_type) -> Alert:
@@ -230,30 +202,93 @@ def _make_alert(db: Session, visit, appt, shift, timestamp, alert_type) -> Alert
     return a
 
 
-def _generate_historical_day(
-    db, day_date, trucks, drivers, terminal, gate_in, gate_out,
-    shifts_morning, shifts_afternoon, num_appts, ref_prefix
-):
-    """Generate a full completed day for volume / statistics data."""
-    for h in range(num_appts):
-        ref = f"{ref_prefix}-{day_date.strftime('%Y%m%d')}-{h+1:04d}"
-        bk = _make_booking(db, ref, "inbound" if h % 4 != 0 else "outbound")
+_REVIEW_NOTES = [
+    "Carrier notified — driver warned about the restricted hazmat route.",
+    "Confirmed ADR violation; forwarded to carrier compliance team.",
+    "GPS confirms A25 restricted segment — administrative fine issued.",
+    "Placard / documentation mismatch confirmed on review.",
+    "Spoke with carrier operations; corrective action acknowledged.",
+    "Minor deviation — logged for the record, no penalty this time.",
+]
+_REVIEWERS = ["MGR001", "MGR002"]
 
-        cidx = (h + 5) % len(CARGO_TYPES)
+
+def _apply_review(appt, when: datetime, prob: float = 0.65) -> None:
+    """Mark an infraction appointment as reviewed by a manager (demo data),
+    so the Infractions page has reviewed rows to export / email."""
+    if random.random() < prob:
+        appt.reviewed_at = when + timedelta(hours=random.randint(1, 36))
+        appt.reviewed_by = random.choice(_REVIEWERS)
+        appt.review_note = random.choice(_REVIEW_NOTES)
+
+
+def _shift_for_time(dt: datetime, shift_m, shift_a, shift_n):
+    """Pick morning/afternoon/night shift based on hour."""
+    h = dt.hour
+    if 6 <= h < 14:
+        return shift_m
+    if 14 <= h < 22:
+        return shift_a
+    return shift_n
+
+
+def _get_or_create_day_shifts(
+    db: Session, d: date, gate_entry_id: int,
+    operator_num: str, manager_num: str
+) -> tuple:
+    """Return (morning_shift, afternoon_shift, night_shift) for a given date,
+    creating them if they don't already exist."""
+    result = {}
+    for stype in [ShiftType.MORNING, ShiftType.AFTERNOON, ShiftType.NIGHT]:
+        existing = db.query(Shift).filter(
+            Shift.gate_id == gate_entry_id,
+            Shift.shift_type == stype,
+            Shift.date == d,
+        ).first()
+        if not existing:
+            existing = Shift(
+                gate_id=gate_entry_id, shift_type=stype, date=d,
+                operator_num_worker=operator_num,
+                manager_num_worker=manager_num,
+            )
+            db.add(existing)
+            db.flush()
+        result[stype] = existing
+    return result[ShiftType.MORNING], result[ShiftType.AFTERNOON], result[ShiftType.NIGHT]
+
+
+# ── Historical day generator ──────────────────────────────────────────────────
+
+def _generate_historical_day(
+    db: Session, day_date: date, trucks, drivers,
+    terminal, gate_in, gate_out,
+    shift_m, shift_a, shift_n,
+    num_appts: int, ref_prefix: str, counter: list,
+):
+    """Generate a full completed day of appointments with realistic delays."""
+    for h in range(num_appts):
+        counter[0] += 1
+        ref = f"{ref_prefix}-{day_date.strftime('%Y%m%d')}-{counter[0]:05d}"
+        bk = _make_booking(db, ref, "inbound" if h % 5 != 0 else "outbound")
+        cidx = (h + counter[0]) % len(CARGO_TYPES)
         _make_cargo(db, bk.reference, CARGO_TYPES[cidx])
 
-        hour_offset = random.choice([7, 8, 8, 9, 9, 10, 10, 11, 12, 13, 14, 14, 15, 16, 17])
+        hour_offset = random.choice([7, 7, 8, 8, 9, 9, 10, 10, 11, 12, 13, 14, 15, 15, 16, 17, 17])
         sched = datetime.combine(day_date, time(hour_offset, random.randint(0, 55)))
 
-        tidx = h % len(trucks)
-        didx = h % len(drivers)
-        dur = random.choice([20, 25, 30, 35, 38, 42, 45, 50, 55, 60, 70, 80])
-        delay = random.choice([0, 0, 0, 5, 10, 15, 20, 30])
+        truck = trucks[h % len(trucks)]
+        driver = drivers[h % len(drivers)]
+        dur = random.choice([20, 25, 30, 35, 38, 40, 42, 45, 50, 55, 60, 70, 80])
+        # Use company-specific delay profile so per-company SLA varies realistically
+        delay = _random_delay_for_company(truck.company_nif)
+
+        # ~8% of appointments have a highway infraction (hazmat/speed/docs)
+        is_infraction = random.random() < 0.08
 
         appt = Appointment(
             booking_reference=bk.reference,
-            driver_license=drivers[didx].drivers_license,
-            truck_license_plate=trucks[tidx].license_plate,
+            driver_license=driver.drivers_license,
+            truck_license_plate=truck.license_plate,
             terminal_id=terminal.id,
             gate_in_id=gate_in.id,
             gate_out_id=gate_out.id,
@@ -261,25 +296,43 @@ def _generate_historical_day(
             expected_duration=45,
             status="completed",
             notes=f"Historical — {CARGO_TYPES[cidx][0]}",
+            highway_infraction=is_infraction,
         )
         db.add(appt)
         db.flush()
 
-        entry = sched + timedelta(minutes=delay + random.randint(1, 5))
-        shift = shifts_morning if entry.hour < 14 else shifts_afternoon
-        v = _make_visit(db, appt, shift, entry, dur)
+        entry = sched + timedelta(minutes=delay + random.randint(1, 3))
+        shift = _shift_for_time(entry, shift_m, shift_a, shift_n)
+        v = Visit(
+            appointment_id=appt.id,
+            shift_gate_id=shift.gate_id,
+            shift_type=shift.shift_type,
+            shift_date=shift.date,
+            entry_time=entry,
+            out_time=entry + timedelta(minutes=dur),
+            state="done",
+        )
+        db.add(v)
+        db.flush()
 
-        if random.random() < 0.25:
-            at = random.choice(["safety", "operational", "problem", "generic"])
+        # Operational alert rate: 18% generic, plus mandatory alert for infractions
+        if is_infraction:
+            at = random.choice(["safety", "safety", "problem"])
+            _make_alert(db, v, appt, shift, entry + timedelta(minutes=random.randint(2, 8)), at)
+            # Most historical infractions have already been reviewed by a manager
+            # (gives the Infractions page real reviewed rows to export / email).
+            _apply_review(appt, entry)
+        elif random.random() < 0.12:
+            at = random.choice(["operational", "problem", "generic"])
             _make_alert(db, v, appt, shift, entry + timedelta(minutes=random.randint(2, 15)), at)
 
 
 # ── Main seeder ───────────────────────────────────────────────────────────────
 
 def init_demo_data(db: Session):
-    print("=" * 60)
+    print("=" * 65)
     print("  PEI 2025 — PORTO DE AVEIRO DEMO DATA INITIALIZER")
-    print("=" * 60)
+    print("=" * 65)
 
     if db.query(Worker).first():
         print("\n  Data already exists — skipping initialization.")
@@ -288,7 +341,7 @@ def init_demo_data(db: Session):
 
     try:
         today = date.today()
-        now = datetime.now()
+        now   = datetime.now()
 
         # ── Workers ──────────────────────────────────────────────────────────
         print("\n  Creating workers...")
@@ -343,7 +396,7 @@ def init_demo_data(db: Session):
             drivers.append(d)
         db.add_all(drivers)
         db.flush()
-        main_driver = drivers[0]  # Oscar Almeida — demo star
+        main_driver = drivers[0]  # Oscar Almeida
 
         # ── Trucks ────────────────────────────────────────────────────────────
         all_demo_plates = VIDEO1_PLATES + VIDEO2_PLATES
@@ -354,7 +407,7 @@ def init_demo_data(db: Session):
         for i, plate in enumerate(all_demo_plates):
             t = Truck(
                 license_plate=plate,
-                brand=["Volvo", "Scania", "MAN", "Mercedes", "DAF"][i % 5],
+                brand=[_BRAND_VOLVO, _BRAND_SCANIA, _BRAND_MAN, _BRAND_MERCEDES, _BRAND_DAF][i % 5],
                 company_nif=companies[i % len(companies)].nif,
             )
             db.add(t)
@@ -370,11 +423,10 @@ def init_demo_data(db: Session):
                 all_trucks_list.append(t)
         db.flush()
 
-        # Extra trucks (not in demo plate lists) for historical variety
         hist_trucks = [t for t in all_trucks_list if t.license_plate not in set(all_demo_plates)]
 
-        # ── Terminals (real Porto de Aveiro) ──────────────────────────────────
-        print("  Creating terminals (Terminal Norte, Granéis Sólidos, Granéis Líquidos)...")
+        # ── Terminals ────────────────────────────────────────────────────────
+        print("  Creating terminals...")
         terminal_norte = Terminal(
             name="Terminal Norte - Porto de Aveiro",
             latitude=Decimal("40.6520"), longitude=Decimal("-8.7430"),
@@ -396,17 +448,17 @@ def init_demo_data(db: Session):
         # ── Docks ─────────────────────────────────────────────────────────────
         print("  Creating docks...")
         docks = [
-            Dock(terminal_id=terminal_norte.id, bay_number="TN-CAIS-1",
+            Dock(terminal_id=terminal_norte.id,    bay_number="TN-CAIS-1",
                  latitude=Decimal("40.6522"), longitude=Decimal("-8.7428"), current_usage="operational"),
-            Dock(terminal_id=terminal_norte.id, bay_number="TN-CAIS-2",
+            Dock(terminal_id=terminal_norte.id,    bay_number="TN-CAIS-2",
                  latitude=Decimal("40.6524"), longitude=Decimal("-8.7426"), current_usage="operational"),
-            Dock(terminal_id=terminal_norte.id, bay_number="TN-RORO",
+            Dock(terminal_id=terminal_norte.id,    bay_number="TN-RORO",
                  latitude=Decimal("40.6518"), longitude=Decimal("-8.7432"), current_usage="operational"),
-            Dock(terminal_id=terminal_solidos.id, bay_number="TGS-CAIS-A",
+            Dock(terminal_id=terminal_solidos.id,  bay_number="TGS-CAIS-A",
                  latitude=Decimal("40.6448"), longitude=Decimal("-8.7492"), current_usage="operational"),
-            Dock(terminal_id=terminal_solidos.id, bay_number="TGS-CAIS-B",
+            Dock(terminal_id=terminal_solidos.id,  bay_number="TGS-CAIS-B",
                  latitude=Decimal("40.6450"), longitude=Decimal("-8.7494"), current_usage="operational"),
-            Dock(terminal_id=terminal_solidos.id, bay_number="TGS-SILO",
+            Dock(terminal_id=terminal_solidos.id,  bay_number="TGS-SILO",
                  latitude=Decimal("40.6444"), longitude=Decimal("-8.7488"), current_usage="operational"),
             Dock(terminal_id=terminal_liquidos.id, bay_number="TGL-CAIS-1",
                  latitude=Decimal("40.6362"), longitude=Decimal("-8.7522"), current_usage="operational"),
@@ -435,232 +487,504 @@ def init_demo_data(db: Session):
         db.add_all([gate_entry, gate_out, gate_highway])
         db.flush()
 
-        # ── Shifts (today + 5 historical days) ───────────────────────────────
-        print("  Creating shifts (today + 5 historical days)...")
-        shift_map: dict = {}
-        operators_cycle = ["OPR001", "OPR002", "OPR001", "OPR002"]
-        for day_offset in range(6):
-            d = today - timedelta(days=day_offset)
-            configs = [
-                (gate_entry.id,  ShiftType.MORNING,   d, operators_cycle[0], "MGR001"),
-                (gate_entry.id,  ShiftType.AFTERNOON, d, operators_cycle[1], "MGR001"),
-                (gate_entry.id,  ShiftType.NIGHT,     d, operators_cycle[2], "MGR002"),
-                (gate_highway.id, ShiftType.MORNING,  d, operators_cycle[3], "MGR002"),
-                (gate_highway.id, ShiftType.AFTERNOON, d, operators_cycle[0], "MGR002"),
-            ]
-            for gid, stype, sdate, opr, mgr in configs:
-                s = Shift(gate_id=gid, shift_type=stype, date=sdate,
-                          operator_num_worker=opr, manager_num_worker=mgr)
-                db.add(s)
-                shift_map[(gid, stype, sdate)] = s
+        # ── Today's shifts (full, with operators) ─────────────────────────────
+        print("  Creating today's shifts...")
+        ops = ["OPR001", "OPR002"]
+        today_shifts = {}
+        for gid, stype, opr, mgr in [
+            (gate_entry.id,   ShiftType.MORNING,   ops[0], "MGR001"),
+            (gate_entry.id,   ShiftType.AFTERNOON, ops[1], "MGR001"),
+            (gate_entry.id,   ShiftType.NIGHT,     ops[0], "MGR002"),
+            (gate_highway.id, ShiftType.MORNING,   ops[1], "MGR002"),
+            (gate_highway.id, ShiftType.AFTERNOON, ops[0], "MGR002"),
+        ]:
+            s = Shift(gate_id=gid, shift_type=stype, date=today,
+                      operator_num_worker=opr, manager_num_worker=mgr)
+            db.add(s)
+            today_shifts[(gid, stype)] = s
         db.flush()
 
-        morning_shift   = shift_map[(gate_entry.id, ShiftType.MORNING,   today)]
-        afternoon_shift = shift_map[(gate_entry.id, ShiftType.AFTERNOON, today)]
-        night_shift     = shift_map[(gate_entry.id, ShiftType.NIGHT,     today)]
+        morning_today   = today_shifts[(gate_entry.id, ShiftType.MORNING)]
+        afternoon_today = today_shifts[(gate_entry.id, ShiftType.AFTERNOON)]
+        night_today     = today_shifts[(gate_entry.id, ShiftType.NIGHT)]
 
-        ref_counter = [0]
+        def _shift_today(dt: datetime):
+            return _shift_for_time(dt, morning_today, afternoon_today, night_today)
+
+        # ── Historical shifts (last 7 days = previous week, before bulk) ──────
+        print("  Creating recent historical shifts (7 days = previous week)...")
+        recent_shift_map: dict = {}
+        for day_offset in range(1, 8):
+            d = today - timedelta(days=day_offset)
+            sm, sa, sn = _get_or_create_day_shifts(
+                db, d, gate_entry.id, ops[day_offset % 2], "MGR001"
+            )
+            recent_shift_map[d] = (sm, sa, sn)
+
+        # ── 12-month historical shifts (bulk, minimal operator info) ──────────
+        print("  Creating 12-month historical shifts (may take a moment)...")
+        hist_shift_map: dict = {}
+        # We only need gate_entry shifts for historical data
+        start_date = today - timedelta(days=365)
+        d = start_date
+        while d < today - timedelta(days=7):
+            # Skip Sundays (very low activity)
+            if d.weekday() != 6:
+                sm, sa, sn = _get_or_create_day_shifts(
+                    db, d, gate_entry.id, ops[d.toordinal() % 2], "MGR001"
+                )
+                hist_shift_map[d] = (sm, sa, sn)
+            d += timedelta(days=1)
+        print(f"    Created shifts for {len(hist_shift_map)} historical days")
+
+        # ── Ref counter (global, unique across all appointments) ───────────────
+        counter = [0]
 
         def _next_ref(prefix="AVR"):
-            ref_counter[0] += 1
-            return f"{prefix}-{today.strftime('%Y%m%d')}-{ref_counter[0]:04d}"
+            counter[0] += 1
+            return f"{prefix}-{counter[0]:06d}"
 
-        def _shift_for(dt: datetime):
-            h = dt.hour
-            if 6 <= h < 14:
-                return morning_shift
-            if 14 <= h < 22:
-                return afternoon_shift
-            return night_shift
+        # ─────────────────────────────────────────────────────────────────────
+        # TODAY'S APPOINTMENTS — explicit statuses. 87AX60 is the AI-detection
+        # trial truck; an approaching in_transit queue + live alerts feed the
+        # gate operator (Maria Santos / OPR001) view at Portaria 1.
+        # ─────────────────────────────────────────────────────────────────────
+        print("\n  Creating today's appointments...")
 
-        def _auto_status(sched_dt: datetime, dur_min) -> str:
-            """Compute realistic appointment status relative to now."""
-            elapsed = (now - sched_dt).total_seconds() / 60
-            if elapsed < -5:
-                return "scheduled"
-            if dur_min is None or elapsed < dur_min:
-                return "in_process"
-            return "completed"
+        # ── 87AX60 — IN TRANSIT (trial truck, HAZMAT, scheduled 30 min ahead) ─
+        sched_87 = now + timedelta(minutes=30)
+        bk_87 = _make_booking(db, _next_ref("DEMO"), "inbound")
+        _make_cargo(db, bk_87.reference, CARGO_TYPES[0])  # Sulfuric acid
+        appt_87 = Appointment(
+            booking_reference=bk_87.reference,
+            driver_license=main_driver.drivers_license,
+            truck_license_plate="87AX60",
+            terminal_id=terminal_liquidos.id,
+            gate_in_id=gate_entry.id, gate_out_id=None,
+            scheduled_start_time=sched_87,
+            expected_duration=45,
+            status="in_transit",
+            notes="HAZMAT: Sulfuric acid [UN:1831, Kemler:X886] — awaiting gate detection",
+            highway_infraction=False,
+        )
+        db.add(appt_87)
+        db.flush()
+        print(f"    [in_transit ] 87AX60  (id={appt_87.id})  ← AI-detection trial truck")
 
-        def _sched(h: int, m: int = 0) -> datetime:
-            """Absolute time today; if in the future keep as-is (scheduled)."""
-            return datetime.combine(today, time(h, m))
-
-        # ── Video1 appointments — Gate 1, spread across all 3 shifts ─────────
-        # Times chosen so each shift has ≥1 demo plate regardless of script time.
-        print(f"\n  Creating {len(VIDEO1_PLATES)} Video1 appointments (Gate 1)...")
-        _VIDEO1_TIMES = [
-            time(7, 30),   # morning
-            time(9, 0),    # morning
-            time(11, 30),  # morning
-            time(14, 30),  # afternoon
-            time(16, 0),   # afternoon
-            time(22, 15),  # night
+        # ── IN TRANSIT — approaching queue for the gate operator (Portaria 1) ──
+        # A realistic queue of trucks en route to the entry gate so Maria Santos
+        # (OPR001, morning shift at Portaria 1) sees incoming traffic on her
+        # dashboard / arrivals list. 87AX60 above stays the AI-detection truck;
+        # these are additional approaching vehicles, due in the next ~10–70 min.
+        approaching_specs = [
+            # (truck_idx, driver_idx, cargo_idx, minutes_ahead, terminal)
+            # Indices 15–19 are not used by today's completed trucks, so no plate
+            # appears in two "today" states.
+            (15, 1, 2,  12, terminal_liquidos),  # Propane (hazmat)
+            (16, 2, 6,  25, terminal_norte),     # Cork products
+            (17, 3, 9,  45, terminal_solidos),   # Salt
+            (19, 4, 13, 70, terminal_solidos),   # Construction steel
         ]
-        # Plates at index 1 and 4 get highway infraction at Gate 1
-        _VIDEO1_INFRACTION_INDICES = {1, 4}
-        for i, plate in enumerate(VIDEO1_PLATES):
-            cargo_def = CARGO_TYPES[i % len(CARGO_TYPES)]
-            desc, _, _, is_hazmat, un_code, kemler = cargo_def
-            bk = _make_booking(db, _next_ref())
-            _make_cargo(db, bk.reference, cargo_def)
-            slot_time = _VIDEO1_TIMES[i % len(_VIDEO1_TIMES)]
-            sched_time = datetime.combine(today, slot_time)
-            status = _auto_status(sched_time, 45)
-            has_infraction = i in _VIDEO1_INFRACTION_INDICES
-            # Infraction only makes sense once the truck has been detected on the road
-            detected_infraction = has_infraction and status != "scheduled"
-            notes = (
-                f"HAZMAT: {desc} [UN:{un_code}, Kemler:{kemler}]"
-                if is_hazmat else f"Cargo: {desc}"
-            )
-            if detected_infraction:
-                notes += " — INFRAÇÃO DETECTADA A25"
-            appt = _make_appointment(
-                db, bk.reference, main_driver, trucks_by_plate[plate],
-                terminal_liquidos if is_hazmat else terminal_norte,
-                gate_entry, gate_out, sched_time, status, notes,
-                highway_infraction=detected_infraction,
-            )
-            if status in ("completed", "in_process"):
-                entry = sched_time + timedelta(minutes=random.randint(2, 8))
-                dur = 45 if status == "completed" else None
-                v = _make_visit(db, appt, _shift_for(entry), entry, dur)
-
-        # ── Video2 appointments — Gate highway, spread across all 3 shifts ────
-        print(f"  Creating {len(VIDEO2_PLATES)} Video2 appointments (Gate 2 / highway)...")
-        _VIDEO2_TIMES = [
-            time(8, 0),    # morning
-            time(15, 30),  # afternoon
-            time(18, 0),   # afternoon
-            time(22, 45),  # night
-        ]
-        for i, plate in enumerate(VIDEO2_PLATES):
-            cargo_def = CARGO_TYPES[i % len(CARGO_TYPES)]
-            desc, _, _, is_hazmat, un_code, kemler = cargo_def
-            bk = _make_booking(db, _next_ref("HWY"))
-            _make_cargo(db, bk.reference, cargo_def)
-            slot_time = _VIDEO2_TIMES[i % len(_VIDEO2_TIMES)]
-            sched_time = datetime.combine(today, slot_time)
-            status = _auto_status(sched_time, 40)
-            # Hazmat trucks on the highway gate are an infraction only once detected
-            highway_infraction = is_hazmat and status != "scheduled"
-            notes = f"Highway — {'HAZMAT: ' + desc if is_hazmat else 'Cargo: ' + desc}"
-            if highway_infraction:
-                notes += " — INFRAÇÃO DETECTADA A25"
-            appt = _make_appointment(
-                db, bk.reference, drivers[i % len(drivers)], trucks_by_plate[plate],
-                terminal_liquidos if is_hazmat else terminal_solidos,
-                gate_highway, gate_out, sched_time, status, notes,
-                highway_infraction=highway_infraction,
-            )
-            if status in ("completed", "in_process"):
-                entry = sched_time + timedelta(minutes=random.randint(2, 8))
-                dur = 40 if status == "completed" else None
-                v = _make_visit(db, appt, _shift_for(entry), entry, dur)
-
-        # ── Bonus appointments distributed across all 3 shifts ────────────────
-        # Each entry: (truck_idx, cargo_idx, hour, min, dur_min|None, alert_type)
-        # Status is computed dynamically so the demo is always realistic.
-        print("  Creating bonus today appointments distributed across shifts...")
-        bonus_configs = [
-            # Morning shift (6–14h)
-            (0,  1,   6, 45,  35,   "operational"),
-            (1,  6,   7, 30,  28,   None),
-            (2,  7,   8, 10,  42,   None),
-            (3,  8,   8, 50,  31,   "safety"),
-            (4,  9,  10, 30,  None, None),        # in_process if still before 12:00
-            (5,  5,  11,  0,  55,   "problem"),
-            (6, 10,  12, 15,  38,   None),
-            (7, 11,  13,  0,  60,   None),
-            # Afternoon shift (14–22h)
-            (8, 12,  14, 30,  70,   None),
-            (9, 13,  15, 45,  45,   "generic"),
-            (10, 14, 16,  0,  30,   None),
-            (11, 15, 17, 30, None,  "operational"),  # in_process if still afternoon
-            (12, 16, 18,  0,  85,   None),
-            (13, 17, 19, 30,  48,   None),
-            # Night shift (22–6h)
-            (0,  18, 22, 30,  40,   None),
-            (1,  19, 23,  0,  35,   None),
-        ]
-
-        for bidx, (tidx, cidx, bh, bm, dur, alert_t) in enumerate(bonus_configs):
+        for tidx, didx, cidx, mins_ahead, terminal in approaching_specs:
             truck = hist_trucks[tidx % len(hist_trucks)]
-            cargo_def = CARGO_TYPES[cidx % len(CARGO_TYPES)]
-            desc, _, _, is_hazmat, _, _ = cargo_def
-
-            bk = _make_booking(db, _next_ref("BON"), "inbound" if bidx % 3 != 0 else "outbound")
-            _make_cargo(db, bk.reference, cargo_def)
-
-            sched_time = _sched(bh, bm)
-            status = _auto_status(sched_time, dur)
-            appt_terminal = terminal_liquidos if is_hazmat else terminal_norte
-            appt = _make_appointment(
-                db, bk.reference, drivers[bidx % len(drivers)], truck,
-                appt_terminal, gate_entry, gate_out, sched_time, status,
-                f"Cargo: {desc}",
+            sched_t = now + timedelta(minutes=mins_ahead)
+            bk = _make_booking(db, _next_ref("APPR"), "inbound")
+            _make_cargo(db, bk.reference, CARGO_TYPES[cidx])
+            appt = Appointment(
+                booking_reference=bk.reference,
+                driver_license=drivers[didx % len(drivers)].drivers_license,
+                truck_license_plate=truck.license_plate,
+                terminal_id=terminal.id,
+                gate_in_id=gate_entry.id, gate_out_id=None,
+                scheduled_start_time=sched_t,
+                expected_duration=45,
+                status="in_transit",
+                notes=f"Approaching Portaria 1 · {CARGO_TYPES[cidx][0]}",
+                highway_infraction=False,
             )
-            if status in ("completed", "in_process"):
-                entry = sched_time + timedelta(minutes=random.randint(2, 10))
-                visit_dur = dur if status == "completed" else None
-                v = _make_visit(db, appt, _shift_for(entry), entry, visit_dur)
-                if alert_t:
-                    _make_alert(db, v, appt, _shift_for(entry),
-                                entry + timedelta(minutes=random.randint(3, 12)), alert_t)
+            db.add(appt)
+            db.flush()
+            print(f"    [in_transit ] {truck.license_plate:12s} (approaching +{mins_ahead}min)")
 
-        # ── Peak hour cluster (9–10 AM) for congestion simulation ─────────────
-        peak_configs = [
-            (9, 10, 50), (9, 25, 42), (9, 40, 38), (9, 55, 55), (10, 5, 35), (10, 20, 45),
+        # ── SCHEDULED (future today) ──────────────────────────────────────────
+        scheduled_specs = [
+            # (plate, driver_idx, cargo_idx, hours_ahead, terminal, infraction)
+            ("68BSH8",   1, 6,  1.5, terminal_norte,    False),  # Cork products
+            ("PEI2025",  2, 8,  2.0, terminal_solidos,  False),  # Salt
+            ("LN67OIZGB",3, 12, 3.0, terminal_norte,    False),  # Auto parts
+            ("SLJP1523", 4, 19, 4.0, terminal_solidos,  False),  # General cargo
+            ("GGAB425",  5, 11, 2.5, terminal_solidos,  False),  # Timber
         ]
-        for ph, pm, dur in peak_configs:
-            tidx = ref_counter[0] % len(hist_trucks)
-            truck = hist_trucks[tidx]
-            cargo_def = CARGO_TYPES[ref_counter[0] % len(CARGO_TYPES)]
-            bk = _make_booking(db, _next_ref("PEAK"))
-            _make_cargo(db, bk.reference, cargo_def)
-            sched = _sched(ph, pm)
-            status = _auto_status(sched, dur)
-            appt = _make_appointment(
-                db, bk.reference, drivers[ref_counter[0] % len(drivers)], truck,
-                terminal_norte, gate_entry, gate_out, sched, status,
-                f"Peak-hour — {cargo_def[0]}",
+        for plate, didx, cidx, hrs_ahead, terminal, infrct in scheduled_specs:
+            sched_t = now + timedelta(hours=hrs_ahead)
+            bk = _make_booking(db, _next_ref(), "inbound")
+            _make_cargo(db, bk.reference, CARGO_TYPES[cidx])
+            appt = Appointment(
+                booking_reference=bk.reference,
+                driver_license=drivers[didx % len(drivers)].drivers_license,
+                truck_license_plate=plate,
+                terminal_id=terminal.id,
+                gate_in_id=gate_entry.id, gate_out_id=None,
+                scheduled_start_time=sched_t,
+                expected_duration=45,
+                status="scheduled",
+                notes=f"Cargo: {CARGO_TYPES[cidx][0]}",
+                highway_infraction=infrct,
             )
-            if status in ("completed", "in_process"):
-                entry = sched + timedelta(minutes=random.randint(2, 8))
-                visit_dur = dur if status == "completed" else None
-                v = _make_visit(db, appt, _shift_for(entry), entry, visit_dur)
-                if random.random() < 0.3:
-                    at = random.choice(["operational", "generic"])
-                    _make_alert(db, v, appt, _shift_for(entry), entry + timedelta(minutes=5), at)
+            db.add(appt)
+            db.flush()
+            print(f"    [scheduled  ] {plate:12s} (sched +{hrs_ahead:.1f}h)")
 
-        # ── Historical data (5 previous days) ─────────────────────────────────
-        print("  Creating 5 days of historical data...")
-        historical_appts_per_day = [12, 10, 14, 11, 13]
-        hist_terminals_cycle = [
-            terminal_norte, terminal_solidos, terminal_liquidos,
-            terminal_norte, terminal_solidos,
+        # ── AVAILABLE (unclaimed) BOOKINGS — Transportes Aveiro ────────────────
+        # These appear in the driver app's "Available Bookings" list for any
+        # Transportes Aveiro driver (e.g. Oscar Almeida, PT12345678). A booking
+        # is "available" when: status == 'scheduled', driver_license IS NULL and
+        # the truck belongs to the driver's company (PT509123456).
+        print("  Creating available (unclaimed) bookings for Transportes Aveiro...")
+        aveiro_nif = companies[0].nif  # PT509123456 — Oscar's company
+        aveiro_plates = [t.license_plate for t in hist_trucks if t.company_nif == aveiro_nif]
+        available_specs = [
+            # (cargo_idx, hours_ahead, terminal)
+            (6,  5.0, terminal_norte),     # Cork products
+            (9,  6.5, terminal_solidos),   # Salt (Salinas Aveiro)
+            (14, 8.0, terminal_liquidos),  # Olive oil (bulk)
         ]
+        for slot, (cidx, hrs_ahead, terminal) in enumerate(available_specs):
+            plate = aveiro_plates[slot % len(aveiro_plates)]
+            sched_t = now + timedelta(hours=hrs_ahead)
+            bk = _make_booking(db, _next_ref("AVAIL"), "inbound")
+            _make_cargo(db, bk.reference, CARGO_TYPES[cidx])
+            appt = Appointment(
+                booking_reference=bk.reference,
+                driver_license=None,  # unclaimed → shows in available bookings
+                truck_license_plate=plate,
+                terminal_id=terminal.id,
+                gate_in_id=gate_entry.id, gate_out_id=None,
+                scheduled_start_time=sched_t,
+                expected_duration=45,
+                status="scheduled",
+                notes=f"Available booking — {CARGO_TYPES[cidx][0]}",
+                highway_infraction=False,
+            )
+            db.add(appt)
+            db.flush()
+            print(f"    [available  ] {plate:12s} (sched +{hrs_ahead:.1f}h, unclaimed)")
 
-        for day_offset in range(1, 6):
+        # ── IN PROCESS (inside the port, unloading) ────────────────────────────
+        in_process_specs = [
+            # (plate, driver_idx, cargo_idx, sched_h, entry_delay_min, dur_so_far, alert_type)
+            ("92BLN3",  2, 7,  now.hour - 1, 8,  30, "operational"),   # Paper pulp — dock reassignment
+            ("82BTN5",  1, 13, now.hour - 1, 12, 15, "safety"),        # Construction steel — safety check
+        ]
+        for plate, didx, cidx, sched_h, entry_delay, dur_so_far, alert_type in in_process_specs:
+            sched_t = datetime.combine(today, time(max(6, min(sched_h, 21)), random.randint(0, 30)))
+            entry_t = sched_t + timedelta(minutes=entry_delay)
+            bk = _make_booking(db, _next_ref(), "inbound")
+            _make_cargo(db, bk.reference, CARGO_TYPES[cidx])
+            appt = Appointment(
+                booking_reference=bk.reference,
+                driver_license=drivers[didx % len(drivers)].drivers_license,
+                truck_license_plate=plate,
+                terminal_id=terminal_norte.id,
+                gate_in_id=gate_entry.id, gate_out_id=None,
+                scheduled_start_time=sched_t,
+                expected_duration=45,
+                status="in_process",
+                notes=f"Cargo: {CARGO_TYPES[cidx][0]}",
+            )
+            db.add(appt)
+            db.flush()
+            shift = _shift_today(entry_t)
+            v = Visit(
+                appointment_id=appt.id,
+                shift_gate_id=shift.gate_id, shift_type=shift.shift_type, shift_date=shift.date,
+                entry_time=entry_t, out_time=None, state="unloading",
+            )
+            db.add(v)
+            db.flush()
+            # Fresh, recent alert at Portaria 1 so the gate operator's Alerts view
+            # and dashboard show live, ongoing activity (not only past infractions).
+            _make_alert(db, v, appt, shift, now - timedelta(minutes=random.randint(3, 20)), alert_type)
+            print(f"    [in_process ] {plate:12s} (entered {dur_so_far} min ago, {alert_type} alert)")
+
+        # ── COMPLETED (earlier today) ──────────────────────────────────────────
+        completed_specs = [
+            # (plate, driver_idx, cargo_idx, hours_ago, delay_min, dur_min, terminal, infraction)
+            ("321BI13",  6, 5,  4.0, 25, 38, terminal_norte,    True),   # Ceramic tiles, infraction
+            ("CA93896",  7, 9,  3.0,  5, 42, terminal_solidos,  False),  # Fish
+            ("82BTN5",   3, 16, 6.0,  3, 55, terminal_solidos,  False),  # Plastic granules (second run)
+            (hist_trucks[0].license_plate, 8, 18, 5.5, 18, 40, terminal_norte, False),  # Machinery
+            (hist_trucks[1].license_plate, 9, 14, 7.0, 35, 60, terminal_solidos, False), # Olive oil
+            (hist_trucks[2].license_plate, 4, 11, 8.0,  0, 32, terminal_norte, False),  # Timber
+            (hist_trucks[3].license_plate, 1, 8,  2.5,  8, 45, terminal_solidos, False), # Salt
+        ]
+        for plate, didx, cidx, hrs_ago, delay_min, dur_min, terminal, infrct in completed_specs:
+            sched_t = now - timedelta(hours=hrs_ago)
+            entry_t = sched_t + timedelta(minutes=delay_min)
+            exit_t  = entry_t + timedelta(minutes=dur_min)
+            bk = _make_booking(db, _next_ref(), "inbound")
+            _make_cargo(db, bk.reference, CARGO_TYPES[cidx])
+            appt = Appointment(
+                booking_reference=bk.reference,
+                driver_license=drivers[didx % len(drivers)].drivers_license,
+                truck_license_plate=plate,
+                terminal_id=terminal.id,
+                gate_in_id=gate_entry.id, gate_out_id=gate_out.id,
+                scheduled_start_time=sched_t,
+                expected_duration=45,
+                status="completed",
+                notes=f"Cargo: {CARGO_TYPES[cidx][0]}",
+                highway_infraction=infrct,
+            )
+            db.add(appt)
+            db.flush()
+            shift = _shift_today(entry_t)
+            v = Visit(
+                appointment_id=appt.id,
+                shift_gate_id=shift.gate_id, shift_type=shift.shift_type, shift_date=shift.date,
+                entry_time=entry_t, out_time=exit_t, state="done",
+            )
+            db.add(v)
+            db.flush()
+            if infrct:
+                _make_alert(db, v, appt, shift, entry_t + timedelta(minutes=5), "safety")
+            print(f"    [completed  ] {plate:12s} ({hrs_ago:.1f}h ago, delay={delay_min}min)")
+
+        # ── CANCELED (1-2 today) ───────────────────────────────────────────────
+        canceled_specs = [
+            ("LN67OIZGB", 3, 15, 5.0),  # Canceled cement — same plate also has scheduled, different booking
+        ]
+        for plate, didx, cidx, hrs_ago in canceled_specs:
+            sched_t = now - timedelta(hours=hrs_ago)
+            bk = _make_booking(db, _next_ref(), "inbound")
+            _make_cargo(db, bk.reference, CARGO_TYPES[cidx])
+            appt = Appointment(
+                booking_reference=bk.reference,
+                driver_license=drivers[didx % len(drivers)].drivers_license,
+                truck_license_plate=plate,
+                terminal_id=terminal_solidos.id,
+                gate_in_id=gate_entry.id, gate_out_id=None,
+                scheduled_start_time=sched_t,
+                expected_duration=45,
+                status="canceled",
+                notes=f"Cargo: {CARGO_TYPES[cidx][0]} — cancelado por indisponibilidade de cais",
+            )
+            db.add(appt)
+            db.flush()
+            print(f"    [canceled   ] {plate:12s}")
+
+        # ── Extra completed today (more data for wait histogram + dashboard) ────
+        # Uses hist_trucks to avoid plate conflicts with live demo trucks.
+        # Spans a spread of delays so all 4 histogram buckets have values.
+        extra_completed_today = [
+            # (truck_idx, driver_idx, cargo_idx, hrs_ago, delay_min, dur_min, terminal, infraction)
+            (4,  0, 2,  1.5,  3, 28, terminal_liquidos,  False),  # Propane, on-time
+            (5,  1, 6,  2.0,  7, 40, terminal_norte,     False),  # Cork, minor delay
+            (6,  2, 7,  2.5,  9, 35, terminal_solidos,   False),  # Paper pulp, minor
+            (7,  3, 10, 3.0, 18, 55, terminal_solidos,   False),  # Fish, delayed
+            (8,  4, 11, 3.5, 22, 48, terminal_norte,     True),   # Timber, infraction
+            (9,  5, 13, 4.5,  2, 33, terminal_norte,     False),  # Steel, on-time
+            (10, 6, 16, 5.0, 42, 60, terminal_solidos,   False),  # Plastic, very late
+            (11, 7, 19, 5.5,  0, 25, terminal_norte,     False),  # General, on-time
+            (12, 8, 5,  6.5, 33, 45, terminal_solidos,   True),   # Ceramics, infraction
+            (13, 9, 14, 7.5,  6, 38, terminal_liquidos,  False),  # Olive oil, minor
+        ]
+        for tidx, didx, cidx, hrs_ago, delay_min, dur_min, terminal, infrct in extra_completed_today:
+            truck = hist_trucks[tidx % len(hist_trucks)]
+            sched_t = now - timedelta(hours=hrs_ago)
+            entry_t = sched_t + timedelta(minutes=delay_min)
+            exit_t  = entry_t + timedelta(minutes=dur_min)
+            bk = _make_booking(db, _next_ref("EXT"), "inbound")
+            _make_cargo(db, bk.reference, CARGO_TYPES[cidx])
+            appt = Appointment(
+                booking_reference=bk.reference,
+                driver_license=drivers[didx % len(drivers)].drivers_license,
+                truck_license_plate=truck.license_plate,
+                terminal_id=terminal.id,
+                gate_in_id=gate_entry.id, gate_out_id=gate_out.id,
+                scheduled_start_time=sched_t,
+                expected_duration=45,
+                status="completed",
+                notes=f"Cargo: {CARGO_TYPES[cidx][0]}",
+                highway_infraction=infrct,
+            )
+            db.add(appt)
+            db.flush()
+            shift = _shift_today(entry_t)
+            v = Visit(
+                appointment_id=appt.id,
+                shift_gate_id=shift.gate_id, shift_type=shift.shift_type, shift_date=shift.date,
+                entry_time=entry_t, out_time=exit_t, state="done",
+            )
+            db.add(v)
+            db.flush()
+            if infrct:
+                _make_alert(db, v, appt, shift, entry_t + timedelta(minutes=4), "safety")
+            print(f"    [completed+ ] {truck.license_plate:12s} ({hrs_ago:.1f}h ago, delay={delay_min}min)")
+
+        # ── Highway gate appointments (Video2 plates, today) ──────────────────
+        v2_today_specs = [
+            # (plate, didx, cidx, status, sched_offset_h, delay_min, dur_min, infraction)
+            ("321BI13",  5, 1, "completed", -5.0, 10, 38, True),   # Gasoline ADR, infraction
+            ("GGAB425",  6, 4, "completed", -4.0,  5, 45, False),  # Ammonium nitrate
+            ("CA93896",  7, 3, "scheduled",  2.0,  0,  0, False),  # Industrial chemicals future
+        ]
+        hw_shift_m = today_shifts[(gate_highway.id, ShiftType.MORNING)]
+        hw_shift_a = today_shifts[(gate_highway.id, ShiftType.AFTERNOON)]
+        for plate, didx, cidx, status, sched_off_h, delay_min, dur_min, infrct in v2_today_specs:
+            sched_t = now + timedelta(hours=sched_off_h)
+            bk = _make_booking(db, _next_ref("HWY"), "inbound")
+            _make_cargo(db, bk.reference, CARGO_TYPES[cidx])
+            appt = Appointment(
+                booking_reference=bk.reference,
+                driver_license=drivers[didx % len(drivers)].drivers_license,
+                truck_license_plate=plate,
+                terminal_id=terminal_liquidos.id,
+                gate_in_id=gate_highway.id, gate_out_id=gate_out.id if status == "completed" else None,
+                scheduled_start_time=sched_t,
+                expected_duration=40,
+                status=status,
+                notes=f"Highway — {CARGO_TYPES[cidx][0]}",
+                highway_infraction=infrct,
+            )
+            db.add(appt)
+            db.flush()
+            if status == "completed":
+                entry_t = sched_t + timedelta(minutes=delay_min)
+                exit_t  = entry_t + timedelta(minutes=dur_min)
+                hw_shift = hw_shift_m if entry_t.hour < 14 else hw_shift_a
+                v = Visit(
+                    appointment_id=appt.id,
+                    shift_gate_id=hw_shift.gate_id, shift_type=hw_shift.shift_type, shift_date=hw_shift.date,
+                    entry_time=entry_t, out_time=exit_t, state="done",
+                )
+                db.add(v)
+                db.flush()
+                if infrct:
+                    _make_alert(db, v, appt, hw_shift, entry_t + timedelta(minutes=3), "safety")
+            print(f"    [hw-{status[:8]:<8}] {plate:12s}")
+
+        # ─────────────────────────────────────────────────────────────────────
+        # RECENT HISTORICAL DATA (last 5 days — existing pattern)
+        # ─────────────────────────────────────────────────────────────────────
+        print("\n  Creating recent historical data (previous week — 7 days)...")
+        terminals_cycle = [terminal_norte, terminal_solidos, terminal_liquidos,
+                           terminal_norte, terminal_solidos, terminal_liquidos,
+                           terminal_norte]
+        recent_week_total = 0
+        for day_offset in range(1, 8):
             d = today - timedelta(days=day_offset)
-            sm = shift_map[(gate_entry.id, ShiftType.MORNING, d)]
-            sa = shift_map[(gate_entry.id, ShiftType.AFTERNOON, d)]
+            sm, sa, sn = recent_shift_map[d]
+            # Busy, weekday-aware volume so the previous week yields rich,
+            # sensible analytics (entries/exits, CO₂, per-company SLA, alerts).
+            if d.weekday() == 6:      # Sunday — light
+                num_appts = random.randint(7, 10)
+            elif d.weekday() == 5:    # Saturday — moderate
+                num_appts = random.randint(13, 17)
+            else:                     # weekday — busy
+                num_appts = random.randint(22, 28)
             _generate_historical_day(
                 db, d, hist_trucks, drivers,
-                hist_terminals_cycle[day_offset - 1],
-                gate_entry, gate_out, sm, sa,
-                historical_appts_per_day[day_offset - 1],
-                f"HIST-D{day_offset}",
+                terminals_cycle[day_offset - 1],
+                gate_entry, gate_out, sm, sa, sn,
+                num_appts, "HIST-R", counter,
             )
-            print(f"    Day -{day_offset} ({d}): {historical_appts_per_day[day_offset-1]} appointments")
+            recent_week_total += num_appts
+            print(f"    Day -{day_offset} ({d}, {d:%a}): {num_appts} appointments")
+        print(f"    Previous-week total: {recent_week_total} processed appointments")
+
+        # ─────────────────────────────────────────────────────────────────────
+        # 12-MONTH BULK HISTORICAL DATA
+        # Monthly volume varies to simulate seasonality (higher summer/autumn)
+        # ─────────────────────────────────────────────────────────────────────
+        print("\n  Creating 12-month bulk historical data...")
+
+        # Volume multiplier per month (January=1 through December=12)
+        _MONTHLY_LOAD = {
+            1: 0.70,  # Jan — low (post-holidays)
+            2: 0.75,  # Feb
+            3: 0.85,  # Mar
+            4: 0.90,  # Apr
+            5: 0.95,  # May
+            6: 1.00,  # Jun
+            7: 1.10,  # Jul — peak summer
+            8: 1.15,  # Aug — peak summer
+            9: 1.10,  # Sep — autumn harvest
+            10: 1.05, # Oct
+            11: 0.85, # Nov
+            12: 0.75, # Dec — holidays
+        }
+
+        BASE_DAILY = 20       # base appointments on a weekday
+        WEEKEND_FACTOR = 0.4  # weekends have ~40% of weekday load
+
+        total_hist = 0
+        prev_month = None
+        all_terminals = [terminal_norte, terminal_solidos, terminal_liquidos]
+
+        sorted_hist_days = sorted(hist_shift_map.keys())
+        for d in sorted_hist_days:
+            month_load = _MONTHLY_LOAD.get(d.month, 1.0)
+            is_weekend = d.weekday() >= 5
+            load = month_load * (WEEKEND_FACTOR if is_weekend else 1.0)
+            num_appts = max(1, round(BASE_DAILY * load + random.randint(-2, 2)))
+
+            sm, sa, sn = hist_shift_map[d]
+            terminal = all_terminals[d.toordinal() % len(all_terminals)]
+            _generate_historical_day(
+                db, d, hist_trucks, drivers,
+                terminal, gate_entry, gate_out, sm, sa, sn,
+                num_appts, "HIST", counter,
+            )
+            total_hist += num_appts
+
+            if d.month != prev_month:
+                print(f"    Month {d.year}-{d.month:02d}: generating...")
+                prev_month = d.month
+
+        print(f"    Total historical appointments: {total_hist}")
+
+        # ─────────────────────────────────────────────────────────────────────
+        # RECURRING SHIFT TEMPLATES — drive the automatic shift scheduler
+        # ─────────────────────────────────────────────────────────────────────
+        print("\n  Creating recurring shift templates...")
+        # weekdays mask: index 0 = Monday … 6 = Sunday
+        WEEKDAYS_MON_FRI = "1111100"
+        WEEKDAYS_MON_SAT = "1111110"
+        shift_templates = [
+            # (gate, shift_type, weekdays, operator_num, manager_num)
+            (gate_entry,   ShiftType.MORNING,   WEEKDAYS_MON_FRI, "OPR001", "MGR001"),
+            (gate_entry,   ShiftType.AFTERNOON, WEEKDAYS_MON_FRI, "OPR002", "MGR001"),
+            (gate_entry,   ShiftType.NIGHT,     WEEKDAYS_MON_SAT, None,     "MGR002"),  # recurring slot to staff
+            (gate_highway, ShiftType.MORNING,   WEEKDAYS_MON_FRI, None,     "MGR002"),
+        ]
+        for gate, stype, weekdays, op_num, mgr_num in shift_templates:
+            db.add(ShiftTemplate(
+                gate_id=gate.id,
+                shift_type=stype,
+                weekdays=weekdays,
+                operator_num_worker=op_num,
+                manager_num_worker=mgr_num,
+                valid_from=today,
+                active=True,
+            ))
+        print(f"    {len(shift_templates)} templates created (Mon–Fri/Sat rotations)")
 
         # ── Commit ────────────────────────────────────────────────────────────
-        print("\n  Saving to database...")
+        print("\n  Saving to database (this may take a moment)...")
         db.commit()
 
+        # ── Materialise upcoming shifts from the templates (3 weeks ahead) ────
+        # so the calendar shows a populated distribution right after seeding.
+        try:
+            from application.use_cases.shift_scheduler import generate_shifts_from_templates
+            gen = generate_shifts_from_templates(21)
+            print(f"  Shift scheduler: generated {gen['created']} future shifts "
+                  f"(skipped {gen['skipped']}) from {gen['templates']} templates")
+        except Exception as exc:  # non-fatal for seeding
+            print(f"  Shift generation skipped: {exc}")
+
         # ── Summary ───────────────────────────────────────────────────────────
-        total_hist = sum(historical_appts_per_day)
         print("\n" + "=" * 70)
         print("  DATABASE INITIALIZED — PEI 2025 PORTO DE AVEIRO DEMO")
         print("=" * 70)
@@ -670,39 +994,46 @@ def init_demo_data(db: Session):
 │                        LOGIN CREDENTIALS                             │
 ├─────────────────────────────────────────────────────────────────────┤
 │  WEB PORTAL:                                                         │
-│    worker@porto.pt            │ password123  │ Operator              │
-│    manager@example.pt         │ password123  │ Manager               │
-│    teresa.lopes@portodeaveiro.pt │ password123 │ Manager             │
+│    worker@porto.pt               │ password123  │ Operator           │
+│    manager@example.pt            │ password123  │ Manager            │
+│    teresa.lopes@portodeaveiro.pt │ password123  │ Manager            │
 ├─────────────────────────────────────────────────────────────────────┤
 │  MOBILE APP (Drivers):                                               │
-│    PT12345678  Oscar Almeida      │ driver123                       │
-│    PT23456789  Sofia Rodrigues    │ driver123                       │
-│    ES87654321  Carlos Garcia      │ driver123                       │
-│    DE11223344  Hans Mueller       │ driver123                       │
-│    FR99887766  Pierre Dubois      │ driver123                       │
+│    PT12345678  Oscar Almeida     │ driver123                        │
+│    PT23456789  Sofia Rodrigues   │ driver123                        │
+│    ES87654321  Carlos Garcia     │ driver123                        │
+│    DE11223344  Hans Mueller      │ driver123                        │
+│    FR99887766  Pierre Dubois     │ driver123                        │
 └─────────────────────────────────────────────────────────────────────┘
 """)
 
         print(f"""
 ┌─────────────────────────────────────────────────────────────────────┐
-│  VIDEO1 → Gate 1:  {len(VIDEO1_PLATES)} plates  (07:30 · 09:00 · 11:30 · 14:30 · 16:00 · 22:15) │
-│  VIDEO2 → Gate 2:  {len(VIDEO2_PLATES)} plates  (08:00 · 15:30 · 18:00 · 22:45)              │
-│  Bonus: {len(bonus_configs)} appts across Morning/Afternoon/Night + {len(peak_configs)} peak-hour │
-│  Historical appointments (5 days):  {total_hist}                       │
-│  Companies: {len(COMPANIES)} │ Drivers: {len(DRIVERS)} │ Trucks: {len(all_trucks_list)} (demo+hist)              │
+│  TODAY'S LIVE STATE (Portaria 1 · operator Maria Santos/OPR001):     │
+│    87AX60     → in_transit  (AI-detection trial truck)              │
+│    +4 trucks  → in_transit  (approaching queue, +12..70 min)        │
+│    92BLN3     → in_process  (unloading · operational alert)         │
+│    82BTN5     → in_process  (unloading · safety alert)              │
+│    68BSH8     → scheduled   (+1.5h)                                 │
+│    PEI2025    → scheduled   (+2.0h)                                 │
+│    LN67OIZGB  → scheduled   (+3.0h)                                 │
+│    SLJP1523   → scheduled   (+4.0h)                                 │
+│    GGAB425    → scheduled   (+2.5h)                                 │
+│    321BI13    → completed   (with safety infraction)                │
+│    CA93896    → completed   (highway gate)                          │
+│    LN67OIZGB  → canceled    (earlier booking, same plate)           │
+│    3 unclaimed → available bookings (Transportes Aveiro / Oscar)    │
 ├─────────────────────────────────────────────────────────────────────┤
-│  Status computed dynamically — always valid for any run date/time    │
-├─────────────────────────────────────────────────────────────────────┤
-│  TERMINALS (Porto de Aveiro real coordinates):                       │
-│    Terminal Norte           (40.6520N, 8.7430W) — general cargo     │
-│    Terminal Granéis Sólidos (40.6446N, 8.7490W) — bulk solids      │
-│    Terminal Granéis Líquidos (40.6360N, 8.7520W) — HAZMAT liquid   │
+│  PREVIOUS WEEK: 7 days fully processed (busy weekdays + weekend dip) │
+│  HISTORY: 12 months · ~{total_hist} appointments · seasonal variation    │
+│  CO₂ trend data available for all 12 months                         │
+│  Delay profiles vary per company (SLA analytics realistic)           │
+│  ~8% highway infractions in history · 12% operational alerts         │
 └─────────────────────────────────────────────────────────────────────┘
 """)
 
     except Exception as e:
         print(f"\n  ERROR: {e}")
+        import traceback; traceback.print_exc()
         db.rollback()
         raise
-
-

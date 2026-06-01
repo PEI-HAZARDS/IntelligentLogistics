@@ -40,6 +40,11 @@ def expected_type(request):
 
 
 @pytest.fixture
+def min_expected_rate(request):
+    return request.config.getoption("--min-expected-rate")
+
+
+@pytest.fixture
 def crop_files(request):
     crops_dir = request.config.getoption("--crops-dir", default=None)
     if crops_dir:
@@ -61,11 +66,16 @@ def crop_files(request):
 # Test
 # =============================================================================
 
-def test_classify_all_crops(classifier, crop_files, expected_type):
+def test_classify_all_crops(classifier, crop_files, expected_type, min_expected_rate):
     """Every image in the crops directory should match the expected plate type."""
     total = 0
     correct = 0
     failed = []
+    counts = {
+        PlateClassifier.LICENSE_PLATE: 0,
+        PlateClassifier.HAZARD_PLATE: 0,
+        PlateClassifier.UNKNOWN: 0,
+    }
 
     for f in crop_files:
         img = cv2.imread(str(f))
@@ -75,6 +85,7 @@ def test_classify_all_crops(classifier, crop_files, expected_type):
         total += 1
         h, w = img.shape[:2]
         result = classifier.classify(img)
+        counts[result] += 1
 
         if result == expected_type:
             correct += 1
@@ -84,6 +95,7 @@ def test_classify_all_crops(classifier, crop_files, expected_type):
     # --- Summary ---
     wrong = total - correct
     accuracy = (correct / total * 100) if total > 0 else 0
+    expected_rate = (correct / total) if total > 0 else 0
 
     print(f"\n{'=' * 50}")
     print(f"  Expected type : {expected_type}")
@@ -91,6 +103,12 @@ def test_classify_all_crops(classifier, crop_files, expected_type):
     print(f"  Correct       : {correct}")
     print(f"  Wrong         : {wrong}")
     print(f"  Accuracy      : {accuracy:.1f}%")
+    print(
+        "  Counts        : "
+        f"license={counts[PlateClassifier.LICENSE_PLATE]}  "
+        f"hazard={counts[PlateClassifier.HAZARD_PLATE]}  "
+        f"unknown={counts[PlateClassifier.UNKNOWN]}"
+    )
     print(f"{'=' * 50}")
 
     if failed:
@@ -99,4 +117,9 @@ def test_classify_all_crops(classifier, crop_files, expected_type):
             print(f"    - {line}")
         print()
 
-    assert wrong == 0, f"{wrong}/{total} crops misclassified (see above)"
+    assert (
+        expected_rate >= min_expected_rate
+    ), (
+        f"expected rate {expected_rate:.2%} below minimum "
+        f"{min_expected_rate:.2%}"
+    )

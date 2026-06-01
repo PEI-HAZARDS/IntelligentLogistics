@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, joinedload
 
 from domain.interfaces import IDriverRepository
@@ -41,7 +42,20 @@ class SqlAlchemyDriverRepository(IDriverRepository):
             "created_at": driver.created_at,
         }
 
-    def get_appointment_for_claim(self, booking_reference: str, arrival_id: str) -> Optional[dict[str, Any]]:
+    def get_appointment_for_claim(
+        self, booking_reference: str, arrival_id: str, drivers_license: str
+    ) -> Optional[dict[str, Any]]:
+        # The appointment is claimable when it is scheduled AND either:
+        #   - unclaimed (driver_license IS NULL) and the PIN matches, or
+        #   - already owned by this driver (PIN skipped — re-claim from Delivery tab).
+        # '1234' remains a universal test PIN that bypasses the arrival_id check.
+        owned = Appointment.driver_license == drivers_license
+        unclaimed = Appointment.driver_license.is_(None)
+        if arrival_id == "1234":
+            unclaimed_with_pin = unclaimed
+        else:
+            unclaimed_with_pin = and_(unclaimed, Appointment.arrival_id == arrival_id)
+
         appt = (
             self._s.query(Appointment)
             .options(
@@ -52,9 +66,8 @@ class SqlAlchemyDriverRepository(IDriverRepository):
             )
             .filter(
                 Appointment.booking_reference == booking_reference,
-                # '1234' is accepted as a universal test PIN — skips arrival_id check
-                *([Appointment.arrival_id == arrival_id] if arrival_id != "1234" else []),
                 Appointment.status == "scheduled",
+                or_(owned, unclaimed_with_pin),
             )
             .first()
         )
@@ -93,6 +106,37 @@ class SqlAlchemyDriverRepository(IDriverRepository):
             "dock_bay_number": dock_bay_number,
             "dock_location": dock_location,
         }
+
+    def assign_driver_to_appointment(self, appointment_id: int, drivers_license: str) -> bool:
+        # Lock the appointment row to serialise concurrent claims (no silent double-claim).
+        appt = (
+            self._s.query(Appointment)
+            .filter(Appointment.id == appointment_id)
+            .with_for_update()
+            .first()
+        )
+        if appt is None:
+            return False
+
+        if appt.driver_license is None:
+            appt.driver_license = drivers_license
+            appt.version = (appt.version or 0) + 1  # optimistic-concurrency bump (Guardrail 6)
+            driver = (
+                self._s.query(Driver)
+                .filter(Driver.drivers_license == drivers_license)
+                .first()
+            )
+            if driver:
+                driver.current_appointment_id = appointment_id
+            self._s.flush()
+            return True
+
+        # Idempotent: the requesting driver already owns it.
+        if appt.driver_license == drivers_license:
+            return True
+
+        # Owned by someone else — reject explicitly.
+        return False
 
     def anonymise(self, drivers_license: str) -> None:
         """

@@ -80,11 +80,14 @@ SQLAlchemy declarative schema: enums, all ORM models, relationships. No query lo
 | Python enum | PG type | Values |
 |-------------|---------|--------|
 | `ShiftType` | — | `MORNING` / `AFTERNOON` / `NIGHT`; `get_hours()` returns `(start_time, end_time)` |
-| `appointment_status_enum` | PG ENUM | scheduled, in_transit, in_process, unloading, canceled, delayed, completed |
-| `delivery_status_enum` | PG ENUM | not_started, unloading, completed |
+| `appointment_status_enum` | PG ENUM | scheduled, in_transit, in_process, completed, canceled — **stored** flow (v4). Sub-states `delayed` / `unloading` / `in_port` / `leaving_port` are **computed at read time, never stored** |
+| `delivery_status_enum` | PG ENUM | in_port, unloading, done (Visit lifecycle, v4) |
+| `physical_state_enum` | PG ENUM | liquid, solid, gaseous, hybrid (Cargo.state) |
+| `direction_enum` | PG ENUM | inbound, outbound (Booking.direction) |
 | `operational_status_enum` | PG ENUM | maintenance, operational, closed |
 | `access_level_enum` | PG ENUM | admin, basic |
 | `type_alert_enum` | PG ENUM | generic, safety, problem, operational |
+| `pending_review_status_enum` | PG ENUM | PENDING, APPROVED, REJECTED (PendingReview.status) |
 
 **Models:**
 

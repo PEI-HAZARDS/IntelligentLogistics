@@ -2,6 +2,7 @@
 Unit tests for BaseDecisionEngine and BaseDecisionEngineConfig.
 """
 
+import os
 import sys
 import time
 from unittest.mock import MagicMock, patch, PropertyMock
@@ -18,7 +19,10 @@ from shared.src.kafka_protocol import (
     HazardPlateResultsMessage,
     KafkaTopicFactory,
 )
-from V_APP.shared.src.base_decision_engine import BaseDecisionEngine, BaseDecisionEngineConfig
+from V_APP.shared.src.base_decision_engine import (
+    BaseDecisionEngine,
+    BaseDecisionEngineConfig,
+)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -339,3 +343,80 @@ class TestStart:
         engine.start()
         assert engine.lp_buffer == {}
         assert engine.hz_buffer == {}
+
+    def test_processing_error_increments_error_counter(self, engine):
+        """_try_process_truck raising must hit the inner error-counter branch (lines 238-242)."""
+        lp_topic = KafkaTopicFactory.license_plate_results("1")
+        lp_msg = make_lp_msg()
+
+        call_count = 0
+        def consume_then_stop(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return (lp_topic, lp_msg, "truck-1")
+            engine.running = False
+            return (None, None, None)
+
+        engine.kafka_consumer.consume_typed_message.side_effect = consume_then_stop
+
+        with patch.object(engine, "_try_process_truck", side_effect=RuntimeError("processing boom")):
+            with patch("V_APP.shared.src.base_decision_engine._worker_kafka_consumed") as counter_mock:
+                engine.start()
+
+        error_calls = [
+            c for c in counter_mock.labels.call_args_list
+            if c.kwargs.get("status") == "error" or (c.args and "error" in c.args)
+        ]
+        assert len(error_calls) >= 1
+
+
+# ═══════════════════════════════════════════════════════════════════
+# OTel setup paths (lines 163-172)
+# ═══════════════════════════════════════════════════════════════════
+
+class TestOTelSetup:
+    def test_tracer_initialized_when_endpoint_set(self, config):
+        with patch.dict(os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}):
+            with patch("V_APP.shared.src.base_decision_engine._OTEL_AVAILABLE", True):
+                with patch("V_APP.shared.src.base_decision_engine.TracerProvider"):
+                    with patch("V_APP.shared.src.base_decision_engine.BatchSpanProcessor"):
+                        with patch("V_APP.shared.src.base_decision_engine.OTLPSpanExporter"):
+                            with patch("V_APP.shared.src.base_decision_engine.trace") as mock_trace:
+                                with patch("V_APP.shared.src.base_decision_engine.load_from_file", return_value={}):
+                                    mock_trace.get_tracer.return_value = MagicMock()
+                                    eng = ConcreteDecisionEngine(
+                                        config=config,
+                                        kafka_producer=MagicMock(),
+                                        kafka_consumer=MagicMock(),
+                                        plate_matcher=MagicMock(),
+                                        database_client=MagicMock(),
+                                    )
+        assert eng._tracer is not None
+
+    def test_tracer_disabled_when_setup_raises(self, config):
+        with patch.dict(os.environ, {"OTEL_EXPORTER_OTLP_ENDPOINT": "http://otel:4317"}):
+            with patch("V_APP.shared.src.base_decision_engine._OTEL_AVAILABLE", True):
+                with patch("V_APP.shared.src.base_decision_engine.TracerProvider", side_effect=Exception("otel down")):
+                    with patch("V_APP.shared.src.base_decision_engine.load_from_file", return_value={}):
+                        eng = ConcreteDecisionEngine(
+                            config=config,
+                            kafka_producer=MagicMock(),
+                            kafka_consumer=MagicMock(),
+                            plate_matcher=MagicMock(),
+                            database_client=MagicMock(),
+                        )
+        assert eng._tracer is None
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Abstract method bodies (lines 177, 181, 185, 195)
+# ═══════════════════════════════════════════════════════════════════
+
+class TestAbstractMethodBodies:
+    def test_abstract_stubs_return_none(self, engine):
+        """Call the abstract base stubs directly to cover the pass statements."""
+        assert BaseDecisionEngine._get_active_gate_ids(engine) is None
+        assert BaseDecisionEngine._get_consumer_group(engine) is None
+        assert BaseDecisionEngine._init_specific_metrics(engine) is None
+        assert BaseDecisionEngine._execute_logic(engine, "1", "t1", MagicMock(), MagicMock()) is None

@@ -25,6 +25,7 @@ from routes.driver import router as drivers_router
 from routes.alerts import router as alerts_router
 from routes.worker import router as workers_router
 from routes.notifications import router as notifications_router
+from routes.energy import router as energy_router
 
 # Kafka decision consumer
 from infrastructure.messaging.kafka_decision_consumer import KafkaDecisionConsumer
@@ -82,12 +83,12 @@ logging.basicConfig(level=logging.INFO)
 async def _startup_services(app: FastAPI) -> asyncio.Task | None:
     """Initialise all infrastructure services and return the scheduler task."""
     try:
-        Base.metadata.create_all(bind=engine)
+        engine.connect().close()
         _ready["postgres"] = True
-        logger.info("Postgres: schemas verified / created.")
+        logger.info("Postgres: connection OK.")
     except Exception as e:
         _ready["postgres"] = False
-        logger.exception("Postgres: failed to verify/create schemas: %s", e)
+        logger.exception("Postgres: connection failed: %s", e)
 
     try:
         mongo_client.admin.command("ping")
@@ -198,6 +199,7 @@ app.include_router(alerts_router, prefix="/api/v1")
 app.include_router(workers_router, prefix="/api/v1")
 app.include_router(statistics_router, prefix="/api/v1")  # Phase 2
 app.include_router(notifications_router, prefix="/api/v1")  # Phase 2
+app.include_router(energy_router, prefix="/api/v1")  # energy spike telemetry
 
 
 @app.get("/api/v1/health")

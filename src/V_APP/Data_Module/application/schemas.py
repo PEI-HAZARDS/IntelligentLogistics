@@ -13,9 +13,9 @@ DecimalAsFloat = Annotated[Decimal, PlainSerializer(float, return_type=float, wh
 # ==========================
 
 class DeliveryStatusEnum(str, Enum):
-    not_started = "not_started"
+    in_port = "in_port"
     unloading = "unloading"
-    completed = "completed"
+    done = "done"
 
 
 class PhysicalStateEnum(str, Enum):
@@ -40,10 +40,8 @@ class AppointmentStatusEnum(str, Enum):
     scheduled = "scheduled"
     in_transit = "in_transit"
     in_process = "in_process"
-    unloading = "unloading"
-    canceled = "canceled"
-    delayed = "delayed"
     completed = "completed"
+    canceled = "canceled"
 
 
 class TypeAlertEnum(str, Enum):
@@ -166,6 +164,10 @@ class Driver(DriverBase):
     active: bool = True
     created_at: Optional[datetime] = None
     company: Optional[Company] = None
+    # Flat company name resolved from the related company (read-side queries
+    # provide this directly). Declared so it survives response serialization
+    # and reaches the driver app profile / login user_info.
+    company_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -360,43 +362,65 @@ class Appointment(AppointmentBase):
     terminal: Optional[Terminal] = None
     gate_in: Optional[Gate] = None
     gate_out: Optional[Gate] = None
+    # Infraction review fields (nullable — set by manager PATCH /arrivals/{id}/review)
+    reviewed_at: Optional[datetime] = None
+    reviewed_by: Optional[str] = None
+    review_note: Optional[str] = None
     # Orthogonal sub-state fields (populated by model_validator from ORM properties)
     display_status: Optional[str] = None
     primary_status: Optional[str] = None
     is_delayed: Optional[bool] = None
     is_unloading: Optional[bool] = None
+    is_in_port: Optional[bool] = None
+    is_visit_done: Optional[bool] = None
 
     model_config = {"from_attributes": True}
 
     @model_validator(mode="after")
     def _populate_substates(self) -> "Appointment":
-        """Derive display_status and primary_status from status + sub-state flags.
+        """Derive display_status and primary_status from stored status + sub-state flags.
 
-        is_delayed and is_unloading are auto-populated from ORM @property via from_attributes.
+        Primary flow: scheduled → in_transit → in_process → completed | canceled
+        Sub-states (never stored, derived from ORM @property via from_attributes):
+          - is_delayed:   in_transit past tolerance window
+          - is_in_port:   in_process, Visit.state == 'in_port'
+          - is_unloading: in_process, Visit.state == 'unloading'
         """
         raw = self.status.value if self.status else "scheduled"
         is_del = self.is_delayed or False
-        # Backward compat: legacy rows stored with status='unloading' before Visit sub-state refactor
-        if raw == "unloading" and not self.is_unloading:
-            self.is_unloading = True
         is_unl = self.is_unloading or False
+        is_inp = self.is_in_port or False
+        is_vd  = self.is_visit_done or False
 
-        # primary_status: the real workflow state (never 'delayed'/'unloading')
-        if raw == "delayed":
-            self.primary_status = "in_transit"
-        elif raw == "unloading":
-            self.primary_status = "in_process"
-        else:
-            self.primary_status = raw
+        # primary_status always matches the stored enum value
+        self.primary_status = raw
 
-        # display_status: computed string for UI badges
+        # display_status: most specific sub-state badge for UI
         if raw == "in_transit" and is_del:
             self.display_status = "delayed"
-        elif (raw == "in_process" or raw == "unloading") and is_unl:
+        elif raw == "in_process" and is_vd:
+            self.display_status = "leaving_port"
+        elif raw == "in_process" and is_unl:
             self.display_status = "unloading"
+        elif raw == "in_process" and is_inp:
+            self.display_status = "in_port"
         else:
             self.display_status = raw
 
+        return self
+
+
+# ==========================
+# MANAGER VIEW — driver fields always redacted (RGPD)
+# ==========================
+
+class AppointmentManagerView(Appointment):
+    """Appointment schema for manager-facing endpoints.
+    Driver identity fields are always nullified — managers see the truck, not the person."""
+    @model_validator(mode='after')
+    def _redact_driver(self):
+        self.driver_license = None
+        self.driver = None
         return self
 
 
@@ -411,7 +435,7 @@ class VisitBase(BaseModel):
     shift_date: date
     entry_time: Optional[datetime] = None
     out_time: Optional[datetime] = None
-    state: DeliveryStatusEnum = DeliveryStatusEnum.not_started
+    state: DeliveryStatusEnum = DeliveryStatusEnum.in_port
 
 
 class VisitCreate(VisitBase):

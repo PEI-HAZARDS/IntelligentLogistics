@@ -44,8 +44,8 @@ def mock_dependencies():
 
 @pytest.fixture
 def mock_config():
-    from AI_APP.shared.src.base_agent import BaseAgentConfig
-    return BaseAgentConfig(minio_user="test_user", minio_password="test_password")
+    from AI_APP.agentC.src.agentC import AgentCConfig
+    return AgentCConfig(minio_user="test_user", minio_password="test_password")
 
 @pytest.fixture
 def agent_c(mock_dependencies, mock_config):

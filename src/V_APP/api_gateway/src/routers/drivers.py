@@ -3,7 +3,7 @@ from typing import Annotated, Optional
 import os
 
 import jwt as _jwt
-from fastapi import APIRouter, Query, Path, Depends, Body
+from fastapi import APIRouter, Query, Path, Depends, Body, HTTPException, status
 from pydantic import BaseModel
 from loguru import logger
 
@@ -35,6 +35,40 @@ def _dm_driver_jwt(drivers_license: str) -> str:
 def _dm_auth(drivers_license: str) -> dict[str, str]:
     """Return an Authorization header dict for DM /me/* calls."""
     return {"Authorization": f"Bearer {_dm_driver_jwt(drivers_license)}"}
+
+
+def _normalize_license(drivers_license: str | None) -> str:
+    return (drivers_license or "").strip().upper()
+
+
+def _ensure_driver_self_or_manager(drivers_license: str, current_user: TokenPayload) -> None:
+    """Allow managers to access any driver, but drivers only their own data."""
+    if "manager" in current_user.roles:
+        return
+
+    if "driver" in current_user.roles and _normalize_license(current_user.sub) == _normalize_license(drivers_license):
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Drivers can only access their own data",
+    )
+
+
+async def _get_owned_appointment(appointment_id: int, current_user: TokenPayload) -> dict:
+    """Fetch an appointment and ensure the authenticated driver owns it."""
+    appointment = await internal_client.get(f"/arrivals/{appointment_id}")
+    if not isinstance(appointment, dict):
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Invalid appointment response")
+
+    driver_license = appointment.get("driver_license")
+    if _normalize_license(driver_license) != _normalize_license(current_user.sub):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Drivers can only update their own appointments",
+        )
+
+    return appointment
 
 
 # ---------------------------------
@@ -85,6 +119,79 @@ async def claim_appointment(
     return await internal_client.post("/drivers/claim", json=claim_data.model_dump(), params=params, headers=_dm_auth(drv_license))
 
 
+# Human-readable labels for the problem categories the driver can report.
+# Kept here (not in the mobile client) so the manager-facing alert text is
+# consistent regardless of the app version that submitted it.
+_PROBLEM_CATEGORY_LABELS: dict[str, str] = {
+    "breakdown": "Vehicle breakdown",
+    "lost": "Driver lost / wrong route",
+    "delay": "Traffic delay",
+    "accident": "Accident",
+    "cargo": "Cargo / container issue",
+    "other": "Other issue",
+}
+
+
+class DriverProblemReport(BaseModel):
+    """A problem a driver reports from the road; surfaced to the logistics
+    manager as a `problem` alert."""
+    category: str
+    note: Optional[str] = None
+    location_label: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    arrival_id: Optional[str] = None
+    appointment_id: Optional[int] = None
+    license_plate: Optional[str] = None
+
+
+def _compose_problem_description(report: DriverProblemReport, drivers_license: str) -> str:
+    """Build the alert description shown in the manager's alerts widget."""
+    label = _PROBLEM_CATEGORY_LABELS.get(report.category, report.category or "Issue")
+    parts: list[str] = [f"Driver report: {label}"]
+
+    who = drivers_license
+    if report.license_plate:
+        who = f"{who} · {report.license_plate}"
+    parts.append(who)
+
+    if report.arrival_id:
+        parts.append(f"Arrival {report.arrival_id}")
+
+    if report.location_label:
+        loc = f"near {report.location_label}"
+        if report.latitude is not None and report.longitude is not None:
+            loc += f" ({report.latitude:.5f}, {report.longitude:.5f})"
+        parts.append(loc)
+    elif report.latitude is not None and report.longitude is not None:
+        parts.append(f"at ({report.latitude:.5f}, {report.longitude:.5f})")
+
+    if report.note and report.note.strip():
+        parts.append(f"“{report.note.strip()}”")
+
+    return " · ".join(parts)
+
+
+@router.post("/drivers/report-problem", status_code=status.HTTP_201_CREATED)
+async def report_problem(
+    report: DriverProblemReport,
+    current_user: Annotated[TokenPayload, Depends(require_role("driver"))],
+):
+    """
+    Driver reports a problem from the road (breakdown, lost near a location,
+    delay, accident, cargo issue, ...). Creates a `problem` alert that the
+    logistics manager sees in the alerts widget.
+
+    Driver identity is taken from the JWT, not the request body.
+    """
+    drv_license = current_user.sub.upper()
+    description = _compose_problem_description(report, drv_license)
+    payload: dict = {"type": "problem", "description": description}
+    if report.appointment_id is not None:
+        payload["appointment_id"] = report.appointment_id  # link alert → appointment/visit
+    return await internal_client.post("/alerts", json=payload)
+
+
 @router.get("/drivers/me/active")
 async def get_my_active_arrival(
     current_user: Annotated[TokenPayload, Depends(require_role("driver"))],
@@ -122,6 +229,24 @@ async def get_my_history(
     return await internal_client.get("/drivers/me/history", params={"limit": limit}, headers=_dm_auth(drv_license))
 
 
+@router.get("/drivers/me/available-bookings")
+async def get_my_available_bookings(
+    current_user: Annotated[TokenPayload, Depends(require_role("driver"))],
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+):
+    """
+    Get unclaimed scheduled appointments for the driver's company.
+    Driver identity extracted from JWT token.
+    """
+    drv_license = current_user.sub.upper()
+    return await internal_client.get(
+        "/drivers/me/available-bookings",
+        params={"page": page, "limit": limit},
+        headers=_dm_auth(drv_license),
+    )
+
+
 # ---------------------------------
 # GET: /api/drivers/{drivers_license}
 # IMPORTANT: catch-all MUST be AFTER all static /drivers/* routes
@@ -129,11 +254,12 @@ async def get_my_history(
 @router.get("/drivers/{drivers_license}")
 async def get_driver(
     drivers_license: Annotated[str, Path(description="Driver's License")],
-    _user: Annotated[TokenPayload, Depends(require_role("driver", "manager"))],
+    current_user: Annotated[TokenPayload, Depends(require_role("driver", "manager"))],
 ):
     """
     Proxy to GET /api/v1/drivers/{drivers_license}
     """
+    _ensure_driver_self_or_manager(drivers_license, current_user)
     return await internal_client.get(f"/drivers/{drivers_license}")
 
 
@@ -143,12 +269,13 @@ async def get_driver(
 @router.get("/drivers/{drivers_license}/arrivals")
 async def get_arrivals_for_driver(
     drivers_license: Annotated[str, Path(description="Driver's License")],
-    _user: Annotated[TokenPayload, Depends(require_role("driver", "manager"))],
+    current_user: Annotated[TokenPayload, Depends(require_role("driver", "manager"))],
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
     """
     Proxy to GET /api/v1/drivers/{drivers_license}/arrivals
     """
+    _ensure_driver_self_or_manager(drivers_license, current_user)
     path = f"/drivers/{drivers_license}/arrivals"
     params = {"limit": limit}
     return await internal_client.get(path, params=params)
@@ -172,6 +299,7 @@ async def update_driver_appointment_status(
     Update appointment status and broadcast status_changed via WebSocket.
     Allows drivers to update their own appointments.
     """
+    await _get_owned_appointment(appointment_id, current_user)
     result = await internal_client.patch(
         f"/arrivals/{appointment_id}/status",
         json=update_data.model_dump(exclude_none=True)
@@ -221,6 +349,7 @@ async def update_driver_visit_state(
     Update visit state (e.g. 'unloading', 'completed') and broadcast via WebSocket.
     Allows drivers to signal unloading start / completion at the dock.
     """
+    appointment = await _get_owned_appointment(appointment_id, current_user)
     result = await internal_client.patch(
         f"/arrivals/{appointment_id}/visit",
         json=update_data.model_dump(exclude_none=True)
@@ -231,15 +360,8 @@ async def update_driver_visit_state(
         "new_status": update_data.state,
     }
 
-    gate_in_id = result.get("appointment_id") if isinstance(result, dict) else None
-    # visit response has appointment_id; fetch gate from result if available
-    try:
-        appt_result = await internal_client.get(f"/arrivals/{appointment_id}")
-        gate_in_id = appt_result.get("gate_in_id") if isinstance(appt_result, dict) else None
-        driver_license = appt_result.get("driver_license") if isinstance(appt_result, dict) else None
-    except Exception:
-        gate_in_id = None
-        driver_license = None
+    gate_in_id = appointment.get("gate_in_id") if isinstance(appointment, dict) else None
+    driver_license = appointment.get("driver_license") if isinstance(appointment, dict) else None
 
     if gate_in_id:
         try:

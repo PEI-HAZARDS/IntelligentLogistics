@@ -24,8 +24,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
-
-# Apenas para desenvolvimento — NUNCA EM PRODUÇÃO
-if settings.environment == "development":
-    Base.metadata.create_all(bind=engine)

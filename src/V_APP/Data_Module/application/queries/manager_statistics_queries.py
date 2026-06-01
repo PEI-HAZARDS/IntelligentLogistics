@@ -30,6 +30,7 @@ from infrastructure.persistence.sql_models import (
     Dock,
     Truck,
     Visit,
+    DELAY_TOLERANCE_MINUTES,
 )
 
 logger = logging.getLogger("manager_statistics_queries")
@@ -71,19 +72,41 @@ def _date_range(from_str: Optional[str], to_str: Optional[str]):
     return start, end
 
 
+def _expected_buckets(start: datetime, end: datetime, interval: str) -> float:
+    """Approximate number of time buckets a fully-covered range should yield,
+    used to detect a sparse/stale Mongo rollup and fall back to PostgreSQL."""
+    span_seconds = max(0.0, (end - start).total_seconds())
+    if interval == "hour":
+        return max(1.0, span_seconds / 3600.0)
+    if interval == "week":
+        return max(1.0, span_seconds / (7.0 * 86400.0))
+    return max(1.0, span_seconds / 86400.0)  # day
+
+
 # ---------------------------------------------------------------------------
 # 1. GET /statistics/summary
 # ---------------------------------------------------------------------------
 
-def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
+def get_dashboard_summary(
+    target_date: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+) -> Dict[str, Any]:
     """
     Returns enriched dashboard summary:
         { trucksInPort, trucksInTransit, scheduledCount, unloadingCount,
           completedCount, entriesCount, exitsCount,
           avgPermanenceMinutes, avgWaitingMinutes,
           delayRate, slaCompliance, infractionCount, peakHour }
+
+    Scope: a single day (``target_date`` or today) by default; pass
+    ``from_date``/``to_date`` for a period window (week/month/quarter/year) so
+    the analytics KPIs reflect the selected range.
     """
-    day_start, day_end = _today_range(target_date)
+    if from_date and to_date:
+        day_start, day_end = _date_range(from_date, to_date)
+    else:
+        day_start, day_end = _today_range(target_date)
     db: Session = SessionLocal()
     try:
         # Appointments scheduled for this day
@@ -93,36 +116,36 @@ def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
         total_appointments = base.count()
 
         # Status counts
-        _delay_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=1)
+        now_utc = datetime.now(timezone.utc)
+        # Strip tzinfo when comparing with naive DB timestamps
+        _now_naive = now_utc.replace(tzinfo=None)
+        _delay_cutoff = _now_naive - timedelta(minutes=DELAY_TOLERANCE_MINUTES)
+
+        # Bug fix: count ALL scheduled (not just on-time) for display consistency
         scheduled_count = base.filter(Appointment.status == "scheduled").count()
-        in_transit_count = base.filter(
-            Appointment.status == "in_transit",
-            or_(Appointment.scheduled_start_time.is_(None), Appointment.scheduled_start_time >= _delay_cutoff),
-        ).count()
+        # Count ALL in_transit (delayed + on-time) — the "delayed" badge is a separate sub-metric
+        in_transit_count = base.filter(Appointment.status == "in_transit").count()
         in_process_count = base.filter(Appointment.status == "in_process").count()
         _active_unloading_ids = select(Visit.appointment_id).where(
             and_(Visit.state == 'unloading', Visit.out_time.is_(None))
         )
         unloading_count = base.filter(
-            or_(
-                Appointment.status == "unloading",
-                and_(Appointment.status == "in_process", Appointment.id.in_(_active_unloading_ids)),
-            )
+            and_(Appointment.status == "in_process", Appointment.id.in_(_active_unloading_ids))
         ).count()
         completed_count = base.filter(Appointment.status == "completed").count()
+
+        # Bug fix: trucksInPort = in_process only.
+        # unloading_count is a subset of in_process (shown as sub-label), not additional trucks.
+        trucks_in_port = in_process_count
+
+        # Currently-delayed in_transit trucks (for the "X delayed" badge on the In Transit KPI)
         delayed_count = base.filter(
-            or_(
-                Appointment.status == "delayed",
-                and_(
-                    Appointment.status == "in_transit",
-                    Appointment.scheduled_start_time.isnot(None),
-                    Appointment.scheduled_start_time < _delay_cutoff,
-                ),
+            and_(
+                Appointment.status == "in_transit",
+                Appointment.scheduled_start_time.isnot(None),
+                Appointment.scheduled_start_time < _delay_cutoff,
             )
         ).count()
-
-        # Trucks actually inside the port: in_process + unloading
-        trucks_in_port = in_process_count + unloading_count
 
         # Infraction count
         infraction_count = base.filter(
@@ -144,7 +167,7 @@ def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
             .scalar()
         ) or 0
 
-        # Average permanence (minutes) for visits that have both entry and exit today
+        # Average permanence (minutes) for visits with both entry and exit today
         avg_perm = (
             db.query(
                 func.avg(
@@ -160,38 +183,86 @@ def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
         )
         avg_permanence = round(float(avg_perm), 1) if avg_perm else 0.0
 
-        # Average waiting time (minutes): entry_time - scheduled_start_time
+        # Average waiting time: MAX(0, entry_time - scheduled_start_time).
+        # Bug fixes:
+        #   - Use func.greatest(0, ...) to clamp negative values (early arrivals).
+        #   - Only include appointments scheduled today to avoid cross-day contamination.
         avg_wait = (
             db.query(
                 func.avg(
-                    extract(
-                        "epoch",
-                        Visit.entry_time - Appointment.scheduled_start_time,
+                    func.greatest(
+                        0.0,
+                        extract(
+                            "epoch",
+                            Visit.entry_time - Appointment.scheduled_start_time,
+                        ) / 60,
                     )
-                    / 60
                 )
             )
             .join(Appointment, Visit.appointment_id == Appointment.id)
             .filter(
                 Visit.entry_time.isnot(None),
                 Visit.entry_time.between(day_start, day_end),
+                Appointment.scheduled_start_time.isnot(None),
+                Appointment.scheduled_start_time.between(day_start, day_end),
             )
             .scalar()
         )
         avg_waiting = round(float(avg_wait), 1) if avg_wait else 0.0
 
-        # Delay rate
+        # --- Delay rate ---
+        # Currently delayed (pending trucks past cutoff)
+        currently_delayed = base.filter(
+            and_(
+                Appointment.status.in_(("scheduled", "in_transit")),
+                Appointment.scheduled_start_time.isnot(None),
+                Appointment.scheduled_start_time < _delay_cutoff,
+            )
+        ).count()
+        # Historically delayed: completed trucks that arrived after their tolerance window
+        historically_delayed = (
+            base.join(Visit, Visit.appointment_id == Appointment.id)
+            .filter(
+                Appointment.status == "completed",
+                Visit.entry_time.isnot(None),
+                Appointment.scheduled_start_time.isnot(None),
+                Visit.entry_time > Appointment.scheduled_start_time + timedelta(minutes=DELAY_TOLERANCE_MINUTES),
+            )
+            .count()
+        )
+        total_delayed = currently_delayed + historically_delayed
         delay_rate = (
-            round(delayed_count / total_appointments * 100, 1)
+            round(total_delayed / total_appointments * 100, 1)
             if total_appointments > 0
             else 0.0
         )
 
-        # SLA compliance = completed on time / (completed + delayed) * 100
-        sla_denominator = completed_count + delayed_count
+        # --- SLA compliance ---
+        # Correct formula: of completed appointments (with a scheduled time), what fraction
+        # arrived within the tolerance window?  Avoids mixing real-time snapshot with
+        # historical counts that produced the double-counting bug.
+        completed_with_schedule = (
+            base.join(Visit, Visit.appointment_id == Appointment.id)
+            .filter(
+                Appointment.status == "completed",
+                Visit.entry_time.isnot(None),
+                Appointment.scheduled_start_time.isnot(None),
+            )
+            .count()
+        )
+        completed_on_time = (
+            base.join(Visit, Visit.appointment_id == Appointment.id)
+            .filter(
+                Appointment.status == "completed",
+                Visit.entry_time.isnot(None),
+                Appointment.scheduled_start_time.isnot(None),
+                Visit.entry_time <= Appointment.scheduled_start_time + timedelta(minutes=DELAY_TOLERANCE_MINUTES),
+            )
+            .count()
+        )
         sla_compliance = (
-            round(completed_count / sla_denominator * 100, 1)
-            if sla_denominator > 0
+            round(completed_on_time / completed_with_schedule * 100, 1)
+            if completed_with_schedule > 0
             else 100.0
         )
 
@@ -224,7 +295,6 @@ def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
         )
 
         # Vehicles per hour: total movements / elapsed hours today
-        now_utc = datetime.now(timezone.utc)
         elapsed_hours = max(
             (now_utc - day_start).total_seconds() / 3600, 1.0
         )
@@ -281,6 +351,15 @@ def get_dashboard_summary(target_date: Optional[str] = None) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def _transport_stats_from_pg(start, end) -> List[Dict[str, Any]]:
+    """
+    Per-company transport stats computed from PostgreSQL.
+
+    SLA fix: old formula used completed/ops_count which counted in-progress
+    appointments as "failures".  Correct formula:
+        sla_rate = arrived_on_time / completed_with_schedule
+    where "on time" = entry_time <= scheduled_start_time + DELAY_TOLERANCE_MINUTES.
+    avg_waiting uses MAX(0, entry-scheduled) to exclude negative values (early arrivals).
+    """
     db: Session = SessionLocal()
     try:
         rows = (
@@ -288,22 +367,41 @@ def _transport_stats_from_pg(start, end) -> List[Dict[str, Any]]:
                 Company.name.label("company_name"),
                 Company.nif.label("company_nif"),
                 func.count(Appointment.id).label("ops_count"),
+                # avg unloading: out_time - entry_time (always positive when both present)
                 func.avg(
                     extract("epoch", Visit.out_time - Visit.entry_time) / 60
                 ).label("avg_unloading"),
+                # avg waiting: MAX(0, entry_time - scheduled_start_time)
                 func.avg(
-                    extract(
-                        "epoch",
-                        Visit.entry_time - Appointment.scheduled_start_time,
+                    func.greatest(
+                        0.0,
+                        extract("epoch", Visit.entry_time - Appointment.scheduled_start_time) / 60,
                     )
-                    / 60
                 ).label("avg_waiting"),
+                # completed with a known scheduled_start_time (denominator for SLA)
                 func.sum(
                     case(
-                        (Appointment.status == "completed", 1),
+                        (and_(
+                            Appointment.status == "completed",
+                            Appointment.scheduled_start_time.isnot(None),
+                            Visit.entry_time.isnot(None),
+                        ), 1),
                         else_=0,
                     )
-                ).label("completed_count"),
+                ).label("completed_with_schedule"),
+                # arrived on time: completed + entry within tolerance
+                func.sum(
+                    case(
+                        (and_(
+                            Appointment.status == "completed",
+                            Appointment.scheduled_start_time.isnot(None),
+                            Visit.entry_time.isnot(None),
+                            extract("epoch", Visit.entry_time - Appointment.scheduled_start_time) / 60
+                            <= DELAY_TOLERANCE_MINUTES,
+                        ), 1),
+                        else_=0,
+                    )
+                ).label("arrived_on_time"),
             )
             .join(Truck, Appointment.truck_license_plate == Truck.license_plate)
             .join(Company, Truck.company_nif == Company.nif)
@@ -315,8 +413,13 @@ def _transport_stats_from_pg(start, end) -> List[Dict[str, Any]]:
         result = []
         for r in rows:
             ops = r.ops_count or 0
-            completed = r.completed_count or 0
-            sla_rate = round(completed / ops * 100, 1) if ops > 0 else 0.0
+            completed_with_schedule = r.completed_with_schedule or 0
+            arrived_on_time = r.arrived_on_time or 0
+            sla_rate = (
+                round(arrived_on_time / completed_with_schedule * 100, 1)
+                if completed_with_schedule > 0
+                else 0.0
+            )
             result.append({
                 "companyName": r.company_name,
                 "companyNif": r.company_nif,
@@ -392,15 +495,47 @@ def compute_company_metrics_snapshot(db_session: Session, period_days: int = 30)
                     extract("epoch", Visit.out_time - Visit.entry_time) / 60
                 ).label("avg_unloading"),
                 func.avg(
-                    extract(
-                        "epoch",
-                        Visit.entry_time - Appointment.scheduled_start_time,
+                    func.greatest(
+                        0.0,
+                        extract(
+                            "epoch",
+                            Visit.entry_time - Appointment.scheduled_start_time,
+                        )
+                        / 60,
                     )
-                    / 60
                 ).label("avg_waiting"),
                 func.sum(
-                    case((Appointment.status == "completed", 1), else_=0)
-                ).label("completed_count"),
+                    case(
+                        (
+                            and_(
+                                Appointment.status == "completed",
+                                Appointment.scheduled_start_time.isnot(None),
+                                Visit.entry_time.isnot(None),
+                            ),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ).label("completed_with_schedule"),
+                func.sum(
+                    case(
+                        (
+                            and_(
+                                Appointment.status == "completed",
+                                Appointment.scheduled_start_time.isnot(None),
+                                Visit.entry_time.isnot(None),
+                                extract(
+                                    "epoch",
+                                    Visit.entry_time - Appointment.scheduled_start_time,
+                                )
+                                / 60
+                                <= DELAY_TOLERANCE_MINUTES,
+                            ),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ).label("arrived_on_time"),
             )
             .join(Truck, Appointment.truck_license_plate == Truck.license_plate)
             .join(Company, Truck.company_nif == Company.nif)
@@ -413,8 +548,13 @@ def compute_company_metrics_snapshot(db_session: Session, period_days: int = 30)
         count = 0
         for r in rows:
             ops = r.ops_count or 0
-            completed = r.completed_count or 0
-            sla_rate = round(completed / ops * 100, 1) if ops > 0 else 0.0
+            completed_with_schedule = r.completed_with_schedule or 0
+            arrived_on_time = r.arrived_on_time or 0
+            sla_rate = (
+                round(arrived_on_time / completed_with_schedule * 100, 1)
+                if completed_with_schedule > 0
+                else 0.0
+            )
             doc = {
                 "company_nif": r.company_nif,
                 "company_name": r.company_name,
@@ -461,7 +601,12 @@ def get_volume_data(
     # ── 1) MongoDB pre-computed collections ─────────────────────────────────
     from application.queries.statistics_queries import read_volume_from_mongo
     mongo_result = read_volume_from_mongo(start, end, interval)
-    if mongo_result is not None:
+    # The aggregator only maintains recent rollups (previous day), so for
+    # historical ranges the Mongo series can be sparse or empty. Trust it only
+    # when it adequately covers the requested range; otherwise fall through to
+    # the authoritative PostgreSQL aggregation below (so charts like the
+    # congestion trend / volume don't collapse to a single bucket).
+    if mongo_result and len(mongo_result) >= 0.5 * _expected_buckets(start, end, interval):
         return mongo_result
 
     # ── 2) PostgreSQL fallback ───────────────────────────────────────────────

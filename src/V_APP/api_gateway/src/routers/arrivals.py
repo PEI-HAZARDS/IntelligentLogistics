@@ -1,7 +1,8 @@
 from typing import Annotated, Optional, Dict, Any
 from datetime import date
 
-from fastapi import APIRouter, Query, Path, Body, Request, Depends
+import httpx
+from fastapi import APIRouter, Query, Path, Body, Request, Depends, HTTPException
 from pydantic import BaseModel
 from loguru import logger
 
@@ -129,6 +130,22 @@ async def get_arrival_detail(
     Proxy to GET /api/v1/arrivals/{appointment_id}/detail
     """
     return await internal_client.get(f"/arrivals/{appointment_id}/detail")
+
+
+# -------------------------------
+# GET: /api/arrivals/by-id/{appointment_id}
+# NOTE: Must be before /arrivals/{gate_id} (the catch-all interprets the segment
+# as a gate_id and returns a paginated list, not a single appointment).
+# -------------------------------
+@router.get("/arrivals/by-id/{appointment_id}")
+async def get_arrival_by_id(
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
+):
+    """
+    Get a single appointment by its ID.
+    Proxy to GET /api/v1/arrivals/{appointment_id}
+    """
+    return await internal_client.get(f"/arrivals/{appointment_id}")
 
 
 # -------------------------------
@@ -340,6 +357,30 @@ async def flag_highway_infraction(
 
 
 # -------------------------------
+# PATCH: /api/arrivals/{appointment_id}/review
+# Manager-only: Mark highway infraction as reviewed
+# -------------------------------
+class InfractionReviewRequest(BaseModel):
+    reviewed_by: str
+    note: Optional[str] = None
+
+
+@router.patch("/arrivals/{appointment_id}/review")
+async def review_infraction(
+    appointment_id: Annotated[int, Path(description="Appointment ID")],
+    body: Annotated[InfractionReviewRequest, Body()],
+):
+    """
+    Record manager review of a highway infraction.
+    Proxy to PATCH /api/v1/arrivals/{appointment_id}/review
+    """
+    return await internal_client.patch(
+        f"/arrivals/{appointment_id}/review",
+        json=body.model_dump(exclude_none=True),
+    )
+
+
+# -------------------------------
 # PATCH: /api/arrivals/{appointment_id}/status
 # -------------------------------
 class AppointmentStatusUpdate(BaseModel):
@@ -385,6 +426,21 @@ async def update_arrival_status(
             logger.warning(f"WS driver broadcast failed for status_changed: {e}")
 
     return result
+
+
+# -------------------------------
+# POST: /api/arrivals/bulk — CSV import (no driver, RGPD)
+# NOTE: Must be before /arrivals/{appointment_id}/visit (specific before dynamic)
+# -------------------------------
+@router.post("/arrivals/bulk", status_code=201)
+async def bulk_import_arrivals(request: Request):
+    """
+    Bulk-import appointments from CSV. Transparent proxy to POST /api/v1/arrivals/bulk.
+    Forwards the raw multipart body without parsing it (no python-multipart needed here).
+    """
+    body = await request.body()
+    content_type = request.headers.get("content-type", "multipart/form-data")
+    return await internal_client.proxy_multipart("/arrivals/bulk", body, content_type)
 
 
 # -------------------------------

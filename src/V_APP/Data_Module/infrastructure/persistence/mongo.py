@@ -52,6 +52,10 @@ appointments_read_collection = db["appointments_read"]
 # Operator UI notifications (persistent, replaces localStorage)
 notifications_collection = db["notifications"]
 
+# Energy/RAN spikes telemetry — one doc per scale_up event, timestamped.
+# Feeds the simulated energy graph so spikes survive a page refresh.
+energy_spikes_collection = db["energy_spikes"]
+
 
 # ==================== INDEX CREATION ====================
 
@@ -65,6 +69,7 @@ def _drop_index_safe(collection, index_name: str):
 
 # Retention policy (seconds)
 TTL_NOTIFICATIONS     = 30  * 24 * 3600   # 30 days
+TTL_ENERGY_SPIKES     = 30  * 24 * 3600   # 30 days
 TTL_AGENT_DETECTIONS  = 30  * 24 * 3600   # 30 days
 TTL_DECISION_EVENTS   = 90  * 24 * 3600   # 90 days
 TTL_LEGACY            = 7   * 24 * 3600   # 7 days  (legacy: detections, events)
@@ -102,6 +107,18 @@ def create_indexes():
         expireAfterSeconds=TTL_NOTIFICATIONS,
     )
     logger.info("✓ notifications indexes")
+
+    # ===== energy_spikes =====
+    energy_spikes_collection.create_index(
+        [("gate_id", ASCENDING), ("timestamp", DESCENDING)],
+        name="idx_energy_spikes_gate_ts",
+    )
+    energy_spikes_collection.create_index(
+        [("timestamp", ASCENDING)],
+        name="idx_energy_spikes_ttl",
+        expireAfterSeconds=TTL_ENERGY_SPIKES,
+    )
+    logger.info("✓ energy_spikes indexes")
 
     # ===== legacy collections =====
     detections_collection.create_index(
@@ -284,6 +301,49 @@ except Exception as e:
 
 
 # ==================== HELPER FUNCTIONS ====================
+
+def record_energy_spike(gate_id: int, value: float, mode: str,
+                        timestamp: Optional[datetime] = None) -> dict:
+    """
+    Persist one energy/RAN spike (telemetry, not a domain event).
+
+    Args:
+        gate_id: Gate the spike belongs to
+        value: Power reading (kW) at the spike
+        mode: Originating scale mode (e.g. 'scale_up')
+        timestamp: Spike time (defaults to now, UTC)
+
+    Returns:
+        The stored document (JSON-serialisable, ISO timestamp, no _id)
+    """
+    ts = timestamp or datetime.now(timezone.utc)
+    doc = {"gate_id": int(gate_id), "value": float(value), "mode": mode, "timestamp": ts}
+    energy_spikes_collection.insert_one(doc)
+    doc.pop("_id", None)
+    doc["timestamp"] = ts.isoformat()
+    return doc
+
+
+def get_energy_spikes(gate_id: Optional[int] = None, limit: int = 100) -> List[dict]:
+    """
+    Recent energy spikes, newest first. Filters by gate when provided.
+    """
+    query: Dict[str, Any] = {}
+    if gate_id is not None:
+        query["gate_id"] = int(gate_id)
+
+    docs = list(
+        energy_spikes_collection
+        .find(query, {"_id": 0})
+        .sort("timestamp", DESCENDING)
+        .limit(limit)
+    )
+    for d in docs:
+        ts = d.get("timestamp")
+        if hasattr(ts, "isoformat"):
+            d["timestamp"] = ts.isoformat()
+    return docs
+
 
 def get_agent_detections_for_truck(truck_id: str, limit: int = 100):
     """

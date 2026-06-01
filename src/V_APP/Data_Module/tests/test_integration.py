@@ -84,8 +84,8 @@ class TestArrivals:
         response = client.get("/arrivals/stats")
         assert response.status_code == 200
         data = response.json()
-        # API returns actual appointment statuses
-        assert "in_transit" in data or "completed" in data or "delayed" in data or "canceled" in data
+        # API returns persisted appointment statuses (delayed is computed, not stored)
+        assert "in_transit" in data or "completed" in data or "scheduled" in data or "canceled" in data
 
     def test_get_next_arrivals(self, client: httpx.Client):
         """Gets next arrivals for a gate"""
@@ -122,15 +122,26 @@ class TestArrivals:
         assert response.status_code in [200, 404]
 
     def test_update_arrival_status(self, client: httpx.Client):
-        """Updates appointment status"""
+        """Updates appointment status — 422 expected for removed enum values like 'delayed'."""
         response = client.patch(
             "/arrivals/1/status",
             json={
-                "status": "delayed",  # Must be valid appointment_status_enum
+                "status": "in_transit",  # valid persisted status
                 "notes": "Test update"
             }
         )
         assert response.status_code in [200, 404, 422]
+
+    def test_update_arrival_status_rejects_computed_substates(self, client: httpx.Client):
+        """'delayed' and 'unloading' are computed sub-states and must not be accepted as input."""
+        for substate in ("delayed", "unloading"):
+            response = client.patch(
+                "/arrivals/1/status",
+                json={"status": substate}
+            )
+            assert response.status_code == 422, (
+                f"API must reject computed sub-state '{substate}' as a status update (BR-15)"
+            )
 
     def test_process_arrival_decision(self, client: httpx.Client):
         """Processes decision for appointment"""

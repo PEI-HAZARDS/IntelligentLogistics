@@ -3,11 +3,18 @@ from shared.src.kafka_protocol import KafkaMessageProto, Message, KafkaTopicFact
 from AI_APP.shared.src.plate_classifier import PlateClassifier
 from AI_APP.shared.src.image_storage import ImageStorage
 from AI_APP.shared.src.paddle_ocr import OCR
-
 import os
+import logging
+
 from typing import Optional
 from prometheus_client import Counter, Histogram # type: ignore
+from pydantic import Field
 
+class AgentBConfig(BaseAgentConfig):
+    min_detection_confidence: float = Field(
+        default=0.6, 
+        alias="AGENT_B_MIN_DETECTION_CONFIDENCE"
+    )
 
 class AgentB(BaseAgent):
     """
@@ -20,10 +27,15 @@ class AgentB(BaseAgent):
     - Publish license plate results to Kafka
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, config: Optional[AgentBConfig] = None, **kwargs):
         """Initialize Agent B with license plate detection capabilities."""
+        config = config or AgentBConfig()
         # Call parent constructor first so self.config is available
-        super().__init__(**kwargs)
+        super().__init__(config=config, **kwargs)
+        
+        # Restore logging level right after BaseAgent initialization (PaddleOCR suppresses it)
+        logging.getLogger().setLevel(logging.INFO)
+        self.logger.info(f"Agent B initialized with min_detection_confidence={self.config.min_detection_confidence}")
         # Separate storage bucket for rejected crops (requires self.config)
         self.crop_fails = ImageStorage(self.config.minio_config, "failed-crops")
 

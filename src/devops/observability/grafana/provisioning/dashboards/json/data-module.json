@@ -389,7 +389,7 @@
       "id": 11,
       "targets": [
         {
-          "expr": "mongodb_connections_current{job=\"mongodb-exporter\"} or vector(0)",
+          "expr": "mongodb_connections{job=\"mongodb-exporter\",state=\"current\"} or vector(0)",
           "legendFormat": "Connections",
           "refId": "A"
         }

@@ -1,12 +1,21 @@
 """
 Load tests for Data Module polyglot persistence (PostgreSQL + MongoDB + Redis).
 
-Usage (install locust first: pip install locust):
-    locust -f tests/load_test.py --host=http://10.255.32.70:8080 --headless \
-           -u 20 -r 2 --run-time 60s
+Usage (run from docs/benchmarks/):
+    pip install -r requirements.txt
 
-Or with the web UI:
-    locust -f tests/load_test.py --host=http://10.255.32.70:8080
+    # Headless — 50 users, 5 min, HTML report saved next to this file
+    locust -f perf/load_test_dm.py --host=http://<vm-ip>:8080 --headless \
+           -u 50 -r 5 --run-time 5m \
+           --html perf/dm_report.html
+
+    # Or from repo root:
+    locust -f docs/benchmarks/perf/load_test_dm.py --host=http://<vm-ip>:8080 \
+           --headless -u 50 -r 5 --run-time 5m \
+           --html docs/benchmarks/perf/dm_report.html
+
+    # Web UI:
+    locust -f perf/load_test_dm.py --host=http://<vm-ip>:8080
     # Then open http://localhost:8089
 
 Scenarios covered:
@@ -18,9 +27,18 @@ Scenarios covered:
   - Concurrent reads: stats endpoint under parallel load
 """
 
-from locust import HttpUser, task, between, constant_pacing
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from locust import HttpUser, task, between, events
+import metrics
+
+
+@events.init.add_listener
+def on_locust_init(environment, **_kwargs):
+    metrics.register(environment)
 import random
-import json
 
 # Seeded license plates from data_init_trial.py / data_init_demo.py
 KNOWN_PLATES = ["87AX60", "68BSH8", "98AZ00", "45BC30", "12DF90"]
@@ -63,11 +81,10 @@ class ReadHeavyUser(HttpUser):
                 resp.failure(f"status {resp.status_code}")
 
     @task(2)
-    def list_arrivals_filtered_delayed(self):
-        """Virtual filter — translated to SQL condition by _resolve_status_filter()."""
+    def list_arrivals_filtered_scheduled(self):
         with self.client.get(
-            "/api/v1/arrivals?status=delayed&skip=0&limit=20",
-            name="/arrivals?status=delayed",
+            "/api/v1/arrivals?status=scheduled&skip=0&limit=20",
+            name="/arrivals?status=scheduled",
             catch_response=True,
         ) as resp:
             if resp.status_code == 200:
@@ -91,7 +108,7 @@ class ReadHeavyUser(HttpUser):
     @task(3)
     def get_arrival_by_id(self):
         """Single appointment lookup — exercises PG primary key path."""
-        appt_id = random.randint(1, 30)
+        appt_id = random.randint(1, 50)
         with self.client.get(
             f"/api/v1/arrivals/{appt_id}",
             name="/arrivals/:id",

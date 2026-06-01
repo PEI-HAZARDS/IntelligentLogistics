@@ -1,0 +1,11 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: email-pei
+    receivers:
+      - uid: email_pei_uid
+        type: email
+        settings:
+          addresses: intelligentlogistics.pei@gmail.com
+          singleEmail: false

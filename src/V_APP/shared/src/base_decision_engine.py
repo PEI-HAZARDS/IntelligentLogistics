@@ -5,14 +5,43 @@ license-plate (LP) and hazard-plate (HZ) detection events across multiple gates.
 """
 
 import logging
+import os
 import time
 import json
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from prometheus_client import Histogram  # type: ignore
+from prometheus_client import Counter, Histogram  # type: ignore
 from pydantic_settings import BaseSettings  # type: ignore
 from pydantic import Field, field_validator  # type: ignore
+
+try:
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    _OTEL_AVAILABLE = True
+except ImportError:
+    _OTEL_AVAILABLE = False
+
+# Shared Kafka consumer metrics for all decision engine workers
+_worker_kafka_consumed = Counter(
+    "worker_kafka_messages_consumed_total",
+    "Total Kafka messages consumed by worker",
+    ["worker", "topic", "status"],
+)
+_worker_kafka_processing = Histogram(
+    "worker_kafka_processing_seconds",
+    "Kafka message processing duration in seconds",
+    ["worker", "topic"],
+    buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+)
+
+
+class _NullContext:
+    """No-op context manager used when OTel tracing is disabled."""
+    def __enter__(self): return self
+    def __exit__(self, *_): pass
 
 from shared.src.utils import load_from_file
 from shared.src.kafka_wrapper import KafkaConsumerWrapper, KafkaProducerWrapper
@@ -127,6 +156,21 @@ class BaseDecisionEngine(ABC):
         self._init_base_metrics()
         self._init_specific_metrics()
 
+        # OTel tracing — enabled only if OTEL_EXPORTER_OTLP_ENDPOINT is set
+        self._tracer = None
+        otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+        if _OTEL_AVAILABLE and otlp_endpoint:
+            try:
+                provider = TracerProvider()
+                provider.add_span_processor(
+                    BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True))
+                )
+                trace.set_tracer_provider(provider)
+                self._tracer = trace.get_tracer(self.__class__.__name__)
+                self.logger.info(f"OTel tracing enabled → {otlp_endpoint}")
+            except Exception as e:
+                self.logger.warning(f"OTel setup failed, tracing disabled: {e}")
+
     @abstractmethod
     def _get_active_gate_ids(self) -> list[str]:
         """Return the specific list of gate IDs this engine should monitor."""
@@ -175,8 +219,31 @@ class BaseDecisionEngine(ABC):
                         continue
 
                     self._log_incoming_message(message_obj, truck_id, gate_id)
-                    self._store_in_buffer(gate_id, topic, truck_id, message_obj)
-                    self._try_process_truck(gate_id, truck_id)
+                    start = time.perf_counter()
+                    span_ctx = (
+                        self._tracer.start_as_current_span(
+                            f"kafka.consume:{topic}",
+                            attributes={"messaging.destination": topic, "truck_id": truck_id or ""},
+                        )
+                        if self._tracer
+                        else _NullContext()
+                    )
+                    try:
+                        with span_ctx:
+                            self._store_in_buffer(gate_id, topic, truck_id, message_obj)
+                            self._try_process_truck(gate_id, truck_id)
+                        _worker_kafka_consumed.labels(
+                            worker=self.__class__.__name__, topic=topic, status="success"
+                        ).inc()
+                    except Exception:
+                        _worker_kafka_consumed.labels(
+                            worker=self.__class__.__name__, topic=topic, status="error"
+                        ).inc()
+                        raise
+                    finally:
+                        _worker_kafka_processing.labels(
+                            worker=self.__class__.__name__, topic=topic
+                        ).observe(time.perf_counter() - start)
                 except Exception:
                     self.logger.exception("Unexpected error in main loop")
         finally:

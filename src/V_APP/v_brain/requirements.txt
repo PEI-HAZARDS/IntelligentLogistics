@@ -3,3 +3,8 @@ pydantic-settings>=2.0
 confluent-kafka>=2.3.0
 requests>=2.0
 prometheus_client>=0.17.0
+
+# OpenTelemetry (optional — enabled via OTEL_EXPORTER_OTLP_ENDPOINT env var)
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-grpc

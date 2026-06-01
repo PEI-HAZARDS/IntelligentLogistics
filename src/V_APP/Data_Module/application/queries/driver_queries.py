@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
+from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ def _driver_to_dict(driver) -> Dict[str, Any]:
         "drivers_license": driver.drivers_license,
         "name": driver.name,
         "company_nif": driver.company_nif,
+        "company_name": driver.company.name if driver.company else None,
         "mobile_device_token": driver.mobile_device_token,
         "active": driver.active,
         "created_at": driver.created_at.isoformat() if driver.created_at else None,
@@ -42,7 +44,7 @@ def get_drivers(
 
     db = SessionLocal()
     try:
-        q = db.query(Driver)
+        q = db.query(Driver).options(selectinload(Driver.company))
         if only_active:
             q = q.filter(Driver.active == True)  # noqa: E712
         rows = q.offset(skip).limit(limit).all()
@@ -57,10 +59,30 @@ def get_driver_by_license(drivers_license: str) -> Optional[Dict[str, Any]]:
 
     db = SessionLocal()
     try:
-        row = db.query(Driver).filter(Driver.drivers_license == drivers_license).first()
+        row = (
+            db.query(Driver)
+            .options(selectinload(Driver.company))
+            .filter(Driver.drivers_license == drivers_license)
+            .first()
+        )
         return _driver_to_dict(row) if row else None
     finally:
         db.close()
+
+
+def _appointment_eager_options():
+    from infrastructure.persistence.sql_models import (
+        Appointment as AppointmentORM, Booking, Driver, Company,
+    )
+    return [
+        selectinload(AppointmentORM.booking).selectinload(Booking.cargos),
+        selectinload(AppointmentORM.driver).selectinload(Driver.company),
+        selectinload(AppointmentORM.truck),
+        selectinload(AppointmentORM.terminal),
+        selectinload(AppointmentORM.gate_in),
+        selectinload(AppointmentORM.gate_out),
+        selectinload(AppointmentORM.visit),
+    ]
 
 
 def get_driver_active_appointment(drivers_license: str) -> Optional[Dict[str, Any]]:
@@ -82,9 +104,10 @@ def get_driver_active_appointment(drivers_license: str) -> Optional[Dict[str, An
     try:
         row = (
             db.query(AppointmentORM)
+            .options(*_appointment_eager_options())
             .filter(
                 AppointmentORM.driver_license == drivers_license,
-                AppointmentORM.status.in_(["in_transit", "delayed", "in_process", "unloading"])
+                AppointmentORM.status.in_(["in_transit", "in_process"])
             )
             .order_by(AppointmentORM.scheduled_start_time)
             .first()
@@ -108,6 +131,7 @@ def get_driver_today_appointments(drivers_license: str) -> List[Dict[str, Any]]:
     try:
         rows = (
             db.query(AppointmentORM)
+            .options(*_appointment_eager_options())
             .filter(
                 AppointmentORM.driver_license == drivers_license,
                 cast(AppointmentORM.scheduled_start_time, Date) == date.today(),
@@ -119,6 +143,53 @@ def get_driver_today_appointments(drivers_license: str) -> List[Dict[str, Any]]:
             AppointmentSchema.model_validate(r).model_dump(mode="json")
             for r in rows
         ]
+    finally:
+        db.close()
+
+
+def get_available_bookings_for_driver(
+    company_nif: str,
+    *,
+    page: int = 1,
+    limit: int = 20,
+) -> Dict[str, Any]:
+    """Unclaimed scheduled appointments for trucks belonging to `company_nif`.
+
+    An appointment is 'available' when:
+    - driver_license IS NULL (no driver assigned yet)
+    - status = 'scheduled'
+    - The truck is owned by the driver's company (Truck.company_nif == company_nif)
+    """
+    from infrastructure.persistence.postgres import SessionLocal
+    from infrastructure.persistence.sql_models import (
+        Appointment as AppointmentORM,
+        Truck as TruckORM,
+    )
+    from application.schemas import Appointment as AppointmentSchema
+
+    db = SessionLocal()
+    try:
+        q = (
+            db.query(AppointmentORM)
+            .options(*_appointment_eager_options())
+            .join(TruckORM, AppointmentORM.truck_license_plate == TruckORM.license_plate)
+            .filter(
+                AppointmentORM.driver_license.is_(None),
+                AppointmentORM.status == "scheduled",
+                TruckORM.company_nif == company_nif,
+            )
+            .order_by(AppointmentORM.scheduled_start_time)
+        )
+        total = q.count()
+        rows = q.offset((page - 1) * limit).limit(limit).all()
+        items = [AppointmentSchema.model_validate(r).model_dump(mode="json") for r in rows]
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "pages": max(1, -(-total // limit)),
+        }
     finally:
         db.close()
 
@@ -136,6 +207,7 @@ def get_driver_appointments(
     try:
         rows = (
             db.query(AppointmentORM)
+            .options(*_appointment_eager_options())
             .filter(AppointmentORM.driver_license == drivers_license)
             .order_by(AppointmentORM.scheduled_start_time.desc())
             .limit(limit)

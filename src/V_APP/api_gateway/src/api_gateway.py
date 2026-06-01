@@ -2,6 +2,7 @@ import json
 import logging
 import threading
 import asyncio
+from datetime import datetime, timezone
 import httpx
 from web_socket_manager import WebSocketManager
 from shared.src.kafka_wrapper import KafkaConsumerWrapper, KafkaProducerWrapper
@@ -27,10 +28,12 @@ from routers import (
     manual_review,
     alerts,
     drivers,
+    media,
     stream,
     realtime,   # WebSockets for real-time updates
     workers,    # Operators and Managers
     statistics, # Statistics proxy for manager dashboard
+    energy,     # Energy spike telemetry proxy
 )
 from auth.keycloak_client import KeycloakClient
 from auth.token_validator import TokenValidator
@@ -47,9 +50,13 @@ class APIGatewayConfig(BaseSettings):
     decision_gate_ids: str = Field(default=DEFAULT_GATE_IDS)   # Inbound/Entry gates
     infraction_gate_ids: str = Field(default=DEFAULT_GATE_IDS) # Highway/Approach gates
     gateway_port: int = Field(default=8000)
+    gateway_host: str = Field(default="0.0.0.0")  # nosec B104 – configurable via env var
     data_module_url: str = Field(default="http://data-module:8000")
-    stream_base_url: str = Field(default="http://mediamtx:8888")
-    stream_webrtc_base_url: str = Field(default="http://mediamtx:8889")
+    mediamtx_webrtc_internal_url: str = Field(default="http://mediamtx:8889")
+    mediamtx_hls_internal_url: str = Field(default="http://mediamtx:8888")
+    minio_internal_url: str = Field(default="http://minio:9000")
+    minio_root_user: str = Field(default="")
+    minio_root_password: str = Field(default="")
     api_prefix: str = Field(default="/api")
     env: str = Field(default="dev")
     cors_allow_origins: list[str] = Field(default=["*"])
@@ -162,6 +169,10 @@ class APIGateway:
             if license_plate and license_plate != "N/A":
                 self._notify_driver_of_acceptance(license_plate)
 
+        # A scale_up is an energy spike — persist it (timestamped) for the energy graph.
+        if message_type == "scale_network" and payload.get("mode") == "scale_up":
+            self._record_energy_spike_async(target_gate, payload)
+
     def _consumer_loop(self):
         """Consume from Kafka, process, and send via a unified WebSocket channel."""
         logger.info(f"[Consumer thread] Listening on topics: {self.consume_topics}")
@@ -187,7 +198,7 @@ class APIGateway:
                 if truck_id:
                     payload["truck_id"] = truck_id
 
-                if payload.get("decision") == "SKIPPED":
+                if payload.get("decision") == "SKIPPED":# or payload.get("decision") == "MANUAL_REVIEW":
                     continue
 
                 target_gate = self._resolve_target_gate(payload, topic)
@@ -218,6 +229,45 @@ class APIGateway:
             self._loop,
         )
 
+    def _record_energy_spike_async(self, gate_id: str, payload: dict):
+        """Schedule a fire-and-forget POST of the energy spike to the Data Module."""
+        asyncio.run_coroutine_threadsafe(
+            self._record_energy_spike(gate_id, payload),
+            self._loop,
+        )
+
+    async def _record_energy_spike(self, gate_id: str, payload: dict):
+        """Persist a scale_up spike in the Data Module (telemetry, best-effort)."""
+        from clients import internal_api_client as internal_client
+        try:
+            await internal_client.post("/energy/spikes", json={
+                "gate_id": int(gate_id),
+                # No real kW metric exists yet — store the high-power target so the
+                # graph can plot the spike height; timestamp is the source of truth.
+                "value": float(payload.get("value", 1.83)),
+                "mode": "scale_up",
+                # Kafka Message timestamps are epoch-milliseconds (int); the Data
+                # Module expects ISO-8601, so translate here. Sending the raw int
+                # would fail body validation (422) and the spike would be dropped.
+                "timestamp": self._spike_timestamp_iso(payload.get("timestamp")),
+            })
+        except Exception as e:
+            logger.warning(f"Failed to record energy spike for gate {gate_id}: {e}")
+
+    @staticmethod
+    def _spike_timestamp_iso(raw) -> str | None:
+        """Normalise a Kafka message timestamp (epoch-ms int) to an ISO-8601 string."""
+        if isinstance(raw, bool):
+            return None
+        if isinstance(raw, (int, float)):
+            # Heuristic: values past ~year 2001 in seconds are < 1e12; our
+            # Message timestamps are milliseconds (> 1e12), so scale them down.
+            seconds = raw / 1000.0 if raw > 1e12 else float(raw)
+            return datetime.fromtimestamp(seconds, tz=timezone.utc).isoformat()
+        if isinstance(raw, str) and raw:
+            return raw
+        return None
+
     def _notify_driver_of_infraction(self, license_plate: str, gate_id: str):
         """Resolve driver_license from license plate and broadcast infraction_warning to the driver WS."""
         asyncio.run_coroutine_threadsafe(
@@ -240,11 +290,28 @@ class APIGateway:
                 logger.warning(f"No appointments found for plate {license_plate} (infraction)")
                 return
 
-            appointment = appointments[0]
+            # Select the SAME appointment the Data Module flags
+            # (decision_queries.update_appointment_after_infraction): the active
+            # trip (in_transit/in_process), latest scheduled. The query returns
+            # every appointment for the plate today ordered ascending, so picking
+            # appointments[0] would lock onto an older, already-flagged trip and
+            # suppress the warning for every new appointment of the same truck.
+            active = [a for a in appointments if a.get("status") in ("in_transit", "in_process")]
+            pool = active or appointments
+            appointment = max(pool, key=lambda a: (a.get("scheduled_start_time") or "", a.get("id") or 0))
             driver_license = appointment.get("driver_license")
 
             if not driver_license:
                 logger.warning(f"No driver_license on appointment for plate {license_plate} (infraction)")
+                return
+
+            # Only warn on the transition into infraction. Once this appointment is
+            # already flagged (highway_infraction=True), the warning was already sent —
+            # stop re-broadcasting so the driver popup doesn't keep reappearing.
+            if appointment.get("highway_infraction") is True:
+                logger.info(
+                    f"Appointment for plate {license_plate} already flagged as infraction — skipping driver warning"
+                )
                 return
 
             ws_payload = {
@@ -313,8 +380,21 @@ class APIGateway:
         app.state.kafka_producer = self.kafka_producer
         app.state.ws_manager = self.ws_manager
         app.state.data_module_url = self.config.data_module_url
-        app.state.stream_base_url = self.config.stream_base_url
-        app.state.stream_webrtc_base_url = self.config.stream_webrtc_base_url
+        app.state.mediamtx_webrtc_internal_url = self.config.mediamtx_webrtc_internal_url
+        app.state.mediamtx_hls_internal_url = self.config.mediamtx_hls_internal_url
+        app.state.minio_internal_url = self.config.minio_internal_url
+        # Pre-compute the Minio() constructor args used by the media router.
+        from urllib.parse import urlparse as _urlparse
+        _parsed = _urlparse(self.config.minio_internal_url)
+        _endpoint = _parsed.netloc or _parsed.path
+        app.state.minio_config = {
+            "endpoint": _endpoint,
+            "access_key": self.config.minio_root_user,
+            "secret_key": self.config.minio_root_password,
+            "secure": _parsed.scheme == "https",
+        }
+        app.state.api_prefix = self.config.api_prefix
+        app.state.allowed_gate_ids = set(self.config.gate_id_list)
 
         # Keycloak
         app.state.keycloak_client = KeycloakClient(
@@ -345,8 +425,10 @@ class APIGateway:
         app.include_router(alerts.router, prefix=self.config.api_prefix)
         app.include_router(drivers.router, prefix=self.config.api_prefix)
         app.include_router(stream.router, prefix=self.config.api_prefix)
+        app.include_router(media.router, prefix=self.config.api_prefix)
         app.include_router(workers.router, prefix=self.config.api_prefix)
         app.include_router(statistics.router, prefix=self.config.api_prefix)
+        app.include_router(energy.router, prefix=self.config.api_prefix)
         app.include_router(realtime.router, prefix=self.config.api_prefix)
 
         @app.get("/health", tags=["health"])
@@ -371,7 +453,7 @@ class APIGateway:
         self._consumer_thread.start()
 
         try:
-            config = uvicorn.Config(self.app, host="0.0.0.0", port=self.config.gateway_port, loop="asyncio")
+            config = uvicorn.Config(self.app, host=self.config.gateway_host, port=self.config.gateway_port, loop="asyncio")
             server = uvicorn.Server(config)
             self._loop.run_until_complete(server.serve())
         except KeyboardInterrupt:

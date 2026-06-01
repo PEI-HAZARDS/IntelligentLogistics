@@ -9,6 +9,7 @@ from datetime import date, datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import func as sa_func
+from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,11 @@ def _worker_to_dict(w) -> Dict[str, Any]:
 # Worker lists
 # ---------------------------------------------------------------------------
 
+def _worker_eager_options():
+    from infrastructure.persistence.sql_models import Worker, Manager, Operator
+    return [selectinload(Worker.manager), selectinload(Worker.operator)]
+
+
 def get_all_workers(
     *,
     skip: int = 0,
@@ -51,7 +57,7 @@ def get_all_workers(
 
     db = SessionLocal()
     try:
-        q = db.query(Worker)
+        q = db.query(Worker).options(*_worker_eager_options())
         if only_active:
             q = q.filter(Worker.active == True)  # noqa: E712
         rows = q.offset(skip).limit(limit).all()
@@ -68,6 +74,7 @@ def get_operators(*, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
     try:
         rows = (
             db.query(Worker)
+            .options(*_worker_eager_options())
             .join(Operator)
             .offset(skip)
             .limit(limit)
@@ -86,6 +93,7 @@ def get_managers(*, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
     try:
         rows = (
             db.query(Worker)
+            .options(*_worker_eager_options())
             .join(Manager)
             .offset(skip)
             .limit(limit)
@@ -202,8 +210,9 @@ def get_operator_gate_dashboard(
                 for a in upcoming_rows
             ],
             "stats": {
+                "scheduled": stats_dict.get("scheduled", 0),
                 "in_transit": stats_dict.get("in_transit", 0),
-                "delayed": stats_dict.get("delayed", 0),
+                "in_process": stats_dict.get("in_process", 0),
                 "completed": stats_dict.get("completed", 0),
                 "canceled": stats_dict.get("canceled", 0),
             },

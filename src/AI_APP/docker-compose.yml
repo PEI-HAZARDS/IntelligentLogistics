@@ -2,9 +2,17 @@ x-agenta-base: &agenta-base
   build:
     context: ..
     dockerfile: AI_APP/agentA/Dockerfile
+    args:
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
   image: agenta:latest
   restart: unless-stopped
   env_file: .env
+  labels:
+    prometheus.scrape: "true"
+    agent.type: "a"
   deploy:
     resources:
       reservations:
@@ -21,9 +29,17 @@ x-agentb-base: &agentb-base
   build:
     context: ..
     dockerfile: AI_APP/agentB/Dockerfile
+    args:
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
   image: agentb:latest
   restart: unless-stopped
   env_file: .env
+  labels:
+    prometheus.scrape: "true"
+    agent.type: "b"
   deploy:
     resources:
       reservations:
@@ -40,9 +56,17 @@ x-agentc-base: &agentc-base
   build:
     context: ..
     dockerfile: AI_APP/agentC/Dockerfile
+    args:
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI}
+      MLFLOW_S3_ENDPOINT_URL: ${MLFLOW_S3_ENDPOINT_URL}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
   image: agentc:latest
   restart: unless-stopped
   env_file: .env
+  labels:
+    prometheus.scrape: "true"
+    agent.type: "c"
   deploy:
     resources:
       reservations:
@@ -60,7 +84,11 @@ services:
     <<: *agenta-base
     container_name: agenta-1
     ports:
-      - "${AGENTA_1_PORT}:8000"
+      - "${AGENTA_1_PORT:-9001}:8000"
+    labels:
+      prometheus.scrape: "true"
+      agent.type: "a"
+      gate_id: "1"
     environment:
       - GATE_ID=1
       - MODELS_PATH=${MODELS_PATH_A}
@@ -69,7 +97,11 @@ services:
     <<: *agentb-base
     container_name: agentb-1
     ports:
-      - "${AGENTB_1_PORT}:8000"
+      - "${AGENTB_1_PORT:-9002}:8000"
+    labels:
+      prometheus.scrape: "true"
+      agent.type: "b"
+      gate_id: "1"
     environment:
       - GATE_ID=1
       - MODELS_PATH=${MODELS_PATH_B}
@@ -78,16 +110,24 @@ services:
     <<: *agentc-base
     container_name: agentc-1
     ports:
-      - "${AGENTC_1_PORT}:8000"
+      - "${AGENTC_1_PORT:-9003}:8000"
+    labels:
+      prometheus.scrape: "true"
+      agent.type: "c"
+      gate_id: "1"
     environment:
       - GATE_ID=1
       - MODELS_PATH=${MODELS_PATH_C}
-  
+
   agenta-2:
     <<: *agenta-base
     container_name: agenta-2
     ports:
-      - "${AGENTA_2_PORT}:8000"
+      - "${AGENTA_2_PORT:-9004}:8000"
+    labels:
+      prometheus.scrape: "true"
+      agent.type: "a"
+      gate_id: "2"
     environment:
       - GATE_ID=2
       - MODELS_PATH=${MODELS_PATH_A}
@@ -96,7 +136,11 @@ services:
     <<: *agentb-base
     container_name: agentb-2
     ports:
-      - "${AGENTB_2_PORT}:8000"
+      - "${AGENTB_2_PORT:-9005}:8000"
+    labels:
+      prometheus.scrape: "true"
+      agent.type: "b"
+      gate_id: "2"
     environment:
       - GATE_ID=2
       - MODELS_PATH=${MODELS_PATH_B}
@@ -105,7 +149,11 @@ services:
     <<: *agentc-base
     container_name: agentc-2
     ports:
-      - "${AGENTC_2_PORT}:8000"
+      - "${AGENTC_2_PORT:-9006}:8000"
+    labels:
+      prometheus.scrape: "true"
+      agent.type: "c"
+      gate_id: "2"
     environment:
       - GATE_ID=2
       - MODELS_PATH=${MODELS_PATH_C}

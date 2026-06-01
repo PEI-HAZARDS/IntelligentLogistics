@@ -21,26 +21,32 @@ class PlateClassifier:
     def __init__(self) -> None:
         # Classification thresholds
         # License plates are wide (width/height > 1.8)
-        self.min_aspect_ratio_license = 1.5
-        self.max_aspect_ratio_hazard = 1.2   # Hazard plates are square/vertical
+        self.min_aspect_ratio_license = 1.05
+        self.min_aspect_ratio_license_color = 1.3
+        self.max_aspect_ratio_hazard = 1.9   # Hazard plates are square/vertical
+        self.min_color_coverage = 0.05
+        self.min_license_color_wide = 0.03
+        self.min_hazard_color = 0.45
+        self.hazard_bias_ratio = 0.7
+        self.max_hazard_for_license = 0.3
 
         # HSV color ranges
         # White/Yellow (license plates)
         self.license_plate_colors = [
             # White
-            ([0, 0, 200], [180, 30, 255]),
+            ([0, 0, 130], [180, 60, 255]),
             # Yellow (includes warm yellowish tones, Hue 15-35)
             ([15, 80, 80], [35, 255, 255])
         ]
 
         # Orange/Red (hazard plates)
         self.hazard_plate_colors = [
-            # Orange (Hue 5-15, below yellow)
-            ([5, 100, 100], [15, 255, 255]),
+            # Orange (Hue 5-22, below yellow)
+            ([5, 70, 80], [22, 255, 255]),
             # Red (part 1)
-            ([0, 100, 100], [5, 255, 255]),
+            ([0, 70, 80], [5, 255, 255]),
             # Red (part 2)
-            ([170, 100, 100], [180, 255, 255])
+            ([170, 70, 80], [180, 255, 255])
         ]
 
         # Precompute numpy arrays for color ranges (avoids repeated allocation)
@@ -69,9 +75,12 @@ class PlateClassifier:
 
         # 1. Shape Analysis (Aspect Ratio)
         aspect_ratio = width / height
+        is_wide = aspect_ratio >= self.min_aspect_ratio_license
+        is_hazard_shape = aspect_ratio <= self.max_aspect_ratio_hazard
 
         # 2. Dominant Color Analysis
         color_score = self._analyze_colors(crop)
+        max_color = max(color_score['license'], color_score['hazard'])
 
         logger.debug(
             f"classify: AR={aspect_ratio:.2f}, "
@@ -79,28 +88,43 @@ class PlateClassifier:
             f"hazard_score={color_score['hazard']:.3f}"
         )
 
+        if not is_wide and max_color < self.min_color_coverage:
+            return self.UNKNOWN
+
         # 3. Rule-Based Classification
 
         # License plates: Wide AND white/yellow colors
         # Hazard plates are NEVER wide rectangles, therefore
         # a high aspect ratio is a strong indicator of a license plate
-        if aspect_ratio >= self.min_aspect_ratio_license:
+        if is_wide and color_score['license'] >= self.min_license_color_wide:
             if color_score['license'] > color_score['hazard']:
                 return self.LICENSE_PLATE
             # Even with ambiguous color, wide shape = almost certainly a license plate
-            if color_score['hazard'] <= 0.3:
+            if color_score['hazard'] <= self.max_hazard_for_license:
                 return self.LICENSE_PLATE
 
         # Hazard plates: Square/Vertical AND orange/red colors
-        if aspect_ratio <= self.max_aspect_ratio_hazard:
+        if is_hazard_shape:
+            if (
+                color_score['hazard'] >= self.min_hazard_color
+                and color_score['hazard'] >= color_score['license'] * self.hazard_bias_ratio
+            ):
+                return self.HAZARD_PLATE
             if color_score['hazard'] > color_score['license']:
                 return self.HAZARD_PLATE
 
         # Tiebreak by color only if shape is inconclusive
-        if color_score['license'] > color_score['hazard'] * 1.5:
+        if (
+            color_score['license'] > color_score['hazard'] * 1.5
+            and aspect_ratio >= self.min_aspect_ratio_license_color
+            and color_score['license'] >= self.min_license_color_wide
+        ):
             return self.LICENSE_PLATE
 
-        if color_score['hazard'] > color_score['license'] * 1.5:
+        if (
+            color_score['hazard'] > color_score['license'] * 1.2
+            and aspect_ratio <= self.max_aspect_ratio_hazard
+        ):
             return self.HAZARD_PLATE
 
         # When in doubt, prefer LICENSE_PLATE if shape is wide
