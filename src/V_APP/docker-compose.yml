@@ -164,13 +164,21 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      # First boot runs the full data seed (gated on Keycloak being ready) before
+      # the API answers /health — that can take several minutes. Failing checks
+      # during start_period don't mark the container unhealthy, and the first
+      # success flips it healthy immediately, so warm boots stay fast.
+      start_period: 600s
     networks:
       - intelligent-logistics
 
   # Outbox Worker — projects outbox_events to MongoDB + Redis read models
   outbox-worker:
     image: v_app-data-module
+    # Reuses the image built by the data-module service. Never pull it from a
+    # registry (it only exists locally) so `up --build` doesn't fail on a fresh
+    # daemon/context with "pull access denied".
+    pull_policy: never
     container_name: dm_outbox_worker
     deploy:
       resources:
@@ -213,6 +221,8 @@ services:
   # Statistics Aggregator — computes hourly/daily Mongo rollups for dashboard queries
   statistics-aggregator:
     image: v_app-data-module
+    # Reuses the image built by the data-module service (local-only, never pulled).
+    pull_policy: never
     container_name: dm_statistics_aggregator
     deploy:
       resources:
@@ -254,6 +264,8 @@ services:
   # Shift Scheduler — materialises recurring shift templates into concrete shifts
   shift-scheduler:
     image: v_app-data-module
+    # Reuses the image built by the data-module service (local-only, never pulled).
+    pull_policy: never
     container_name: dm_shift_scheduler
     deploy:
       resources:
